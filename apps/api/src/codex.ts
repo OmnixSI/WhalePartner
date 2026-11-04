@@ -56,8 +56,8 @@ export function parseCodexMessage(output: string) {
   return parseCodexResult(output).message;
 }
 
-export async function summarizeWithCodex(prompt: string): Promise<CodexResult> {
-  const args = [
+export function buildCodexArgs(imagePaths: string[] = []) {
+  return [
     "exec",
     "--ephemeral",
     "--json",
@@ -71,8 +71,13 @@ export async function summarizeWithCodex(prompt: string): Promise<CodexResult> {
     "gpt-6-luna",
     "-c",
     'model_reasoning_effort="minimal"',
+    ...imagePaths.flatMap((path) => ["--image", path]),
     "-",
   ];
+}
+
+export async function summarizeWithCodex(prompt: string, imagePaths: string[] = []): Promise<CodexResult> {
+  const args = buildCodexArgs(imagePaths);
 
   return new Promise<CodexResult>((resolve, reject) => {
     const codex = spawn("codex", args, { cwd: "/private/tmp", stdio: ["pipe", "pipe", "pipe"] });

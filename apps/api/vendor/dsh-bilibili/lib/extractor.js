@@ -33,6 +33,7 @@ const TRANSCRIPT_CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 文稿小且不变，�
 const DANMAKU_SAMPLE_LIMIT = 200;
 const AUDIO_CAP_BYTES = 200 * 1048576; // whisper-local 音频下载上限（DASH 纯音频远小于视频）
 const AUDIO_CONVERT_TIMEOUT_MS = 180000; // 整段音频转 16kHz WAV（长视频需要数十秒）
+const FRAME_MAX_WIDTH = 768;
 const BILIBILI_REQUEST_GAP_MS = 2000;
 const BILIBILI_RATE_LIMIT_PAUSE_MS = 15 * 60 * 1000;
 
@@ -83,10 +84,7 @@ function rateLimitSnapshot() {
     : { limited: false, status: null, retryAt: null };
 }
 
-async function biliFetch(session, input, init) {
-  const url = input instanceof Request ? new URL(input.url) : new URL(String(input));
-  if (!isBilibiliHost(url.hostname)) return fetch(input, init);
-
+async function runBilibiliRequest(task) {
   let release;
   const previous = biliRequestQueue;
   biliRequestQueue = new Promise((resolve) => { release = resolve; });
@@ -104,12 +102,12 @@ async function biliFetch(session, input, init) {
     }
 
     try {
-      const response = await fetch(input, init);
+      const result = await task();
       lastBiliRequestAt = Date.now();
-      if (response.status === 412 || response.status === 429) {
-        throw pauseForRateLimit(response.status, response);
+      if (result && (result.status === 412 || result.status === 429)) {
+        throw pauseForRateLimit(result.status, result);
       }
-      return response;
+      return result;
     } catch (error) {
       lastBiliRequestAt = Date.now();
       throw error;
@@ -117,6 +115,12 @@ async function biliFetch(session, input, init) {
   } finally {
     release();
   }
+}
+
+async function biliFetch(session, input, init) {
+  const url = input instanceof Request ? new URL(input.url) : new URL(String(input));
+  if (!isBilibiliHost(url.hostname)) return fetch(input, init);
+  return runBilibiliRequest(() => fetch(input, init));
 }
 
 /** Combine the caller's abort signal with a per-request timeout. */
@@ -660,7 +664,7 @@ async function abortableSleep(ms, signal) {
  * 无字幕轨的视频借此获得带时间戳的文稿。best-effort：失败时由调用方降级。
  */
 async function transcribeAudio(session, audioUrl, signal) {
-  const createResp = await fetch(BCUT_API_BASE + "/task", {
+  const createResp = await biliFetch(session, BCUT_API_BASE + "/task", {
     method: "POST",
     headers: {
       "User-Agent": USER_AGENT,
@@ -677,7 +681,8 @@ async function transcribeAudio(session, audioUrl, signal) {
   if (!taskId) throw new Error("bcut task create returned no task id");
   for (let attempt = 0; attempt < BCUT_MAX_POLLS; attempt++) {
     if (attempt > 0) await abortableSleep(BCUT_POLL_MS, signal);
-    const resResp = await fetch(
+    const resResp = await biliFetch(
+      session,
       BCUT_API_BASE + "/task/result?model_id=8&task_id=" + taskId,
       { headers: { "User-Agent": USER_AGENT, "Cache-Control": "no-cache" }, signal: requestSignal(signal, 30000) },
     );
@@ -831,10 +836,10 @@ export function guessStreamExt(streamUrl) {
 async function downloadStream(session, streamUrl, destPath, maxBytes) {
   let resp;
   try {
-    resp = await fetch(streamUrl, {
+    resp = await runBilibiliRequest(() => fetch(streamUrl, {
       headers: session.headers,
       signal: requestSignal(session.signal, 600000),
-    });
+    }));
   } catch (error) {
     if (session.signal?.aborted) throw error;
     throw new Error("download request failed: " + (error?.message ?? error));
@@ -882,6 +887,29 @@ async function runFfmpegStderrToFile(args, stderrFd, signal) {
       else reject(new Error(signal?.aborted ? "aborted" : "ffmpeg exited with code " + code));
     });
   });
+}
+
+async function runStreamFrameCapture(args, outDir, signal) {
+  const logPath = join(outDir, "frame-capture.log");
+  const logFd = await open(logPath, "w");
+  try {
+    await runFfmpegStderrToFile(args, logFd, requestSignal(signal, FRAME_TIMEOUT_MS));
+  } catch (error) {
+    let log = "";
+    try { log = await readFile(logPath, "utf8"); } catch { /* keep the process error */ }
+    const match = /(?:HTTP error|Server returned)\s+(412|429)\b/i.exec(log);
+    if (match) {
+      const status = Number(match[1]);
+      throw pauseForRateLimit(status, new Response(null, { status }));
+    }
+    const lines = log.split(/\r?\n/).filter((line) => /error|failed|denied|invalid|timed out|server returned/i.test(line));
+    const details = lines.slice(-3).join(" ").replace(/https?:\/\/[^\s]+/g, (url) => url.split("?")[0] + "?[redacted]");
+    if (details) throw new Error(details.slice(-500));
+    throw error;
+  } finally {
+    await logFd.close().catch(() => {});
+    await rm(logPath, { force: true }).catch(() => {});
+  }
 }
 
 /** Run a CLI (whisper-cli / sherpa-onnx-offline) with stdout/stderr redirected to files (no pipes): sandbox-friendly. */
@@ -1340,6 +1368,7 @@ async function extractFramesFromFile(videoPath, timestamps, outDir, signal) {
       "-y",
       "-ss", String(ts.time),
       "-i", videoPath,
+      "-vf", `scale='min(${FRAME_MAX_WIDTH},iw)':-2`,
       "-frames:v", "1",
       "-q:v", "2",
       "-an",
@@ -1357,13 +1386,14 @@ async function extractFramesFromFile(videoPath, timestamps, outDir, signal) {
   return results;
 }
 
-async function captureFrames(streamUrl, timestamps, outDir, signal) {
+async function captureFrames(session, streamUrl, timestamps, outDir, signal) {
   if (!streamUrl || timestamps.length === 0) {
     return timestamps.map((ts) => ({ ...ts, path: null, error: "no stream url" }));
   }
   const results = [];
-  const ffmpegHeaders =
-    "Referer: " + REFERER + "\r\n" + "User-Agent: " + USER_AGENT + "\r\n";
+  const headers = ["Referer: " + REFERER, "User-Agent: " + USER_AGENT];
+  if (session.headers.Cookie) headers.push("Cookie: " + session.headers.Cookie);
+  const ffmpegHeaders = headers.join("\r\n") + "\r\n";
   for (let i = 0; i < timestamps.length; i++) {
     const ts = timestamps[i];
     const outPath = join(outDir, "frame_" + String(i + 1).padStart(3, "0") + ".jpg");
@@ -1372,13 +1402,14 @@ async function captureFrames(streamUrl, timestamps, outDir, signal) {
       "-headers", ffmpegHeaders,
       "-ss", String(ts.time),
       "-i", streamUrl,
+      "-vf", `scale='min(${FRAME_MAX_WIDTH},iw)':-2`,
       "-frames:v", "1",
       "-q:v", "2",
       "-an",
       outPath,
     ];
     try {
-      await runFfmpeg(args, requestSignal(signal, FRAME_TIMEOUT_MS));
+      await runBilibiliRequest(() => runStreamFrameCapture(args, outDir, signal));
       const ok = await fileExists(outPath);
       results.push({ ...ts, path: ok ? outPath : null, error: ok ? null : "output file missing" });
     } catch (error) {
@@ -1490,14 +1521,9 @@ export async function extractAll(options) {
   const baseDir = framesDir || join(tmpdir(), "dsh-bilibili");
   const outDir = join(baseDir, bvid);
 
-  let subtitle;
-  let comments;
-  let danmaku;
-  [subtitle, comments, danmaku] = await Promise.all([
-    guarded(() => getSubtitle(session, bvid, info.cid), emptySubtitle),
-    guarded(() => getComments(session, info.aid, commentLimit), emptyComments),
-    guarded(() => getDanmaku(session, info.cid), emptyDanmaku),
-  ]);
+  let subtitle = await guarded(() => getSubtitle(session, bvid, info.cid), emptySubtitle);
+  let comments = emptyComments("comments are fetched after the video evidence");
+  let danmaku = emptyDanmaku("danmaku is fetched after the video evidence");
 
   // 环境体检：本地凭证已失效时，提前告知模型重新登录可拿到需要登录的字幕
   if (envChecks.get("credential-validity")?.status === "warn" && /require login/i.test(subtitle.note ?? "")) {
@@ -1506,7 +1532,7 @@ export async function extractAll(options) {
 
   // 无字幕轨 → ASR 兜底：默认必剪（bcut），可切 sherpa-onnx（中文推荐）/whisper-local；auto 依次降级 必剪→sherpa→whisper；文稿 24h 缓存
   const provider = asrProvider ?? (asrFallback === false ? "none" : "bcut");
-  if (provider !== "none" && subtitle.text.length === 0 && subtitle.source === "none") {
+  if (provider !== "none" && !subtitle.text.trim()) {
     const cachedTranscript = await readTranscriptCache(outDir);
     if (cachedTranscript) {
       subtitle = cachedTranscript;
@@ -1579,13 +1605,16 @@ export async function extractAll(options) {
       if (asr.text) {
         subtitle = asr;
         await writeTranscriptCache(outDir, asr);
-      } else if (subtitle.note) {
-        subtitle = { ...subtitle, note: subtitle.note + " | ASR fallback failed: " + (asr.note ?? "") };
+      } else {
+        const subtitleNote = subtitle.note ??
+          (subtitle.source === "subtitle" ? "subtitle track returned no transcript text" : "");
+        const failureNote = "ASR fallback failed: " + (asr.note ?? "no transcript returned");
+        subtitle = { ...subtitle, note: [subtitleNote, failureNote].filter(Boolean).join(" | ") };
       }
     }
   }
 
-  const frames = { enabled: false, strategy: "", mode: "none", frames: [], error: null, note: "" };
+  const frames = { enabled: false, strategy: "", mode: "none", stage: "not-started", frames: [], error: null, note: "" };
   const ffmpegCheck = envChecks.get("ffmpeg");
   const ffmpegBlocked = extractFrames && ffmpegCheck && (ffmpegCheck.status === "missing" || ffmpegCheck.status === "error");
   if (ffmpegBlocked) {
@@ -1593,11 +1622,13 @@ export async function extractAll(options) {
     frames.enabled = true;
     frames.mode = "none";
     frames.strategy = "skipped: ffmpeg unavailable";
+    frames.stage = "environment-check";
     frames.error = "ffmpeg 不可用（环境体检：" + (ffmpegCheck.detail ?? ffmpegCheck.status) + "）";
     frames.note = ffmpegCheck.hint ?? "安装 FFmpeg 后重试；本次已跳过视频下载与抓帧";
   } else if (extractFrames) {
     try {
       const requestedPlan = normalizeRequestedTimestamps(timestamps, info.duration, maxFrames, subtitle.segments);
+      frames.stage = "playurl";
       const streamUrl = await getStreamUrl(session, bvid, info.cid, quality);
       await mkdir(outDir, { recursive: true });
       const withinDurationCap = info.duration <= maxVideoMinutes * 60;
@@ -1606,6 +1637,7 @@ export async function extractAll(options) {
       let captured;
       if (downloadVideo && withinDurationCap && streamUrl) {
         // 先下载整段视频到本地（缓存复用），再从本地文件抓帧：快、准、可重复
+        frames.stage = "video-download";
         const { path: videoPath, bytes, reused } = await ensureVideo(session, streamUrl, outDir, maxDownloadMb * 1048576);
         // 自动兜底计划（纯画面信号：场景峰值优先，均匀间隔补齐）；定向抓帧不跑全片场景检测
         const autoPlan = requestedPlan ?? selectKeyframeTimestamps(subtitle.segments, info.duration, maxFrames, []);
@@ -1654,6 +1686,7 @@ export async function extractAll(options) {
           }
           plan = sharpPlan;
         }
+        frames.stage = "frame-capture";
         captured = await extractFramesFromFile(videoPath, plan, outDir, signal);
         frames.mode = "local";
         frames.note = reused
@@ -1663,12 +1696,13 @@ export async function extractAll(options) {
         if (!keepVideo && requestedPlan === null) await rm(videoPath, { force: true });
       } else {
         plan = requestedPlan ?? selectKeyframeTimestamps(subtitle.segments, info.duration, maxFrames, []);
-        captured = await captureFrames(streamUrl, plan, outDir, signal);
+        frames.stage = streamUrl ? "frame-capture" : "playurl";
+        captured = await captureFrames(session, streamUrl, plan, outDir, signal);
         frames.mode = "remote";
         if (!streamUrl) frames.note = "no playable stream url";
         else if (!withinDurationCap) frames.note = "video longer than maxVideoMinutes (" + maxVideoMinutes +
           " min) — per-frame remote extraction";
-        else frames.note = "video download disabled by config";
+        else frames.note = "selected frames streamed from Bilibili; source video not saved locally";
       }
       if (plan.length > 0) {
         frames.enabled = true;
@@ -1689,15 +1723,38 @@ export async function extractAll(options) {
           vision_error: null,
           citation_hint: "",
         }));
+        const capturedCount = frames.frames.filter((frame) => frame.has_image).length;
+        if (capturedCount === frames.frames.length) {
+          frames.stage = "complete";
+        } else if (capturedCount > 0) {
+          frames.stage = "partial";
+        } else {
+          frames.stage = streamUrl ? "frame-capture" : "playurl";
+        }
+        if (capturedCount < frames.frames.length) {
+          const failedFrame = frames.frames.find((frame) => frame.error);
+          frames.error = failedFrame?.error ?? "no frames were returned";
+        }
       } else {
         frames.enabled = true;
         frames.mode = "none";
         frames.strategy = "no timestamps selected";
+        frames.stage = "no-timestamps";
       }
     } catch (error) {
       frames.enabled = false;
       frames.error = String(error?.message ?? error);
     }
+  }
+
+  if (!rateLimitSnapshot().limited) {
+    [comments, danmaku] = await Promise.all([
+      guarded(() => getComments(session, info.aid, commentLimit), emptyComments),
+      guarded(() => getDanmaku(session, info.cid), emptyDanmaku),
+    ]);
+  } else {
+    comments = emptyComments("comments skipped after Bilibili rate limit");
+    danmaku = emptyDanmaku("danmaku skipped after Bilibili rate limit");
   }
 
   // 可选视觉描述：把帧图交给视觉模型（本地 Ollama / OpenAI 兼容云端），画面内容转文字，供无视觉能力的主模型使用

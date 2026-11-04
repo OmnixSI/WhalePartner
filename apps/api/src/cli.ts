@@ -1,6 +1,6 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { assertBilibiliRequestAllowed, collectBilibiliText } from "./bilibili.ts";
+import { assertBilibiliRequestAllowed, collectBilibiliVideoEvidence } from "./bilibili.ts";
 import {
   bilibiliSessionPath,
   isBilibiliSessionValid,
@@ -22,25 +22,40 @@ async function writeSmokeArtifact() {
   process.stdout.write(outPath + "\n");
 }
 
-async function summarizeVideo(input: string, sessdata: string) {
-  const source = await collectBilibiliText(input, sessdata);
+type SummaryStatus = "summarized" | "rate-limited" | "insufficient-evidence";
+
+async function summarizeVideo(input: string, sessdata: string): Promise<SummaryStatus> {
+  const source = await collectBilibiliVideoEvidence(input, sessdata);
   const bvid = source.bvid;
   if (!bvid) throw new Error("提取结果缺少 BV 号，无法保存摘要。");
 
   const outDir = resolve(repoDir, ".local/video-summaries", bvid);
   await mkdir(outDir, { recursive: true });
+  await rm(resolve(outDir, "summary.md"), { force: true });
+  await rm(resolve(outDir, "usage.json"), { force: true });
   await writeFile(resolve(outDir, "source.json"), JSON.stringify(source, null, 2) + "\n");
 
-  if (source.rateLimit.limited) {
-    const reason = source.rateLimit.status < 0
-      ? `风控码 ${source.rateLimit.status}`
-      : `HTTP ${source.rateLimit.status}`;
-    process.stdout.write(`B 站触发 ${reason}；请求已暂停至 ${source.rateLimit.retryAt}。本次只保存部分提取数据，未生成摘要。\n`);
-    return true;
+  if (source.frames.error) {
+    process.stdout.write(`关键帧提取阶段 ${source.frames.stage ?? "unknown"}：${source.frames.error}\n`);
   }
 
-  const prompt = buildVideoSummaryPrompt(source.formattedText);
-  const codexResult = await summarizeWithCodex(prompt);
+  if (source.rateLimit.limited) {
+    const status = source.rateLimit.status ?? 0;
+    const reason = status < 0 ? `风控码 ${status}` : `HTTP ${status}`;
+    process.stdout.write(`B 站触发 ${reason}；请求已暂停至 ${source.rateLimit.retryAt}。本次只保存部分提取数据，未生成摘要。\n`);
+    return "rate-limited";
+  }
+
+  if (!source.transcript.text?.trim() && source.frameImages.length === 0) {
+    process.stdout.write(
+      `没有取得字幕/转写正文或关键帧，未生成视频摘要。来源和辅助资料已保存：${outDir}\n`,
+    );
+    return "insufficient-evidence";
+  }
+
+  const prompt = buildVideoSummaryPrompt(source.formattedText, source.frameImages);
+  const framePaths = source.frameImages.map((frame) => frame.path);
+  const codexResult = await summarizeWithCodex(prompt, framePaths);
   const summaryText = codexResult.message.trim() + "\n";
   await writeFile(resolve(outDir, "summary.md"), summaryText);
   await writeFile(
@@ -50,7 +65,15 @@ async function summarizeVideo(input: string, sessdata: string) {
       summaryCharacters: codexResult.message.length,
       tokenUsage: codexResult.usage ?? null,
       exactTokenUsageAvailable: codexResult.usage !== undefined,
+      model: "gpt-6-luna",
+      reasoningEffort: "minimal",
+      transcriptSource: source.media.transcriptSource,
+      frameCount: source.media.frameCount,
+      frameTimes: source.media.frameTimes,
     }, null, 2) + "\n",
+  );
+  process.stdout.write(
+    `视频证据：${source.media.transcriptSource === "none" ? "无字幕/转写" : source.media.transcriptSource}，关键帧 ${source.media.frameCount} 张。\n`,
   );
   process.stdout.write(summaryText);
   if (codexResult.usage) {
@@ -61,7 +84,7 @@ async function summarizeVideo(input: string, sessdata: string) {
     process.stdout.write(`Codex token usage unavailable; prompt ${prompt.length} chars, summary ${codexResult.message.length} chars.\n`);
   }
   process.stdout.write("\n已保存提取证据和摘要：" + outDir + "\n");
-  return source.rateLimit.limited;
+  return "summarized";
 }
 
 async function summarizeVideos(inputs: string[]) {
@@ -72,13 +95,17 @@ async function summarizeVideos(inputs: string[]) {
   }
 
   process.stdout.write(session ? "使用本机 B 站登录态。\n" : "未登录，使用匿名数据。\n");
+  let incomplete = false;
   for (const input of inputs) {
-    const rateLimited = await summarizeVideo(input, session?.sessdata ?? "");
-    if (rateLimited) {
+    const status = await summarizeVideo(input, session?.sessdata ?? "");
+    if (status === "rate-limited") {
       process.stdout.write("B 站已触发限流保护，本次停止后续视频请求。等待本机冷却时间结束后再重试。\n");
+      incomplete = true;
       break;
     }
+    if (status === "insufficient-evidence") incomplete = true;
   }
+  if (incomplete) process.exitCode = 1;
 }
 
 async function login(args: string[]) {

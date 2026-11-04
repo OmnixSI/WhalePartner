@@ -1,44 +1,37 @@
-# Build Note — Local Bilibili public-material summary
+# Build Note — C1/C2 Local Bilibili Video Pipeline
 
-| Rung | Feature | Acceptance check(s) | Tier | Status |
-|------|---------|-------------------------------|------|--------|
-| F0 | CLI spine: fixture input → clearly marked placeholder artifact | `node apps/api/src/cli.ts --smoke` | MUST | ✅ |
-| F1 | Reused Bilibili text extractor with media/ASR disabled, plus link/data tests | `pnpm --dir apps/api run test` | MUST | ✅ |
-| F2 | Codex CLI summary adapter and prompt based on the evidence | `pnpm --dir apps/api run test` | MUST | ✅ |
-| F3 | Live public-link collection and end-to-end local summary for a text-only sample | `pnpm --dir apps/api run summarize -- <public-bilibili-url>` | MUST | ✅ Sample verified |
-| F4 | Local Bilibili QR login and authenticated text summary | `pnpm --dir apps/api run login` then `pnpm --dir apps/api run login -- --wait` | MUST | ✅ Three videos verified |
+## Current status
 
-## Run record
+The local C1/C2 prototype is implemented and ready for pull request review. It is a CLI proof of the video pipeline; the app shell, long-term memory, diary workflow, and end-to-end integration remain separate MVP work.
 
-- F0: `/private/tmp/node-v26.13.0-darwin-arm64/bin/node apps/api/src/cli.ts --smoke` → exit 0; artifact `.local/PLACEHOLDER_smoke.json`.
-- F1/F2/F4: Node 26 `--run test` in `apps/api` → exit 0; nine cases cover extraction, text-only media settings, prompt requirements, danmaku sampling, optional `SESSDATA`, and Codex JSONL parsing.
-- F1/F2/F4: Node 26 `--run typecheck` in `apps/api` → exit 0.
-- F3: `npm run summarize -- https://www.bilibili.com/video/BV14Baa6JENd/` → exit 0 with blank `SESSDATA`; metadata reported about 3.51 million views and 65,119 danmaku. The extractor returned 3 comments and 1,200 danmaku entries. The 1,970-character prompt was 3,660 UTF-8 bytes; it contained a 200-entry spread sample, 10 repeated-message counts, and 9 distinct timeline samples. No subtitle track was available. The local Codex adapter produced an evidence-bounded summary and saved it under `.local/video-summaries/BV14Baa6JENd/`.
-- Additional anonymous samples on 2026-11-04:
+## Pipeline
 
-  | BV id | Public views | Comments fetched / total | Danmaku fetched / total | Formatted evidence chars | Summary basis |
-  |-------|-------------:|-------------------------:|-----------------------:|-------------:|---------------|
-  | `BV1YJxP6KE65` | 17,980 | 3 / 61 | 58 / 58 | 1,502 | Minecraft redstone survival challenge title, comments, and danmaku |
-  | `BV1ZqJe6yEQd` | 170,303 | 3 / 191 | 285 / 285 | 1,558 | Fresh pepper and matsutake chicken title, comments, and danmaku |
-  | `BV1RA4w6AE74` | 2,625,383 | 3 / 2,110 | 952 / 968 | 1,741 | ARC Raiders title, full public description, comments, and danmaku |
+1. Accept a Bilibili URL, short link, or BV ID and load the saved local Bilibili session when it is valid.
+2. Collect video metadata and platform subtitles. If no usable subtitle text is available, request Bcut ASR. Comments and danmaku are supporting context.
+3. Use FFmpeg to sample up to eight frames from the remote playback stream. The complete video is not saved locally.
+4. Send transcript text and sampled frames to the local Codex CLI using GPT-6 Luna with minimal reasoning.
+5. Save source evidence, frames, the whole-video summary, and reported token usage under .local/video-summaries/<BV ID>/. These local artifacts are ignored by Git.
 
-  These anonymous runs reported that platform subtitles required login. No subtitle text was collected. Summaries are saved under `.local/video-summaries/<bvid>/`.
+## Verified runs
 
-- F4: On 2026-11-04, Bilibili QR login succeeded. The session was validated and stored locally under `.local/` with owner-only file permissions. The three links above were then processed serially with the authenticated session. No rate-control response occurred; no video, audio, or frames were downloaded or analyzed.
+| Video | Transcript | Supporting data | Frames | Codex usage |
+|---|---|---|---:|---|
+| BV1YJxP6KE65 | 4,624 characters, 391 segments | Platform AI subtitles | 8 | 27,444 input (11,520 cached), 1,497 output |
+| BV1Ac4c61E2C | 3,564 characters, 441 segments | 20 comments; 1,717 danmaku total, 200 sampled | 8 | 27,587 input (11,520 cached), 756 output |
 
-  | BV id | Subtitle | Subtitle characters / segments | Comments fetched / total | Danmaku sampled / metadata total | Prompt characters | Summary characters | Estimated prompt + answer tokens |
-  |-------|----------|------------------------------:|-------------------------:|---------------------------------:|-----------------:|-------------------:|---------------------------------:|
-  | `BV1YJxP6KE65` | Platform AI Chinese | 4,624 / 391 | 20 / 61 | 7,109 | 581 | ~5,800 |
-  | `BV1ZqJe6yEQd` | Platform AI Chinese | 1,758 / 226 | 20 / 191 | 5,239 | 452 | ~4,300 |
-  | `BV1RA4w6AE74` | Platform AI Chinese | 254 / 31 | 20 / 2,409 | 200 / 1,159 | 3,224 | 527 | ~2,400 |
+Both runs produced whole-video summaries with source links and evidence notes. The latest run also verified the saved Bilibili login session, subtitle retrieval, comments, danmaku, remote frame extraction, and Codex token reporting in one invocation.
 
-  Estimated total: about 11,300 input-content tokens plus 1,300 output-content tokens, or 12,600 combined. This rough estimate counts each Chinese character as about one token and each four other characters as one token. The exact Codex CLI usage for this run was not recorded. New runs save the CLI-reported input, cached-input, and output usage in `usage.json` beside each summary.
+## Validation
 
-## Deferred
+- The local CLI completed live end-to-end runs on BV1YJxP6KE65 and BV1Ac4c61E2C.
+- The API TypeScript typecheck completed successfully; pnpm reports that the installed Node 24.21.0 is below the package's declared Node 26 range.
+- The extractor JavaScript syntax check completed successfully.
+- The Bcut ASR fallback is covered by a mocked response. Its remote fallback path has not yet been verified on a real video without usable platform subtitles.
 
-- Full C1/C2 processing with transcript, keyframes, actual audio/video understanding, and memory write.
-- A deployed API and production model provider for mobile clients.
+## Remaining work
 
-## Limitations
-
-The anonymous samples could not access platform subtitles; the authenticated run obtained AI-generated Chinese subtitle text for all three links. Token estimates for that run are character-based because the earlier Codex adapter did not retain server usage. The `usage.json` record captures exact CLI-reported usage on later runs when present in Codex JSONL output. Comments and danmaku remain samples rather than complete discussion archives. The segmented protobuf danmaku endpoint is not implemented. This text-only prototype does not satisfy Issue #8's requirement for keyframe input.
+- Connect the local pipeline to the app's video submission and backend interfaces.
+- Agree and implement the summary-to-memory contract; add the scheduled diary and diary page flows.
+- Measure dollar cost per video hour and assess summary quality across a broader sample. Current Codex runs expose token counts, not a per-run dollar charge.
+- Bilibili may return HTTP 412 or 429. Requests are serialized, and the CLI records a cooldown and stops instead of retrying aggressively.
+- Production model hosting and multi-device operation are outside this local prototype.

@@ -1,19 +1,21 @@
-# Assumption Ledger — Local Bilibili public-material summary
+# Assumption Ledger — C1/C2 video understanding
 <!-- ASK mode: never -->
 
 | ID | Under-determined by the request | Chosen | Class | Source |
-|----|--------------------------------|--------|-------|--------|
-| A-001 | Where the prototype should live | A TypeScript/Node.js CLI/service prototype under `apps/api`, ready to be wrapped by the future API | interface | user |
-| A-002 | Which existing extractor to reuse | Vendor `dsh-bilibili` v0.8.0 under its MIT license and use its metadata, subtitle, comment, danmaku, and formatting paths | interface | user |
-| A-003 | Which Bilibili links are supported | Bare BV ids, `bilibili.com/video/BV...` URLs, and `b23.tv` short links | interface | default |
-| A-004 | What the summary may claim | It uses whichever public text evidence is available: metadata, platform subtitle, sampled comments, and danmaku; it names evidence limits and never claims visual inspection | semantic | user |
-| A-005 | Which media-derived evidence is allowed | Reuse platform-hosted subtitle and danmaku text; do not download/play video or audio, run ASR, extract frames, infer visual content, or write long-term memory | semantic | user |
-| A-006 | How to run model inference | Use local `codex exec` with `gpt-6-luna` and `minimal`; no cloud inference adapter in this spike | interface | user |
-| A-007 | Comment sample size and saved outputs | Fetch up to 20 top-level comments; treat comments and danmaku as samples, not audience consensus; save JSON/Markdown under ignored `.local/video-summaries/` | interface | default |
-| A-008 | What to do when the public comment endpoint fails | Keep metadata, report the comment retrieval note, and label the resulting evidence as limited | semantic | default |
+|---|---|---|---|---|
+| A-001 | Whether C2 should output timestamped chapters or one narrative summary | Produce one coherent whole-video summary; use timestamps only to align evidence and preserve source duration/link | semantic | user |
+| A-002 | How the local model receives visual evidence | Attach extracted frame files with `codex exec --image`; use GPT-6 Luna at minimal reasoning | interface | user + existing Codex CLI |
+| A-003 | What to do when a platform subtitle track has no usable text | Call Bilibili Bcut ASR when no transcript body is available; reuse a valid cached ASR result | semantic | existing vendored extractor + C1 requirement |
+| A-004 | How to balance visual coverage and sampling cost without saving the source video | Select one subtitle-aligned frame per duration bucket, use the bucket center when no candidate exists, cap at 8 frames, and resize to 768px width | semantic | user preference + existing extractor |
+| A-005 | Which media should persist locally | Stream selected frames from Bilibili; keep frame images, transcript, and summary, but not the complete source video | interface | user preference |
+| A-006 | How much text evidence and audience reaction to send to the model | Send at most 12,000 transcript characters; when truncated, keep the first 4,800 characters and one short excerpt per 3-minute interval, up to 60 intervals. Add 8 fetched comments with one reply each and 12 sampled danmaku messages | semantic | token efficiency requirement + scope judgment |
+| A-007 | What to do when neither transcript nor frame images are available | Save source evidence and stop before Codex; do not infer a video summary from metadata or audience reaction alone | semantic | user priority for video-grounded understanding |
+| A-008 | Reader-facing summary layout | Use a natural whole-video share paragraph followed by compact source/evidence details; do not add a chapter timeline | interface | user request |
+| A-009 | How the CLI signals and saves an incomplete evidence run | Return a non-zero exit status when rate limiting stops a run or direct video evidence is insufficient; remove the prior summary and usage record before saving newly collected evidence | interface | sweep |
 
 ## Notes
 
-- **A-002** — The upstream extractor already handles Bilibili link resolution, metadata, subtitle text, comments, danmaku, and result formatting. Run it with `asrProvider: "none"`, `extractFrames: false`, and `downloadVideo: false`; retain its MIT license.
-- **A-004** — Platform subtitles can support a summary of spoken content, but cannot establish visual details. Without subtitles, comments and danmaku are only sampled reactions; the result must not present them as a confirmed account of the video.
-- **A-005** — Platform subtitles may be absent or login-gated. In that case, keep the available metadata/comment/danmaku evidence and state the limit; do not trigger an ASR fallback.
+- **A-003** — Bcut is a Bilibili service. The fallback submits the Bilibili audio stream URL only when no subtitle text is available. Platform subtitle text remains preferred.
+- **A-004** — Duration buckets keep frame coverage across the video; the nearest subtitle segment anchors each bucket when available. Without a local source file, FFmpeg cannot scan the entire video for scene changes.
+- **A-006** — The transcript cap preserves the beginning and samples later intervals. Comments and danmaku remain supporting context, not primary evidence.
+- **A-007** — If one direct evidence source is available, the summary prompt must disclose the missing source; if both are absent, the CLI saves evidence and does not call the model.

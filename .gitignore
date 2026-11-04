@@ -1,8 +1,10 @@
 .DS_Store
+.aris/
 .env
 .env.*
 !.env.example
 .local/
+implement-stage/SILENT_ASSUMPTION_SWEEP.json
 node_modules/
 .pnpm-store/
 dist/
