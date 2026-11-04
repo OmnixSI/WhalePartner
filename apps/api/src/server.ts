@@ -4,21 +4,26 @@ import { ChatInputError, runChat, validateUserMessage } from "./chat.ts";
 import { applyCors, readJsonBody, sendJson, sendSse, startSse } from "./http.ts";
 import { createChatProvider } from "./llm/index.ts";
 import type { FallbackChatProvider } from "./llm/router.ts";
+import { LazyMemoryStore } from "./memory/mem0.ts";
+import type { MemoryStatus, MemoryStore } from "./memory/types.ts";
 import { ChatStore } from "./store.ts";
 
 export interface ServerDeps {
   config: ApiConfig;
   provider: FallbackChatProvider;
   store: ChatStore;
+  memory?: MemoryStore & { status?(): MemoryStatus };
 }
 
-function healthBody({ provider }: ServerDeps) {
+function healthBody(deps: ServerDeps) {
+  const { provider } = deps;
   return {
     ok: true,
     service: "whalepartner-api",
     provider: provider.id,
     model: provider.model,
     fallbacks: provider.providers.slice(1).map((item) => item.id),
+    memory: deps.memory?.status?.() ?? { enabled: Boolean(deps.memory), state: deps.memory ? "ready" : "idle" },
   };
 }
 
@@ -51,7 +56,7 @@ async function handleChat(deps: ServerDeps, request: IncomingMessage, response: 
 
   startSse(response);
   try {
-    for await (const event of runChat({ provider: deps.provider, store: deps.store }, text, abort.signal)) {
+    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory }, text, abort.signal)) {
       const { type, ...data } = event;
       sendSse(response, type, data);
     }
@@ -59,6 +64,46 @@ async function handleChat(deps: ServerDeps, request: IncomingMessage, response: 
     if (!abort.signal.aborted) sendSse(response, "error", { message: error instanceof Error ? error.message : "聊天失败。" });
   } finally {
     response.end();
+  }
+}
+
+function text(value: unknown, max: number, field: string, required = true) {
+  if (value === undefined || value === null || value === "") {
+    if (required) throw new ChatInputError(`${field} 不能为空。`);
+    return undefined;
+  }
+  if (typeof value !== "string" || value.length > max) throw new ChatInputError(`${field} 必须是不超过 ${max} 字的文字。`);
+  return value.trim();
+}
+
+async function handleMemories(deps: ServerDeps, request: IncomingMessage, response: ServerResponse, url: URL) {
+  const memory = deps.memory;
+  if (!memory) return sendJson(response, 503, { error: "记忆功能未启用。" });
+  try {
+    if (request.method === "GET" && url.pathname === "/api/memories") {
+      return sendJson(response, 200, { entries: await memory.list() });
+    }
+    if (request.method === "DELETE" && url.pathname.startsWith("/api/memories/") && url.pathname !== "/api/memories/experience") {
+      await memory.remove(decodeURIComponent(url.pathname.slice("/api/memories/".length)));
+      return sendJson(response, 200, { ok: true });
+    }
+    if (request.method === "POST" && url.pathname === "/api/memories/experience") {
+      const body = await readJsonBody(request);
+      const link = text(body.url, 500, "url", false);
+      if (link && !/^https?:\/\//.test(link)) throw new ChatInputError("url 必须以 http:// 或 https:// 开头。");
+      const entry = await memory.addExperience({
+        kind: text(body.kind, 32, "kind")!,
+        title: text(body.title, 120, "title")!,
+        text: text(body.text, 4000, "text")!,
+        url: link,
+        sourceId: text(body.sourceId, 64, "sourceId", false),
+      });
+      return sendJson(response, 200, { entry });
+    }
+    return sendJson(response, 404, { error: "未找到。" });
+  } catch (error) {
+    const status = error instanceof ChatInputError ? 400 : error instanceof SyntaxError ? 400 : 500;
+    return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "记忆请求失败。" });
   }
 }
 
@@ -86,6 +131,10 @@ export function createApiServer(deps: ServerDeps): Server {
         sendJson(response, 200, { ok: true });
         return;
       }
+      if (url.pathname.startsWith("/api/memories")) {
+        await handleMemories(deps, request, response, url);
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/api/chat") {
         await handleChat(deps, request, response);
         return;
@@ -103,7 +152,10 @@ if (import.meta.main) {
   const host = lan ? "0.0.0.0" : config.host;
   const provider = createChatProvider(config);
   const store = new ChatStore(config.dbPath);
-  const server = createApiServer({ config, provider, store });
+  const memory = config.memoryEnabled
+    ? new LazyMemoryStore({ dataDir: config.memoryDir, provider })
+    : undefined;
+  const server = createApiServer({ config, provider, store, memory });
   server.listen(config.port, host, () => {
     console.log(`WhalePartner API：http://${host}:${config.port}`);
     console.log(`模型链：${provider.providers.map((item) => `${item.id}(${item.model})`).join(" → ")}`);

@@ -11,6 +11,7 @@ export interface HistoryMessage {
 
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
+  | { type: "recall"; memories: string[] }
   | { type: "emotion"; emotion: AvatarEmotion }
   | { type: "done"; messageId: number; emotion: AvatarEmotion; provider?: string }
   | { type: "error"; message: string };

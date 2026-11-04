@@ -106,3 +106,15 @@
 .typing i:nth-child(3) { animation-delay: .3s; }
 @keyframes wave { 0%, 60%, 100% { transform: translateY(0); opacity: .5; } 30% { transform: translateY(-6px); opacity: 1; } }
 .msg--failed { border-color: var(--coral); color: var(--text-soft); font-family: var(--font-ui); font-size: 14px; }
+
+/* 记忆页与回忆提示 */
+.memories { list-style: none; margin: 8px 0 0; padding: 0; }
+.memory { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.memory:last-child { border-bottom: 0; }
+.memory__text { font-family: var(--font-display); font-size: 17px; color: var(--text); overflow-wrap: anywhere; }
+.memory__sub { margin-top: 4px; color: var(--text-soft); font-size: 14px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.memory__meta { margin-top: 4px; font-size: 12px; color: var(--text-faint); }
+.memory__del { flex: none; min-height: 40px; padding: 0 14px; border-radius: 999px; color: var(--text-soft); font-size: 14px; border: 1px solid var(--border); transition: color .2s, border-color .2s, background .2s; }
+.memory__del:hover, .memory__del.is-asking { color: var(--coral); border-color: var(--coral); background: rgb(255 138 122 / .08); }
+.recall { align-self: flex-start; max-width: 86%; margin: -6px 0 0 6px; font-size: 12px; color: var(--text-faint); display: flex; gap: 6px; align-items: baseline; }
+.recall::before { content: "✦"; color: var(--coral); }
