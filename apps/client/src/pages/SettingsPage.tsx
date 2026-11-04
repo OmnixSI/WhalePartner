@@ -13,8 +13,11 @@ export function SettingsPage() {
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const [cleared, setCleared] = useState<boolean | null>(null);
   const choose = (t: ThemeChoice) => { setTheme(t); applyTheme(t); };
+  const [confirming, setConfirming] = useState(false);
+  // Tauri 的 WebView 里 window.confirm 不可靠，用应用内的二次点击确认。
   const clear = async () => {
-    if (!window.confirm("清空和鲸汐的全部聊天记录？这不能撤销。")) return;
+    if (!confirming) { setConfirming(true); setCleared(null); return; }
+    setConfirming(false);
     setCleared(await clearHistory());
   };
 
@@ -50,9 +53,9 @@ export function SettingsPage() {
           <div className="row">
             <div>
               <div className="row__label">聊天记录</div>
-              <div className="row__desc">{cleared === true ? "已清空。" : cleared === false ? "清空失败，后端未连接。" : "清空后，鲸汐不会再看到之前的对话内容。"}</div>
+              <div className="row__desc">{confirming ? "再点一次确认。清空后不能撤销，鲸汐不会再看到之前的对话。" : cleared === true ? "已清空。" : cleared === false ? "清空失败，后端未连接。" : "清空后，鲸汐不会再看到之前的对话内容。"}</div>
             </div>
-            <button className="seg" onClick={() => void clear()}><span style={{ padding: "7px 16px", color: "var(--coral)", fontWeight: 600 }}>清空</span></button>
+            <button className="seg" onClick={() => void clear()}><span style={{ padding: "7px 16px", color: "var(--coral)", fontWeight: 600 }}>{confirming ? "确认清空" : "清空"}</span></button>
           </div>
           <div className="row">
             <div>
