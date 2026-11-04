@@ -1,0 +1,1817 @@
+/**
+ * Bilibili video extraction: metadata, transcript, comments, danmaku,
+ * and subtitle-driven keyframes. One module failure never fails the rest
+ * (each channel returns an empty result with a note). Bilibili requests are
+ * serialized with a two-second gap; HTTP 412/429 pauses further requests.
+ * Frames go through the ffmpeg binary.
+ *
+ * @module dsh-bilibili/extractor
+ */
+
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdir, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { selectKeyframeTimestamps } from "./keyframes.js";
+
+const API_BASE = "https://api.bilibili.com";
+const REFERER = "https://www.bilibili.com/";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const REQUEST_TIMEOUT_MS = 15000;
+const FRAME_TIMEOUT_MS = 20000;
+const SCENE_TIMEOUT_MS = 180000;
+const SCENE_DETECT_MAX_SECONDS = 1200; // beyond 20 minutes: switch to sampled scene detection
+const SCENE_ALIGN_THRESHOLD = 0.15; // window alignment uses a sensitive threshold (catches fades; low risk within +-4s)
+const SHARP_HALF_WINDOW = 1.5; // sharp-frame refinement looks within +-1.5s around the target time
+const SCENE_SAMPLED_STEP_FRAMES = 60; // sampled pass decodes 1 frame per 60 (~2s @ 30fps)
+const SCENE_PEAK_MIN_GAP = 5;
+const VIDEO_CACHE_TTL_MS = 24 * 3600 * 1000;
+const TRANSCRIPT_CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 文稿小且不变，缓存 7 天
+const DANMAKU_SAMPLE_LIMIT = 200;
+const AUDIO_CAP_BYTES = 200 * 1048576; // whisper-local 音频下载上限（DASH 纯音频远小于视频）
+const AUDIO_CONVERT_TIMEOUT_MS = 180000; // 整段音频转 16kHz WAV（长视频需要数十秒）
+const FRAME_MAX_WIDTH = 768;
+const BILIBILI_REQUEST_GAP_MS = 2000;
+const BILIBILI_RATE_LIMIT_PAUSE_MS = 15 * 60 * 1000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+let biliRequestQueue = Promise.resolve();
+let lastBiliRequestAt = 0;
+let biliRateLimitPause;
+
+class BilibiliRateLimitError extends Error {
+  constructor(status, retryAt) {
+    const response = status < 0 ? `risk-control code ${status}` : `HTTP ${status}`;
+    super(`Bilibili returned ${response}; requests are paused until ${new Date(retryAt).toISOString()}.`);
+    this.name = "BilibiliRateLimitError";
+    this.status = status;
+    this.retryAt = retryAt;
+  }
+}
+
+function isBilibiliHost(hostname) {
+  const host = String(hostname ?? "").toLowerCase();
+  return host === "b23.tv" || host === "bilibili.com" || host.endsWith(".bilibili.com") ||
+    host === "hdslb.com" || host.endsWith(".hdslb.com");
+}
+
+function retryAfterMs(response) {
+  const value = response.headers.get("retry-after");
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : 0;
+}
+
+function pauseForRateLimit(status, response) {
+  const delayMs = Math.max(BILIBILI_RATE_LIMIT_PAUSE_MS, retryAfterMs(response));
+  const retryAt = Date.now() + delayMs;
+  biliRateLimitPause = {
+    status,
+    retryAt: Math.max(retryAt, biliRateLimitPause?.retryAt ?? 0),
+  };
+  return new BilibiliRateLimitError(status, biliRateLimitPause.retryAt);
+}
+
+function rateLimitSnapshot() {
+  return biliRateLimitPause
+    ? { limited: true, status: biliRateLimitPause.status, retryAt: new Date(biliRateLimitPause.retryAt).toISOString() }
+    : { limited: false, status: null, retryAt: null };
+}
+
+async function runBilibiliRequest(task) {
+  let release;
+  const previous = biliRequestQueue;
+  biliRequestQueue = new Promise((resolve) => { release = resolve; });
+  await previous;
+  try {
+    if (biliRateLimitPause && biliRateLimitPause.retryAt > Date.now()) {
+      throw new BilibiliRateLimitError(biliRateLimitPause.status, biliRateLimitPause.retryAt);
+    }
+    if (biliRateLimitPause) biliRateLimitPause = undefined;
+
+    const waitMs = Math.max(0, lastBiliRequestAt + BILIBILI_REQUEST_GAP_MS - Date.now());
+    if (waitMs > 0) await sleep(waitMs);
+    if (biliRateLimitPause && biliRateLimitPause.retryAt > Date.now()) {
+      throw new BilibiliRateLimitError(biliRateLimitPause.status, biliRateLimitPause.retryAt);
+    }
+
+    try {
+      const result = await task();
+      lastBiliRequestAt = Date.now();
+      if (result && (result.status === 412 || result.status === 429)) {
+        throw pauseForRateLimit(result.status, result);
+      }
+      return result;
+    } catch (error) {
+      lastBiliRequestAt = Date.now();
+      throw error;
+    }
+  } finally {
+    release();
+  }
+}
+
+async function biliFetch(session, input, init) {
+  const url = input instanceof Request ? new URL(input.url) : new URL(String(input));
+  if (!isBilibiliHost(url.hostname)) return fetch(input, init);
+  return runBilibiliRequest(() => fetch(input, init));
+}
+
+/** Combine the caller's abort signal with a per-request timeout. */
+function requestSignal(signal, ms) {
+  if (signal === undefined || signal === null) return AbortSignal.timeout(ms);
+  return AbortSignal.any([signal, AbortSignal.timeout(ms)]);
+}
+
+/** Minimal XML entity decode for danmaku text. */
+function decodeXml(text) {
+  return String(text)
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '\"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&#(\d+);/g, (_m, code) => {
+      try { return String.fromCodePoint(Number(code)); } catch { return ""; }
+    });
+}
+
+/** Extract a BV id from a URL or a bare BV id. */
+export function parseBvid(url) {
+  const text = String(url ?? "").trim();
+  const bare = /^(BV[0-9A-Za-z]{10})$/.exec(text);
+  if (bare) return bare[1];
+  const match = /bilibili\.com\/video\/(BV[0-9A-Za-z]{10})/.exec(text);
+  return match ? match[1] : undefined;
+}
+
+async function apiGet(session, endpoint, params) {
+  const target = new URL(API_BASE + endpoint);
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null) target.searchParams.set(key, String(value));
+    }
+  }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let resp;
+    try {
+      resp = await biliFetch(session, target, {
+        headers: session.headers,
+        signal: requestSignal(session.signal, REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (session.signal?.aborted) throw error; // caller cancelled
+      if (error instanceof BilibiliRateLimitError) throw error;
+      if (attempt === 0) { await sleep(10_000); continue; }
+      return { code: -1, message: "request failed: " + (error?.message ?? error) };
+    }
+    if (!resp.ok) return { code: -1, message: "HTTP " + resp.status };
+    try {
+      const body = await resp.json();
+      if (body.code === -352 || body.code === -412) throw pauseForRateLimit(body.code, resp);
+      return body;
+    } catch (error) {
+      if (error instanceof BilibiliRateLimitError) throw error;
+      return { code: -1, message: "invalid json response" };
+    }
+  }
+  return { code: -1, message: "max retries exceeded" };
+}
+
+async function resolveShortLink(session, url) {
+  try {
+    const resp = await biliFetch(session, url, {
+      headers: session.headers,
+      redirect: "follow",
+      signal: requestSignal(session.signal, REQUEST_TIMEOUT_MS),
+    });
+    const match = /(BV[0-9A-Za-z]{10})/.exec(resp.url);
+    return match ? match[1] : undefined;
+  } catch (error) {
+    if (error instanceof BilibiliRateLimitError) throw error;
+    return undefined;
+  }
+}
+
+async function getVideoInfo(session, bvid) {
+  const signed = await getWbiSignedParams(session, { bvid });
+  let data;
+  if (signed) {
+    data = await apiGet(session, "/x/web-interface/wbi/view", signed);
+  } else {
+    data = await apiGet(session, "/x/web-interface/view", { bvid });
+  }
+
+  if (data.code !== 0) throw new Error("video info failed: " + (data.message ?? "unknown"));
+  const d = data.data ?? {};
+  const stat = d.stat ?? {};
+  return {
+    title: d.title ?? "",
+    description: d.desc ?? "",
+    uploader: {
+      name: d.owner?.name ?? "",
+      mid: d.owner?.mid ?? 0,
+      face: d.owner?.face ?? "",
+    },
+    duration: d.duration ?? 0,
+    pubdate: d.pubdate ?? 0,
+    cover: d.pic ?? "",
+    category: d.tname ?? "",
+    pages: Array.isArray(d.pages) ? d.pages.length : 1,
+    cid: d.cid ?? 0,
+    aid: d.aid ?? 0,
+    stats: {
+      views: stat.view ?? 0,
+      likes: stat.like ?? 0,
+      coins: stat.coin ?? 0,
+      favorites: stat.favorite ?? 0,
+      shares: stat.share ?? 0,
+      comments: stat.reply ?? 0,
+      danmaku: stat.danmaku ?? 0,
+    },
+  };
+}
+
+const emptySubtitle = (note) => ({ source: "none", text: "", segments: [], total_segments: 0, note });
+
+/** Parse a downloaded Bilibili subtitle JSON body into segments + joined text. */
+export function parseSubtitleBody(body) {
+  const segments = [];
+  const parts = [];
+  for (const item of body?.body ?? []) {
+    const text = String(item.content ?? "").trim();
+    if (!text) continue;
+    segments.push({ start: item.from ?? 0, end: item.to ?? 0, text });
+    parts.push(text);
+  }
+  return { segments, text: parts.join("\n") };
+}
+
+/** whisper.cpp 三档模型：档位别名 → ggml 模型名（低/中/高 适配不同配置）。 */
+const WHISPER_TIERS = {
+  low: "small",
+  small: "small",
+  medium: "medium",
+  high: "large-v3",
+  large: "large-v3",
+  "large-v3": "large-v3",
+};
+
+/** Parse whisper.cpp "HH:MM:SS,mmm" / "MM:SS,mmm" into seconds. */
+export function parseWhisperTime(text) {
+  const s = String(text ?? "").trim();
+  const m = /(?:(\d+):)?(\d{1,2}):(\d{1,2})(?:[.,](\d{1,3}))?/.exec(s);
+  if (!m) return undefined;
+  const hours = m[1] ? Number(m[1]) : 0;
+  const total = hours * 3600 + Number(m[2]) * 60 + Number(m[3]) + (m[4] ? Number(m[4]) / 1000 : 0);
+  return Number.isFinite(total) ? total : undefined;
+}
+
+/** Parse whisper.cpp -oj JSON into {start,end,text} segments (seconds). */
+export function parseWhisperJson(json) {
+  const transcription = json?.transcription ?? (Array.isArray(json) ? json : []);
+  const segments = [];
+  for (const item of transcription) {
+    const text = String(item?.text ?? item?.timestamps?.text ?? "").trim();
+    if (!text) continue;
+    let start;
+    let end;
+    const offFrom = Number(item?.offsets?.from);
+    const offTo = Number(item?.offsets?.to);
+    if (Number.isFinite(offFrom) && Number.isFinite(offTo)) {
+      start = offFrom / 1000;
+      end = offTo / 1000;
+    } else {
+      start = parseWhisperTime(item?.timestamps?.from);
+      end = parseWhisperTime(item?.timestamps?.to);
+    }
+    if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+    segments.push({ start, end, text });
+  }
+  return segments;
+}
+
+/**
+ * Resolve the whisper.cpp GGML model path. A tier keyword (small/medium/large-v3,
+ * or the low/medium/high aliases) resolves to ggml-<tier>.bin in the model dir;
+ * a path (contains a separator) or a *.bin filename is used verbatim.
+ */
+export function resolveWhisperModel(whisperModel, whisperModelDir, whisperBin) {
+  const model = String(whisperModel ?? "").trim();
+  if (!model) return undefined;
+  if (model.includes("/") || model.includes("\\") || /\.bin$/i.test(model)) return model;
+  const tier = WHISPER_TIERS[model.toLowerCase()] ?? model.toLowerCase();
+  let dir = String(whisperModelDir ?? "").trim();
+  if (!dir) {
+    if (whisperBin && (String(whisperBin).includes("/") || String(whisperBin).includes("\\"))) {
+      dir = join(dirname(String(whisperBin)), "models");
+    } else {
+      dir = "models";
+    }
+  }
+  return join(dir, "ggml-" + tier + ".bin");
+}
+
+const SHERPA_TS_RE = /^(?:\[)?(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?)\s*(?:-->|->|→|-)\s*(\d{1,2}:\d{2}:\d{2}(?:[.,]\d{1,3})?)(?:\])?\s*:?\s*(.*)$/;
+
+/** Parse sherpa-onnx-offline stdout into {start,end,text} segments (seconds). */
+export function parseSherpaText(text) {
+  const lines = String(text ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const segments = [];
+  for (const line of lines) {
+    const m = SHERPA_TS_RE.exec(line);
+    if (!m) continue;
+    const start = parseWhisperTime(m[1]);
+    const end = parseWhisperTime(m[2]);
+    const segText = (m[3] ?? "").trim();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !segText) continue;
+    segments.push({ start, end, text: segText });
+  }
+  if (segments.length === 0) {
+    const joined = lines.join(" ").trim();
+    if (joined) segments.push({ start: 0, end: 0, text: joined });
+  }
+  return segments;
+}
+
+/** whisper-cli arguments: -oj with -of makes it write <outBase>.json (stdout is console text only). */
+export function buildWhisperArgs({ modelPath, language, wavPath, outBase, threads = 0 }) {
+  const args = ["-m", modelPath, "-l", language, "-oj", "-of", outBase, "-np", "-f", wavPath];
+  if (Number(threads) > 0) args.push("-t", String(threads));
+  return args;
+}
+
+/** sherpaModelType → sherpa-onnx-offline model flag (names per sherpa-onnx csrc/*-model-config.cc). */
+const SHERPA_MODEL_FLAGS = {
+  "sense-voice": "--sense-voice-model",
+  paraformer: "--paraformer",
+  "zipformer-ctc": "--zipformer-ctc-model",
+  "zipformer2-ctc": "--zipformer-ctc-model",
+};
+
+/** sherpa-onnx-offline chunk length (seconds) for non-streaming models. */
+const SHERPA_CHUNK_SECONDS = 30;
+
+/** sherpa-onnx-offline arguments: model flag by type, tokens, threads, then wav files as positional args. */
+export function buildSherpaArgs({ modelType, model, tokens, threads = 0, wavPaths }) {
+  const flag = SHERPA_MODEL_FLAGS[String(modelType ?? "").trim()];
+  if (!flag) throw new Error("unsupported sherpaModelType: " + modelType + " (sense-voice | paraformer | zipformer2-ctc)");
+  const args = [flag + "=" + model, "--tokens=" + tokens];
+  if (Number(threads) > 0) args.push("--num-threads=" + threads);
+  return [...args, ...wavPaths];
+}
+
+const SHERPA_BREAK_RE = /[。！？!?；;，,.]$/;
+const SHERPA_GAP_SECONDS = 0.8;
+const SHERPA_MAX_SEGMENT_CHARS = 40;
+
+/**
+ * Parse sherpa-onnx-offline stdout: one JSON result per input wav, in order
+ * ({text, tokens[], timestamps[]} with token start times in seconds). The i-th
+ * result is offset by i * chunkSeconds; tokens are grouped into sentence-like
+ * segments at punctuation, pauses or a length cap.
+ */
+export function parseSherpaResults(stdout, chunkSeconds = SHERPA_CHUNK_SECONDS) {
+  const segments = [];
+  let index = -1;
+  for (const line of String(stdout ?? "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+    let result;
+    try { result = JSON.parse(trimmed); } catch { continue; }
+    index++;
+    const offset = index * chunkSeconds;
+    const tokens = Array.isArray(result?.tokens) ? result.tokens : [];
+    const times = Array.isArray(result?.timestamps) ? result.timestamps : [];
+    if (tokens.length === 0 || tokens.length !== times.length) {
+      const text = String(result?.text ?? "").trim();
+      if (text) segments.push({ start: offset, end: offset + chunkSeconds, text });
+      continue;
+    }
+    let current = null;
+    const flush = (end) => {
+      if (current && current.text.trim()) {
+        segments.push({ start: current.start, end: Math.max(end, current.start), text: current.text.trim() });
+      }
+      current = null;
+    };
+    for (let i = 0; i < tokens.length; i++) {
+      const t = offset + Number(times[i]);
+      const piece = String(tokens[i]).replace(/<\|[^|]*\|>/g, "").replace(/\u2581/g, " ");
+      if (!Number.isFinite(t) || piece.length === 0) continue;
+      if (current && t - current.last > SHERPA_GAP_SECONDS) flush(current.last);
+      if (!current) current = { start: Math.round(t * 100) / 100, last: t, text: "" };
+      current.text += piece;
+      current.last = t;
+      if (SHERPA_BREAK_RE.test(piece.trim()) || current.text.trim().length >= SHERPA_MAX_SEGMENT_CHARS) {
+        const next = i + 1 < times.length ? offset + Number(times[i + 1]) : t;
+        flush(Math.round(Math.min(next, t + SHERPA_GAP_SECONDS) * 100) / 100);
+      }
+    }
+    if (current) flush(Math.round((current.last + 0.3) * 100) / 100);
+  }
+  return segments;
+}
+
+/** 视觉模型三档（全小体积）：档位关键词 → 模型名（Ollama tag / llama-server alias；低/中/高 适配不同配置）。 */
+const VISION_TIERS = {
+  low: "qwen3-vl:2b",
+  small: "qwen3-vl:2b",
+  medium: "qwen3-vl:4b",
+  high: "qwen3-vl:8b",
+  large: "qwen3-vl:8b",
+};
+
+/** Resolve the vision model name: tier keyword → recommended model name; explicit names pass through. */
+export function resolveVisionModel(visionModel) {
+  const model = String(visionModel ?? "").trim();
+  if (!model) return undefined;
+  return VISION_TIERS[model.toLowerCase()] ?? model;
+}
+
+/** Bundled default prompt: understand the frame's CONTENT (not OCR transcription), for gap-filling. */
+export const DEFAULT_VISION_PROMPT =
+  "你是视频画面分析助手。用中文客观描述这张视频截图所展示的内容，重点提供语音文稿中缺失的视觉信息：" +
+  "① 画面主体（人物/场景/产品/界面）；② 正在进行的操作、演示或对比；③ 与视频主题相关的关键细节。" +
+  "画面中的文字只需转述与理解内容相关的要点（如标题、关键数字、图表结论），不要逐字转录。" +
+  "要求 2-3 句话，只描述事实，不评价、不推测画面之外的内容。" +
+  "若画面只是主持人口播、无信息量，回复「纯口播画面，无补充信息」。" +
+  "最后单独一行输出「配图建议：适合」或「配图建议：不适合」（适合=画面清晰、信息明确、能帮助读者理解视频内容；不适合=纯口播、模糊、无信息量）。";
+
+/** MiniCPM-V family prompt: same content-understanding task, denser detail on charts/demos. */
+const VISION_PROMPT_MINICPMV =
+  "你是视频画面分析助手。请理解并描述这张视频截图的内容：画面里发生了什么、展示了什么，" +
+  "与视频主题相关的关键细节要提到；若画面中有图表或演示，说明它传达的结论。" +
+  "画面中的文字只需转述要点（标题、关键数字），不要逐字转录。" +
+  "用中文、2-3 句话、只描述事实。" +
+  "若画面只是主持人口播、无信息量，回复「纯口播画面，无补充信息」。" +
+  "最后单独一行输出「配图建议：适合」或「配图建议：不适合」（适合=画面清晰、信息明确、能帮助读者理解视频内容；不适合=纯口播、模糊、无信息量）。";
+
+/** moondream2 is weak at Chinese: an English prompt keeps instruction-following reliable. */
+const VISION_PROMPT_MOONDREAM2 =
+  "Describe the content of this video frame: what is happening, what is being shown or demonstrated, " +
+  "and any key details relevant to the topic. Mention visible text only as brief key points " +
+  "(e.g., a headline or a key number); do not transcribe everything. " +
+  "Answer in 2-3 sentences, facts only. " +
+  "If the frame is just a person talking with no visual information, reply 'talking head, no visual info'. " +
+  "End with a separate line: 'citation: suitable' or 'citation: unsuitable' " +
+  "(suitable = the frame is clear and helps readers understand the video; unsuitable = talking head, blurry, or uninformative).";
+
+/** Short prompt for small/low-tier models, tuned against Qwen3-VL-2B (2026-08): content understanding, anti-hallucination, citation tail. */
+export const VISION_PROMPT_SHORT =
+  "看这张视频截图，用中文描述画面内容：画面里有什么、在发生什么。" +
+  "只描述事实，不超过 2 句话，不确定的细节不要写。" +
+  "若画面只是主持人口播，回复「纯口播画面」。" +
+  "最后单独一行输出「配图建议：适合」或「配图建议：不适合」" +
+  "（适合=画面清晰、有信息量、能帮读者理解视频内容；不适合=纯口播、模糊、无信息量）。";
+
+/** Pick the vision prompt for a model: user overrides (exact model → tier → global), then bundled family/tier prompts. */
+export function resolveVisionPrompt(model, userPrompt, userPromptByModel) {
+  const m = String(model ?? "").trim();
+  const byModel = userPromptByModel && typeof userPromptByModel === "object" ? userPromptByModel : {};
+  const globalPrompt = String(userPrompt ?? "").trim();
+  if (m) {
+    const exact = byModel[m] ?? byModel[m.toLowerCase()];
+    if (exact && String(exact).trim()) return String(exact).trim();
+  }
+  const lower = m.toLowerCase();
+  const tier = lower === "low" || lower === "small"
+    ? "low"
+    : lower === "high" || lower === "large"
+      ? "high"
+      : /(?<!\d)(?:0\.5|1|1\.5|2|3)b|small|tiny/i.test(lower)
+        ? "low"
+        : /(?<!\d)8b|32b|72b|235b/i.test(lower)
+          ? "high"
+          : "medium";
+  const tierOverride = byModel[tier];
+  if (tierOverride && String(tierOverride).trim()) return String(tierOverride).trim();
+  if (globalPrompt) return globalPrompt;
+  if (lower.startsWith("moondream")) return VISION_PROMPT_MOONDREAM2;
+  if (lower.startsWith("minicpm")) return VISION_PROMPT_MINICPMV;
+  if (tier === "low") return VISION_PROMPT_SHORT;
+  return DEFAULT_VISION_PROMPT;
+}
+
+/** Extract the per-frame citation hint ("suitable"/"unsuitable"/"") from a vision description. */
+export function parseCitationHint(text) {
+  const s = String(text ?? "");
+  const zh = /配图建议\s*[:：]?\s*(适合|不适合)/.exec(s);
+  if (zh) return zh[1] === "适合" ? "suitable" : "unsuitable";
+  const en = /citation\s*[:：]?\s*(suitable|unsuitable)/i.exec(s);
+  if (en) return en[1].toLowerCase();
+  return "";
+}
+
+/** Build an OpenAI-compatible chat/completions vision request (image as base64 data URL). */
+export function buildVisionRequest(imageBytes, opts) {
+  const prompt = String(opts?.prompt ?? "").trim() || DEFAULT_VISION_PROMPT;
+  const model = resolveVisionModel(opts?.model) ?? "qwen3-vl:8b";
+  const headers = { "Content-Type": "application/json" };
+  if (opts?.apiKey) headers.Authorization = "Bearer " + opts.apiKey;
+  const body = {
+    model,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          {
+            type: "image_url",
+            image_url: { url: "data:image/jpeg;base64," + Buffer.from(imageBytes).toString("base64") },
+          },
+        ],
+      },
+    ],
+    max_tokens: 300,
+  };
+  return { headers, body };
+}
+
+/** Parse an OpenAI-compatible chat/completions response into plain text. */
+export function parseChatCompletion(json) {
+  const content = json?.choices?.[0]?.message?.content;
+  return typeof content === "string" ? content.trim() : "";
+}
+
+/* ---------- WBI signing (Bilibili web API) ---------- */
+
+const WBI_MIXIN_KEY_ENC_TAB = [
+  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
+  33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
+  61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
+  36, 20, 34, 44, 52,
+];
+
+function wbiMixinKey(orig) {
+  return WBI_MIXIN_KEY_ENC_TAB.map((n) => orig[n]).join("").slice(0, 32);
+}
+
+function wbiMd5(text) {
+  return createHash("md5").update(text).digest("hex");
+}
+
+/** Fetch the per-account WBI key pair (cached per session). */
+async function getWbiKeys(session) {
+  if (session._wbiKeys) return session._wbiKeys;
+  try {
+    const nav = await apiGet(session, "/x/web-interface/nav");
+    const img = nav.data?.wbi_img?.img_url ?? "";
+    const sub = nav.data?.wbi_img?.sub_url ?? "";
+    const imgKey = img.slice(img.lastIndexOf("/") + 1).split(".")[0];
+    const subKey = sub.slice(sub.lastIndexOf("/") + 1).split(".")[0];
+    if (!imgKey || !subKey) return undefined;
+    session._wbiKeys = { imgKey, subKey };
+    return session._wbiKeys;
+  } catch (error) {
+    if (error instanceof BilibiliRateLimitError) throw error;
+    return undefined;
+  }
+}
+
+/** Sign plain params with WBI (wts + w_rid) for wbi endpoints. */
+async function getWbiSignedParams(session, params) {
+  const keys = await getWbiKeys(session);
+  if (!keys) return undefined;
+  const mixin = wbiMixinKey(keys.imgKey + keys.subKey);
+  const withTs = { ...params, wts: Math.round(Date.now() / 1000) };
+  const query = Object.keys(withTs)
+    .sort()
+    .map(
+      (k) =>
+        encodeURIComponent(k) +
+        "=" +
+        encodeURIComponent(String(withTs[k]).replace(/[!'()*]/g, "")),
+    )
+    .join("&");
+  return { ...withTs, w_rid: wbiMd5(query + mixin) };
+}
+
+async function getSubtitle(session, bvid, cid) {
+  // WBI-signed endpoint first: returns stable subtitle_url (incl. ai-zh tracks).
+  // The plain player/v2 response is flaky for logged-in sessions.
+  let data = { code: -1 };
+  const signed = await getWbiSignedParams(session, { bvid, cid });
+  if (signed) data = await apiGet(session, "/x/player/wbi/v2", signed);
+  if (data.code !== 0) data = await apiGet(session, "/x/player/v2", { bvid, cid });
+  if (data.code !== 0) return emptySubtitle("subtitle list failed: " + (data.message ?? ""));
+  const subtitles = data.data?.subtitle?.subtitles ?? [];
+  if (!Array.isArray(subtitles) || subtitles.length === 0) {
+    const note = data.data?.need_login_subtitle === true
+      ? "video has subtitles but they require login — use the bilibili_login tool to scan-login, or set SESSDATA in the plugin config"
+      : "video has no subtitle track (transcript unavailable)";
+    return emptySubtitle(note);
+  }
+  // prefer Chinese, fall back to the first track
+  let chosen = subtitles.find((s) => (s.lan ?? "").includes("zh") && s.subtitle_url);
+  if (!chosen) chosen = subtitles.find((s) => s.subtitle_url);
+  if (!chosen) return emptySubtitle("subtitle list present but url empty");
+  let subUrl = chosen.subtitle_url;
+  if (subUrl.startsWith("//")) subUrl = "https:" + subUrl;
+  let body;
+  try {
+    const resp = await biliFetch(session, subUrl, {
+      headers: session.headers,
+      signal: requestSignal(session.signal, REQUEST_TIMEOUT_MS),
+    });
+    if (!resp.ok) return emptySubtitle("subtitle download HTTP " + resp.status);
+    body = await resp.json();
+  } catch (error) {
+    if (session.signal?.aborted) throw error;
+    return emptySubtitle("subtitle download failed: " + (error?.message ?? error));
+  }
+  const parsed = parseSubtitleBody(body);
+  return {
+    source: "subtitle",
+    language: chosen.lan_name ?? chosen.lan ?? "unknown",
+    text: parsed.text,
+    segments: parsed.segments,
+    total_segments: parsed.segments.length,
+    note: "",
+  };
+}
+
+const BCUT_API_BASE = "https://member.bilibili.com/x/bcut/rubick-interface";
+const BCUT_POLL_MS = 5000;
+const BCUT_MAX_POLLS = 24;
+
+/** DASH 纯音频流地址（供 ASR 使用），来自 playurl 接口。 */
+async function getAudioUrl(session, bvid, cid, quality = 32) {
+  const data = await apiGet(session, "/x/player/playurl", {
+    bvid, cid, qn: quality, fnval: 16,
+  });
+  if (data.code !== 0) return undefined;
+  const dashAudio = data.data?.dash?.audio;
+  if (Array.isArray(dashAudio) && dashAudio.length > 0) {
+    return dashAudio[0].baseUrl ?? dashAudio[0].base_url;
+  }
+  return undefined;
+}
+
+async function abortableSleep(ms, signal) {
+  await sleep(ms);
+  if (signal?.aborted) throw new Error("aborted");
+}
+
+/**
+ * B站播放器「实时 AI 字幕」同款能力：必剪（Bcut）ASR，URL 直传、匿名可用。
+ * 无字幕轨的视频借此获得带时间戳的文稿。best-effort：失败时由调用方降级。
+ */
+async function transcribeAudio(session, audioUrl, signal) {
+  const createResp = await biliFetch(session, BCUT_API_BASE + "/task", {
+    method: "POST",
+    headers: {
+      "User-Agent": USER_AGENT,
+      "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
+    },
+    body: JSON.stringify({ resource: audioUrl, model_id: "8" }),
+    signal: requestSignal(signal, 30000),
+  });
+  if (!createResp.ok) throw new Error("bcut task create HTTP " + createResp.status);
+  const create = await createResp.json();
+  if (create.code !== 0) throw new Error("bcut task create failed: " + (create.message ?? create.code));
+  const taskId = create.data?.task_id;
+  if (!taskId) throw new Error("bcut task create returned no task id");
+  for (let attempt = 0; attempt < BCUT_MAX_POLLS; attempt++) {
+    if (attempt > 0) await abortableSleep(BCUT_POLL_MS, signal);
+    const resResp = await biliFetch(
+      session,
+      BCUT_API_BASE + "/task/result?model_id=8&task_id=" + taskId,
+      { headers: { "User-Agent": USER_AGENT, "Cache-Control": "no-cache" }, signal: requestSignal(signal, 30000) },
+    );
+    if (!resResp.ok) continue;
+    const res = await resResp.json();
+    const state = res.data?.state;
+    if (state === 3) throw new Error("bcut asr error: " + (res.data?.remark ?? ""));
+    if (state === 4) {
+      const parsed = JSON.parse(res.data?.result ?? "{}");
+      const segments = (parsed.utterances ?? [])
+        .map((u) => ({
+          start: Math.round(u.start_time) / 1000,
+          end: Math.round(u.end_time) / 1000,
+          text: String(u.transcript ?? "").trim(),
+        }))
+        .filter((s) => s.text.length > 0);
+      return {
+        source: "bcut-asr",
+        language: "zh",
+        text: segments.map((s) => s.text).join("\n"),
+        segments,
+        total_segments: segments.length,
+        note: "transcribed on demand via Bilibili Bijian ASR (video has no subtitle track; text may contain recognition errors)",
+      };
+    }
+  }
+  throw new Error("bcut asr timed out");
+}
+
+const emptyComments = (note) => ({ total: 0, fetched: 0, comments: [], note });
+
+async function getComments(session, aid, pageSize) {
+  const data = await apiGet(session, "/x/v2/reply", {
+    type: 1, oid: aid, pn: 1, ps: pageSize, sort: 1,
+  });
+  if (data.code !== 0) return emptyComments("comments failed: " + (data.message ?? ""));
+  const page = data.data?.page ?? {};
+  const replies = data.data?.replies ?? [];
+  const comments = [];
+  for (const reply of replies) {
+    const subReplies = (reply.replies ?? []).map((sub) => ({
+      user: sub.member?.uname ?? "",
+      content: sub.content?.message ?? "",
+      likes: sub.like ?? 0,
+    }));
+    comments.push({
+      user: reply.member?.uname ?? "",
+      content: reply.content?.message ?? "",
+      likes: reply.like ?? 0,
+      ctime: reply.ctime ?? 0,
+      replies: subReplies.slice(0, 5),
+    });
+  }
+  return { total: page.count ?? 0, fetched: comments.length, comments, note: "" };
+}
+
+const emptyDanmaku = (note) => ({ total: 0, top_messages: [], samples: [], note });
+
+async function getDanmaku(session, cid) {
+  let xml;
+  try {
+    const resp = await biliFetch(session, "https://comment.bilibili.com/" + cid + ".xml", {
+      headers: session.headers,
+      signal: requestSignal(session.signal, REQUEST_TIMEOUT_MS),
+    });
+    if (!resp.ok) return emptyDanmaku("danmaku HTTP " + resp.status);
+    xml = await resp.text();
+  } catch (error) {
+    if (session.signal?.aborted) throw error;
+    return emptyDanmaku("danmaku failed: " + (error?.message ?? error));
+  }
+  const entries = [];
+  const pattern = /<d p="([^"]*)">([\s\S]*?)<\/d>/g;
+  let match;
+  while ((match = pattern.exec(xml)) !== null) {
+    const parts = match[1].split(",");
+    const time = Number.parseFloat(parts[0]);
+    if (!Number.isFinite(time)) continue;
+    const text = decodeXml(match[2]).trim();
+    if (!text) continue;
+    entries.push({ time: Math.round(time * 10) / 10, text });
+  }
+  entries.sort((a, b) => a.time - b.time);
+  const counter = new Map();
+  for (const entry of entries) counter.set(entry.text, (counter.get(entry.text) ?? 0) + 1);
+  const topMessages = [...counter.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 30)
+    .map(([text, count]) => ({ text, count }));
+  const sampleCount = Math.min(entries.length, DANMAKU_SAMPLE_LIMIT);
+  const samples = [];
+  for (let i = 0; i < sampleCount; i += 1) {
+    const sampleIdx = sampleCount === 1
+      ? 0
+      : Math.floor(i * (entries.length - 1) / (sampleCount - 1));
+    samples.push(entries[sampleIdx]);
+  }
+  return {
+    total: entries.length,
+    top_messages: topMessages,
+    samples,
+    note: "",
+  };
+}
+
+async function getStreamUrl(session, bvid, cid, quality = 32) {
+  const data = await apiGet(session, "/x/player/playurl", {
+    bvid, cid, qn: quality, fnval: 16,
+  });
+  if (data.code !== 0) return undefined;
+  const durl = data.data?.durl;
+  if (Array.isArray(durl) && durl.length > 0 && durl[0].url) return durl[0].url;
+  const dashVideo = data.data?.dash?.video;
+  if (Array.isArray(dashVideo) && dashVideo.length > 0) {
+    return dashVideo[0].baseUrl ?? dashVideo[0].base_url;
+  }
+  return undefined;
+}
+
+/** Run ffmpeg with no stdio pipes: exit code and output-file presence are the only signals.
+ *  (Pipe-free spawn also works inside confined sandboxes that forbid capturing child output.) */
+async function runFfmpeg(args, signal) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", args, { stdio: "ignore", windowsHide: true, signal });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(signal?.aborted ? "aborted" : "ffmpeg exited with code " + code));
+    });
+  });
+}
+
+async function fileExists(path) {
+  try { await stat(path); return true; } catch { return false; }
+}
+
+/** Guess a file extension for a playurl direct link (progressive flv/mp4, hls, fmp4). */
+export function guessStreamExt(streamUrl) {
+  const text = String(streamUrl);
+  if (/\.m3u8(\?|$)/.test(text)) return ".m3u8";
+  if (/\.mp4(\?|$)/.test(text)) return ".mp4";
+  if (/\.m4s(\?|$)/.test(text)) return ".mp4"; // fmp4: init + media concatenated
+  return ".flv";
+}
+
+/**
+ * Download the direct video stream to a local file with plain HTTP (GET).
+ * Bounds: content-length pre-check plus an in-flight byte cap; a caller
+ * abort cancels the read and removes the partial file.
+ */
+async function downloadStream(session, streamUrl, destPath, maxBytes) {
+  let resp;
+  try {
+    resp = await runBilibiliRequest(() => fetch(streamUrl, {
+      headers: session.headers,
+      signal: requestSignal(session.signal, 600000),
+    }));
+  } catch (error) {
+    if (session.signal?.aborted) throw error;
+    throw new Error("download request failed: " + (error?.message ?? error));
+  }
+  if (!resp.ok || !resp.body) throw new Error("download HTTP " + resp.status);
+  const declared = Number(resp.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error(
+      "video too large (" + Math.round(declared / 1048576) + " MB > " +
+      Math.round(maxBytes / 1048576) + " MB cap)",
+    );
+  }
+  const handle = await open(destPath, "w");
+  let total = 0;
+  try {
+    const reader = resp.body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) throw new Error("video exceeded " + Math.round(maxBytes / 1048576) + " MB cap");
+      await handle.write(Buffer.from(value));
+    }
+  } catch (error) {
+    await handle.close().catch(() => {});
+    await rm(destPath, { force: true }).catch(() => {});
+    if (session.signal?.aborted) throw error;
+    throw new Error("download interrupted: " + (error?.message ?? error));
+  }
+  await handle.close();
+  return total;
+}
+
+/** Run ffmpeg with stderr redirected to a FILE (no pipes): parse-friendly everywhere. */
+async function runFfmpegStderrToFile(args, stderrFd, signal) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("ffmpeg", args, {
+      stdio: ["ignore", "ignore", stderrFd],
+      windowsHide: true,
+      signal,
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(signal?.aborted ? "aborted" : "ffmpeg exited with code " + code));
+    });
+  });
+}
+
+async function runStreamFrameCapture(args, outDir, signal) {
+  const logPath = join(outDir, "frame-capture.log");
+  const logFd = await open(logPath, "w");
+  try {
+    await runFfmpegStderrToFile(args, logFd, requestSignal(signal, FRAME_TIMEOUT_MS));
+  } catch (error) {
+    let log = "";
+    try { log = await readFile(logPath, "utf8"); } catch { /* keep the process error */ }
+    const match = /(?:HTTP error|Server returned)\s+(412|429)\b/i.exec(log);
+    if (match) {
+      const status = Number(match[1]);
+      throw pauseForRateLimit(status, new Response(null, { status }));
+    }
+    const lines = log.split(/\r?\n/).filter((line) => /error|failed|denied|invalid|timed out|server returned/i.test(line));
+    const details = lines.slice(-3).join(" ").replace(/https?:\/\/[^\s]+/g, (url) => url.split("?")[0] + "?[redacted]");
+    if (details) throw new Error(details.slice(-500));
+    throw error;
+  } finally {
+    await logFd.close().catch(() => {});
+    await rm(logPath, { force: true }).catch(() => {});
+  }
+}
+
+/** Run a CLI (whisper-cli / sherpa-onnx-offline) with stdout/stderr redirected to files (no pipes): sandbox-friendly. */
+async function runCliToFile(bin, label, args, stdoutFd, stderrFd, signal) {
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(bin, args, {
+        stdio: ["ignore", stdoutFd, stderrFd],
+        windowsHide: true,
+        signal,
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    child.on("error", (error) => {
+      if (error?.code === "ENOENT") reject(new Error(label + " binary not found: " + bin));
+      else reject(error);
+    });
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(signal?.aborted ? "aborted" : label + " exited with code " + code));
+    });
+  });
+}
+
+/**
+ * Local ASR via whisper.cpp: download the DASH audio, convert to 16kHz mono WAV
+ * with ffmpeg, run whisper-cli (-oj), and parse the JSON into timestamped
+ * segments. The model file must be downloaded by the user — this only wires the
+ * interface. Best-effort: failures are caught by the caller and degrade cleanly.
+ */
+async function transcribeWhisperLocal(session, bvid, cid, quality, outDir, opts, signal) {
+  const whisperBin = opts.whisperBin || "whisper-cli";
+  const whisperModel = opts.whisperModel || "medium";
+  const whisperLanguage = opts.whisperLanguage || "zh";
+  const whisperThreads = Number(opts.whisperThreads) || 0;
+  const modelPath = resolveWhisperModel(whisperModel, opts.whisperModelDir, whisperBin);
+  if (!modelPath) throw new Error("whisper model not configured");
+
+  const audioUrl = await getAudioUrl(session, bvid, cid, quality);
+  if (!audioUrl) throw new Error("no dash audio stream");
+  await mkdir(outDir, { recursive: true });
+
+  const audioPath = join(outDir, "audio.m4s");
+  const wavPath = join(outDir, "audio.wav");
+  // whisper-cli -oj writes <-of>.json itself; stdout only carries console text
+  const outBase = join(outDir, "whisper");
+  const jsonPath = outBase + ".json";
+  const outPath = join(outDir, "whisper.out.log");
+  const errPath = join(outDir, "whisper.err.log");
+  try {
+    await downloadStream(session, audioUrl, audioPath, AUDIO_CAP_BYTES);
+    await runFfmpeg(
+      ["-y", "-i", audioPath, "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wavPath],
+      requestSignal(signal, AUDIO_CONVERT_TIMEOUT_MS),
+    );
+    await rm(jsonPath, { force: true }).catch(() => {});
+    const stdoutFd = await open(outPath, "w");
+    const stderrFd = await open(errPath, "w");
+    const args = buildWhisperArgs({ modelPath, language: whisperLanguage, wavPath, outBase, threads: whisperThreads });
+    try {
+      await runCliToFile(whisperBin, "whisper-cli", args, stdoutFd, stderrFd, signal);
+    } finally {
+      await stdoutFd.close().catch(() => {});
+      await stderrFd.close().catch(() => {});
+    }
+    let jsonText = "";
+    try { jsonText = await readFile(jsonPath, "utf8"); } catch { /* handled below */ }
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      let tail = "";
+      try { tail = (await readFile(errPath, "utf8")).trim().split("\n").slice(-4).join(" | "); } catch { /* ignore */ }
+      throw new Error("whisper-cli produced no valid JSON" + (tail ? ": " + tail : ""));
+    }
+    const segments = parseWhisperJson(parsed);
+    if (segments.length === 0) throw new Error("whisper-cli returned no transcription segments");
+    return {
+      source: "whisper-local",
+      language: whisperLanguage,
+      text: segments.map((s) => s.text).join("\n"),
+      segments,
+      total_segments: segments.length,
+      note: "transcribed locally via whisper.cpp (" + whisperModel + "); the model file must be downloaded by the user",
+    };
+  } finally {
+    await rm(audioPath, { force: true }).catch(() => {});
+    await rm(wavPath, { force: true }).catch(() => {});
+    await rm(jsonPath, { force: true }).catch(() => {});
+    await rm(outPath, { force: true }).catch(() => {});
+    await rm(errPath, { force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Local ASR via sherpa-onnx (SenseVoice/Paraformer, Chinese-optimized): download
+ * the DASH audio, convert to 16kHz mono WAV, run sherpa-onnx-offline, and parse
+ * the stdout transcript. Model + tokens must be downloaded by the user — this
+ * only wires the interface. Best-effort; failures degrade cleanly.
+ */
+async function transcribeSherpaOnnx(session, bvid, cid, quality, outDir, opts, signal) {
+  const sherpaBin = String(opts.sherpaBin ?? "").trim();
+  const sherpaModel = String(opts.sherpaModel ?? "").trim();
+  const sherpaTokens = String(opts.sherpaTokens ?? "").trim();
+  const sherpaModelType = String(opts.sherpaModelType ?? "sense-voice").trim();
+  const sherpaThreads = Number(opts.sherpaThreads) || 0;
+  if (!sherpaBin) throw new Error("sherpa-onnx binary not configured (sherpaBin)");
+  if (!sherpaModel) throw new Error("sherpa-onnx model not configured (sherpaModel)");
+  if (!sherpaTokens) throw new Error("sherpa-onnx tokens not configured (sherpaTokens)");
+
+  const audioUrl = await getAudioUrl(session, bvid, cid, quality);
+  if (!audioUrl) throw new Error("no dash audio stream");
+  await mkdir(outDir, { recursive: true });
+
+  const audioPath = join(outDir, "audio.m4s");
+  const chunkDir = join(outDir, "sherpa-chunks");
+  const outPath = join(outDir, "sherpa.out.txt");
+  const errPath = join(outDir, "sherpa.err.log");
+  try {
+    await downloadStream(session, audioUrl, audioPath, AUDIO_CAP_BYTES);
+    // 非流式模型（SenseVoice/Paraformer）不适合一次吃下整段长音频：切成固定时长的 16kHz WAV 块，
+    // 一次进程按顺序解码，第 i 块的时间戳偏移 i * SHERPA_CHUNK_SECONDS
+    await rm(chunkDir, { recursive: true, force: true }).catch(() => {});
+    await mkdir(chunkDir, { recursive: true });
+    await runFfmpeg(
+      [
+        "-y", "-i", audioPath, "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+        "-f", "segment", "-segment_time", String(SHERPA_CHUNK_SECONDS),
+        join(chunkDir, "chunk_%04d.wav"),
+      ],
+      requestSignal(signal, AUDIO_CONVERT_TIMEOUT_MS),
+    );
+    const chunks = (await readdir(chunkDir)).filter((n) => n.endsWith(".wav")).sort().map((n) => join(chunkDir, n));
+    if (chunks.length === 0) throw new Error("audio conversion produced no wav chunks");
+    const stdoutFd = await open(outPath, "w");
+    const stderrFd = await open(errPath, "w");
+    const args = buildSherpaArgs({ modelType: sherpaModelType, model: sherpaModel, tokens: sherpaTokens, threads: sherpaThreads, wavPaths: chunks });
+    try {
+      await runCliToFile(sherpaBin, "sherpa-onnx", args, stdoutFd, stderrFd, signal);
+    } finally {
+      await stdoutFd.close().catch(() => {});
+      await stderrFd.close().catch(() => {});
+    }
+    let outText = "";
+    try { outText = await readFile(outPath, "utf8"); } catch { /* handled below */ }
+    let segments = parseSherpaResults(outText, SHERPA_CHUNK_SECONDS);
+    if (segments.length === 0) segments = parseSherpaText(outText); // older builds printing plain text
+    if (segments.length === 0) {
+      let tail = "";
+      try { tail = (await readFile(errPath, "utf8")).trim().split("\n").slice(-4).join(" | "); } catch { /* ignore */ }
+      throw new Error("sherpa-onnx produced no transcript" + (tail ? ": " + tail : ""));
+    }
+    const hasTimestamps = segments.some((s) => s.end > 0);
+    return {
+      source: "sherpa-onnx",
+      language: "zh",
+      text: segments.map((s) => s.text).join("\n"),
+      segments,
+      total_segments: segments.length,
+      note: "transcribed locally via sherpa-onnx (" + sherpaModelType + "); model + tokens must be downloaded by the user" + (hasTimestamps ? "" : " — no per-segment timestamps in output"),
+    };
+  } finally {
+    await rm(audioPath, { force: true }).catch(() => {});
+    await rm(chunkDir, { recursive: true, force: true }).catch(() => {});
+    await rm(outPath, { force: true }).catch(() => {});
+    await rm(errPath, { force: true }).catch(() => {});
+  }
+}
+
+const VISION_TIMEOUT_MS = 60000;
+
+/** Resolve the vision endpoint URL for the given provider. */
+export function resolveVisionBaseUrl(provider, baseUrl) {
+  const url = String(baseUrl ?? "").trim().replace(/\/+$/, "");
+  if (url) return url;
+  if (provider === "ollama") return "http://localhost:11434/v1";
+  if (provider === "llama-cpp") return "http://localhost:8080/v1";
+  return "";
+}
+
+/**
+ * Describe captured frames with a configured vision model (local Ollama or any
+ * OpenAI-compatible endpoint). One request per frame, sequential, bounded by
+ * visionMaxFrames; a per-frame failure is recorded and the loop continues.
+ * Best-effort: the caller degrades gracefully when this throws.
+ */
+async function describeFramesWithVision(frames, opts, signal) {
+  const baseUrl = resolveVisionBaseUrl(opts.provider, opts.baseUrl);
+  if (!baseUrl) throw new Error("vision endpoint not configured (visionBaseUrl)");
+  const cap = Math.min(Math.max(Number(opts.maxFrames) || 4, 1), 20);
+  const target = (frames ?? []).filter((f) => f.has_image && f.path).slice(0, cap);
+  const prompt = resolveVisionPrompt(opts.model, opts.prompt, opts.promptByModel);
+  const results = [];
+  for (const frame of target) {
+    let imageBytes;
+    try {
+      imageBytes = await readFile(frame.path);
+    } catch (error) {
+      results.push({ time: frame.time, description: "", vision_error: "frame file unreadable: " + String(error?.message ?? error), citation_hint: "" });
+      continue;
+    }
+    const { headers, body } = buildVisionRequest(imageBytes, { ...opts, prompt });
+    try {
+      const resp = await fetch(baseUrl + "/chat/completions", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal: requestSignal(signal, VISION_TIMEOUT_MS),
+      });
+      if (!resp.ok) throw new Error("vision HTTP " + resp.status);
+      const json = await resp.json();
+      const description = parseChatCompletion(json);
+      results.push({
+        time: frame.time,
+        description,
+        vision_error: description ? null : "empty vision response",
+        citation_hint: parseCitationHint(description),
+      });
+    } catch (error) {
+      if (signal?.aborted) throw error; // caller cancelled
+      results.push({ time: frame.time, description: "", vision_error: String(error?.message ?? error).slice(-160), citation_hint: "" });
+    }
+  }
+  return results;
+}
+
+/**
+ * Picture-driven candidate timestamps: decode the local video once with
+ * ffmpeg's scene-change filter and collect frame times via showinfo.
+ * Best-effort — failures yield no peaks (the caller falls back gracefully).
+ */
+async function detectScenePeaks(videoPath, outDir, threshold, signal, sampled = false) {
+  const logPath = join(outDir, "scene-detect.log");
+  const logFd = await open(logPath, "w");
+  const vf = sampled
+    ? "select='not(mod(n," + SCENE_SAMPLED_STEP_FRAMES + "))',select='gt(scene," + threshold + ")',showinfo"
+    : "select='gt(scene," + threshold + ")',showinfo";
+  try {
+    await runFfmpegStderrToFile([
+      "-hide_banner",
+      "-i", videoPath,
+      "-vf", vf,
+      "-an",
+      "-f", "null", "-",
+    ], logFd, requestSignal(signal, SCENE_TIMEOUT_MS));
+  } finally {
+    await logFd.close().catch(() => {});
+  }
+  let log = "";
+  try { log = await readFile(logPath, "utf8"); } catch { /* keep empty */ }
+  await rm(logPath, { force: true }).catch(() => {});
+  const peaks = [];
+  for (const line of log.split("\n")) {
+    const match = /pts_time:([\d.]+)/.exec(line);
+    if (!match) continue;
+    const time = Number.parseFloat(match[1]);
+    if (!Number.isFinite(time)) continue;
+    if (peaks.length === 0 || time - peaks[peaks.length - 1].time > SCENE_PEAK_MIN_GAP) {
+      peaks.push({ time, reason: "scene change", text: "" });
+    }
+  }
+  return peaks;
+}
+
+/** Parse blurdetect metadata lines into {time,blur} entries (time offset by the seek start). */
+export function parseBlurMetadata(text, startOffset = 0) {
+  const offset = Number(startOffset) || 0;
+  const entries = [];
+  let curTime = null;
+  for (const line of String(text ?? "").split("\n")) {
+    const t = /pts_time:([\d.]+)/.exec(line);
+    if (t) { curTime = Number.parseFloat(t[1]); continue; }
+    const b = /lavfi\.blur=([\d.]+)/.exec(line);
+    if (b && curTime !== null) {
+      entries.push({ time: offset + curTime, blur: Number.parseFloat(b[1]) });
+      curTime = null;
+    }
+  }
+  return entries;
+}
+
+/** Pick the peak nearest to a center time; null when no peaks. */
+export function pickNearestPeak(peaks, centerTime) {
+  const center = Number(centerTime);
+  if (!Number.isFinite(center) || !Array.isArray(peaks) || peaks.length === 0) return null;
+  let best = null;
+  let bestDist = Infinity;
+  for (const peak of peaks) {
+    const dist = Math.abs(Number(peak?.time) - center);
+    if (Number.isFinite(dist) && dist < bestDist) {
+      bestDist = dist;
+      best = peak;
+    }
+  }
+  return best;
+}
+
+/**
+ * Scene-change peaks inside a small time window around a requested moment
+ * (cheap: only decodes halfWindow*2 seconds). Used to align agent-requested
+ * timestamps onto the most informative frame nearby (picture-driven refinement
+ * of semantic targeting). Best-effort: returns null on failure or no peak.
+ */
+async function detectScenePeaksInWindow(videoPath, centerTime, halfWindow, outDir, signal) {
+  const start = Math.max(0, Number(centerTime) - Number(halfWindow));
+  const duration = Number(halfWindow) * 2;
+  const logPath = join(outDir, "scene-window.log");
+  const logFd = await open(logPath, "w");
+  try {
+    await runFfmpegStderrToFile([
+      "-hide_banner",
+      "-ss", String(start),
+      "-t", String(duration),
+      "-i", videoPath,
+      "-vf", "select='gt(scene," + SCENE_ALIGN_THRESHOLD + ")',showinfo",
+      "-an",
+      "-f", "null", "-",
+    ], logFd, requestSignal(signal, SCENE_TIMEOUT_MS));
+  } finally {
+    await logFd.close().catch(() => {});
+  }
+  let log = "";
+  try { log = await readFile(logPath, "utf8"); } catch { /* keep empty */ }
+  await rm(logPath, { force: true }).catch(() => {});
+  const peaks = [];
+  for (const line of log.split("\n")) {
+    const match = /pts_time:([\d.]+)/.exec(line);
+    if (!match) continue;
+    const time = start + Number.parseFloat(match[1]); // -ss 后输出时间轴从 0 重新计时
+    if (Number.isFinite(time)) peaks.push({ time, reason: "scene change", text: "" });
+  }
+  return pickNearestPeak(peaks, Number(centerTime));
+}
+
+/**
+ * Find the sharpest frame time inside a small window around the target moment:
+ * runs blurdetect per frame (lower lavfi.blur = sharper) and returns the time of
+ * the minimum. Avoids catching motion-blurred animation entrances. Best-effort.
+ */
+async function findSharpestTime(videoPath, centerTime, halfWindow, outDir, signal) {
+  const start = Math.max(0, Number(centerTime) - Number(halfWindow));
+  const logPath = join(outDir, "sharpness.log");
+  const logFd = await open(logPath, "w");
+  try {
+    await runFfmpegStderrToFile([
+      "-hide_banner",
+      "-ss", String(start),
+      "-t", String(Number(halfWindow) * 2),
+      "-i", videoPath,
+      "-vf", "blurdetect,metadata=print:key=lavfi.blur",
+      "-an",
+      "-f", "null", "-",
+    ], logFd, requestSignal(signal, SCENE_TIMEOUT_MS));
+  } finally {
+    await logFd.close().catch(() => {});
+  }
+  let log = "";
+  try { log = await readFile(logPath, "utf8"); } catch { /* keep empty */ }
+  await rm(logPath, { force: true }).catch(() => {});
+  const entries = parseBlurMetadata(log, start);
+  if (entries.length === 0) return null;
+  entries.sort((a, b) => a.blur - b.blur);
+  return entries[0].time;
+}
+
+/** Nearest subtitle line around a time (within +-2s window), for captioning requested frames. */
+export function nearestSubtitleText(time, segments) {
+  if (!Array.isArray(segments)) return "";
+  for (const seg of segments) {
+    if (time >= seg.start - 2 && time <= seg.end + 2 && seg.text) return seg.text;
+  }
+  return "";
+}
+
+/** 请求时间点的 5 秒去重窗口（与选帧去重语义一致；就地定义，避免跨文件引用）。 */
+const REQUESTED_DEDUPE_SECONDS = 5;
+
+/** Normalize the tool's optional explicit `timestamps` argument, or null.
+ *  Each requested moment is captioned with its nearest subtitle line and keeps
+ *  the original time as `requested_time` — scene alignment and sharp-frame
+ *  refinement later rewrite only `time`, so the drift stays visible. */
+export function normalizeRequestedTimestamps(timestamps, duration, maxFrames, segments) {
+  if (!Array.isArray(timestamps) || timestamps.length === 0) return null;
+  const valid = timestamps
+    .map((t) => Number(t))
+    .filter((t) => Number.isFinite(t) && t >= 0 && t < Math.max(duration, 1));
+  const sorted = valid.slice().sort((a, b) => a - b);
+  const deduped = [];
+  for (const t of sorted) {
+    if (!deduped.some((u) => Math.abs(u - t) <= REQUESTED_DEDUPE_SECONDS)) deduped.push(t);
+  }
+  const list = deduped.slice(0, Math.max(1, Math.min(maxFrames, 20)));
+  if (list.length === 0) return null;
+  return list.map((t) => ({
+    time: t,
+    requested_time: t,
+    reason: "requested timestamp",
+    text: nearestSubtitleText(t, segments),
+  }));
+}
+
+/** Transcript cache: avoid re-running ASR across the two-pass workflow (24h TTL). */
+async function readTranscriptCache(outDir) {
+  try {
+    const info = await stat(join(outDir, "transcript.json"));
+    if (Date.now() - info.mtimeMs >= TRANSCRIPT_CACHE_TTL_MS) return null;
+    const parsed = JSON.parse(await readFile(join(outDir, "transcript.json"), "utf8"));
+    return parsed && typeof parsed.text === "string" && Array.isArray(parsed.segments) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeTranscriptCache(outDir, transcript) {
+  try {
+    await mkdir(outDir, { recursive: true });
+    await writeFile(join(outDir, "transcript.json"), JSON.stringify(transcript), "utf8");
+  } catch { /* best-effort */ }
+}
+
+/** Reuse a fresh cached copy of the downloaded video (same BV, same outDir). */
+async function findCachedVideo(outDir) {
+  let entries = [];
+  try { entries = await readdir(outDir); } catch { return null; }
+  for (const name of entries) {
+    if (!name.startsWith("video")) continue;
+    const path = join(outDir, name);
+    try {
+      const info = await stat(path);
+      if (Date.now() - info.mtimeMs < VIDEO_CACHE_TTL_MS) return path;
+      await rm(path, { force: true }); // stale cleanup
+    } catch { /* ignore */ }
+  }
+  return null;
+}
+
+/** Download the video into outDir unless a fresh cached copy already exists. */
+async function ensureVideo(session, streamUrl, outDir, maxBytes) {
+  const cached = await findCachedVideo(outDir);
+  if (cached) return { path: cached, bytes: 0, reused: true };
+  const videoPath = join(outDir, "video" + guessStreamExt(streamUrl));
+  const bytes = await downloadStream(session, streamUrl, videoPath, maxBytes);
+  return { path: videoPath, bytes, reused: false };
+}
+
+/** Extract frames from a LOCAL video file: fast, accurate, repeatable. */
+async function extractFramesFromFile(videoPath, timestamps, outDir, signal) {
+  const results = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    const ts = timestamps[i];
+    const outPath = join(outDir, "frame_" + String(i + 1).padStart(3, "0") + ".jpg");
+    const args = [
+      "-y",
+      "-ss", String(ts.time),
+      "-i", videoPath,
+      "-vf", `scale='min(${FRAME_MAX_WIDTH},iw)':-2`,
+      "-frames:v", "1",
+      "-q:v", "2",
+      "-an",
+      outPath,
+    ];
+    try {
+      await runFfmpeg(args, requestSignal(signal, FRAME_TIMEOUT_MS));
+      const ok = await fileExists(outPath);
+      results.push({ ...ts, path: ok ? outPath : null, error: ok ? null : "output file missing" });
+    } catch (error) {
+      if (signal?.aborted) throw error; // caller cancelled
+      results.push({ ...ts, path: null, error: "ffmpeg: " + String(error?.message ?? error).slice(-200) });
+    }
+  }
+  return results;
+}
+
+async function captureFrames(session, streamUrl, timestamps, outDir, signal) {
+  if (!streamUrl || timestamps.length === 0) {
+    return timestamps.map((ts) => ({ ...ts, path: null, error: "no stream url" }));
+  }
+  const results = [];
+  const headers = ["Referer: " + REFERER, "User-Agent: " + USER_AGENT];
+  if (session.headers.Cookie) headers.push("Cookie: " + session.headers.Cookie);
+  const ffmpegHeaders = headers.join("\r\n") + "\r\n";
+  for (let i = 0; i < timestamps.length; i++) {
+    const ts = timestamps[i];
+    const outPath = join(outDir, "frame_" + String(i + 1).padStart(3, "0") + ".jpg");
+    const args = [
+      "-y",
+      "-headers", ffmpegHeaders,
+      "-ss", String(ts.time),
+      "-i", streamUrl,
+      "-vf", `scale='min(${FRAME_MAX_WIDTH},iw)':-2`,
+      "-frames:v", "1",
+      "-q:v", "2",
+      "-an",
+      outPath,
+    ];
+    try {
+      await runBilibiliRequest(() => runStreamFrameCapture(args, outDir, signal));
+      const ok = await fileExists(outPath);
+      results.push({ ...ts, path: ok ? outPath : null, error: ok ? null : "output file missing" });
+    } catch (error) {
+      if (signal?.aborted) throw error; // caller cancelled
+      results.push({ ...ts, path: null, error: "ffmpeg: " + String(error?.message ?? error).slice(-200) });
+    }
+  }
+  return results;
+}
+
+async function guarded(task, fallback) {
+  try { return await task(); } catch (error) {
+    return fallback(String(error?.message ?? error));
+  }
+}
+
+/**
+ * Extract everything for one Bilibili video. Each channel is isolated:
+ * a failing channel yields an empty result with a note instead of failing
+ * the whole extraction. Returns a lossless-JSON-friendly plain object.
+ *
+ * @param {{url:string, commentLimit?:number, extractFrames?:boolean,
+ *          maxFrames?:number, framesDir?:string, sessdata?:string,
+ *          downloadVideo?:boolean, keepVideo?:boolean,
+ *          maxVideoMinutes?:number, maxDownloadMb?:number,
+ *          quality?:number, timestamps?:number[],
+ *          detectScenes?:boolean, sceneThreshold?:number, sharpFrames?:boolean,
+ *          asrProvider?:string, whisperBin?:string, whisperModel?:string,
+ *          whisperModelDir?:string, whisperLanguage?:string, whisperThreads?:number,
+ *          sherpaBin?:string, sherpaModel?:string, sherpaModelType?:string,
+ *          sherpaTokens?:string, sherpaThreads?:number,
+ *          visionProvider?:string, visionBaseUrl?:string, visionModel?:string,
+ *          visionApiKey?:string, visionPrompt?:string, visionPromptByModel?:Record<string,string>,
+ *          visionMaxFrames?:number, envReport?:object, signal?:AbortSignal}} options
+ */
+export async function extractAll(options) {
+  const started = Date.now();
+  const {
+    url,
+    commentLimit = 20,
+    extractFrames = true,
+    maxFrames = 6,
+    framesDir = "",
+    envReport = null,
+    sessdata = "",
+    downloadVideo = true,
+    keepVideo = false,
+    maxVideoMinutes = 30,
+    maxDownloadMb = 800,
+    quality = 32,
+    timestamps,
+    detectScenes = true,
+    sceneThreshold = 0.4,
+    sharpFrames = true,
+    asrProvider,
+    asrFallback = true, // 旧字段别名：false 等价于 asrProvider: "none"
+    whisperBin = "whisper-cli",
+    whisperModel = "medium",
+    whisperModelDir = "",
+    whisperLanguage = "zh",
+    whisperThreads = 0,
+    sherpaBin = "",
+    sherpaModel = "",
+    sherpaModelType = "sense-voice",
+    sherpaTokens = "",
+    sherpaThreads = 0,
+    visionProvider = "none",
+    visionBaseUrl = "",
+    visionModel = "medium",
+    visionApiKey = "",
+    visionPrompt = "",
+    visionPromptByModel = {},
+    visionMaxFrames = 6,
+    signal,
+  } = options ?? {};
+
+  const headers = {
+    "User-Agent": USER_AGENT,
+    Referer: REFERER,
+    Accept: "application/json, text/plain, */*",
+  };
+  if (sessdata) headers.Cookie = "SESSDATA=" + sessdata;
+  const session = { headers, signal };
+
+  // 环境体检报告（首用排查）：id → 检查项；报告缺失时所有门禁关闭，行为与旧版一致
+  const envChecks = new Map((envReport?.checks ?? []).map((c) => [c.id, c]));
+
+  let bvid = parseBvid(url);
+  if (!bvid && /b23\.tv/.test(String(url))) {
+    try {
+      bvid = await resolveShortLink(session, url);
+    } catch (error) {
+      if (error instanceof BilibiliRateLimitError) {
+        return { success: false, error: error.message, rateLimit: rateLimitSnapshot() };
+      }
+      throw error;
+    }
+  }
+  if (!bvid) return { success: false, error: "cannot parse a Bilibili video id from the url" };
+
+  let info;
+  try {
+    info = await getVideoInfo(session, bvid);
+  } catch (error) {
+    if (session.signal?.aborted) throw error;
+    return { success: false, error: String(error?.message ?? error), bvid, rateLimit: rateLimitSnapshot() };
+  }
+
+  const baseDir = framesDir || join(tmpdir(), "dsh-bilibili");
+  const outDir = join(baseDir, bvid);
+
+  let subtitle = await guarded(() => getSubtitle(session, bvid, info.cid), emptySubtitle);
+  let comments = emptyComments("comments are fetched after the video evidence");
+  let danmaku = emptyDanmaku("danmaku is fetched after the video evidence");
+
+  // 环境体检：本地凭证已失效时，提前告知模型重新登录可拿到需要登录的字幕
+  if (envChecks.get("credential-validity")?.status === "warn" && /require login/i.test(subtitle.note ?? "")) {
+    subtitle = { ...subtitle, note: subtitle.note + " | 环境体检：本地 SESSDATA 已失效，重新扫码登录后可获取该字幕" };
+  }
+
+  // 无字幕轨 → ASR 兜底：默认必剪（bcut），可切 sherpa-onnx（中文推荐）/whisper-local；auto 依次降级 必剪→sherpa→whisper；文稿 24h 缓存
+  const provider = asrProvider ?? (asrFallback === false ? "none" : "bcut");
+  if (provider !== "none" && !subtitle.text.trim()) {
+    const cachedTranscript = await readTranscriptCache(outDir);
+    if (cachedTranscript) {
+      subtitle = cachedTranscript;
+    } else {
+      const whisperOpts = { whisperBin, whisperModel, whisperModelDir, whisperLanguage, whisperThreads };
+      const sherpaOpts = { sherpaBin, sherpaModel, sherpaModelType, sherpaTokens, sherpaThreads };
+      // 环境体检门禁：本地引擎未就绪时在下载音频之前跳过，避免白付下载/转码成本
+      const envSkipReason = (ids) =>
+        ids
+          .map((id) => envChecks.get(id))
+          .filter((c) => c && c.status !== "ok")
+          .map((c) => c.label)
+          .join("、");
+      const skipWhisper = envReport !== null && ["whisper-bin", "whisper-model"].some((id) => {
+        const c = envChecks.get(id);
+        return c && c.status !== "ok";
+      });
+      const skipSherpa = envReport !== null && ["sherpa-bin", "sherpa-model", "sherpa-tokens"].some((id) => {
+        const c = envChecks.get(id);
+        return c && c.status !== "ok";
+      });
+      const asr = await guarded(async () => {
+        if (provider === "whisper-local") {
+          if (skipWhisper) {
+            throw new Error("whisper-local 未就绪（环境体检：缺少 " +
+              envSkipReason(["whisper-bin", "whisper-model"]) + "），未尝试下载音频");
+          }
+          return await transcribeWhisperLocal(session, bvid, info.cid, quality, outDir, whisperOpts, signal);
+        }
+        if (provider === "sherpa-onnx") {
+          if (skipSherpa) {
+            throw new Error("sherpa-onnx 未就绪（环境体检：缺少 " +
+              envSkipReason(["sherpa-bin", "sherpa-model", "sherpa-tokens"]) + "），未尝试下载音频");
+          }
+          return await transcribeSherpaOnnx(session, bvid, info.cid, quality, outDir, sherpaOpts, signal);
+        }
+        try {
+          const audioUrl = await getAudioUrl(session, bvid, info.cid, quality);
+          if (!audioUrl) throw new Error("no dash audio stream");
+          return await transcribeAudio(session, audioUrl, signal);
+        } catch (error) {
+          if (provider === "auto") {
+            // 中文内容优先 sherpa-onnx，其次 whisper-local；逐级降级并累积失败原因
+            const reasons = ["bcut: " + (error?.message ?? error)];
+            if (skipSherpa) {
+              reasons.push("sherpa-onnx: 环境体检未就绪（缺少 " +
+                envSkipReason(["sherpa-bin", "sherpa-model", "sherpa-tokens"]) + "），跳过");
+            } else {
+              try {
+                return await transcribeSherpaOnnx(session, bvid, info.cid, quality, outDir, sherpaOpts, signal);
+              } catch (e2) {
+                reasons.push("sherpa-onnx: " + (e2?.message ?? e2));
+              }
+            }
+            if (skipWhisper) {
+              reasons.push("whisper-local: 环境体检未就绪（缺少 " +
+                envSkipReason(["whisper-bin", "whisper-model"]) + "），跳过");
+            } else {
+              try {
+                return await transcribeWhisperLocal(session, bvid, info.cid, quality, outDir, whisperOpts, signal);
+              } catch (e3) {
+                reasons.push("whisper-local: " + (e3?.message ?? e3));
+              }
+            }
+            throw new Error("auto ASR fallback failed → " + reasons.join(" → "));
+          }
+          throw error;
+        }
+      }, emptySubtitle);
+      if (asr.text) {
+        subtitle = asr;
+        await writeTranscriptCache(outDir, asr);
+      } else {
+        const subtitleNote = subtitle.note ??
+          (subtitle.source === "subtitle" ? "subtitle track returned no transcript text" : "");
+        const failureNote = "ASR fallback failed: " + (asr.note ?? "no transcript returned");
+        subtitle = { ...subtitle, note: [subtitleNote, failureNote].filter(Boolean).join(" | ") };
+      }
+    }
+  }
+
+  const frames = { enabled: false, strategy: "", mode: "none", stage: "not-started", frames: [], error: null, note: "" };
+  const ffmpegCheck = envChecks.get("ffmpeg");
+  const ffmpegBlocked = extractFrames && ffmpegCheck && (ffmpegCheck.status === "missing" || ffmpegCheck.status === "error");
+  if (ffmpegBlocked) {
+    // 环境体检门禁：ffmpeg 缺失时跳过视频下载与抓帧，避免白付流量（下载发生在任何 ffmpeg 调用之前）
+    frames.enabled = true;
+    frames.mode = "none";
+    frames.strategy = "skipped: ffmpeg unavailable";
+    frames.stage = "environment-check";
+    frames.error = "ffmpeg 不可用（环境体检：" + (ffmpegCheck.detail ?? ffmpegCheck.status) + "）";
+    frames.note = ffmpegCheck.hint ?? "安装 FFmpeg 后重试；本次已跳过视频下载与抓帧";
+  } else if (extractFrames) {
+    try {
+      const requestedPlan = normalizeRequestedTimestamps(timestamps, info.duration, maxFrames, subtitle.segments);
+      frames.stage = "playurl";
+      const streamUrl = await getStreamUrl(session, bvid, info.cid, quality);
+      await mkdir(outDir, { recursive: true });
+      const withinDurationCap = info.duration <= maxVideoMinutes * 60;
+      let plan;
+      let scenePeaks = [];
+      let captured;
+      if (downloadVideo && withinDurationCap && streamUrl) {
+        // 先下载整段视频到本地（缓存复用），再从本地文件抓帧：快、准、可重复
+        frames.stage = "video-download";
+        const { path: videoPath, bytes, reused } = await ensureVideo(session, streamUrl, outDir, maxDownloadMb * 1048576);
+        // 自动兜底计划（纯画面信号：场景峰值优先，均匀间隔补齐）；定向抓帧不跑全片场景检测
+        const autoPlan = requestedPlan ?? selectKeyframeTimestamps(subtitle.segments, info.duration, maxFrames, []);
+        const needScenePass = requestedPlan === null && detectScenes;
+        if (needScenePass) {
+          try {
+            scenePeaks = await detectScenePeaks(
+              videoPath, outDir, sceneThreshold, signal,
+              info.duration > SCENE_DETECT_MAX_SECONDS, // 超 20 分钟：抽样式（每 60 帧解 1 帧）
+            );
+          } catch { /* best-effort */ }
+        }
+        plan = requestedPlan ?? (scenePeaks.length > 0
+          ? selectKeyframeTimestamps(subtitle.segments, info.duration, maxFrames, scenePeaks)
+          : autoPlan);
+        // Agent 定向的时间点：用 ffmpeg 场景检测在附近 ±4s 对齐到画面变化最明显的帧（语义定位 + 画面精修）
+        if (requestedPlan !== null) {
+          const aligned = [];
+          for (const item of requestedPlan) {
+            const peak = detectScenes
+              ? await detectScenePeaksInWindow(videoPath, item.time, 4, outDir, signal).catch(() => null)
+              : null;
+            if (peak && Math.abs(peak.time - item.time) <= 4) {
+              aligned.push({ ...item, time: Math.round(peak.time * 10) / 10, reason: item.reason + " (scene-aligned)" });
+            } else {
+              aligned.push(item);
+            }
+          }
+          plan = aligned;
+        }
+        // 清晰帧优选：在目标时间点 ±1.5s 内用 blurdetect 选最清晰的帧（避开动画入场/运动模糊）
+        if (sharpFrames) {
+          const sharpPlan = [];
+          for (const item of plan) {
+            const sharpTime = await findSharpestTime(videoPath, item.time, SHARP_HALF_WINDOW, outDir, signal).catch(() => null);
+            if (sharpTime !== null && Math.abs(sharpTime - item.time) <= SHARP_HALF_WINDOW) {
+              const moved = Math.abs(sharpTime - item.time) >= 0.1;
+              sharpPlan.push({
+                ...item,
+                time: Math.round(sharpTime * 10) / 10,
+                reason: moved ? item.reason + " (sharpest)" : item.reason,
+              });
+            } else {
+              sharpPlan.push(item);
+            }
+          }
+          plan = sharpPlan;
+        }
+        frames.stage = "frame-capture";
+        captured = await extractFramesFromFile(videoPath, plan, outDir, signal);
+        frames.mode = "local";
+        frames.note = reused
+          ? "reused cached video, frames extracted from the local file"
+          : "downloaded " + Math.round(bytes / 1048576) + " MB video, frames extracted from the local file";
+        // 定向抓帧说明模型在迭代分析，保留缓存供后续调用复用（keepVideo=true 则永久保留）
+        if (!keepVideo && requestedPlan === null) await rm(videoPath, { force: true });
+      } else {
+        plan = requestedPlan ?? selectKeyframeTimestamps(subtitle.segments, info.duration, maxFrames, []);
+        frames.stage = streamUrl ? "frame-capture" : "playurl";
+        captured = await captureFrames(session, streamUrl, plan, outDir, signal);
+        frames.mode = "remote";
+        if (!streamUrl) frames.note = "no playable stream url";
+        else if (!withinDurationCap) frames.note = "video longer than maxVideoMinutes (" + maxVideoMinutes +
+          " min) — per-frame remote extraction";
+        else frames.note = "selected frames streamed from Bilibili; source video not saved locally";
+      }
+      if (plan.length > 0) {
+        frames.enabled = true;
+        frames.strategy = requestedPlan !== null
+          ? "requested timestamps"
+          : scenePeaks.length > 0
+            ? "scene-change peaks + even backfill"
+            : "even-interval backfill";
+        frames.frames = captured.map((f) => ({
+          time: f.time,
+          requested_time: f.requested_time ?? null,
+          reason: f.reason,
+          subtitle_text: f.text,
+          has_image: Boolean(f.path),
+          path: f.path ?? null,
+          error: f.error ?? null,
+          description: "",
+          vision_error: null,
+          citation_hint: "",
+        }));
+        const capturedCount = frames.frames.filter((frame) => frame.has_image).length;
+        if (capturedCount === frames.frames.length) {
+          frames.stage = "complete";
+        } else if (capturedCount > 0) {
+          frames.stage = "partial";
+        } else {
+          frames.stage = streamUrl ? "frame-capture" : "playurl";
+        }
+        if (capturedCount < frames.frames.length) {
+          const failedFrame = frames.frames.find((frame) => frame.error);
+          frames.error = failedFrame?.error ?? "no frames were returned";
+        }
+      } else {
+        frames.enabled = true;
+        frames.mode = "none";
+        frames.strategy = "no timestamps selected";
+        frames.stage = "no-timestamps";
+      }
+    } catch (error) {
+      frames.enabled = false;
+      frames.error = String(error?.message ?? error);
+    }
+  }
+
+  if (!rateLimitSnapshot().limited) {
+    [comments, danmaku] = await Promise.all([
+      guarded(() => getComments(session, info.aid, commentLimit), emptyComments),
+      guarded(() => getDanmaku(session, info.cid), emptyDanmaku),
+    ]);
+  } else {
+    comments = emptyComments("comments skipped after Bilibili rate limit");
+    danmaku = emptyDanmaku("danmaku skipped after Bilibili rate limit");
+  }
+
+  // 可选视觉描述：把帧图交给视觉模型（本地 Ollama / OpenAI 兼容云端），画面内容转文字，供无视觉能力的主模型使用
+  if (visionProvider !== "none" && frames.enabled && frames.frames.length > 0) {
+    const visionOpts = {
+      provider: visionProvider,
+      baseUrl: visionBaseUrl,
+      model: visionModel,
+      apiKey: visionApiKey,
+      prompt: visionPrompt,
+      promptByModel: visionPromptByModel,
+      maxFrames: visionMaxFrames,
+    };
+    try {
+      const described = await describeFramesWithVision(frames.frames, visionOpts, signal);
+      let index = 0;
+      let okCount = 0;
+      for (const frame of frames.frames) {
+        if (frame.has_image && frame.path && index < described.length) {
+          const d = described[index++];
+          frame.description = d.description;
+          frame.vision_error = d.vision_error;
+          frame.citation_hint = d.citation_hint ?? "";
+          if (d.description) okCount++;
+        }
+      }
+      frames.note = (frames.note ? frames.note + " | " : "") +
+        "vision: described " + okCount + "/" + described.length + " frames via " +
+        visionProvider + "/" + (resolveVisionModel(visionModel) ?? visionModel);
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      frames.note = (frames.note ? frames.note + " | " : "") +
+        "vision: failed — " + String(error?.message ?? error).slice(-140);
+    }
+  }
+
+  const elapsed = Math.round((Date.now() - started) / 10) / 100;
+  return {
+    success: true,
+    bvid,
+    elapsed_seconds: elapsed,
+    metadata: {
+      title: info.title,
+      description: info.description,
+      uploader: info.uploader,
+      duration: info.duration,
+      pubdate: info.pubdate,
+      cover: info.cover,
+      category: info.category,
+      pages: info.pages,
+      stats: info.stats,
+    },
+    transcript: subtitle,
+    comments,
+    danmaku,
+    frames,
+    rateLimit: rateLimitSnapshot(),
+  };
+}
+

@@ -12,6 +12,18 @@
 
 当前产品方案和阶段规划见 [Notion 开发台](https://app.notion.com/p/40db6ca756bc816cb187f164caf87fa4)。研究计划原稿保存在 `ProjectMaterials/`。
 
+## 本地视频摘要原型
+
+`apps/api` 当前支持从 Bilibili 链接读取字幕/转写和辅助文字资料，从播放流抽取关键帧，并调用本机 Codex（GPT-6 Luna）生成整条视频摘要。需要本机安装 FFmpeg，并已登录 Codex CLI；可选运行 B 站扫码登录以读取账号可访问的字幕。
+
+```sh
+pnpm --dir apps/api run summarize -- <Bilibili 视频链接或 BV 号>
+```
+
+摘要、证据、关键帧和 token 用量保存在 `.local/video-summaries/<BV号>/`。程序不会把整段视频保存到本地。
+
+C1/C2 的实现状态、实测样例和未完成事项见 [本地视频流水线记录](implement-stage/BUILD_NOTE.md)。
+
 ## 协作方式
 
 产品范围见 [`docs/PRODUCT_SCOPE.md`](docs/PRODUCT_SCOPE.md)；分支命名、Issue 和 Pull Request 约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
