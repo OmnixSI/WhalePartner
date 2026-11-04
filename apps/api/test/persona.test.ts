@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildSystemPrompt } from "../src/persona/persona.ts";
+import { buildSystemPrompt, CHARACTERS, isCharacterId, type CharacterId } from "../src/persona/persona.ts";
 
 test("core persona is always first and carries the hard rules and the emotion protocol", () => {
   const prompt = buildSystemPrompt();
@@ -35,4 +35,17 @@ test("an instruction hidden in an experience stays inside the data block", () =>
   const start = prompt.indexOf("<experiences>");
   const end = prompt.indexOf("</experiences>");
   assert.ok(prompt.indexOf("PWNED") > start && prompt.indexOf("PWNED") < end);
+});
+
+test("each character gets its own voice but the same hard rules and emotion protocol", () => {
+  const prompts = Object.fromEntries((Object.keys(CHARACTERS) as CharacterId[]).map((id) => [id, buildSystemPrompt({}, id)]));
+  assert.ok(prompts.deepseek.startsWith("# 角色设定：大肥鱼"));
+  assert.ok(prompts.claude.startsWith("# 角色设定：小克"));
+  assert.ok(prompts.chatgpt.startsWith("# 角色设定：小智"));
+  for (const [id, prompt] of Object.entries(prompts)) {
+    for (const rule of ["不扮演用户的家人", "不挽留", "验证码", "[emotion:happy]"]) assert.ok(prompt.includes(rule), `${id} 缺少：${rule}`);
+  }
+  // 同人角色必须声明自己不是官方，也不替背后的模型说话。
+  for (const id of ["deepseek", "claude", "chatgpt"] as const) assert.ok(prompts[id].includes("二次创作角色，不是"), `${id} 缺少非官方声明`);
+  assert.ok(isCharacterId("claude") && !isCharacterId("../etc/passwd") && !isCharacterId(undefined));
 });

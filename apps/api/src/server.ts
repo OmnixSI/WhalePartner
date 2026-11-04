@@ -6,6 +6,7 @@ import { createChatProvider } from "./llm/index.ts";
 import type { FallbackChatProvider } from "./llm/router.ts";
 import { LazyMemoryStore } from "./memory/mem0.ts";
 import type { MemoryStatus, MemoryStore } from "./memory/types.ts";
+import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "./persona/persona.ts";
 import { ChatStore } from "./store.ts";
 
 export interface ServerDeps {
@@ -40,8 +41,14 @@ async function probe({ provider }: ServerDeps) {
 
 async function handleChat(deps: ServerDeps, request: IncomingMessage, response: ServerResponse) {
   let text: string;
+  let character: CharacterId = DEFAULT_CHARACTER;
   try {
-    text = validateUserMessage((await readJsonBody(request)).message);
+    const body = await readJsonBody(request);
+    text = validateUserMessage(body.message);
+    if (body.character !== undefined) {
+      if (!isCharacterId(body.character)) throw new ChatInputError("未知的角色。");
+      character = body.character;
+    }
   } catch (error) {
     const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
     sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : (error as Error).message });
@@ -56,7 +63,7 @@ async function handleChat(deps: ServerDeps, request: IncomingMessage, response: 
 
   startSse(response);
   try {
-    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory }, text, abort.signal)) {
+    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory, character }, text, abort.signal)) {
       const { type, ...data } = event;
       sendSse(response, type, data);
     }
@@ -123,7 +130,9 @@ export function createApiServer(deps: ServerDeps): Server {
       }
       if (request.method === "GET" && url.pathname === "/api/chat/history") {
         const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
-        sendJson(response, 200, { messages: deps.store.recent(limit) });
+        const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
+        if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" });
+        sendJson(response, 200, { messages: deps.store.recent(limit, character) });
         return;
       }
       if (request.method === "DELETE" && url.pathname === "/api/chat/history") {

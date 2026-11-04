@@ -1,0 +1,67 @@
+/* 每个角色一套强调色：覆盖 tokens.css 里的主色，背景色阶跟着变；鲸汐沿用默认的潮汐青。 */
+
+:root[data-character="deepseek"] {
+  --tide: #4d6bfe; --tide-strong: #3b55d9; --foam: #a9b8ff;
+  --bg: #ecf1fc; --bg-sky: #dfe8fc; --bg-deep: #b9c9f3;
+  --accent: #3b55d9; --accent-soft: rgb(77 107 254 / 0.12); --border: rgb(77 107 254 / 0.2);
+  --bubble-me: linear-gradient(135deg,#5b78ff,#3b55d9);
+}
+
+:root[data-character="claude"] {
+  --tide: #d97757; --tide-strong: #bf5d3c; --foam: #ffc2a8;
+  --bg: #fdf3ec; --bg-sky: #fbe9df; --bg-deep: #f1c7b0;
+  --accent: #bf5d3c; --accent-soft: rgb(217 119 87 / 0.12); --border: rgb(217 119 87 / 0.2);
+  --bubble-me: linear-gradient(135deg,#e08460,#bf5d3c);
+}
+
+:root[data-character="chatgpt"] {
+  --tide: #10a37f; --tide-strong: #0b8a6a; --foam: #8be8cf;
+  --bg: #ebf8f4; --bg-sky: #dcf3ec; --bg-deep: #aedfd2;
+  --accent: #0b8a6a; --accent-soft: rgb(16 163 127 / 0.12); --border: rgb(16 163 127 / 0.2);
+  --bubble-me: linear-gradient(135deg,#17b38d,#0b8a6a);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-character="deepseek"] {
+  --tide: #4d6bfe; --foam: #a9b8ff;
+  --accent: #a9b8ff; --accent-soft: rgb(77 107 254 / 0.18); --border: rgb(77 107 254 / 0.22);
+  --bubble-me: linear-gradient(135deg,#6a85ff,#4d6bfe);
+  --bg: #071a2e; --bg-sky: #0a2a47; --bg-deep: #05101f;
+  }
+}
+:root[data-theme="dark"][data-character="deepseek"] {
+  --tide: #4d6bfe; --foam: #a9b8ff;
+  --accent: #a9b8ff; --accent-soft: rgb(77 107 254 / 0.18); --border: rgb(77 107 254 / 0.22);
+  --bubble-me: linear-gradient(135deg,#6a85ff,#4d6bfe);
+  --bg: #071a2e; --bg-sky: #0a2a47; --bg-deep: #05101f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-character="claude"] {
+  --tide: #d97757; --foam: #ffc2a8;
+  --accent: #ffb597; --accent-soft: rgb(217 119 87 / 0.18); --border: rgb(217 119 87 / 0.22);
+  --bubble-me: linear-gradient(135deg,#e58b68,#d97757);
+  --bg: #071a2e; --bg-sky: #0a2a47; --bg-deep: #05101f;
+  }
+}
+:root[data-theme="dark"][data-character="claude"] {
+  --tide: #d97757; --foam: #ffc2a8;
+  --accent: #ffb597; --accent-soft: rgb(217 119 87 / 0.18); --border: rgb(217 119 87 / 0.22);
+  --bubble-me: linear-gradient(135deg,#e58b68,#d97757);
+  --bg: #071a2e; --bg-sky: #0a2a47; --bg-deep: #05101f;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-character="chatgpt"] {
+  --tide: #10a37f; --foam: #8be8cf;
+  --accent: #7fe3c8; --accent-soft: rgb(16 163 127 / 0.18); --border: rgb(16 163 127 / 0.22);
+  --bubble-me: linear-gradient(135deg,#22c29b,#10a37f);
+  --bg: #071a2e; --bg-sky: #0a2a47; --bg-deep: #05101f;
+  }
+}
+:root[data-theme="dark"][data-character="chatgpt"] {
+  --tide: #10a37f; --foam: #8be8cf;
+  --accent: #7fe3c8; --accent-soft: rgb(16 163 127 / 0.18); --border: rgb(16 163 127 / 0.22);
+  --bubble-me: linear-gradient(135deg,#22c29b,#10a37f);
+  --bg: #071a2e; --bg-sky: #0a2a47; --bg-deep: #05101f;
+}

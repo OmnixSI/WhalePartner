@@ -1,10 +1,9 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { AvatarEmotion } from "../avatar/model.config";
 import { fetchHealth, type Health } from "../lib/api";
+import type { Character } from "../characters";
 import { fetchHistory, streamChat } from "../lib/chat";
 import { SendIcon } from "./Icons";
-
-const GREETING = "你好呀，我是鲸汐。\n我住在你的手机里，会陪你聊天，也会替你看看视频。今天想从哪里聊起？";
 
 interface Bubble {
   key: string;
@@ -16,6 +15,7 @@ interface Bubble {
 }
 
 interface Props {
+  character: Character;
   onEmotion: (emotion: AvatarEmotion) => void;
   onSpeaking: (speaking: boolean) => void;
 }
@@ -23,7 +23,7 @@ interface Props {
 let counter = 0;
 const nextKey = () => `b${++counter}`;
 
-export function ChatPanel({ onEmotion, onSpeaking }: Props) {
+export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
   const [health, setHealth] = useState<Health | null | undefined>(undefined);
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState("");
@@ -34,11 +34,11 @@ export function ChatPanel({ onEmotion, onSpeaking }: Props) {
   useEffect(() => {
     const ctrl = new AbortController();
     fetchHealth(ctrl.signal).then(setHealth);
-    fetchHistory(50, ctrl.signal).then((history) =>
+    fetchHistory(character.id, 50, ctrl.signal).then((history) =>
       setBubbles(history.map((m) => ({ key: `h${m.id}`, role: m.role === "user" ? "me" : "her", text: m.content }))),
     );
     return () => ctrl.abort();
-  }, []);
+  }, [character.id]);
 
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -62,7 +62,7 @@ export function ChatPanel({ onEmotion, onSpeaking }: Props) {
     abort.current = ctrl;
     let started = false;
     try {
-      for await (const event of streamChat(message, ctrl.signal)) {
+      for await (const event of streamChat(message, character.id, ctrl.signal)) {
         if (event.type === "recall") setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, recalled: event.memories } : b)));
         else if (event.type === "emotion") onEmotion(event.emotion);
         else if (event.type === "delta") {
@@ -80,23 +80,23 @@ export function ChatPanel({ onEmotion, onSpeaking }: Props) {
       setBusy(false);
       setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, pending: false } : b)));
     }
-  }, [busy, onEmotion, onSpeaking]);
+  }, [busy, character.id, onEmotion, onSpeaking]);
 
   const online = health?.ok === true;
   return (
-    <section className="chat" aria-label="与鲸汐聊天">
+    <section className="chat" aria-label={`与${character.name}聊天`}>
       <header className="chat__head">
         <div className="chat__title">
-          <h2>鲸汐</h2>
+          <h2>{character.name}</h2>
           <span className="chat__status">
             <i className={`dot ${health === undefined ? "" : online ? "dot--ok" : "dot--bad"}`} />
             {health === undefined ? "正在连接…" : online ? `在线 · ${health.model ?? health.provider}` : "后端未连接"}
           </span>
         </div>
-        <span className="badge" title="鲸汐是 AI 角色，不是真人">AI 角色</span>
+        <span className="badge" title={`${character.name}是 AI 角色，不是真人`}>AI 角色</span>
       </header>
       <div className="chat__list" role="log" aria-live="polite" ref={list}>
-        {bubbles.length === 0 && <div className="msg msg--her">{GREETING}</div>}
+        {bubbles.length === 0 && <div className="msg msg--her">{character.greeting}</div>}
         {bubbles.map((b) => (
           <Fragment key={b.key}>
             <div className={`msg msg--${b.role}${b.failed ? " msg--failed" : ""}`}>
@@ -114,7 +114,7 @@ export function ChatPanel({ onEmotion, onSpeaking }: Props) {
           rows={1}
           value={draft}
           maxLength={2000}
-          placeholder={online ? "和鲸汐说点什么…" : "后端未连接，暂时无法聊天"}
+          placeholder={online ? `和${character.name}说点什么…` : "后端未连接，暂时无法聊天"}
           disabled={!online}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
