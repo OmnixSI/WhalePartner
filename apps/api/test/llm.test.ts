@@ -8,6 +8,7 @@ import { OpenAiCompatibleProvider, ProviderError, readSseData } from "../src/llm
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider, LlmDelta } from "../src/llm/types.ts";
 import { createApiServer } from "../src/server.ts";
+import { ChatStore } from "../src/store.ts";
 
 const SECRET = "sk-test-secret-123";
 const MESSAGES = [{ role: "user" as const, content: "你好" }];
@@ -120,7 +121,7 @@ test("router falls back before any output, but not after output has started", as
 test("health reports the model chain and never exposes a key; CORS only for app origins", async () => {
   const config = loadConfig({ DEEPSEEK_API_KEY: SECRET });
   const provider = new FallbackChatProvider([fakeProvider("deepseek", "ok"), fakeProvider("codex", "ok")]);
-  const server = createApiServer({ config, provider });
+  const server = createApiServer({ config, provider, store: new ChatStore(":memory:") });
   const base = await listen(server);
   try {
     const res = await fetch(`${base}/api/health`, { headers: { origin: "tauri://localhost" } });

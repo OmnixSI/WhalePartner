@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 export interface OpenAiCompatibleConfig {
   baseUrl: string;
   apiKey: string;
@@ -6,6 +8,7 @@ export interface OpenAiCompatibleConfig {
 
 export interface ApiConfig {
   host: string;
+  dbPath: string;
   port: number;
   deepseek?: OpenAiCompatibleConfig;
   backup?: OpenAiCompatibleConfig;
@@ -38,6 +41,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   return {
     host: text(env.API_HOST) ?? "127.0.0.1",
+    dbPath: text(env.APP_DB_PATH) ?? resolve(import.meta.dirname, "../.local/app.db"),
     port: positiveInt(env.API_PORT, 8787, "API_PORT"),
     deepseek: deepseekKey
       ? {

@@ -41,3 +41,18 @@ export async function readJsonBody(request: IncomingMessage): Promise<Record<str
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("请求体必须是 JSON 对象。");
   return parsed as Record<string, unknown>;
 }
+
+export function startSse(response: ServerResponse) {
+  response.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-store",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  response.flushHeaders();
+}
+
+export function sendSse(response: ServerResponse, event: string, data: unknown) {
+  if (response.writableEnded || response.destroyed) return;
+  response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
