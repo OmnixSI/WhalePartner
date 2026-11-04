@@ -65,3 +65,16 @@ Node.js 服务使用 Active LTS 或 Maintenance LTS 版本；项目启动时锁�
 - [`c1overzz/dsh-bili-scroll`](https://github.com/c1overzz/dsh-bili-scroll)：采用候选筛选、读取证据、总结并写入本地记录的流程；提示词把公开内容当作资料，不当作 Agent 指令。总结沿用一句话结论、证据要点、样本观众反应和明确的信息边界；只有字幕提供时间证据时才列时间点。
 
 摘要以字幕/转写和关键帧为主证据，标题、简介、评论和弹幕提供背景；用户看到的是整条视频的概括，而不是逐段时间轴。
+
+## 第一周落地后的补充选型
+
+| 层 | 选型 | 说明 |
+|---|---|---|
+| 形象 | three + `@pixiv/three-vrm`（MIT） | 自写的 `VrmStage`：呼吸、眨眼、视线、口型和情绪表情。VRM 模型文件不进仓库，清单在 `apps/client/models.manifest.json`，由 `fetch-model` 下载并校验。Live2D 不在第一周范围内。 |
+| 聊天传输 | HTTPS + SSE | `POST /api/chat` 流式推送 `recall` / `video` / `emotion` / `delta` / `done` / `error`，接口见 [`API.md`](API.md)。 |
+| 聊天记录 | `node:sqlite` | 本地单文件，按角色分开；正式多端阶段再换存储。 |
+| 记忆 | mem0 OSS（Apache-2.0）+ transformers.js 跑 `bge-small-zh-v1.5` | 事实由模型提炼，经历原样保存；向量在本地算，首次使用下载约 25 MB。mem0 的 LLM 请求经本机回环桥转给我们自己的模型链，不单独持有密钥。 |
+| 模型链 | DeepSeek → 备用 OpenAI 兼容接口 → 本机 Codex | 只在一个提供方还没输出任何文字时才换下一个；Codex 只用于本地开发。 |
+| 人格 | `persona/rules.md` + `persona/characters/<id>.md` | 共用规则固定在文件里，模型不能改；记忆和视频内容只作资料附在后面。 |
+
+已知限制：Codex 的推理强度现在只接受 `none`/`low`/`medium`/`high`/`xhigh`/`max`，不再接受 `minimal`，默认用 `none`，可用 `CODEX_REASONING_EFFORT` 覆盖。
