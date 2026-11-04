@@ -11,7 +11,7 @@ import {
   startBilibiliLogin,
   waitForBilibiliLogin,
 } from "./bilibili-session.ts";
-import { summarizeWithCodex } from "./codex.ts";
+import { CODEX_REASONING_EFFORT, summarizeWithCodex } from "./codex.ts";
 import { buildVideoSummaryPrompt } from "./prompt.ts";
 
 const appDir = resolve(import.meta.dirname, "..");
@@ -93,7 +93,7 @@ async function summarizeVideo(
       tokenUsage: codexResult.usage ?? null,
       exactTokenUsageAvailable: codexResult.usage !== undefined,
       model: "gpt-6-luna",
-      reasoningEffort: "minimal",
+      reasoningEffort: CODEX_REASONING_EFFORT,
       transcriptSource: source.media.transcriptSource,
       frameCount: source.media.frameCount,
       frameTimes: source.media.frameTimes,
