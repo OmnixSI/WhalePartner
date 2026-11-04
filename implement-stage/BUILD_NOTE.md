@@ -18,18 +18,23 @@ Bilibili API requests are serialized with a two-second gap; multi-video CLI batc
 
 The ten-video baseline and its per-video source, summary, usage, and frame paths are recorded in the local file `.local/video-summaries/benchmark_2026-11-04.csv`. All assets remain local and Git-ignored.
 
+Run the repeatable benchmark with `pnpm --dir apps/api run benchmark:videos`. It uses the saved local Bilibili session through the CLI, preserves the five-second batch gap, and rebuilds the CSV from the resulting per-video assets. Pass `-- --export-only` to rebuild the CSV from existing assets without making network requests; existing manual review values in the CSV are retained.
+
 | Measure | Result |
 |---|---:|
 | Videos summarized | 10 / 10 |
-| Codex input tokens | 249,072 (103,680 cached) |
-| Codex output tokens | 14,173 |
-| Total reported model tokens | 263,245 |
-| Extractor elapsed time | 503.22 s |
-| Post-extraction processing, estimated from artifact timestamps | 300.07 s |
-| Per-video processing time, estimated | 13m 23s total; 80.33 s average; 77.54 s median |
-| Saved keyframes | 64 |
+| Codex input tokens | 247,977 (109,824 cached) |
+| Codex output tokens | 14,839 |
+| Total reported model tokens | 262,816 |
+| Evidence collection | 518.76 s total; 51.88 s average |
+| Keyframe extraction | 362.69 s total; 36.27 s average |
+| Codex summarization | 313.52 s total; 31.35 s average |
+| Input-to-summary ready | 13m 58.19s total; 83.82 s average; 73.46 s median; 53.16–185.47 s range |
+| Batch estimate including measured waits | 14m 43.20s |
+| Frames | 64 saved; 4 failed |
+| Supporting data | 200 comments fetched; 1,479 danmaku samples |
 
-The historical run records extractor duration but not individual extraction-stage timings. The post-extraction estimate runs from `source.json.fetchedAt` to `usage.json` modification time and includes prompt preparation, Codex summarization, and artifact writing. New runs print and save video ID resolution, metadata, subtitle/ASR, keyframe extraction, comments, danmaku, Codex summary, artifact writing, and input-to-summary time. Estimated per-video processing excludes CLI session startup and the five-second batch spacing; `interVideoWaitMs` records the latter separately.
+Each row records video ID resolution, metadata, subtitle/ASR, keyframe extraction, comments, danmaku, Codex summary, artifact writes, session setup, and input-to-summary time. The batch estimate sums each video's input-to-summary time and the recorded five-second inter-video waits; it is derived from stage measurements rather than a separate wall-clock stopwatch. The repeatable script prints these aggregates and preserves any manual review values already present in the CSV.
 
 ## Verified runs
 
