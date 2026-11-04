@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { AVATAR_MODEL } from "../avatar/model.config";
+import { setAvatarModel, useAvatarModel } from "../avatar/avatar-state";
+import { AVATAR_IS_PLACEHOLDER, AVATAR_MODELS } from "../avatar/model.config";
 import { clearHistory } from "../lib/chat";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 
@@ -11,6 +12,7 @@ const THEMES: Array<{ id: ThemeChoice; label: string }> = [
 
 export function SettingsPage() {
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
+  const model = useAvatarModel();
   const [cleared, setCleared] = useState<boolean | null>(null);
   const choose = (t: ThemeChoice) => { setTheme(t); applyTheme(t); };
   const [confirming, setConfirming] = useState(false);
@@ -44,10 +46,15 @@ export function SettingsPage() {
             <div>
               <div className="row__label">角色形象</div>
               <div className="row__desc">
-                {AVATAR_MODEL.label}，{AVATAR_MODEL.author}，
-                <a href={AVATAR_MODEL.licenseUrl} target="_blank" rel="noreferrer">{AVATAR_MODEL.license}</a>。
-                {AVATAR_MODEL.placeholder && "这是演示形象，不是鲸汐的正式设定。"}
+                {model.note}，{model.author}，
+                <a href={model.licenseUrl} target="_blank" rel="noreferrer">{model.license}</a>。
+                {AVATAR_IS_PLACEHOLDER && "现成的演示形象，仅内部展示。"}
               </div>
+            </div>
+            <div className="seg" role="group" aria-label="角色形象">
+              {AVATAR_MODELS.map((m) => (
+                <button key={m.id} aria-pressed={model.id === m.id} onClick={() => setAvatarModel(m.id)}>{m.label}</button>
+              ))}
             </div>
           </div>
           <div className="row">

@@ -1,25 +1,42 @@
-// 下载演示用的开源 VRM（pixiv three-vrm 官方示例，VRM Public License 1.0）。
-// 模型文件不进仓库；换原创模型时改 src/avatar/model.config.ts 和这里的 URL/校验值。
+// 下载演示用的现成二次元 VRM（内部展示用，文件不进仓库）。
+// 来源是 AIRI 项目自己引用的 VRoid 官方示例镜像；换模型：改下面的清单和 src/avatar/model.config.ts。
+//   pnpm --dir apps/client run fetch-model            下载全部
+//   pnpm --dir apps/client run fetch-model avatar-a   只下载一个
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
-const URL_ = "https://raw.githubusercontent.com/pixiv/three-vrm/dev/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm";
-const SHA256 = process.env.VRM_SHA256 ?? "12c2b97e95e700783a6a550dc0eee2d7880aeedccef9ae67bc4c5a2f0f2631a2";
-const target = resolve(import.meta.dirname, "../public/models/demo.vrm");
+const MODELS = [
+  {
+    id: "avatar-a",
+    file: "avatar-a.vrm",
+    url: "https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-A/AvatarSample_A.vrm",
+    sha256: "2a0ccd84880b03d7b65503d8b6287f7a97f3bb4fab70a5fd0a47b433c97827f5",
+  },
+  {
+    id: "avatar-b",
+    file: "avatar-b.vrm",
+    url: "https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-B/AvatarSample_B.vrm",
+    sha256: "7fca4a77fdc60ab2c78a9907430744562626180125fa386eb74fb2ea15c2e518",
+  },
+];
 
+const dir = resolve(import.meta.dirname, "../public/models");
+const wanted = process.argv.slice(2);
 const sha = (buffer) => createHash("sha256").update(buffer).digest("hex");
+mkdirSync(dir, { recursive: true });
 
-if (existsSync(target) && (!SHA256 || sha(readFileSync(target)) === SHA256)) {
-  console.log("demo.vrm 已存在，跳过下载。");
-  process.exit(0);
+for (const model of MODELS.filter((m) => wanted.length === 0 || wanted.includes(m.id))) {
+  const target = resolve(dir, model.file);
+  if (existsSync(target) && (!model.sha256 || sha(readFileSync(target)) === model.sha256)) {
+    console.log(`${model.file} 已存在，跳过。`);
+    continue;
+  }
+  const response = await fetch(model.url);
+  if (!response.ok) throw new Error(`${model.id} 下载失败：HTTP ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const digest = sha(buffer);
+  if (model.sha256 && digest !== model.sha256) throw new Error(`${model.id} 校验失败：期望 ${model.sha256}，实际 ${digest}`);
+  writeFileSync(target, buffer);
+  console.log(`已保存 ${model.file}（${(buffer.length / 1048576).toFixed(1)} MB）\n  sha256 ${digest}`);
 }
-
-const response = await fetch(URL_);
-if (!response.ok) throw new Error(`下载失败：HTTP ${response.status}`);
-const buffer = Buffer.from(await response.arrayBuffer());
-const digest = sha(buffer);
-if (SHA256 && digest !== SHA256) throw new Error(`校验失败：期望 ${SHA256}，实际 ${digest}`);
-mkdirSync(dirname(target), { recursive: true });
-writeFileSync(target, buffer);
-console.log(`已保存 ${target}（${(buffer.length / 1048576).toFixed(1)} MB）\nsha256 ${digest}`);
