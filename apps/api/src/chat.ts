@@ -1,7 +1,7 @@
 import { EmotionFilter, type Emotion } from "./emotion.ts";
 import type { ChatMessage, ChatProvider, LlmUsage } from "./llm/types.ts";
 import type { MemoryStore } from "./memory/types.ts";
-import { buildSystemPrompt } from "./persona/persona.ts";
+import { buildSystemPrompt, DEFAULT_CHARACTER, type CharacterId } from "./persona/persona.ts";
 import type { ChatStore } from "./store.ts";
 
 export const MAX_MESSAGE_CHARS = 2000;
@@ -18,6 +18,8 @@ export interface ChatDeps {
   store: ChatStore;
   /** 没有记忆（或记忆出故障）时聊天照常进行，只是不带记忆。 */
   memory?: MemoryStore;
+  /** 当前聊天的角色，决定人格和聊天记录；默认鲸汐。 */
+  character?: CharacterId;
 }
 
 const MEMORY_TIMEOUT_MS = 8000;
@@ -55,7 +57,8 @@ export function validateUserMessage(value: unknown): string {
  */
 export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
   const { provider, store, memory } = deps;
-  const userMessage = store.add("user", userText);
+  const character = deps.character ?? DEFAULT_CHARACTER;
+  const userMessage = store.add("user", userText, null, character);
 
   let facts: string[] = [];
   let experiences: string[] = [];
@@ -70,8 +73,8 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   }
   if (facts.length > 0) yield { type: "recall", memories: facts };
 
-  const history: ChatMessage[] = store.recent(HISTORY_LIMIT).map((message) => ({ role: message.role, content: message.content }));
-  const messages: ChatMessage[] = [{ role: "system", content: buildSystemPrompt({ memories: facts, experiences }) }, ...history];
+  const history: ChatMessage[] = store.recent(HISTORY_LIMIT, character).map((message) => ({ role: message.role, content: message.content }));
+  const messages: ChatMessage[] = [{ role: "system", content: buildSystemPrompt({ memories: facts, experiences }, character) }, ...history];
 
   const filter = new EmotionFilter();
   let reply = "";
@@ -110,7 +113,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   signal?.throwIfAborted();
   const emotion = first ?? "neutral";
   if (!reply.trim()) throw new Error("模型没有返回内容。");
-  const saved = store.add("assistant", reply.trimEnd(), emotion);
+  const saved = store.add("assistant", reply.trimEnd(), emotion, character);
   if (memory) queueRemember(memory, [{ role: "user", content: userText }, { role: "assistant", content: reply.trimEnd() }]);
   yield { type: "done", messageId: saved.id, emotion, provider: usedProvider, usage };
 }

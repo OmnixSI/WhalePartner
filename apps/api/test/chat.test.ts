@@ -149,3 +149,39 @@ test("POST /api/chat reports provider failure as an SSE error event", async () =
     server.close();
   }
 });
+
+test("each character keeps its own history and gets its own persona", async () => {
+  const store = new ChatStore(":memory:");
+  const seen: ChatMessage[][] = [];
+  const provider = new FallbackChatProvider([scripted(["[emotion:happy]好"], seen)]);
+  await collect(runChat({ provider, store, character: "deepseek" }, "你好呀"));
+  await collect(runChat({ provider, store, character: "claude" }, "早"));
+
+  assert.ok(seen[0][0].content.startsWith("# 角色设定：大肥鱼"));
+  assert.ok(seen[1][0].content.startsWith("# 角色设定：小克"));
+  // 小克的上下文里看不到大肥鱼的对话。
+  assert.deepEqual(seen[1].slice(1).map((m) => m.content), ["早"]);
+  assert.deepEqual(store.recent(10, "deepseek").map((m) => m.content), ["你好呀", "好"]);
+  assert.deepEqual(store.recent(10, "claude").map((m) => m.content), ["早", "好"]);
+  assert.deepEqual(store.recent(10, "whale"), []);
+});
+
+test("the chat routes validate the character and scope history by it", async () => {
+  const store = new ChatStore(":memory:");
+  const server = createApiServer({ config: loadConfig({}), provider: new FallbackChatProvider([scripted(["好"])]), store });
+  const base = await new Promise<string>((resolve) => server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
+  try {
+    const post = (body: unknown) => fetch(`${base}/api/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    assert.equal((await post({ message: "嗨", character: "nope" })).status, 400);
+    const ok = await post({ message: "嗨", character: "chatgpt" });
+    assert.equal(ok.status, 200);
+    await ok.text(); // 等回复流结束再查历史
+    const mine = (await (await fetch(`${base}/api/chat/history?character=chatgpt`)).json()) as { messages: unknown[] };
+    const other = (await (await fetch(`${base}/api/chat/history?character=claude`)).json()) as { messages: unknown[] };
+    assert.equal(mine.messages.length, 2);
+    assert.equal(other.messages.length, 0);
+    assert.equal((await fetch(`${base}/api/chat/history?character=nope`)).status, 400);
+  } finally {
+    server.close();
+  }
+});

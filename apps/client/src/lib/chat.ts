@@ -32,11 +32,11 @@ export function parseSseBlock(block: string): ChatStreamEvent | null {
   }
 }
 
-export async function* streamChat(message: string, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
+export async function* streamChat(message: string, character: string, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
   const response = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, character }),
     signal,
   });
   if (!response.ok || !response.body) {
@@ -62,9 +62,9 @@ export async function* streamChat(message: string, signal?: AbortSignal): AsyncG
   }
 }
 
-export async function fetchHistory(limit = 50, signal?: AbortSignal): Promise<HistoryMessage[]> {
+export async function fetchHistory(character: string, limit = 50, signal?: AbortSignal): Promise<HistoryMessage[]> {
   try {
-    const response = await fetch(`${API_BASE}/api/chat/history?limit=${limit}`, { signal });
+    const response = await fetch(`${API_BASE}/api/chat/history?limit=${limit}&character=${encodeURIComponent(character)}`, { signal });
     if (!response.ok) return [];
     return ((await response.json()) as { messages: HistoryMessage[] }).messages;
   } catch {

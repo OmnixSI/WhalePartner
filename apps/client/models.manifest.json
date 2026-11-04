@@ -1,0 +1,87 @@
+{
+  "$comment": "角色模型清单：fetch-model 脚本和界面都读这一份。新增模型只加一条。授权先不核对，仅内部展示；licenseNote 如实记录来源声明。",
+  "models": [
+    {
+      "id": "deepseek-whale",
+      "file": "deepseek-whale.vrm",
+      "label": "DeepSeek 鲸鱼娘 · 蓝色小肥鱼",
+      "source": "木子惡魔 · DeepSeek 鯨魚娘（sunfish1728/deepcoin-avatars）",
+      "licenseNote": "作者允许发布并要求署名（木子惡魔）；VRM 内置 allowRedistribution=false、commercialUsage=personalNonProfit，即仅限个人非商业，未获商用或改作授权",
+      "download": {
+        "url": "https://github.com/sunfish1728/deepcoin-avatars/releases/download/deepseek-whale-v1.0.0/deepseek-whale-v1.0.0.zip",
+        "zipEntry": "model.vrm"
+      },
+      "sha256": "c14879ff5c42501043896aae03ce971b2c11eee2e76106d47ee98741aa842ff5"
+    },
+    {
+      "id": "claude-whale",
+      "file": "claude-whale.vrm",
+      "label": "Claude 娘 · 橘发花饰",
+      "source": "木子惡魔 · Claude 娘（sunfish1728/deepcoin-avatars）",
+      "licenseNote": "作者允许发布并要求署名（木子惡魔）；VRM 内置 allowRedistribution=false、commercialUsage=personalNonProfit，即仅限个人非商业，未获商用或改作授权",
+      "download": {
+        "url": "https://github.com/sunfish1728/deepcoin-avatars/releases/download/claude-whale-v1.0.0/claude-whale-v1.0.0.zip",
+        "zipEntry": "model.vrm"
+      },
+      "sha256": "6f2ffc8b0782013b3c1a3c40e3b9bbb8fd25277907f261950345eece24962db1"
+    },
+    {
+      "id": "white-purple-dragon",
+      "file": "white-purple-dragon.vrm",
+      "label": "白紫龙娘 · 小肥鱼",
+      "source": "木子惡魔 · 白紫龍娘（sunfish1728/deepcoin-avatars）",
+      "licenseNote": "作者允许发布并要求署名（木子惡魔）；VRM 内置 allowRedistribution=false、commercialUsage=personalNonProfit，即仅限个人非商业，未获商用或改作授权",
+      "download": {
+        "url": "https://github.com/sunfish1728/deepcoin-avatars/releases/download/white-purple-dragon-v1.0.0/white-purple-dragon-v1.0.0.zip",
+        "zipEntry": "model.vrm"
+      },
+      "sha256": "7b6a10c87f19407f353009a77c192237d87aec0b873b3be3dc473efc4e59f283"
+    },
+    {
+      "id": "avatar-a",
+      "file": "avatar-a.vrm",
+      "label": "栗发 · 软绵绵",
+      "source": "VRoid 官方示例 AvatarSample_A",
+      "licenseNote": "VRoid 示例模型使用条件",
+      "download": {
+        "url": "https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-A/AvatarSample_A.vrm"
+      },
+      "sha256": "2a0ccd84880b03d7b65503d8b6287f7a97f3bb4fab70a5fd0a47b433c97827f5"
+    },
+    {
+      "id": "avatar-b",
+      "file": "avatar-b.vrm",
+      "label": "紫发 · 元气系",
+      "source": "VRoid 官方示例 AvatarSample_B",
+      "licenseNote": "VRoid 示例模型使用条件",
+      "download": {
+        "url": "https://dist.ayaka.moe/vrm-models/VRoid-Hub/AvatarSample-B/AvatarSample_B.vrm"
+      },
+      "sha256": "7fca4a77fdc60ab2c78a9907430744562626180125fa386eb74fb2ea15c2e518"
+    },
+    {
+      "id": "avatar-f",
+      "file": "avatar-f.vrm",
+      "label": "VRoid 示例 F",
+      "source": "VRoid Studio AvatarSample_F（OpenGameArt 合集）",
+      "licenseNote": "VRoid 声明 CC0",
+      "download": {
+        "url": "https://opengameart.org/sites/default/files/avatarsample_f.zip",
+        "zipEntry": "AvatarSample_F.vrm"
+      },
+      "sha256": "d8eff1ed09b41afb94e30da27997560fb901dde925c813f835ab1986708521bb"
+    },
+    {
+      "id": "avatar-g",
+      "file": "avatar-g.vrm",
+      "label": "VRoid 示例 G",
+      "source": "VRoid Studio AvatarSample_G（OpenGameArt 合集）",
+      "licenseNote": "VRoid 声明 CC0",
+      "download": {
+        "url": "https://opengameart.org/sites/default/files/avatarsample_g.zip",
+        "zipEntry": "AvatarSample_G.vrm"
+      },
+      "sha256": "ad5750ce944b708155abb7ac6807e19d7f5e73a939f0ee32daf0539acfca57c0"
+    }
+  ]
+}

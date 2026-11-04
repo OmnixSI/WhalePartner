@@ -107,9 +107,20 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
         loaded.scene.updateMatrixWorld(true);
         const head = humanoid.getNormalizedBoneNode("head");
         const headY = head ? head.getWorldPosition(new THREE.Vector3()).y : 1.4;
-        camera.position.set(0, headY - 0.12, 2.3);
-        camera.lookAt(0, headY - 0.2, 0);
-        lookTarget.position.set(0, headY, 1.4);
+        const box = new THREE.Box3().setFromObject(loaded.scene);
+        const height = box.getSize(new THREE.Vector3()).y;
+        if (height < 1.3) {
+          // Q 版（二头身）：整个人放进画面，镜头略低、正对身体中心。
+          const half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+          const centerY = (box.min.y + box.max.y) / 2;
+          camera.position.set(0, centerY, (height * 1.3) / (2 * half));
+          camera.lookAt(0, centerY, 0);
+        } else {
+          // 正常比例：半身，头部在画面上三分之一。
+          camera.position.set(0, headY - 0.12, 2.3);
+          camera.lookAt(0, headY - 0.2, 0);
+        }
+        lookTarget.position.set(0, headY, camera.position.z - 0.6);
         if (loaded.lookAt) loaded.lookAt.target = lookTarget;
         setAvatarStatus("ready");
       },
