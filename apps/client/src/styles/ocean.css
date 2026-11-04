@@ -1,0 +1,40 @@
+/* 海水背景：渐变 + 光束 + 气泡 + 波浪。纯 CSS，prefers-reduced-motion 下静止。 */
+.ocean { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+  background:
+    radial-gradient(120% 70% at 78% -8%, rgb(255 255 255 / 0.85), transparent 55%),
+    linear-gradient(180deg, var(--bg-sky) 0%, var(--bg) 46%, var(--bg-deep) 100%); }
+:root[data-theme="dark"] .ocean,
+:root:not([data-theme="light"]) .ocean { }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ocean {
+    background:
+      radial-gradient(90% 60% at 80% -10%, rgb(95 214 196 / 0.22), transparent 60%),
+      linear-gradient(180deg, var(--bg-sky) 0%, var(--bg) 50%, var(--bg-deep) 100%); }
+}
+:root[data-theme="dark"] .ocean {
+  background:
+    radial-gradient(90% 60% at 80% -10%, rgb(95 214 196 / 0.22), transparent 60%),
+    linear-gradient(180deg, var(--bg-sky) 0%, var(--bg) 50%, var(--bg-deep) 100%); }
+
+.ocean__rays { position: absolute; inset: -20% -10% 20% -10%; opacity: 0.55; mix-blend-mode: soft-light;
+  background:
+    repeating-linear-gradient(104deg, transparent 0 70px, rgb(255 255 255 / 0.55) 90px, transparent 130px 220px);
+  filter: blur(14px); animation: rays 22s ease-in-out infinite alternate; }
+@keyframes rays { from { transform: translateX(-3%) skewX(-4deg); } to { transform: translateX(3%) skewX(3deg); } }
+
+.ocean__wave { position: absolute; left: 0; width: 200%; bottom: 0; height: 26vh; opacity: 0.5; }
+.ocean__wave path { fill: var(--tide); }
+.ocean__wave--b { opacity: 0.28; height: 32vh; animation: drift 26s linear infinite reverse; }
+.ocean__wave--a { animation: drift 18s linear infinite; }
+@keyframes drift { to { transform: translateX(-50%); } }
+
+.bubble { position: absolute; bottom: -40px; width: var(--s); height: var(--s); left: var(--x); border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.15) 55%, transparent 70%);
+  border: 1px solid rgb(255 255 255 / 0.5); opacity: 0;
+  animation: rise var(--d) ease-in var(--delay) infinite; }
+@keyframes rise {
+  0% { transform: translate3d(0, 0, 0) scale(0.7); opacity: 0; }
+  12% { opacity: 0.8; }
+  50% { transform: translate3d(14px, -55vh, 0) scale(1); }
+  100% { transform: translate3d(-10px, -112vh, 0) scale(1.1); opacity: 0; }
+}
