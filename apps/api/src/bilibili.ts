@@ -233,7 +233,11 @@ export function formatBilibiliEvidence(input: {
   return lines.join("\n");
 }
 
-export async function collectBilibiliVideoEvidence(input: string, sessdata = "") {
+export async function collectBilibiliVideoEvidence(
+  input: string,
+  sessdata = "",
+  options: { framesDir?: string } = {},
+) {
   await assertBilibiliRequestAllowed();
   const url = normalizeBilibiliInput(input);
   const raw = await extractAll({
@@ -242,7 +246,7 @@ export async function collectBilibiliVideoEvidence(input: string, sessdata = "")
     extractFrames: true,
     downloadVideo: false,
     maxFrames: MAX_FRAMES,
-    framesDir: SUMMARY_ROOT,
+    framesDir: options.framesDir ?? SUMMARY_ROOT,
     detectScenes: false,
     asrProvider: "bcut",
     visionProvider: "none",
