@@ -1,0 +1,40 @@
+name: 开发任务
+description: 记录一个可交付的开发工作
+title: "[Task] "
+labels: []
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标
+      description: 要解决什么问题，为什么要做？
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 本任务包括哪些工作？
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 完成条件
+      description: 写成可以实际检查的结果。
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: 依赖与接口
+      description: 需要哪些任务、服务或输入输出约定？
+    validations:
+      required: false
+  - type: textarea
+    id: verification
+    attributes:
+      label: 验证方法
+      description: 计划运行哪些命令或手动检查哪些行为？
+    validations:
+      required: false
