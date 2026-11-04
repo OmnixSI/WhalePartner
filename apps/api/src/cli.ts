@@ -1,6 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { collectBilibiliText } from "./bilibili.ts";
+import { assertBilibiliRequestAllowed, collectBilibiliText } from "./bilibili.ts";
+import {
+  bilibiliSessionPath,
+  isBilibiliSessionValid,
+  loadBilibiliSession,
+  logoutFromBilibili,
+  startBilibiliLogin,
+  waitForBilibiliLogin,
+} from "./bilibili-session.ts";
 import { summarizeWithCodex } from "./codex.ts";
 import { buildVideoSummaryPrompt } from "./prompt.ts";
 
@@ -14,8 +22,8 @@ async function writeSmokeArtifact() {
   process.stdout.write(outPath + "\n");
 }
 
-async function summarizeVideo(input: string) {
-  const source = await collectBilibiliText(input);
+async function summarizeVideo(input: string, sessdata: string) {
+  const source = await collectBilibiliText(input, sessdata);
   const bvid = source.bvid;
   if (!bvid) throw new Error("提取结果缺少 BV 号，无法保存摘要。");
 
@@ -23,12 +31,79 @@ async function summarizeVideo(input: string) {
   await mkdir(outDir, { recursive: true });
   await writeFile(resolve(outDir, "source.json"), JSON.stringify(source, null, 2) + "\n");
 
+  if (source.rateLimit.limited) {
+    const reason = source.rateLimit.status < 0
+      ? `风控码 ${source.rateLimit.status}`
+      : `HTTP ${source.rateLimit.status}`;
+    process.stdout.write(`B 站触发 ${reason}；请求已暂停至 ${source.rateLimit.retryAt}。本次只保存部分提取数据，未生成摘要。\n`);
+    return true;
+  }
+
   const prompt = buildVideoSummaryPrompt(source.formattedText);
-  const summary = await summarizeWithCodex(prompt);
-  const summaryText = summary.trim() + "\n";
+  const codexResult = await summarizeWithCodex(prompt);
+  const summaryText = codexResult.message.trim() + "\n";
   await writeFile(resolve(outDir, "summary.md"), summaryText);
+  await writeFile(
+    resolve(outDir, "usage.json"),
+    JSON.stringify({
+      promptCharacters: prompt.length,
+      summaryCharacters: codexResult.message.length,
+      tokenUsage: codexResult.usage ?? null,
+      exactTokenUsageAvailable: codexResult.usage !== undefined,
+    }, null, 2) + "\n",
+  );
   process.stdout.write(summaryText);
+  if (codexResult.usage) {
+    process.stdout.write(
+      `Codex tokens: input ${codexResult.usage.inputTokens} (cached ${codexResult.usage.cachedInputTokens}), output ${codexResult.usage.outputTokens}.\n`,
+    );
+  } else {
+    process.stdout.write(`Codex token usage unavailable; prompt ${prompt.length} chars, summary ${codexResult.message.length} chars.\n`);
+  }
   process.stdout.write("\n已保存提取证据和摘要：" + outDir + "\n");
+  return source.rateLimit.limited;
+}
+
+async function summarizeVideos(inputs: string[]) {
+  await assertBilibiliRequestAllowed();
+  const session = await loadBilibiliSession();
+  if (session && !(await isBilibiliSessionValid(session.sessdata))) {
+    throw new Error("本机保存的 B 站登录态已失效，请先运行 pnpm run login。");
+  }
+
+  process.stdout.write(session ? "使用本机 B 站登录态。\n" : "未登录，使用匿名数据。\n");
+  for (const input of inputs) {
+    const rateLimited = await summarizeVideo(input, session?.sessdata ?? "");
+    if (rateLimited) {
+      process.stdout.write("B 站已触发限流保护，本次停止后续视频请求。等待本机冷却时间结束后再重试。\n");
+      break;
+    }
+  }
+}
+
+async function login(args: string[]) {
+  await assertBilibiliRequestAllowed();
+  if (args[0] === "--wait") {
+    await waitForBilibiliLogin(() => process.stdout.write("已扫码，请在 B 站 App 中确认登录。\n"));
+    process.stdout.write(`B 站登录成功；凭据保存在本机：${bilibiliSessionPath()}\n`);
+    return;
+  }
+
+  await startBilibiliLogin((qrPath) => {
+    process.stdout.write(`本机二维码已生成：${qrPath}\n请使用 B 站 App 扫码并在手机上确认。\n`);
+  });
+  process.stdout.write("扫码并在手机上确认后，运行 pnpm --dir apps/api run login -- --wait 完成授权。\n");
+}
+
+async function showLoginStatus() {
+  await assertBilibiliRequestAllowed();
+  const session = await loadBilibiliSession();
+  if (!session) {
+    process.stdout.write("未登录 B 站。运行 pnpm run login 开始扫码。\n");
+    return;
+  }
+  const valid = await isBilibiliSessionValid(session.sessdata);
+  process.stdout.write(valid ? "B 站登录态有效。\n" : "B 站登录态已失效。运行 pnpm run login 重新扫码。\n");
 }
 
 async function main() {
@@ -38,19 +113,37 @@ async function main() {
   }
 
   const args = process.argv.slice(2);
+  if (args[0] === "login") {
+    await login(args.slice(1));
+    return;
+  }
+
+  if (args[0] === "status") {
+    await showLoginStatus();
+    return;
+  }
+
+  if (args[0] === "logout") {
+    await logoutFromBilibili();
+    process.stdout.write("已清除本机 B 站登录态。\n");
+    return;
+  }
+
   if (args[0] === "summarize") {
-    const input = args[1] === "--" ? args[2] : args[1];
-    if (!input) {
-      process.stderr.write("Usage: pnpm run summarize -- <bilibili-url-or-bvid>\n");
+    const inputs = args.slice(1).filter((arg) => arg !== "--");
+    if (inputs.length === 0) {
+      process.stderr.write("Usage: pnpm run summarize -- <bilibili-url-or-bvid> [url-or-bvid ...]\n");
       process.exitCode = 2;
       return;
     }
 
-    await summarizeVideo(input);
+    await summarizeVideos(inputs);
     return;
   }
 
-  process.stderr.write("Usage: pnpm run summarize -- <bilibili-url-or-bvid>\n");
+  process.stderr.write(
+    "Usage: pnpm run login | status | logout | summarize -- <bilibili-url-or-bvid> [url-or-bvid ...]\n",
+  );
   process.exitCode = 2;
 }
 

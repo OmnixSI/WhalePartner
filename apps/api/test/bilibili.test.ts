@@ -31,15 +31,17 @@ function metadataResponse() {
 
 async function withMockBilibili(
   subtitleAvailable: boolean,
-  action: (requests: string[]) => Promise<void>,
+  action: (requests: string[], cookies: Array<string | undefined>) => Promise<void>,
   danmakuXml = '<i><d p="12.4,1,25,16777215,1700000000,0,abc,0">弹幕观点</d></i>',
 ) {
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
-  globalThis.fetch = async (input) => {
+  const cookies: Array<string | undefined> = [];
+  globalThis.fetch = async (input, init) => {
     const rawUrl = input instanceof Request ? input.url : String(input);
     const url = new URL(rawUrl);
     requests.push(url.href);
+    cookies.push(new Headers(init?.headers).get("Cookie") ?? undefined);
 
     if (url.hostname === "api.bilibili.com" && url.pathname === "/x/web-interface/wbi/view") {
       return metadataResponse();
@@ -85,7 +87,7 @@ async function withMockBilibili(
   };
 
   try {
-    await action(requests);
+    await action(requests, cookies);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -133,6 +135,15 @@ test("does not start ASR when the video has no published subtitle", async () => 
     assert.equal(result.formattedText.includes("观众评论内容"), true);
     assert.equal(requests.some((url) => url.includes("/x/player/playurl")), false);
     assert.equal(requests.some((url) => url.includes("/x/v2/reply")), true);
+  });
+});
+
+test("uses an optional local SESSDATA for extraction without including it in results", async () => {
+  const testSessdata = "local-test-session-value";
+  await withMockBilibili(true, async (_requests, cookies) => {
+    const result = await collectBilibiliText(bvid, testSessdata);
+    assert.equal(cookies.some((cookie) => cookie === `SESSDATA=${testSessdata}`), true);
+    assert.equal(JSON.stringify(result).includes(testSessdata), false);
   });
 });
 

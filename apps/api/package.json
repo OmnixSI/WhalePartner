@@ -9,6 +9,9 @@
     "smoke": "node src/cli.ts --smoke",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "login": "node src/cli.ts login",
+    "status": "node src/cli.ts status",
+    "logout": "node src/cli.ts logout",
     "summarize": "node src/cli.ts summarize"
   },
   "devDependencies": {

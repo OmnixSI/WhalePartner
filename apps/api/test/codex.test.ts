@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseCodexMessage } from "../src/codex.ts";
+import { parseCodexMessage, parseCodexResult } from "../src/codex.ts";
 import { buildVideoSummaryPrompt } from "../src/prompt.ts";
 
 test("builds a text-only summary prompt from extracted evidence", () => {
@@ -17,9 +17,16 @@ test("reads the final completed Codex agent message from JSONL events", () => {
   const output = [
     JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "旧摘要" } }),
     JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "## 摘要\n新摘要" } }),
-    JSON.stringify({ type: "turn.completed" }),
+    JSON.stringify({
+      type: "turn.completed",
+      usage: { input_tokens: 6400, cached_input_tokens: 0, output_tokens: 380 },
+    }),
   ].join("\n");
 
   assert.equal(parseCodexMessage(output), "## 摘要\n新摘要");
+  assert.deepEqual(parseCodexResult(output), {
+    message: "## 摘要\n新摘要",
+    usage: { inputTokens: 6400, cachedInputTokens: 0, outputTokens: 380 },
+  });
   assert.throws(() => parseCodexMessage('{"type":"turn.completed"}'), /没有返回摘要文本/);
 });

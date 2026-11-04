@@ -2,12 +2,28 @@ import { spawn } from "node:child_process";
 
 const CODEX_TIMEOUT_MS = 240000;
 
-export function parseCodexMessage(output: string) {
+export interface CodexTokenUsage {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+}
+
+export interface CodexResult {
+  message: string;
+  usage?: CodexTokenUsage;
+}
+
+export function parseCodexResult(output: string): CodexResult {
   let message = "";
+  let usage: CodexTokenUsage | undefined;
   for (const line of output.split(/\r?\n/)) {
     if (!line.trim()) continue;
 
-    let event: { type?: string; item?: { type?: string; text?: string } };
+    let event: {
+      type?: string;
+      item?: { type?: string; text?: string };
+      usage?: { input_tokens?: unknown; cached_input_tokens?: unknown; output_tokens?: unknown };
+    };
     try {
       event = JSON.parse(line);
     } catch {
@@ -17,13 +33,30 @@ export function parseCodexMessage(output: string) {
     if (event.type === "item.completed" && event.item?.type === "agent_message") {
       message = event.item.text ?? "";
     }
+
+    if (
+      event.type === "turn.completed" &&
+      typeof event.usage?.input_tokens === "number" &&
+      typeof event.usage.cached_input_tokens === "number" &&
+      typeof event.usage.output_tokens === "number"
+    ) {
+      usage = {
+        inputTokens: event.usage.input_tokens,
+        cachedInputTokens: event.usage.cached_input_tokens,
+        outputTokens: event.usage.output_tokens,
+      };
+    }
   }
 
   if (!message.trim()) throw new Error("Codex 没有返回摘要文本。");
-  return message;
+  return { message, usage };
 }
 
-export async function summarizeWithCodex(prompt: string) {
+export function parseCodexMessage(output: string) {
+  return parseCodexResult(output).message;
+}
+
+export async function summarizeWithCodex(prompt: string): Promise<CodexResult> {
   const args = [
     "exec",
     "--ephemeral",
@@ -41,7 +74,7 @@ export async function summarizeWithCodex(prompt: string) {
     "-",
   ];
 
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<CodexResult>((resolve, reject) => {
     const codex = spawn("codex", args, { cwd: "/private/tmp", stdio: ["pipe", "pipe", "pipe"] });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
@@ -66,7 +99,7 @@ export async function summarizeWithCodex(prompt: string) {
       }
 
       try {
-        resolve(parseCodexMessage(Buffer.concat(stdout).toString("utf8")));
+        resolve(parseCodexResult(Buffer.concat(stdout).toString("utf8")));
       } catch (error) {
         reject(error);
       }

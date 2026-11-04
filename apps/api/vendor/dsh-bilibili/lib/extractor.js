@@ -1,8 +1,9 @@
 /**
  * Bilibili video extraction: metadata, transcript, comments, danmaku,
  * and subtitle-driven keyframes. One module failure never fails the rest
- * (each channel returns an empty result with a note). HTTP goes through
- * the global fetch with 412 backoff; frames go through the ffmpeg binary.
+ * (each channel returns an empty result with a note). Bilibili requests are
+ * serialized with a two-second gap; HTTP 412/429 pauses further requests.
+ * Frames go through the ffmpeg binary.
  *
  * @module dsh-bilibili/extractor
  */
@@ -29,12 +30,94 @@ const SCENE_SAMPLED_STEP_FRAMES = 60; // sampled pass decodes 1 frame per 60 (~2
 const SCENE_PEAK_MIN_GAP = 5;
 const VIDEO_CACHE_TTL_MS = 24 * 3600 * 1000;
 const TRANSCRIPT_CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 文稿小且不变，缓存 7 天
-const MAX_RETRIES = 2;
 const DANMAKU_SAMPLE_LIMIT = 200;
 const AUDIO_CAP_BYTES = 200 * 1048576; // whisper-local 音频下载上限（DASH 纯音频远小于视频）
 const AUDIO_CONVERT_TIMEOUT_MS = 180000; // 整段音频转 16kHz WAV（长视频需要数十秒）
+const BILIBILI_REQUEST_GAP_MS = 2000;
+const BILIBILI_RATE_LIMIT_PAUSE_MS = 15 * 60 * 1000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+let biliRequestQueue = Promise.resolve();
+let lastBiliRequestAt = 0;
+let biliRateLimitPause;
+
+class BilibiliRateLimitError extends Error {
+  constructor(status, retryAt) {
+    const response = status < 0 ? `risk-control code ${status}` : `HTTP ${status}`;
+    super(`Bilibili returned ${response}; requests are paused until ${new Date(retryAt).toISOString()}.`);
+    this.name = "BilibiliRateLimitError";
+    this.status = status;
+    this.retryAt = retryAt;
+  }
+}
+
+function isBilibiliHost(hostname) {
+  const host = String(hostname ?? "").toLowerCase();
+  return host === "b23.tv" || host === "bilibili.com" || host.endsWith(".bilibili.com") ||
+    host === "hdslb.com" || host.endsWith(".hdslb.com");
+}
+
+function retryAfterMs(response) {
+  const value = response.headers.get("retry-after");
+  if (!value) return 0;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : 0;
+}
+
+function pauseForRateLimit(status, response) {
+  const delayMs = Math.max(BILIBILI_RATE_LIMIT_PAUSE_MS, retryAfterMs(response));
+  const retryAt = Date.now() + delayMs;
+  biliRateLimitPause = {
+    status,
+    retryAt: Math.max(retryAt, biliRateLimitPause?.retryAt ?? 0),
+  };
+  return new BilibiliRateLimitError(status, biliRateLimitPause.retryAt);
+}
+
+function rateLimitSnapshot() {
+  return biliRateLimitPause
+    ? { limited: true, status: biliRateLimitPause.status, retryAt: new Date(biliRateLimitPause.retryAt).toISOString() }
+    : { limited: false, status: null, retryAt: null };
+}
+
+async function biliFetch(session, input, init) {
+  const url = input instanceof Request ? new URL(input.url) : new URL(String(input));
+  if (!isBilibiliHost(url.hostname)) return fetch(input, init);
+
+  let release;
+  const previous = biliRequestQueue;
+  biliRequestQueue = new Promise((resolve) => { release = resolve; });
+  await previous;
+  try {
+    if (biliRateLimitPause && biliRateLimitPause.retryAt > Date.now()) {
+      throw new BilibiliRateLimitError(biliRateLimitPause.status, biliRateLimitPause.retryAt);
+    }
+    if (biliRateLimitPause) biliRateLimitPause = undefined;
+
+    const waitMs = Math.max(0, lastBiliRequestAt + BILIBILI_REQUEST_GAP_MS - Date.now());
+    if (waitMs > 0) await sleep(waitMs);
+    if (biliRateLimitPause && biliRateLimitPause.retryAt > Date.now()) {
+      throw new BilibiliRateLimitError(biliRateLimitPause.status, biliRateLimitPause.retryAt);
+    }
+
+    try {
+      const response = await fetch(input, init);
+      lastBiliRequestAt = Date.now();
+      if (response.status === 412 || response.status === 429) {
+        throw pauseForRateLimit(response.status, response);
+      }
+      return response;
+    } catch (error) {
+      lastBiliRequestAt = Date.now();
+      throw error;
+    }
+  } finally {
+    release();
+  }
+}
 
 /** Combine the caller's abort signal with a per-request timeout. */
 function requestSignal(signal, ms) {
@@ -71,24 +154,26 @@ async function apiGet(session, endpoint, params) {
       if (value !== undefined && value !== null) target.searchParams.set(key, String(value));
     }
   }
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+  for (let attempt = 0; attempt < 2; attempt++) {
     let resp;
     try {
-      resp = await fetch(target, {
+      resp = await biliFetch(session, target, {
         headers: session.headers,
         signal: requestSignal(session.signal, REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
       if (session.signal?.aborted) throw error; // caller cancelled
-      if (attempt < MAX_RETRIES) { await sleep(2 ** (attempt + 1) * 1000); continue; }
+      if (error instanceof BilibiliRateLimitError) throw error;
+      if (attempt === 0) { await sleep(10_000); continue; }
       return { code: -1, message: "request failed: " + (error?.message ?? error) };
     }
-    if (resp.status === 412 && attempt < MAX_RETRIES) {
-      await sleep(2 ** (attempt + 1) * 1000);
-      continue;
-    }
     if (!resp.ok) return { code: -1, message: "HTTP " + resp.status };
-    try { return await resp.json(); } catch {
+    try {
+      const body = await resp.json();
+      if (body.code === -352 || body.code === -412) throw pauseForRateLimit(body.code, resp);
+      return body;
+    } catch (error) {
+      if (error instanceof BilibiliRateLimitError) throw error;
       return { code: -1, message: "invalid json response" };
     }
   }
@@ -97,14 +182,15 @@ async function apiGet(session, endpoint, params) {
 
 async function resolveShortLink(session, url) {
   try {
-    const resp = await fetch(url, {
+    const resp = await biliFetch(session, url, {
       headers: session.headers,
       redirect: "follow",
       signal: requestSignal(session.signal, REQUEST_TIMEOUT_MS),
     });
     const match = /(BV[0-9A-Za-z]{10})/.exec(resp.url);
     return match ? match[1] : undefined;
-  } catch {
+  } catch (error) {
+    if (error instanceof BilibiliRateLimitError) throw error;
     return undefined;
   }
 }
@@ -114,7 +200,6 @@ async function getVideoInfo(session, bvid) {
   let data;
   if (signed) {
     data = await apiGet(session, "/x/web-interface/wbi/view", signed);
-    if (data.message === "HTTP 412") data = await apiGet(session, "/x/web-interface/view", { bvid });
   } else {
     data = await apiGet(session, "/x/web-interface/view", { bvid });
   }
@@ -480,7 +565,8 @@ async function getWbiKeys(session) {
     if (!imgKey || !subKey) return undefined;
     session._wbiKeys = { imgKey, subKey };
     return session._wbiKeys;
-  } catch {
+  } catch (error) {
+    if (error instanceof BilibiliRateLimitError) throw error;
     return undefined;
   }
 }
@@ -526,7 +612,7 @@ async function getSubtitle(session, bvid, cid) {
   if (subUrl.startsWith("//")) subUrl = "https:" + subUrl;
   let body;
   try {
-    const resp = await fetch(subUrl, {
+    const resp = await biliFetch(session, subUrl, {
       headers: session.headers,
       signal: requestSignal(session.signal, REQUEST_TIMEOUT_MS),
     });
@@ -653,7 +739,7 @@ const emptyDanmaku = (note) => ({ total: 0, top_messages: [], samples: [], note 
 async function getDanmaku(session, cid) {
   let xml;
   try {
-    const resp = await fetch("https://comment.bilibili.com/" + cid + ".xml", {
+    const resp = await biliFetch(session, "https://comment.bilibili.com/" + cid + ".xml", {
       headers: session.headers,
       signal: requestSignal(session.signal, REQUEST_TIMEOUT_MS),
     });
@@ -1381,7 +1467,16 @@ export async function extractAll(options) {
   const envChecks = new Map((envReport?.checks ?? []).map((c) => [c.id, c]));
 
   let bvid = parseBvid(url);
-  if (!bvid && /b23\.tv/.test(String(url))) bvid = await resolveShortLink(session, url);
+  if (!bvid && /b23\.tv/.test(String(url))) {
+    try {
+      bvid = await resolveShortLink(session, url);
+    } catch (error) {
+      if (error instanceof BilibiliRateLimitError) {
+        return { success: false, error: error.message, rateLimit: rateLimitSnapshot() };
+      }
+      throw error;
+    }
+  }
   if (!bvid) return { success: false, error: "cannot parse a Bilibili video id from the url" };
 
   let info;
@@ -1389,7 +1484,7 @@ export async function extractAll(options) {
     info = await getVideoInfo(session, bvid);
   } catch (error) {
     if (session.signal?.aborted) throw error;
-    return { success: false, error: String(error?.message ?? error), bvid };
+    return { success: false, error: String(error?.message ?? error), bvid, rateLimit: rateLimitSnapshot() };
   }
 
   const baseDir = framesDir || join(tmpdir(), "dsh-bilibili");
@@ -1659,6 +1754,7 @@ export async function extractAll(options) {
     comments,
     danmaku,
     frames,
+    rateLimit: rateLimitSnapshot(),
   };
 }
 

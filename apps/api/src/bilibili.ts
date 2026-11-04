@@ -1,7 +1,10 @@
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { extractAll, parseBvid } from "../vendor/dsh-bilibili/lib/extractor.js";
 import { formatExtraction } from "../vendor/dsh-bilibili/lib/format.js";
 
 const COMMENT_LIMIT = 20;
+const RATE_LIMIT_PATH = resolve(import.meta.dirname, "../../../.local/bilibili-rate-limit.json");
 
 type VideoComment = {
   content: string;
@@ -15,6 +18,37 @@ type VideoComments = {
   comments: VideoComment[];
   note: string;
 };
+
+export async function assertBilibiliRequestAllowed() {
+  let pause: { retryAt?: string; status?: number };
+  try {
+    pause = JSON.parse(await readFile(RATE_LIMIT_PATH, "utf8"));
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
+
+  const retryAt = Date.parse(pause.retryAt ?? "");
+  if (Number.isFinite(retryAt) && retryAt > Date.now()) {
+    const status = pause.status ?? "限流";
+    const reason = typeof status === "number" && status < 0 ? `风控码 ${status}` : `HTTP ${status}`;
+    throw new Error(`B 站触发 ${reason}，本机已暂停视频请求至 ${new Date(retryAt).toLocaleString()}。`);
+  }
+  await rm(RATE_LIMIT_PATH, { force: true });
+}
+
+async function recordBilibiliCooldown(rateLimit: {
+  limited?: boolean;
+  retryAt?: string | null;
+  status?: number | null;
+}) {
+  if (!rateLimit.limited || !rateLimit.retryAt) return;
+  await mkdir(resolve(RATE_LIMIT_PATH, ".."), { recursive: true, mode: 0o700 });
+  await writeFile(RATE_LIMIT_PATH, JSON.stringify({ status: rateLimit.status, retryAt: rateLimit.retryAt }, null, 2) + "\n", {
+    mode: 0o600,
+  });
+  await chmod(RATE_LIMIT_PATH, 0o600);
+}
 
 export function normalizeBilibiliInput(input: string) {
   const text = input.trim();
@@ -46,7 +80,8 @@ export function normalizeBilibiliInput(input: string) {
   throw new Error("目前只支持 Bilibili 视频链接和 b23.tv 短链。");
 }
 
-export async function collectBilibiliText(input: string) {
+export async function collectBilibiliText(input: string, sessdata = "") {
+  await assertBilibiliRequestAllowed();
   const url = normalizeBilibiliInput(input);
   const extraction = await extractAll({
     url,
@@ -55,8 +90,11 @@ export async function collectBilibiliText(input: string) {
     downloadVideo: false,
     asrProvider: "none",
     visionProvider: "none",
-    sessdata: "",
+    sessdata,
   });
+
+  const rateLimit = extraction.rateLimit ?? { limited: false, status: null, retryAt: null };
+  await recordBilibiliCooldown(rateLimit);
 
   if (extraction.success !== true) {
     throw new Error(extraction.error ?? "Bilibili 资料提取失败。");
@@ -89,6 +127,7 @@ export async function collectBilibiliText(input: string) {
     transcript: extraction.transcript,
     comments: modelComments,
     danmaku: extraction.danmaku,
+    rateLimit,
     formattedText,
     media: {
       videoDownloaded: false,
