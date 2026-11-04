@@ -8,12 +8,15 @@ import { LazyMemoryStore } from "./memory/mem0.ts";
 import type { MemoryStatus, MemoryStore } from "./memory/types.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "./persona/persona.ts";
 import { ChatStore } from "./store.ts";
+import { createVideoService, sharedParagraph, summarizeVideo, VideoError, type VideoService } from "./video-service.ts";
 
 export interface ServerDeps {
   config: ApiConfig;
   provider: FallbackChatProvider;
   store: ChatStore;
   memory?: MemoryStore & { status?(): MemoryStatus };
+  /** 提供后聊天里的 B 站链接会被看完，并开放 /api/videos/summarize。 */
+  video?: VideoService;
 }
 
 function healthBody(deps: ServerDeps) {
@@ -63,7 +66,7 @@ async function handleChat(deps: ServerDeps, request: IncomingMessage, response: 
 
   startSse(response);
   try {
-    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory, character }, text, abort.signal)) {
+    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory, character, video: deps.video }, text, abort.signal)) {
       const { type, ...data } = event;
       sendSse(response, type, data);
     }
@@ -81,6 +84,28 @@ function text(value: unknown, max: number, field: string, required = true) {
   }
   if (typeof value !== "string" || value.length > max) throw new ChatInputError(`${field} 必须是不超过 ${max} 字的文字。`);
   return value.trim();
+}
+
+/** 给“添加链接”入口用：看完一个视频，返回摘要，并把它记成她的一段经历。 */
+async function handleVideoSummary(deps: ServerDeps, request: IncomingMessage, response: ServerResponse) {
+  if (!deps.video) return sendJson(response, 503, { error: "视频功能未启用。" });
+  try {
+    const url = text((await readJsonBody(request)).url, 500, "url")!;
+    const result = await summarizeVideo(deps.video, url);
+    let remembered = false;
+    if (deps.memory) {
+      try {
+        await deps.memory.addExperience({ kind: "video", title: result.title, text: sharedParagraph(result.summary), url: result.url, sourceId: result.bvid });
+        remembered = true;
+      } catch (error) {
+        console.warn("视频经历写入记忆失败：", error instanceof Error ? error.message : error);
+      }
+    }
+    return sendJson(response, 200, { video: result, remembered });
+  } catch (error) {
+    const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : error instanceof VideoError ? 502 : 500;
+    return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "视频处理失败。" });
+  }
 }
 
 async function handleMemories(deps: ServerDeps, request: IncomingMessage, response: ServerResponse, url: URL) {
@@ -144,6 +169,10 @@ export function createApiServer(deps: ServerDeps): Server {
         await handleMemories(deps, request, response, url);
         return;
       }
+      if (request.method === "POST" && url.pathname === "/api/videos/summarize") {
+        await handleVideoSummary(deps, request, response);
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/api/chat") {
         await handleChat(deps, request, response);
         return;
@@ -164,7 +193,7 @@ if (import.meta.main) {
   const memory = config.memoryEnabled
     ? new LazyMemoryStore({ dataDir: config.memoryDir, provider })
     : undefined;
-  const server = createApiServer({ config, provider, store, memory });
+  const server = createApiServer({ config, provider, store, memory, video: createVideoService() });
   server.listen(config.port, host, () => {
     console.log(`WhalePartner API：http://${host}:${config.port}`);
     console.log(`模型链：${provider.providers.map((item) => `${item.id}(${item.model})`).join(" → ")}`);

@@ -128,3 +128,7 @@
 .chip--plain { flex-direction: row; align-items: center; font-weight: 500; font-size: 14px; }
 .chip:hover { transform: translateY(-1px); border-color: var(--accent); }
 .chip[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); box-shadow: var(--glow); }
+
+/* 看视频时的进度提示 */
+.waiting { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.progress { font-family: var(--font-ui); font-size: 14px; color: var(--text-soft); }

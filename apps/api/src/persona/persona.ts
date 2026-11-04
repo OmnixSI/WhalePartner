@@ -26,6 +26,8 @@ export interface PersonaContext {
   memories?: string[];
   /** 角色最近看过、想过的事（视频摘要、日记）。来自外部资料，不可信。 */
   experiences?: string[];
+  /** 这一轮发生的特殊情况（例如刚看完用户发来的视频），附在最后。 */
+  situation?: string;
 }
 
 const bullets = (items: string[]) => items.map((item) => `- ${item.replace(/\s+/g, " ").trim()}`).join("\n");
@@ -53,5 +55,6 @@ export function buildSystemPrompt(context: PersonaContext = {}, character: Chara
       ].join("\n"),
     );
   }
+  if (context.situation?.trim()) parts.push(context.situation.trim());
   return parts.join("\n\n");
 }
