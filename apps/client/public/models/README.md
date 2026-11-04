@@ -1,10 +1,9 @@
 # 角色模型
 
-`demo.vrm` 是演示用的开源模型，不提交到仓库，用 `pnpm --dir apps/client run fetch-model` 下载。
+`avatar-a.vrm`、`avatar-b.vrm` 是演示用的现成二次元模型，不提交到仓库，用 `pnpm --dir apps/client run fetch-model` 下载（校验 sha256）。
 
-- 来源：pixiv three-vrm 官方示例 `VRM1_Constraint_Twist_Sample.vrm`
-- 版权：© 2022 pixiv Inc.
-- 授权：[VRM Public License 1.0](https://vrm.dev/licenses/1.0/)
-- 用途：仅作内部展示。这不是鲸汐的原创形象；对外发布前要换成原创或已取得商用授权的模型。
+- 来源：VRoid 官方示例 AvatarSample_A / AvatarSample_B，经 AIRI 项目引用的镜像 `dist.ayaka.moe` 下载。
+- 版权：pixiv Inc. / VRoid Project。使用条件见 [VRoid 帮助页](https://vroid.pixiv.help/hc/en-us/articles/4402394424089)。
+- 用途：只作内部展示。这不是鲸汐的原创形象，也没有核对过对外发布和商用的授权；对外发布前要换成有授权的角色。
 
-换模型：修改 `src/avatar/model.config.ts` 的 `url` 与授权信息，以及 `scripts/fetch-model.mjs` 的下载地址和校验值。
+新增或替换模型：改 `src/avatar/model.config.ts` 的清单和 `scripts/fetch-model.mjs` 的下载地址与校验值。

@@ -3,9 +3,10 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
 import { setAvatarStatus } from "./avatar-state";
-import { AVATAR_MODEL, type AvatarEmotion } from "./model.config";
+import type { AvatarEmotion } from "./model.config";
 
 interface Props {
+  modelUrl: string;
   emotion: AvatarEmotion;
   speaking: boolean;
 }
@@ -18,7 +19,7 @@ function approach(current: number, target: number, rate: number, dt: number) {
   return current + (target - current) * Math.min(1, rate * dt);
 }
 
-export function VrmStage({ emotion, speaking }: Props) {
+export function VrmStage({ modelUrl, emotion, speaking }: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const live = useRef({ emotion: "neutral" as AvatarEmotion, speaking: false });
 
@@ -87,7 +88,7 @@ export function VrmStage({ emotion, speaking }: Props) {
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
     loader.load(
-      AVATAR_MODEL.url,
+      modelUrl,
       (gltf) => {
         const loaded = gltf.userData.vrm as VRM | undefined;
         if (disposed || !loaded) return;
@@ -99,8 +100,10 @@ export function VrmStage({ emotion, speaking }: Props) {
 
         // 放下手臂（默认是 T 字站姿），并按头部高度对准镜头。
         const humanoid = loaded.humanoid;
-        humanoid.getNormalizedBoneNode("leftUpperArm")?.rotation.set(0, 0, -1.35);
-        humanoid.getNormalizedBoneNode("rightUpperArm")?.rotation.set(0, 0, 1.35);
+        // VRM 0.x 模型经 rotateVRM0 转了 180°，手臂的转动方向和 VRM 1.0 相反。
+        const armSign = loaded.meta.metaVersion === "0" ? 1 : -1;
+        humanoid.getNormalizedBoneNode("leftUpperArm")?.rotation.set(0, 0, 1.3 * armSign);
+        humanoid.getNormalizedBoneNode("rightUpperArm")?.rotation.set(0, 0, -1.3 * armSign);
         loaded.scene.updateMatrixWorld(true);
         const head = humanoid.getNormalizedBoneNode("head");
         const headY = head ? head.getWorldPosition(new THREE.Vector3()).y : 1.4;
@@ -125,7 +128,8 @@ export function VrmStage({ emotion, speaking }: Props) {
         const wanted = live.current.emotion;
         for (const name of EXPRESSIONS) {
           weights[name] = approach(weights[name], wanted === name ? 1 : 0, 6, dt);
-          expressions.setValue(name, weights[name]);
+          if (expressions.getExpression(name)) expressions.setValue(name, weights[name]);
+          else if (name === "surprised") expressions.setValue("oh", weights[name] * 0.7); // VRM 0.x 没有 surprised，用 “哦” 的口型
         }
 
         // 眨眼：随机间隔，一次约 0.18 秒。
@@ -174,7 +178,7 @@ export function VrmStage({ emotion, speaking }: Props) {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, []);
+  }, [modelUrl]);
 
   return <div className="vrm" ref={mount} aria-hidden />;
 }

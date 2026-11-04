@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAvatarStatus } from "../avatar/avatar-state";
+import { useAvatarModel, useAvatarStatus } from "../avatar/avatar-state";
 import type { AvatarEmotion } from "../avatar/model.config";
 import { VrmStage } from "../avatar/VrmStage";
 import { ChatPanel } from "../components/ChatPanel";
@@ -9,6 +9,7 @@ export function ChatPage() {
   const [emotion, setEmotion] = useState<AvatarEmotion>("neutral");
   const [speaking, setSpeaking] = useState(false);
   const status = useAvatarStatus();
+  const model = useAvatarModel();
 
   return (
     <div className="home">
@@ -21,8 +22,8 @@ export function ChatPage() {
           <span className="badge">原创角色</span>
         </div>
         {status !== "ready" && <WhaleFigure />}
-        <VrmStage emotion={emotion} speaking={speaking} />
-        <p className="stage__hint">演示形象 · 原创角色设定与 DeepSeek 及其他社区角色无关</p>
+        <VrmStage modelUrl={model.url} emotion={emotion} speaking={speaking} />
+        <p className="stage__hint">演示形象 · 现成模型，仅内部展示</p>
       </section>
       <ChatPanel onEmotion={setEmotion} onSpeaking={setSpeaking} />
     </div>
