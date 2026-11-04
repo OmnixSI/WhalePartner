@@ -14,7 +14,9 @@
     "logout": "node src/cli.ts logout",
     "summarize": "node src/cli.ts summarize",
     "web": "node src/dev-server.ts",
-    "benchmark:videos": "node scripts/video-benchmark.mjs"
+    "benchmark:videos": "node scripts/video-benchmark.mjs",
+    "serve": "node --env-file-if-exists=.env src/server.ts",
+    "llm:ping": "node --env-file-if-exists=.env src/llm-ping.ts"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

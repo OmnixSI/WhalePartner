@@ -2,6 +2,9 @@ import { spawn } from "node:child_process";
 
 const CODEX_TIMEOUT_MS = 240000;
 
+/** gpt-6-luna 不再接受 "minimal"（可选 none/low/medium/high/xhigh/max），默认用最接近的 "none"。 */
+export const CODEX_REASONING_EFFORT = process.env.CODEX_REASONING_EFFORT?.trim() || "none";
+
 export interface CodexTokenUsage {
   inputTokens: number;
   cachedInputTokens: number;
@@ -52,6 +55,27 @@ export function parseCodexResult(output: string): CodexResult {
   return { message, usage };
 }
 
+/** Codex 把接口错误写成 stdout 里的 JSON 事件而不是 stderr；取最后一条错误信息。 */
+export function codexErrorFromEvents(output: string) {
+  let message = "";
+  for (const line of output.split(/\r?\n/)) {
+    try {
+      const event = JSON.parse(line) as { type?: string; message?: unknown; error?: { message?: unknown } };
+      if (event.type === "turn.failed" && typeof event.error?.message === "string") message = event.error.message;
+      else if (event.type === "error" && typeof event.message === "string" && !message) message = event.message;
+    } catch {
+      /* 非 JSON 行 */
+    }
+  }
+  try {
+    const inner = JSON.parse(message) as { error?: { message?: unknown } };
+    if (typeof inner.error?.message === "string") return inner.error.message;
+  } catch {
+    /* message 本身就是文字 */
+  }
+  return message;
+}
+
 export function parseCodexMessage(output: string) {
   return parseCodexResult(output).message;
 }
@@ -70,7 +94,7 @@ export function buildCodexArgs(imagePaths: string[] = []) {
     "-m",
     "gpt-6-luna",
     "-c",
-    'model_reasoning_effort="minimal"',
+    `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
     ...imagePaths.flatMap((path) => ["--image", path]),
     "-",
   ];
@@ -98,7 +122,7 @@ export async function summarizeWithCodex(prompt: string, imagePaths: string[] = 
     codex.once("close", (code, signal) => {
       clearTimeout(timeout);
       if (code !== 0) {
-        const detail = Buffer.concat(stderr).toString("utf8").trim();
+        const detail = Buffer.concat(stderr).toString("utf8").trim() || codexErrorFromEvents(Buffer.concat(stdout).toString("utf8"));
         reject(new Error(detail || `Codex CLI 退出，状态码 ${code ?? signal ?? "unknown"}。`));
         return;
       }

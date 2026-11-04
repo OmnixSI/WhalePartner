@@ -10,13 +10,13 @@ import {
   normalizeBilibiliInput,
 } from "./bilibili.ts";
 import { isBilibiliSessionValid, loadBilibiliSession } from "./bilibili-session.ts";
-import { summarizeWithCodex } from "./codex.ts";
+import { CODEX_REASONING_EFFORT, summarizeWithCodex } from "./codex.ts";
 import { buildVideoSummaryPrompt } from "./prompt.ts";
 
 const appDir = resolve(import.meta.dirname, "..");
 const webFile = resolve(appDir, "web/index.html");
 const model = "gpt-6-luna";
-const reasoningEffort = "minimal";
+const reasoningEffort = CODEX_REASONING_EFFORT;
 const maxBodyBytes = 16 * 1024;
 let summaryRunning = false;
 
