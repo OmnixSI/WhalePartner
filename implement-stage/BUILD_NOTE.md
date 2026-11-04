@@ -29,12 +29,12 @@ Run the repeatable benchmark with `pnpm --dir apps/api run benchmark:videos`. It
 | Evidence collection | 518.76 s total; 51.88 s average |
 | Keyframe extraction | 362.69 s total; 36.27 s average |
 | Codex summarization | 313.52 s total; 31.35 s average |
-| Input-to-summary ready | 13m 58.19s total; 83.82 s average; 73.46 s median; 53.16–185.47 s range |
-| Batch estimate including measured waits | 14m 43.20s |
+| Single-video input-to-summary estimate | 83.82 s average; 73.46 s median; 53.16–185.47 s range |
+| Batch estimate including one session setup and measured waits | 14m 37.92s |
 | Frames | 64 saved; 4 failed |
 | Supporting data | 200 comments fetched; 1,479 danmaku samples |
 
-Each row records video ID resolution, metadata, subtitle/ASR, keyframe extraction, comments, danmaku, Codex summary, artifact writes, session setup, and input-to-summary time. The batch estimate sums each video's input-to-summary time and the recorded five-second inter-video waits; it is derived from stage measurements rather than a separate wall-clock stopwatch. The repeatable script prints these aggregates and preserves any manual review values already present in the CSV.
+Each row records video ID resolution, metadata, subtitle/ASR, keyframe extraction, comments, danmaku, Codex summary, artifact writes, session setup, and input-to-summary time. The per-video input-to-summary figure estimates a standalone invocation. The batch estimate sums each video's pipeline time, one session setup, and recorded five-second inter-video waits; it is derived from stage measurements rather than a separate wall-clock stopwatch. The repeatable script prints these aggregates and preserves any manual review values already present in the CSV.
 
 ## Verified runs
 

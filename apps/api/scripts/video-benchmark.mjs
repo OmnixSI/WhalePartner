@@ -252,7 +252,9 @@ async function exportCsv() {
   const cachedInputTokens = rowList.reduce((total, row) => total + Number(row.cachedInputTokens || 0), 0);
   const outputTokens = rowList.reduce((total, row) => total + Number(row.outputTokens || 0), 0);
   const totalInputToReadyMs = rowList.reduce((total, row) => total + Number(row.inputToSummaryReadyMs || 0), 0);
+  const totalPipelineMs = rowList.reduce((total, row) => total + Number(row.pipelineToSummaryReadyMs || 0), 0);
   const totalInterVideoWaitMs = rowList.reduce((total, row) => total + Number(row.interVideoWaitMs || 0), 0);
+  const sessionSetupMs = Math.max(...rowList.map((row) => Number(row.sessionSetupMs || 0)));
   const sortedReadyTimes = rowList
     .map((row) => Number(row.inputToSummaryReadyMs || 0))
     .sort((left, right) => left - right);
@@ -266,8 +268,8 @@ async function exportCsv() {
   const danmakuSampleCount = rowList.reduce((total, row) => total + Number(row.danmakuSamples || 0), 0);
   process.stdout.write(`Benchmark CSV: ${csvPath}\n`);
   process.stdout.write(`Rows: ${rowList.length}; input tokens: ${inputTokens} (${cachedInputTokens} cached); output tokens: ${outputTokens}; total: ${inputTokens + outputTokens}.\n`);
-  process.stdout.write(`Input-to-summary ready: ${(totalInputToReadyMs / 1000).toFixed(2)}s total; ${(totalInputToReadyMs / rowList.length / 1000).toFixed(2)}s average; ${(medianInputToReadyMs / 1000).toFixed(2)}s median.\n`);
-  process.stdout.write(`Measured batch estimate including inter-video waits: ${((totalInputToReadyMs + totalInterVideoWaitMs) / 1000).toFixed(2)}s.\n`);
+  process.stdout.write(`Single-video input-to-summary estimate: ${(totalInputToReadyMs / 1000).toFixed(2)}s summed; ${(totalInputToReadyMs / rowList.length / 1000).toFixed(2)}s average; ${(medianInputToReadyMs / 1000).toFixed(2)}s median.\n`);
+  process.stdout.write(`Batch estimate including one session setup and inter-video waits: ${((totalPipelineMs + sessionSetupMs + totalInterVideoWaitMs) / 1000).toFixed(2)}s.\n`);
   process.stdout.write(`Evidence: ${frameCount} saved frames, ${failedFrameCount} failed frames, ${commentCount} fetched comments, ${danmakuSampleCount} danmaku samples.\n`);
 }
 
