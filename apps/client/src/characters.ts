@@ -41,7 +41,7 @@ export const CHARACTERS: readonly Character[] = [
     latin: "ChatGPT · mint girl",
     tagline: "ChatGPT 娘",
     greeting: "好耶，你来啦！我是小智。\n今天想聊点什么，我来帮你理一理～",
-    modelId: "avatar-a",
+    modelId: "ee",
     fan: true,
   },
   {
