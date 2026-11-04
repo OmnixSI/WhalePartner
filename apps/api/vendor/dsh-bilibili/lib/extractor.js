@@ -1447,6 +1447,17 @@ async function guarded(task, fallback) {
  */
 export async function extractAll(options) {
   const started = Date.now();
+  const stageTimings = {
+    videoIdResolutionMs: 0,
+    videoMetadataMs: 0,
+    transcriptAndAsrMs: 0,
+    keyframeExtractionMs: 0,
+    commentsMs: 0,
+    danmakuMs: 0,
+    commentsAndDanmakuMs: 0,
+    visionMs: 0,
+    totalMs: 0,
+  };
   const {
     url,
     commentLimit = 20,
@@ -1497,30 +1508,48 @@ export async function extractAll(options) {
   // 环境体检报告（首用排查）：id → 检查项；报告缺失时所有门禁关闭，行为与旧版一致
   const envChecks = new Map((envReport?.checks ?? []).map((c) => [c.id, c]));
 
+  const videoIdStarted = Date.now();
   let bvid = parseBvid(url);
   if (!bvid && /b23\.tv/.test(String(url))) {
     try {
       bvid = await resolveShortLink(session, url);
     } catch (error) {
       if (error instanceof BilibiliRateLimitError) {
-        return { success: false, error: error.message, rateLimit: rateLimitSnapshot() };
+        stageTimings.videoIdResolutionMs = Date.now() - videoIdStarted;
+        stageTimings.totalMs = Date.now() - started;
+        return { success: false, error: error.message, rateLimit: rateLimitSnapshot(), stage_timings: stageTimings };
       }
       throw error;
     }
   }
-  if (!bvid) return { success: false, error: "cannot parse a Bilibili video id from the url" };
+  stageTimings.videoIdResolutionMs = Date.now() - videoIdStarted;
+  if (!bvid) {
+    stageTimings.totalMs = Date.now() - started;
+    return { success: false, error: "cannot parse a Bilibili video id from the url", stage_timings: stageTimings };
+  }
 
   let info;
+  const metadataStarted = Date.now();
   try {
     info = await getVideoInfo(session, bvid);
   } catch (error) {
     if (session.signal?.aborted) throw error;
-    return { success: false, error: String(error?.message ?? error), bvid, rateLimit: rateLimitSnapshot() };
+    stageTimings.videoMetadataMs = Date.now() - metadataStarted;
+    stageTimings.totalMs = Date.now() - started;
+    return {
+      success: false,
+      error: String(error?.message ?? error),
+      bvid,
+      rateLimit: rateLimitSnapshot(),
+      stage_timings: stageTimings,
+    };
   }
+  stageTimings.videoMetadataMs = Date.now() - metadataStarted;
 
   const baseDir = framesDir || join(tmpdir(), "dsh-bilibili");
   const outDir = join(baseDir, bvid);
 
+  const transcriptStarted = Date.now();
   let subtitle = await guarded(() => getSubtitle(session, bvid, info.cid), emptySubtitle);
   let comments = emptyComments("comments are fetched after the video evidence");
   let danmaku = emptyDanmaku("danmaku is fetched after the video evidence");
@@ -1613,7 +1642,9 @@ export async function extractAll(options) {
       }
     }
   }
+  stageTimings.transcriptAndAsrMs = Date.now() - transcriptStarted;
 
+  const keyframeStarted = Date.now();
   const frames = { enabled: false, strategy: "", mode: "none", stage: "not-started", frames: [], error: null, note: "" };
   const ffmpegCheck = envChecks.get("ffmpeg");
   const ffmpegBlocked = extractFrames && ffmpegCheck && (ffmpegCheck.status === "missing" || ffmpegCheck.status === "error");
@@ -1746,18 +1777,28 @@ export async function extractAll(options) {
       frames.error = String(error?.message ?? error);
     }
   }
+  stageTimings.keyframeExtractionMs = Date.now() - keyframeStarted;
 
+  const commentsAndDanmakuStarted = Date.now();
   if (!rateLimitSnapshot().limited) {
+    const commentsStarted = Date.now();
+    const danmakuStarted = Date.now();
     [comments, danmaku] = await Promise.all([
-      guarded(() => getComments(session, info.aid, commentLimit), emptyComments),
-      guarded(() => getDanmaku(session, info.cid), emptyDanmaku),
+      guarded(() => getComments(session, info.aid, commentLimit), emptyComments).finally(() => {
+        stageTimings.commentsMs = Date.now() - commentsStarted;
+      }),
+      guarded(() => getDanmaku(session, info.cid), emptyDanmaku).finally(() => {
+        stageTimings.danmakuMs = Date.now() - danmakuStarted;
+      }),
     ]);
   } else {
     comments = emptyComments("comments skipped after Bilibili rate limit");
     danmaku = emptyDanmaku("danmaku skipped after Bilibili rate limit");
   }
+  stageTimings.commentsAndDanmakuMs = Date.now() - commentsAndDanmakuStarted;
 
   // 可选视觉描述：把帧图交给视觉模型（本地 Ollama / OpenAI 兼容云端），画面内容转文字，供无视觉能力的主模型使用
+  const visionStarted = Date.now();
   if (visionProvider !== "none" && frames.enabled && frames.frames.length > 0) {
     const visionOpts = {
       provider: visionProvider,
@@ -1790,8 +1831,10 @@ export async function extractAll(options) {
         "vision: failed — " + String(error?.message ?? error).slice(-140);
     }
   }
+  stageTimings.visionMs = Date.now() - visionStarted;
 
   const elapsed = Math.round((Date.now() - started) / 10) / 100;
+  stageTimings.totalMs = Date.now() - started;
   return {
     success: true,
     bvid,
@@ -1812,6 +1855,7 @@ export async function extractAll(options) {
     danmaku,
     frames,
     rateLimit: rateLimitSnapshot(),
+    stage_timings: stageTimings,
   };
 }
 

@@ -68,6 +68,7 @@ type ExtractedVideo = {
   error?: string;
   bvid?: string;
   elapsed_seconds?: number;
+  stage_timings?: Record<string, number>;
   metadata?: VideoMetadata;
   transcript?: VideoTranscript;
   comments?: VideoComments;
@@ -308,6 +309,7 @@ export async function collectBilibiliVideoEvidence(input: string, sessdata = "")
     frameImages,
     rateLimit,
     elapsedSeconds: raw.elapsed_seconds,
+    stageTimings: raw.stage_timings ?? null,
     media: {
       videoDownloadedLocally: false,
       audioDownloadedLocally: false,

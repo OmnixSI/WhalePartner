@@ -2,7 +2,7 @@
 
 ## Current status
 
-The local C1/C2 prototype is implemented and ready for pull request review. It is a CLI proof of the video pipeline; the app shell, long-term memory, diary workflow, and end-to-end integration remain separate MVP work.
+The local C1/C2 prototype is merged. It is a CLI proof of the video pipeline; the app shell, long-term memory, diary workflow, and end-to-end integration remain separate MVP work.
 
 ## Pipeline
 
@@ -11,6 +11,25 @@ The local C1/C2 prototype is implemented and ready for pull request review. It i
 3. Use FFmpeg to sample up to eight frames from the remote playback stream. The complete video is not saved locally.
 4. Send transcript text and sampled frames to the local Codex CLI using GPT-6 Luna with minimal reasoning.
 5. Save source evidence, frames, the whole-video summary, and reported token usage under .local/video-summaries/<BV ID>/. These local artifacts are ignored by Git.
+
+Bilibili API requests are serialized with a two-second gap; multi-video CLI batches also wait five seconds between video requests.
+
+## Ten-video benchmark
+
+The ten-video baseline and its per-video source, summary, usage, and frame paths are recorded in the local file `.local/video-summaries/benchmark_2026-11-04.csv`. All assets remain local and Git-ignored.
+
+| Measure | Result |
+|---|---:|
+| Videos summarized | 10 / 10 |
+| Codex input tokens | 249,072 (103,680 cached) |
+| Codex output tokens | 14,173 |
+| Total reported model tokens | 263,245 |
+| Extractor elapsed time | 503.22 s |
+| Post-extraction processing, estimated from artifact timestamps | 300.07 s |
+| Per-video processing time, estimated | 13m 23s total; 80.33 s average; 77.54 s median |
+| Saved keyframes | 64 |
+
+The historical run records extractor duration but not individual extraction-stage timings. The post-extraction estimate runs from `source.json.fetchedAt` to `usage.json` modification time and includes prompt preparation, Codex summarization, and artifact writing. New runs print and save video ID resolution, metadata, subtitle/ASR, keyframe extraction, comments, danmaku, Codex summary, artifact writing, and input-to-summary time. Estimated per-video processing excludes CLI session startup and the five-second batch spacing; `interVideoWaitMs` records the latter separately.
 
 ## Verified runs
 
