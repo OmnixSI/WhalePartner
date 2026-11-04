@@ -30,6 +30,7 @@ const SCENE_PEAK_MIN_GAP = 5;
 const VIDEO_CACHE_TTL_MS = 24 * 3600 * 1000;
 const TRANSCRIPT_CACHE_TTL_MS = 7 * 24 * 3600 * 1000; // 文稿小且不变，缓存 7 天
 const MAX_RETRIES = 2;
+const DANMAKU_SAMPLE_LIMIT = 200;
 const AUDIO_CAP_BYTES = 200 * 1048576; // whisper-local 音频下载上限（DASH 纯音频远小于视频）
 const AUDIO_CONVERT_TIMEOUT_MS = 180000; // 整段音频转 16kHz WAV（长视频需要数十秒）
 
@@ -109,7 +110,15 @@ async function resolveShortLink(session, url) {
 }
 
 async function getVideoInfo(session, bvid) {
-  const data = await apiGet(session, "/x/web-interface/view", { bvid });
+  const signed = await getWbiSignedParams(session, { bvid });
+  let data;
+  if (signed) {
+    data = await apiGet(session, "/x/web-interface/wbi/view", signed);
+    if (data.message === "HTTP 412") data = await apiGet(session, "/x/web-interface/view", { bvid });
+  } else {
+    data = await apiGet(session, "/x/web-interface/view", { bvid });
+  }
+
   if (data.code !== 0) throw new Error("video info failed: " + (data.message ?? "unknown"));
   const d = data.data ?? {};
   const stat = d.stat ?? {};
@@ -672,10 +681,18 @@ async function getDanmaku(session, cid) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 30)
     .map(([text, count]) => ({ text, count }));
+  const sampleCount = Math.min(entries.length, DANMAKU_SAMPLE_LIMIT);
+  const samples = [];
+  for (let i = 0; i < sampleCount; i += 1) {
+    const sampleIdx = sampleCount === 1
+      ? 0
+      : Math.floor(i * (entries.length - 1) / (sampleCount - 1));
+    samples.push(entries[sampleIdx]);
+  }
   return {
     total: entries.length,
     top_messages: topMessages,
-    samples: entries.slice(0, 200),
+    samples,
     note: "",
   };
 }

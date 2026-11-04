@@ -125,17 +125,31 @@ export function pickDanmakuPeaks(samples, windowSec = 60, topWindows = 4, cap = 
   );
   const perWindow = Math.max(1, Math.floor(cap / topWindows));
   const out = [];
+  const seenByWindow = new Map();
+  const appendUnique = (idx, samples, limit) => {
+    const seen = seenByWindow.get(idx) ?? new Set();
+    let added = 0;
+    for (const sample of samples) {
+      if (out.length >= cap || added >= limit) break;
+      const text = String(sample.text ?? "").trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      out.push(sample);
+      added += 1;
+    }
+    seenByWindow.set(idx, seen);
+  };
   // 第一遍：每个峰值窗口保底 perWindow 条（保证峰值窗口都有代表，片头不霸榜）
   for (let i = 0; i <= maxIdx; i++) {
     if (!top.has(i)) continue;
     const arr = windows.get(i) ?? [];
-    for (let k = 0; k < arr.length && k < perWindow && out.length < cap; k++) out.push(arr[k]);
+    appendUnique(i, arr, perWindow);
   }
   // 第二遍：按时间顺序用最密集窗口补满剩余额度
   for (let i = 0; i <= maxIdx && out.length < cap; i++) {
     if (!top.has(i)) continue;
     const arr = windows.get(i) ?? [];
-    for (let k = perWindow; k < arr.length && out.length < cap; k++) out.push(arr[k]);
+    appendUnique(i, arr, cap - out.length);
   }
   return out;
 }
@@ -180,13 +194,15 @@ export function formatExtraction(value) {
   const danmaku = value.danmaku ?? {};
   if ((danmaku.total ?? 0) > 0) {
     out.push("");
-    out.push("--- Danmaku (total " + danmaku.total + ") ---");
+    out.push("--- Danmaku (retrieved sample " + danmaku.total + "; metadata total " + (stats.danmaku ?? "unknown") + ") ---");
     const top = (danmaku.top_messages ?? []).slice(0, DANMAKU_MESSAGE_CAP);
     if (top.length > 0) {
-      out.push("Top repeated messages:");
+      out.push("Top repeated messages in retrieved sample:");
       for (const item of top) out.push("  [" + item.text + "] x" + item.count);
     }
-    const samples = pickDanmakuPeaks(danmaku.samples ?? [], 60, 4, DANMAKU_SAMPLE_CAP);
+    const topTexts = new Set(top.map((item) => item.text));
+    const samples = pickDanmakuPeaks(danmaku.samples ?? [], 60, 4, DANMAKU_SAMPLE_CAP)
+      .filter((sample) => !topTexts.has(String(sample.text ?? "").trim()));
     if (samples.length > 0) {
       out.push("Timeline samples:");
       for (const sample of samples) out.push("  " + formatTime(sample.time) + " " + sample.text);

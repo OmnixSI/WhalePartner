@@ -29,7 +29,11 @@ function metadataResponse() {
   });
 }
 
-async function withMockBilibili(subtitleAvailable: boolean, action: (requests: string[]) => Promise<void>) {
+async function withMockBilibili(
+  subtitleAvailable: boolean,
+  action: (requests: string[]) => Promise<void>,
+  danmakuXml = '<i><d p="12.4,1,25,16777215,1700000000,0,abc,0">弹幕观点</d></i>',
+) {
   const originalFetch = globalThis.fetch;
   const requests: string[] = [];
   globalThis.fetch = async (input) => {
@@ -37,6 +41,9 @@ async function withMockBilibili(subtitleAvailable: boolean, action: (requests: s
     const url = new URL(rawUrl);
     requests.push(url.href);
 
+    if (url.hostname === "api.bilibili.com" && url.pathname === "/x/web-interface/wbi/view") {
+      return metadataResponse();
+    }
     if (url.hostname === "api.bilibili.com" && url.pathname === "/x/web-interface/view") {
       return metadataResponse();
     }
@@ -72,7 +79,7 @@ async function withMockBilibili(subtitleAvailable: boolean, action: (requests: s
       });
     }
     if (url.hostname === "comment.bilibili.com") {
-      return new Response('<i><d p="12.4,1,25,16777215,1700000000,0,abc,0">弹幕观点</d></i>', { status: 200 });
+      return new Response(danmakuXml, { status: 200 });
     }
     throw new Error(`Unexpected request in the text-only extractor test: ${url.href}`);
   };
@@ -101,6 +108,11 @@ test("reuses public metadata, subtitle, comment, and danmaku extraction without 
     assert.equal(result.comments.comments[0].user, "观众");
     assert.equal(result.formattedText.includes("观众评论内容"), true);
     assert.equal(result.formattedText.includes("弹幕观点"), true);
+    const metadataUrl = requests.find((url) => new URL(url).pathname === "/x/web-interface/wbi/view");
+    assert.ok(metadataUrl);
+    assert.equal(new URL(metadataUrl).searchParams.get("bvid"), bvid);
+    assert.match(new URL(metadataUrl).searchParams.get("w_rid") ?? "", /^[a-f0-9]{32}$/);
+    assert.equal(requests.some((url) => new URL(url).pathname === "/x/web-interface/view"), false);
     assert.deepEqual(result.media, {
       videoDownloaded: false,
       audioDownloaded: false,
@@ -122,4 +134,18 @@ test("does not start ASR when the video has no published subtitle", async () => 
     assert.equal(requests.some((url) => url.includes("/x/player/playurl")), false);
     assert.equal(requests.some((url) => url.includes("/x/v2/reply")), true);
   });
+});
+
+test("samples danmaku across the retrieved XML and labels the fetched count", async () => {
+  const danmakuXml = `<i>${Array.from({ length: 400 }, (_value, idx) =>
+    `<d p="${idx},1,25,16777215,1700000000,0,abc,0">观点${idx}</d>`).join("")}</i>`;
+
+  await withMockBilibili(true, async () => {
+    const result = await collectBilibiliText(bvid);
+
+    assert.equal(result.danmaku.samples.length, 200);
+    assert.equal(result.danmaku.samples[0].time, 0);
+    assert.equal(result.danmaku.samples.at(-1)?.time, 399);
+    assert.match(result.formattedText, /Danmaku \(retrieved sample 400; metadata total 1\)/);
+  }, danmakuXml);
 });
