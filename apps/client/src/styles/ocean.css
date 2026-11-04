@@ -3,8 +3,6 @@
   background:
     radial-gradient(120% 70% at 78% -8%, rgb(255 255 255 / 0.85), transparent 55%),
     linear-gradient(180deg, var(--bg-sky) 0%, var(--bg) 46%, var(--bg-deep) 100%); }
-:root[data-theme="dark"] .ocean,
-:root:not([data-theme="light"]) .ocean { }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .ocean {
     background:
