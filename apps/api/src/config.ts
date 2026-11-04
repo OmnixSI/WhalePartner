@@ -9,6 +9,8 @@ export interface OpenAiCompatibleConfig {
 export interface ApiConfig {
   host: string;
   dbPath: string;
+  memoryEnabled: boolean;
+  memoryDir: string;
   port: number;
   deepseek?: OpenAiCompatibleConfig;
   backup?: OpenAiCompatibleConfig;
@@ -41,6 +43,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   return {
     host: text(env.API_HOST) ?? "127.0.0.1",
+    memoryEnabled: text(env.MEMORY) !== "off",
+    memoryDir: text(env.MEMORY_DIR) ?? resolve(import.meta.dirname, "../.local/memory"),
     dbPath: text(env.APP_DB_PATH) ?? resolve(import.meta.dirname, "../.local/app.db"),
     port: positiveInt(env.API_PORT, 8787, "API_PORT"),
     deepseek: deepseekKey
