@@ -24,6 +24,18 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 
 具体负责人、日期、依赖和完成条件以 GitHub 对应 Issue 为准。
 
+## 当前进度（2026-11-05）
+
+| 工作 | 状态 |
+|---|---|
+| C1 视频资料、字幕/转写与关键帧 | 本地链路已完成；对应 [PR #15](https://github.com/OmnixSI/WhalePartner/pull/15) 已合并。 |
+| C2 整条视频摘要 | 本机 Codex（GPT-6 Luna，minimal）摘要已接通；同属 PR #15。 |
+| 十条视频成本与质量基准 | 已记录 token 和阶段耗时；基准结果见 [构建记录](../implement-stage/BUILD_NOTE.md)。人工评分和美元费用仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。 |
+| 本地摘要网页测试台 | 已加入分阶段耗时分支，可查看摘要、模型输入文字与图片帧、token 用量；正在 [PR #16](https://github.com/OmnixSI/WhalePartner/pull/16) 中审查。它是本地验证工具，不是产品应用界面。 |
+| 应用壳、聊天/记忆、定时日记、日记页与端到端联调 | 仍按 GitHub Issues #1–6、#9–11 跟踪；C1/C2 尚未接入长期记忆或应用壳。 |
+
+PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不替代 Issue 的完成条件。
+
 ## 当前技术方向
 
 - **客户端**：Tauri 2 + React + TypeScript + Vite 单页应用，共享 Windows、macOS、iOS、Android 的主要界面。当前在 MacBook 上开发；桌面与手机使用响应式布局。
@@ -37,7 +49,9 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 
 ### C1/C2 本地视频摘要范围
 
-`pnpm --dir apps/api run summarize -- <Bilibili 链接或 BV 号>` 会依次解析视频、读取字幕/转写和辅助文字资料、从播放流抽取最多 8 张关键帧，再调用本机 Codex CLI（GPT-6 Luna，minimal）生成整条视频的连贯中文摘要。帧图缩至 768 像素宽；完整视频不保存到本地。摘要、来源证据、帧图和模型 token 用量写入 `.local/video-summaries/<BV号>/`。当前原型只保存本地结果，不写入长期记忆，也不代替用户在 B 站发布内容。
+`pnpm --dir apps/api run summarize -- <Bilibili 链接或 BV 号>` 会依次解析视频、读取字幕/转写和辅助文字资料、从播放流抽取最多 8 张关键帧，再调用本机 Codex CLI（GPT-6 Luna，minimal）生成整条视频的连贯中文摘要。帧图缩至 768 像素宽；完整视频不保存到本地。CLI 将摘要、来源证据、帧图和模型 token 用量写入 `.local/video-summaries/<BV号>/`。
+
+仓库根目录的 `启动视频摘要测试.command` 会启动本地网页测试台，复用同一采集与摘要流程，并展示阶段耗时、实际模型输入文字和帧图、token 用量及摘要。网页模式将结果保留在本次页面响应中，关键帧放在临时目录并在处理结束后删除；Bilibili 限流冷却状态仍由服务记录。两种本地模式都不写入长期记忆，也不代替用户在 B 站发布内容。
 
 技术栈细节和官方平台构建要求见 [`TECH_STACK_PROPOSAL.md`](TECH_STACK_PROPOSAL.md)。
 

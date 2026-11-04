@@ -12,7 +12,9 @@
     "login": "node src/cli.ts login",
     "status": "node src/cli.ts status",
     "logout": "node src/cli.ts logout",
-    "summarize": "node src/cli.ts summarize"
+    "summarize": "node src/cli.ts summarize",
+    "web": "node src/dev-server.ts",
+    "benchmark:videos": "node scripts/video-benchmark.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

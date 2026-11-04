@@ -1,5 +1,7 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { performance } from "node:perf_hooks";
 import { assertBilibiliRequestAllowed, collectBilibiliVideoEvidence } from "./bilibili.ts";
 import {
   bilibiliSessionPath,
@@ -14,6 +16,15 @@ import { buildVideoSummaryPrompt } from "./prompt.ts";
 
 const appDir = resolve(import.meta.dirname, "..");
 const repoDir = resolve(appDir, "../..");
+const VIDEO_REQUEST_GAP_MS = 5000;
+
+function elapsedMs(startedAt: number) {
+  return Math.round(performance.now() - startedAt);
+}
+
+function formatSeconds(milliseconds: number) {
+  return `${(milliseconds / 1000).toFixed(2)}s`;
+}
 
 async function writeSmokeArtifact() {
   const outPath = resolve(repoDir, ".local/PLACEHOLDER_smoke.json");
@@ -24,16 +35,25 @@ async function writeSmokeArtifact() {
 
 type SummaryStatus = "summarized" | "rate-limited" | "insufficient-evidence";
 
-async function summarizeVideo(input: string, sessdata: string): Promise<SummaryStatus> {
+async function summarizeVideo(
+  input: string,
+  sessdata: string,
+  runTiming: { sessionSetupMs: number; interVideoWaitMs: number },
+): Promise<SummaryStatus> {
+  const pipelineStartedAt = performance.now();
+  const evidenceStartedAt = performance.now();
   const source = await collectBilibiliVideoEvidence(input, sessdata);
+  const evidenceCollectionMs = elapsedMs(evidenceStartedAt);
   const bvid = source.bvid;
   if (!bvid) throw new Error("提取结果缺少 BV 号，无法保存摘要。");
 
   const outDir = resolve(repoDir, ".local/video-summaries", bvid);
+  const setupArtifactStartedAt = performance.now();
   await mkdir(outDir, { recursive: true });
   await rm(resolve(outDir, "summary.md"), { force: true });
   await rm(resolve(outDir, "usage.json"), { force: true });
   await writeFile(resolve(outDir, "source.json"), JSON.stringify(source, null, 2) + "\n");
+  const sourceArtifactWriteMs = elapsedMs(setupArtifactStartedAt);
 
   if (source.frames.error) {
     process.stdout.write(`关键帧提取阶段 ${source.frames.stage ?? "unknown"}：${source.frames.error}\n`);
@@ -53,11 +73,18 @@ async function summarizeVideo(input: string, sessdata: string): Promise<SummaryS
     return "insufficient-evidence";
   }
 
+  const promptStartedAt = performance.now();
   const prompt = buildVideoSummaryPrompt(source.formattedText, source.frameImages);
+  const promptBuildMs = elapsedMs(promptStartedAt);
   const framePaths = source.frameImages.map((frame) => frame.path);
+  const codexStartedAt = performance.now();
   const codexResult = await summarizeWithCodex(prompt, framePaths);
+  const codexSummaryMs = elapsedMs(codexStartedAt);
   const summaryText = codexResult.message.trim() + "\n";
+  const summaryArtifactStartedAt = performance.now();
   await writeFile(resolve(outDir, "summary.md"), summaryText);
+  const summaryArtifactWriteMs = elapsedMs(summaryArtifactStartedAt);
+  const pipelineToSummaryReadyMs = elapsedMs(pipelineStartedAt);
   await writeFile(
     resolve(outDir, "usage.json"),
     JSON.stringify({
@@ -70,6 +97,18 @@ async function summarizeVideo(input: string, sessdata: string): Promise<SummaryS
       transcriptSource: source.media.transcriptSource,
       frameCount: source.media.frameCount,
       frameTimes: source.media.frameTimes,
+      timing: {
+        evidenceCollectionMs,
+        evidenceStages: source.stageTimings,
+        sourceArtifactWriteMs,
+        promptBuildMs,
+        codexSummaryMs,
+        summaryArtifactWriteMs,
+        pipelineToSummaryReadyMs,
+        sessionSetupMs: runTiming.sessionSetupMs,
+        inputToSummaryReadyMs: pipelineToSummaryReadyMs + runTiming.sessionSetupMs,
+        interVideoWaitMs: runTiming.interVideoWaitMs,
+      },
     }, null, 2) + "\n",
   );
   process.stdout.write(
@@ -83,21 +122,41 @@ async function summarizeVideo(input: string, sessdata: string): Promise<SummaryS
   } else {
     process.stdout.write(`Codex token usage unavailable; prompt ${prompt.length} chars, summary ${codexResult.message.length} chars.\n`);
   }
+  const evidenceStages = source.stageTimings ?? {};
+  const inputToSummaryReadyMs = pipelineToSummaryReadyMs + runTiming.sessionSetupMs;
+  process.stdout.write(
+    `耗时：资料采集 ${formatSeconds(evidenceCollectionMs)}（BV 定位 ${formatSeconds(evidenceStages.videoIdResolutionMs ?? 0)}、` +
+    `元数据 ${formatSeconds(evidenceStages.videoMetadataMs ?? 0)}、` +
+    `字幕/ASR ${formatSeconds(evidenceStages.transcriptAndAsrMs ?? 0)}、关键帧 ${formatSeconds(evidenceStages.keyframeExtractionMs ?? 0)}、` +
+    `评论 ${formatSeconds(evidenceStages.commentsMs ?? 0)}、弹幕 ${formatSeconds(evidenceStages.danmakuMs ?? 0)}、` +
+    `视觉描述 ${formatSeconds(evidenceStages.visionMs ?? 0)}），提示词 ${formatSeconds(promptBuildMs)}、` +
+    `Codex 摘要 ${formatSeconds(codexSummaryMs)}、源文件写入 ${formatSeconds(sourceArtifactWriteMs)}、` +
+    `摘要写入 ${formatSeconds(summaryArtifactWriteMs)}，` +
+    `输入到摘要可用 ${formatSeconds(inputToSummaryReadyMs)}；本项前的批次间隔 ${formatSeconds(runTiming.interVideoWaitMs)}。\n`,
+  );
   process.stdout.write("\n已保存提取证据和摘要：" + outDir + "\n");
   return "summarized";
 }
 
 async function summarizeVideos(inputs: string[]) {
+  const sessionSetupStartedAt = performance.now();
   await assertBilibiliRequestAllowed();
   const session = await loadBilibiliSession();
   if (session && !(await isBilibiliSessionValid(session.sessdata))) {
     throw new Error("本机保存的 B 站登录态已失效，请先运行 pnpm run login。");
   }
+  const sessionSetupMs = elapsedMs(sessionSetupStartedAt);
 
   process.stdout.write(session ? "使用本机 B 站登录态。\n" : "未登录，使用匿名数据。\n");
   let incomplete = false;
-  for (const input of inputs) {
-    const status = await summarizeVideo(input, session?.sessdata ?? "");
+  for (const [index, input] of inputs.entries()) {
+    let interVideoWaitMs = 0;
+    if (index > 0) {
+      const waitStartedAt = performance.now();
+      await delay(VIDEO_REQUEST_GAP_MS);
+      interVideoWaitMs = elapsedMs(waitStartedAt);
+    }
+    const status = await summarizeVideo(input, session?.sessdata ?? "", { sessionSetupMs, interVideoWaitMs });
     if (status === "rate-limited") {
       process.stdout.write("B 站已触发限流保护，本次停止后续视频请求。等待本机冷却时间结束后再重试。\n");
       incomplete = true;

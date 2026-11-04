@@ -68,6 +68,7 @@ type ExtractedVideo = {
   error?: string;
   bvid?: string;
   elapsed_seconds?: number;
+  stage_timings?: Record<string, number>;
   metadata?: VideoMetadata;
   transcript?: VideoTranscript;
   comments?: VideoComments;
@@ -232,7 +233,11 @@ export function formatBilibiliEvidence(input: {
   return lines.join("\n");
 }
 
-export async function collectBilibiliVideoEvidence(input: string, sessdata = "") {
+export async function collectBilibiliVideoEvidence(
+  input: string,
+  sessdata = "",
+  options: { framesDir?: string } = {},
+) {
   await assertBilibiliRequestAllowed();
   const url = normalizeBilibiliInput(input);
   const raw = await extractAll({
@@ -241,7 +246,7 @@ export async function collectBilibiliVideoEvidence(input: string, sessdata = "")
     extractFrames: true,
     downloadVideo: false,
     maxFrames: MAX_FRAMES,
-    framesDir: SUMMARY_ROOT,
+    framesDir: options.framesDir ?? SUMMARY_ROOT,
     detectScenes: false,
     asrProvider: "bcut",
     visionProvider: "none",
@@ -308,6 +313,7 @@ export async function collectBilibiliVideoEvidence(input: string, sessdata = "")
     frameImages,
     rateLimit,
     elapsedSeconds: raw.elapsed_seconds,
+    stageTimings: raw.stage_timings ?? null,
     media: {
       videoDownloadedLocally: false,
       audioDownloadedLocally: false,
