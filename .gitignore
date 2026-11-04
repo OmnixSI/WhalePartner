@@ -11,3 +11,6 @@ dist/
 build/
 target/
 .venv/
+
+# 演示用 VRM 由 pnpm fetch-model 下载，不提交
+apps/client/public/models/*.vrm
