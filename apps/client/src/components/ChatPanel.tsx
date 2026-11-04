@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { AvatarEmotion } from "../avatar/model.config";
 import { fetchHealth, type Health } from "../lib/api";
 import { fetchHistory, streamChat } from "../lib/chat";
@@ -12,6 +12,7 @@ interface Bubble {
   text: string;
   pending?: boolean;
   failed?: boolean;
+  recalled?: string[];
 }
 
 interface Props {
@@ -62,7 +63,8 @@ export function ChatPanel({ onEmotion, onSpeaking }: Props) {
     let started = false;
     try {
       for await (const event of streamChat(message, ctrl.signal)) {
-        if (event.type === "emotion") onEmotion(event.emotion);
+        if (event.type === "recall") setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, recalled: event.memories } : b)));
+        else if (event.type === "emotion") onEmotion(event.emotion);
         else if (event.type === "delta") {
           if (!started) { started = true; onSpeaking(true); }
           setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, text: b.text + event.text, pending: false } : b)));
@@ -96,9 +98,12 @@ export function ChatPanel({ onEmotion, onSpeaking }: Props) {
       <div className="chat__list" role="log" aria-live="polite" ref={list}>
         {bubbles.length === 0 && <div className="msg msg--her">{GREETING}</div>}
         {bubbles.map((b) => (
-          <div key={b.key} className={`msg msg--${b.role}${b.failed ? " msg--failed" : ""}`}>
-            {b.pending ? <span className="typing" aria-label="正在输入"><i /><i /><i /></span> : b.text}
-          </div>
+          <Fragment key={b.key}>
+            <div className={`msg msg--${b.role}${b.failed ? " msg--failed" : ""}`}>
+              {b.pending ? <span className="typing" aria-label="正在输入"><i /><i /><i /></span> : b.text}
+            </div>
+            {b.recalled && b.recalled.length > 0 && <div className="recall">想起了：{b.recalled.join("；")}</div>}
+          </Fragment>
         ))}
       </div>
       <form className="chat__composer" onSubmit={(e) => { e.preventDefault(); void send(draft); }}>
