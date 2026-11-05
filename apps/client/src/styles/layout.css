@@ -157,3 +157,20 @@
   .diary-entry__meta { align-items: flex-start; flex-direction: column; gap: 4px; }
   .row { flex-direction: column; align-items: stretch; gap: 12px; }
 }
+
+/* 账号接入 */
+.account { display: flex; flex-direction: column; gap: 14px; padding: 14px 16px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--sheet); }
+.account__head { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.account__name { font-family: var(--font-serif); font-size: 17px; font-weight: 700; letter-spacing: .03em; }
+.account__status { margin-top: 2px; font-size: 13px; color: var(--ink-soft); }
+.account__actions { flex: none; display: flex; gap: 16px; }
+.account__qr { display: flex; align-items: center; gap: 20px; }
+.account__qr img { flex: none; padding: 8px; border: 1px solid var(--rule); border-radius: var(--radius); background: #fff; }
+.account__hint { font-size: 13px; color: var(--ink-soft); }
+.account__hint--bad { color: var(--alert); }
+.link-accent, .link-quiet { padding: 4px 0; font-size: 14px; border-bottom: 1px solid transparent; }
+.link-accent { color: var(--accent); }
+.link-accent:hover { border-bottom-color: var(--accent); }
+.link-quiet { color: var(--ink-faint); }
+.link-quiet:hover { color: var(--ink); border-bottom-color: var(--ink-faint); }
+@media (max-width: 959px) { .account__qr { flex-direction: column; align-items: flex-start; } .account__head { flex-direction: column; align-items: flex-start; gap: 10px; } }
