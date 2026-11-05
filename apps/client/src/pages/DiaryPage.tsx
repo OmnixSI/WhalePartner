@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCharacter } from "../characters";
+import { DailyJournalList } from "../components/DailyJournalList";
 import { enqueueDiaryVideo, fetchDiary, retryDiaryItem, runDiaryQueue, type DiaryItem } from "../lib/diary";
 
 function when(iso?: string | null) {
@@ -61,6 +63,7 @@ function QueueItem({ item, onRetry, retrying }: { item: DiaryItem; onRetry: (ite
 }
 
 export function DiaryPage() {
+  const character = useCharacter();
   const [items, setItems] = useState<DiaryItem[] | null>(null);
   const [url, setUrl] = useState("");
   const [operationError, setOperationError] = useState("");
@@ -141,9 +144,14 @@ export function DiaryPage() {
       <div className="page__inner">
         <header>
           <h1 className="page__title">她的日记</h1>
-          <p className="page__lead">她看过的视频、想到的事，会在这里变成一篇篇日记。</p>
+          <p className="page__lead">按天记录她与你的聊天、共同经历和当天的想法。</p>
         </header>
 
+        <DailyJournalList character={character} />
+
+        <details className="legacy-diary">
+        <summary>旧版视频日记与待看队列</summary>
+        <p className="legacy-diary__lead">已保存的视频日记和待看任务仍可查看与重试。</p>
         <section className="card diary-add">
           <h3>分享一个视频</h3>
           <p>加入待看列表后，她会在定时任务中看完并写下日记。</p>
@@ -192,6 +200,7 @@ export function DiaryPage() {
             <p>添加一个视频链接，她看完后就会在这里写下日记。</p>
           </div>
         )}
+        </details>
       </div>
     </div>
   );
