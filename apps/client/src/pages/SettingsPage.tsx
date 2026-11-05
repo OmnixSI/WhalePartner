@@ -15,7 +15,7 @@ export function SettingsPage() {
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const character = useCharacter();
   const model = useModel();
-  const [cleared, setCleared] = useState<boolean | null>(null);
+  const [cleared, setCleared] = useState<{ ok: boolean; memoriesCleared: boolean } | null>(null);
   const choose = (t: ThemeChoice) => { setTheme(t); applyTheme(t); };
   const [confirming, setConfirming] = useState(false);
   // Tauri 的 WebView 里 window.confirm 不可靠，用应用内的二次点击确认。
@@ -71,7 +71,7 @@ export function SettingsPage() {
           <div className="row">
             <div>
               <div className="row__label">聊天记录</div>
-              <div className="row__desc">{confirming ? "再点一次确认。清空后不能撤销，鲸汐不会再看到之前的对话。" : cleared === true ? "已清空。" : cleared === false ? "清空失败，后端未连接。" : "清空后，鲸汐不会再看到之前的对话内容。"}</div>
+              <div className="row__desc">{confirming ? "再点一次确认。聊天原文、对话事实、会话摘要和聊天中学到的内容会一并清除；视频、网页和日记经历保留。" : cleared?.ok && cleared.memoriesCleared ? "聊天原文与聊天产生的记忆已清空；视频、网页和日记经历保留。" : cleared?.ok ? "聊天原文已清空，但部分长期记忆未能清理；请检查记忆页。" : cleared ? "清空失败，后端未连接。" : "可清除聊天原文及聊天产生的事实、摘要和学习内容；视频、网页和日记经历会保留。"}</div>
             </div>
             <button className="link-danger" onClick={() => void clear()}>{confirming ? "确认清空" : "清空"}</button>
           </div>

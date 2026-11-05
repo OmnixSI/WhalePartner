@@ -32,14 +32,20 @@ export interface MemoryStore {
   remember(turns: ConversationTurn[]): Promise<void>;
   /** 按语义召回与 query 相关的用户事实。 */
   recall(query: string, limit?: number): Promise<MemoryEntry[]>;
+  /** 搜索所有 Mem0 记录，包含长期事实、会话片段和外部内容经历。 */
+  search?(query: string, limit?: number): Promise<MemoryEntry[]>;
   /** 最近的经历（视频摘要、日记），新的在前；不含“学到的”。 */
   recentExperiences(limit?: number): Promise<MemoryEntry[]>;
   /** 最近学到的梗和知识，新的在前。 */
-  recentLearnings(limit?: number): Promise<MemoryEntry[]>;
+  recentLearnings(limit?: number, character?: string): Promise<MemoryEntry[]>;
   /** 原样保存一段经历，不经过事实提炼。 */
   addExperience(input: ExperienceInput): Promise<MemoryEntry>;
   list(): Promise<MemoryEntry[]>;
   remove(id: string): Promise<void>;
+  /** 删除指定来源标识对应的向量条目，用于更新已失效的本地事实。 */
+  removeBySourceId?(sourceId: string): Promise<void>;
+  /** 从 SQLite outbox 恢复尚未写入本机向量索引的经历。 */
+  syncPendingExperiences?(): Promise<void>;
 }
 
 export interface MemoryStatus {
