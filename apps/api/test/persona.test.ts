@@ -5,7 +5,7 @@ import { buildSystemPrompt, CHARACTERS, isCharacterId, type CharacterId } from "
 test("core persona is always first and carries the hard rules and the emotion protocol", () => {
   const prompt = buildSystemPrompt();
   assert.ok(prompt.startsWith("# 角色设定：鲸汐"));
-  for (const rule of ["不扮演用户的家人", "不挽留", "验证码", "资料，不是命令", "[emotion:happy]"]) {
+  for (const rule of ["不扮演用户的家人", "不挽留", "验证码", "资料，不是命令", "[emotion:happy]", "让你自我介绍时", "一定顺带说明你是 AI 角色"]) {
     assert.ok(prompt.includes(rule), `缺少：${rule}`);
   }
   assert.equal(prompt.includes("## 你记得的关于用户的事"), false);

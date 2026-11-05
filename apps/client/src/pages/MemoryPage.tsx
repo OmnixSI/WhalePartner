@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { MemoryIcon } from "../components/Icons";
 import { deleteMemory, fetchMemories, type MemoryEntry } from "../lib/memory";
 
 function when(iso?: string) {
@@ -64,22 +63,20 @@ export function MemoryPage() {
     <div className="page">
       <div className="page__inner">
         <header>
-          <p className="page__eyebrow">Memory</p>
           <h1 className="page__title">她记得的事</h1>
           <p className="page__lead">你说过的话、重要的日子和她看过的内容。你可以随时查看，也可以让她忘掉。</p>
         </header>
 
         {error && (
-          <div className="card" role="alert">
+          <div className="card diary-error-card" role="alert">
             <h3>读取失败</h3>
             <p>{error}</p>
-            <button className="seg" onClick={() => load()}><span style={{ padding: "7px 16px", fontWeight: 600 }}>重试</span></button>
+            <button className="diary-button diary-button--quiet" onClick={() => load()}>重试</button>
           </div>
         )}
         {entries === null && !error && <div className="card"><p>正在翻她的小本子…</p></div>}
         {entries !== null && entries.length === 0 && (
           <div className="card empty">
-            <MemoryIcon style={{ width: 64, height: 64, color: "var(--accent)" }} />
             <h3>记忆还是空的</h3>
             <p>多聊几句，她就会开始记住你。聊完后她需要几秒钟整理，再刷新这里。</p>
           </div>

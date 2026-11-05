@@ -6,6 +6,8 @@
 
 <p align="center"><img src="docs/images/home-mobile.png" width="320" alt="窄屏首页"></p>
 
+![日记页](docs/images/diary-desktop.png)
+
 **AI Agent 开始工作前，先读仓库根目录的 [`AGENTS.md`](AGENTS.md)。** 新开会话或更换 Agent 时，按 [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) 恢复任务。工程约定和进度以仓库及 GitHub Issue/PR 为准，产品方向在 [Notion 开发台](https://app.notion.com/p/8f52071e8c09833ea8250151f4808cc5)。
 
 ## 现在能做什么（2026-11-05）
@@ -75,13 +77,13 @@ flowchart LR
 | 任务 | 状态 |
 |---|---|
 | A1 Tauri 应用壳 | 完成（[PR #17](https://github.com/OmnixSI/WhalePartner/pull/17)） |
-| A2 DeepSeek 后端 | 代码完成并测试（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）；**真实 DeepSeek 请求待验证**（缺 key） |
+| A2 DeepSeek 后端 | 完成（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）；真实 DeepSeek 已验证：`deepseek-flash` 流式回复、记忆提炼约 2.5 秒 |
 | B1 聊天与形象 | 完成（PR #19、#22、#23）；选型结论见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) |
-| B2 人格提示词 | 完成（[PR #20](https://github.com/OmnixSI/WhalePartner/pull/20)），四个角色问卷 10/10（本机 Codex） |
+| B2 人格提示词 | 完成（[PR #20](https://github.com/OmnixSI/WhalePartner/pull/20)），四个角色问卷在 DeepSeek 上都是 10/10 |
 | B3 mem0 记忆 | 完成（[PR #21](https://github.com/OmnixSI/WhalePartner/pull/21)） |
 | C1/C2 视频链路 | 完成（Spdor，PR #15、#16）；已接入聊天（[PR #24](https://github.com/OmnixSI/WhalePartner/pull/24)） |
-| D1 定时日记、D2 日记页 | 实现与本地验证见本分支 PR；日记、队列持久化到 SQLite，Mem0 保存日记经历 |
-| E1 联调 | 聊天 → 视频 → 记忆 → 再聊已跑通；日记链路的真实视频联调见本分支 PR 验证记录 |
+| D1 定时日记、D2 日记页 | 完成（Spdor，[PR #26](https://github.com/OmnixSI/WhalePartner/pull/26)）；日记、队列持久化到 SQLite，Mem0 保存日记经历 |
+| E1 联调 | 聊天 → 视频 → 记忆 → 再聊、日记队列 → 日记 → 记忆都用真实视频跑通过；未验证 Tauri 窗口和手机真机 |
 
 十条视频基准的人工评分和美元成本仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。
 
