@@ -31,7 +31,8 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 | A1 应用壳 | 完成：Tauri 2 + React 单页应用，桌面和手机共用界面（[PR #17](https://github.com/OmnixSI/WhalePartner/pull/17)）。 |
 | A2 DeepSeek 后端 | 代码完成：流式聊天、DeepSeek → 备用 → 本机 Codex 回退链（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）。真实 DeepSeek 请求待验证，跟踪于 [Issue #2](https://github.com/OmnixSI/WhalePartner/issues/2)。 |
 | B1 聊天与形象 | 完成：自写 React 聊天 + three-vrm 形象，选型依据见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3)。 |
-| B2 人格 | 完成：共用规则 + 每个角色一份口吻文件，四个角色回归问卷 10/10（本机 Codex）。 |
+| B2 人格 | 完成：每个角色一份身份和脾气文件 + 共用的说话方式和底线规则，四个角色的 13 项回归问卷在 DeepSeek 上都是 13/13。 |
+| 成长（人格延伸） | 完成：从看过的视频、读过的网页和用户的话里学新梗和新知识（自动入库，用户可删），定期写“近况小记”，记忆按清晰度衰减，聊天里发网页链接会读。设计与参考见 [`PERSONALITY.md`](PERSONALITY.md)。 |
 | B3 记忆 | 完成：mem0 + 本地中文向量模型，写入、重启、召回已验证。 |
 | C1/C2 视频链路 | 完成（Spdor）；已接入聊天：发 B 站链接，角色看完再讲并记住。 |
 | 十条视频成本与质量基准 | 已记录 token 和阶段耗时（见 [构建记录](../implement-stage/BUILD_NOTE.md)）。人工评分和美元费用仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。 |
