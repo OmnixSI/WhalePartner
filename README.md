@@ -14,7 +14,8 @@
 - **角色**：大肥鱼（DeepSeek 鲸鱼娘，首页默认）、小克（Claude 娘）、小智（ChatGPT 娘）、鲸汐（原创）。每个角色有自己的口吻、主题色、形象和聊天记录，记忆共用。设置里还能换 24 个现成 VRM 形象。
 - **记忆**：mem0 + 本地中文向量模型。聊完几轮，她会记住“你叫什么、养了什么”；记忆页可以查看，也可以让她忘掉。
 - **看视频**：在聊天里发 B 站链接或 BV 号，她读字幕、抽关键帧、看完再用自己的口吻讲给你听，并把这段经历记下来，之后在别的聊天里也能提起。
-- **还没做**：定时日记和日记页（D1/D2，Spdor）、正式登录与计费、语音、Live2D。
+- **日记**：在日记页添加 B 站链接，进入本机待看队列；后台按本地时间每日 20:00 处理一条，生成摘要和鲸汐日记，并写入共享记忆。页面展示待处理项、日记和处理失败状态。
+- **还没做**：正式登录与计费、语音、Live2D。
 
 > 角色和形象目前是**内部演示**：三个同人角色和 VRM 模型都是别人做好的现成素材，授权没有核对，只作内部展示；鲸汐是我们自己的原创设定。对外发布前要换成原创或授权明确的角色，详见 [`apps/client/public/models/README.md`](apps/client/public/models/README.md)。
 
@@ -59,7 +60,10 @@ flowchart LR
   Chat --> Mem["记忆 mem0<br/>本地向量模型"]
   Chat --> Video["视频流水线<br/>字幕/ASR · 关键帧 · 摘要"]
   Video --> LLM
-  Chat --> DB[("SQLite<br/>聊天记录")]
+  Diary["日记队列与计划任务"] --> Video
+  Diary --> LLM
+  Diary --> Mem
+  Chat --> DB[("SQLite<br/>聊天记录与待看/日记")]
 ```
 
 - 模型密钥只在服务端读取，客户端不持有；DeepSeek 失败会自动换备用接口，再换本机 Codex。
@@ -76,8 +80,8 @@ flowchart LR
 | B2 人格提示词 | 完成（[PR #20](https://github.com/OmnixSI/WhalePartner/pull/20)），四个角色问卷 10/10（本机 Codex） |
 | B3 mem0 记忆 | 完成（[PR #21](https://github.com/OmnixSI/WhalePartner/pull/21)） |
 | C1/C2 视频链路 | 完成（Spdor，PR #15、#16）；已接入聊天（[PR #24](https://github.com/OmnixSI/WhalePartner/pull/24)） |
-| D1 定时日记、D2 日记页 | 未开始（Spdor）；接口：`POST /api/videos/summarize`、`POST /api/memories/experience` |
-| E1 联调 | 聊天 → 视频 → 记忆 → 再聊已跑通一次；日记部分等 D1/D2 |
+| D1 定时日记、D2 日记页 | 实现与本地验证见本分支 PR；日记、队列持久化到 SQLite，Mem0 保存日记经历 |
+| E1 联调 | 聊天 → 视频 → 记忆 → 再聊已跑通；日记链路的真实视频联调见本分支 PR 验证记录 |
 
 十条视频基准的人工评分和美元成本仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。
 
@@ -99,6 +103,6 @@ C1/C2 的实现状态、实测样例和未完成事项见 [本地视频流水线
 
 产品范围见 [`docs/PRODUCT_SCOPE.md`](docs/PRODUCT_SCOPE.md)；分支命名、Issue 和 Pull Request 约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-第一周计划中，Homing 负责壳、后端、聊天/形象、人格和记忆；Spdor 负责视频处理、定时日记和日记页；双方一起完成端到端联调。
+第一周计划中，Homing 负责壳、后端、聊天/形象、人格和记忆；Spdor 负责视频处理、定时日记和日记页；双方一起完成端到端联调。日记定时由 API 服务进程承载，进程停止时不会触发；可在 `apps/api/.env` 用 `DIARY_CRON` 调整计划，默认本地时间每日 20:00。
 
 Notion 保留产品调研与范围决策；GitHub 管代码、Issue、Pull Request 和执行进度。

@@ -1,7 +1,140 @@
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { DiaryIcon } from "../components/Icons";
+import { enqueueDiaryVideo, fetchDiary, retryDiaryItem, runDiaryQueue, type DiaryItem } from "../lib/diary";
 
-/** D2（Spdor）在这里接入日记列表和“添加链接”入口。 */
+function when(iso?: string | null) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function statusText(item: DiaryItem) {
+  if (item.status === "processing") return "正在看视频、写日记…";
+  if (item.status === "failed") return item.errorStage === "diary" ? "日记生成失败" : "视频处理失败";
+  if (item.status === "duplicate") return "这条视频已经有日记了";
+  if (item.memoryStatus === "saved") return "日记已写入记忆";
+  if (item.memoryStatus === "failed") return "日记已保存，记忆写入失败";
+  if (item.memoryStatus === "pending") return "日记已保存，正在写入记忆…";
+  return "等待定时处理";
+}
+
+function DiaryEntry({ item, onRetry, retrying }: { item: DiaryItem; onRetry: (item: DiaryItem) => void; retrying: number | null }) {
+  return (
+    <article className="card diary-entry" id={`diary-entry-${item.id}`}>
+      <div className="diary-entry__meta">
+        <span>{when(item.processedAt ?? item.createdAt)}</span>
+        <span className={`diary-status${item.memoryStatus === "failed" ? " diary-status--failed" : ""}`}>{statusText(item)}</span>
+      </div>
+      <h3>{item.title ?? "今天看的视频"}</h3>
+      <p className="diary-entry__text">{item.diaryText}</p>
+      {item.memoryError && <p className="diary-error" role="status">{item.memoryError}</p>}
+      <div className="diary-entry__actions">
+        {item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer">打开原视频 ↗</a>}
+        {item.memoryStatus === "failed" && (
+          <button className="diary-button diary-button--quiet" disabled={retrying === item.id} onClick={() => onRetry(item)}>
+            {retrying === item.id ? "正在重试…" : "重试记忆写入"}
+          </button>
+        )}
+      </div>
+      {item.summary && <details className="diary-summary"><summary>查看视频摘要</summary><p>{item.summary}</p></details>}
+    </article>
+  );
+}
+
+function QueueItem({ item, onRetry, retrying }: { item: DiaryItem; onRetry: (item: DiaryItem) => void; retrying: number | null }) {
+  return (
+    <li className="diary-queue__item">
+      <div className="diary-queue__body">
+        <div className="diary-queue__title">{item.title ?? item.inputUrl}</div>
+        <div className={`diary-status${item.status === "failed" ? " diary-status--failed" : ""}`}>{statusText(item)}</div>
+        {item.error && <p className="diary-error" role="alert">{item.error}</p>}
+        {item.status === "duplicate" && item.duplicateOf !== null && (
+          <a href={`#diary-entry-${item.duplicateOf}`}>查看已有日记</a>
+        )}
+      </div>
+      {item.status === "failed" && (
+        <button className="diary-button diary-button--quiet" disabled={retrying === item.id} onClick={() => onRetry(item)}>
+          {retrying === item.id ? "正在重试…" : "重试处理"}
+        </button>
+      )}
+    </li>
+  );
+}
+
 export function DiaryPage() {
+  const [items, setItems] = useState<DiaryItem[] | null>(null);
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [retrying, setRetrying] = useState<number | null>(null);
+
+  const load = useCallback(async (signal?: AbortSignal, quiet = false) => {
+    try {
+      setItems(await fetchDiary(signal));
+      if (!quiet) setError("");
+    } catch (cause) {
+      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "读取日记失败。");
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    const timer = window.setInterval(() => { void load(controller.signal, true); }, 5000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [load]);
+
+  const add = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const value = url.trim();
+    if (!value || submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await enqueueDiaryVideo(value);
+      setUrl("");
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "添加视频失败。");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const run = async () => {
+    setRunning(true);
+    setError("");
+    try {
+      await runDiaryQueue();
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "启动日记处理失败。");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const retry = async (item: DiaryItem) => {
+    setRetrying(item.id);
+    setError("");
+    try {
+      await retryDiaryItem(item.id);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "重试失败。");
+    } finally {
+      setRetrying(null);
+    }
+  };
+
+  const pending = items?.some((item) => item.status === "pending" || item.status === "failed" || item.memoryStatus === "pending") ?? false;
+  const queue = items?.filter((item) => !item.diaryText && item.status !== "done") ?? [];
+  const entries = items?.filter((item) => Boolean(item.diaryText)) ?? [];
+
   return (
     <div className="page">
       <div className="page__inner">
@@ -10,11 +143,56 @@ export function DiaryPage() {
           <h1 className="page__title">她的日记</h1>
           <p className="page__lead">鲸汐看过的视频、想到的事，会在这里变成一篇篇日记。</p>
         </header>
-        <div className="card empty">
-          <DiaryIcon style={{ width: 64, height: 64, color: "var(--accent)" }} />
-          <h3>还没有日记</h3>
-          <p>等视频摘要和定时日记接入后，这里会按日期显示她写下的内容。</p>
-        </div>
+
+        <section className="card diary-add">
+          <h3>分享一个视频</h3>
+          <p>加入待看列表后，她会在定时任务中看完并写下日记。</p>
+          <form className="diary-form" onSubmit={add}>
+            <label className="sr-only" htmlFor="diary-video-url">Bilibili 视频链接或 BV 号</label>
+            <input
+              id="diary-video-url"
+              className="diary-input"
+              value={url}
+              onChange={(event) => setUrl(event.target.value)}
+              placeholder="粘贴 Bilibili 链接、b23.tv 短链或 BV 号"
+              maxLength={500}
+              disabled={submitting}
+            />
+            <button className="diary-button" type="submit" disabled={!url.trim() || submitting}>
+              {submitting ? "正在添加…" : "加入待看"}
+            </button>
+          </form>
+          <div className="diary-add__actions">
+            <span>定时任务每次处理一条；API 运行期间生效。也可以立即开始处理。</span>
+            <button className="diary-button diary-button--quiet" onClick={run} disabled={running || !pending}>
+              {running ? "正在启动…" : "立即处理一条"}
+            </button>
+          </div>
+        </section>
+
+        {error && <div className="card diary-error-card" role="alert"><strong>日记服务暂不可用</strong><p>{error}</p><button className="diary-button diary-button--quiet" onClick={() => void load()}>重试读取</button></div>}
+        {items === null && !error && <div className="card"><p>正在翻她的小本子…</p></div>}
+
+        {items !== null && queue.length > 0 && (
+          <section className="card diary-queue">
+            <h3>待看列表</h3>
+            <ul>{queue.map((item) => <QueueItem key={item.id} item={item} onRetry={retry} retrying={retrying} />)}</ul>
+          </section>
+        )}
+
+        {items !== null && entries.length > 0 && (
+          <section className="diary-list" aria-label="已生成的日记">
+            {entries.map((item) => <DiaryEntry key={item.id} item={item} onRetry={retry} retrying={retrying} />)}
+          </section>
+        )}
+
+        {items !== null && !error && entries.length === 0 && queue.length === 0 && (
+          <div className="card empty">
+            <DiaryIcon style={{ width: 64, height: 64, color: "var(--accent)" }} />
+            <h3>还没有日记</h3>
+            <p>添加一个视频链接，她看完后就会在这里写下日记。</p>
+          </div>
+        )}
       </div>
     </div>
   );

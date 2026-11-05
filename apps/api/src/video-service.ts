@@ -41,6 +41,7 @@ export interface VideoService {
 }
 
 export class VideoError extends Error {}
+export class VideoBusyError extends VideoError {}
 
 const SECRET = /SESSDATA=[^\s&;]+/gi;
 const scrub = (message: string) =>
@@ -50,7 +51,7 @@ let busy = false;
 
 /** 同一时间只处理一个视频：B 站有限流，Codex 也不适合并发。返回释放函数。 */
 export function acquireVideoLock(): () => void {
-  if (busy) throw new VideoError("正在处理另一个视频，请稍后再试。");
+  if (busy) throw new VideoBusyError("正在处理另一个视频，请稍后再试。");
   busy = true;
   return () => {
     busy = false;

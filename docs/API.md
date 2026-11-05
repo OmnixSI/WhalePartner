@@ -58,6 +58,17 @@
 
 `remembered` 表示这段经历已写入记忆。
 
+## 定时日记
+
+日记页把 B 站链接加入持久化待看队列。API 进程运行期间，计划任务按 `DIARY_CRON` 定时触发，每次最多开始处理一条；默认是本地时间每日 20:00。进程停止期间不会运行，重新启动后会接着处理未完成项目。
+
+- `GET /api/diary` → `{ items: DiaryItem[] }`，按创建时间倒序，最多 100 条。
+- `POST /api/diary/queue`，请求体 `{ "url": "B 站链接、b23.tv 短链或 BV 号" }` → `{ item, created }`。新项目返回 201，已加入过的规范化输入返回 200。
+- `POST /api/diary/run` → `{ started }`，在后台触发同一个队列处理器；当前正在运行时 `started` 为 `false`。
+- `POST /api/diary/items/:id/retry`，重试失败的视频/日记生成，或重试日记已保存但 mem0 写入失败的经历。
+
+`DiaryItem` 包含 `id`、`inputUrl`、`bvid`、`title`、`sourceUrl`、`summary`、`diaryText`、`status`、`errorStage`、`error`、`memoryStatus`、`memoryError`、`createdAt`、`processedAt`、`duplicateOf`。队列状态为 `pending`、`processing`、`failed`、`done`、`duplicate`；记忆状态为 `pending`、`saved`、`failed` 或 `null`。摘要在生成日记前落盘；重试会从已保存的阶段继续。已生成日记的同一 BV 号只保留一篇，记忆使用独立的 `diary:<BV号>` 来源标识。
+
 ## 配置（`apps/api/.env`，见 `.env.example`）
 
 | 变量 | 说明 |
@@ -66,6 +77,7 @@
 | `BACKUP_LLM_BASE_URL`、`BACKUP_LLM_API_KEY`、`BACKUP_LLM_MODEL` | 备用 OpenAI 兼容接口，三项齐全才启用 |
 | `CODEX_FALLBACK`、`CODEX_REASONING_EFFORT` | 本机 Codex 兜底（默认开）；推理强度默认 `none`，`gpt-6-luna` 不再接受 `minimal` |
 | `MEMORY`、`MEMORY_DIR` | `MEMORY=off` 关闭记忆；数据和向量模型默认在 `apps/api/.local/memory` |
-| `API_HOST`、`API_PORT`、`APP_DB_PATH`、`LLM_TIMEOUT_MS` | 监听地址、端口、聊天库位置、等待模型首个响应的超时 |
+| `API_HOST`、`API_PORT`、`APP_DB_PATH`、`LLM_TIMEOUT_MS` | 监听地址、端口、聊天/待看/日记共用的 SQLite 文件位置、等待模型首个响应的超时 |
+| `DIARY_CRON` | 定时日记 cron 表达式，按 API 主机本地时区运行；默认 `0 20 * * *`（每日 20:00） |
 
 模型链顺序：DeepSeek → 备用接口 → 本机 Codex。只在一个提供方还没输出任何文字时才会换下一个。
