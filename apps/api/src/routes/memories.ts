@@ -5,6 +5,8 @@ import { archiveExperience } from "../memory/archive.ts";
 import type { MemoryStore } from "../memory/types.ts";
 import type { ServerDeps } from "../server-types.ts";
 import { text } from "./input.ts";
+import { isCharacterId } from "../persona/persona.ts";
+import type { MemoryCategory, MemoryExplorerFilters, MemoryStatusFilter } from "../store/explorer.ts";
 
 export async function handleMemoriesRoute(
   deps: Pick<ServerDeps, "store" | "memory">,
@@ -16,6 +18,29 @@ export async function handleMemoriesRoute(
   try {
     if (request.method === "GET" && url.pathname === "/api/memories") {
       return await listMemories(deps.store, memory, response);
+    }
+    if (request.method === "GET" && url.pathname === "/api/memories/explorer") {
+      const character = url.searchParams.get("character") ?? "whale";
+      if (!isCharacterId(character)) throw new ChatInputError("未知的角色。");
+      const category = url.searchParams.get("category") ?? "all";
+      const status = url.searchParams.get("status") ?? "all";
+      const role = url.searchParams.get("role") ?? "all";
+      if (!isMemoryCategory(category) || !isMemoryStatus(status) || !isMemoryRole(role)) throw new ChatInputError("记忆筛选条件无效。");
+      const from = dateBoundary(url.searchParams.get("from"), false);
+      const to = dateBoundary(url.searchParams.get("to"), true);
+      if (from && to && from >= to) throw new ChatInputError("结束日期需要晚于开始日期。");
+      const filters: MemoryExplorerFilters = {
+        character,
+        query: text(url.searchParams.get("q") ?? undefined, 120, "q", false),
+        category,
+        status,
+        role,
+        ...(from ? { from } : {}),
+        ...(to ? { to } : {}),
+        page: Math.max(1, Number(url.searchParams.get("page")) || 1),
+        pageSize: Math.min(100, Math.max(1, Number(url.searchParams.get("pageSize")) || 30)),
+      };
+      return sendJson(response, 200, deps.store.listMemoryExplorer(filters));
     }
     if (request.method === "DELETE" && url.pathname.startsWith("/api/memories/") && url.pathname !== "/api/memories/experience") {
       return await deleteMemory(deps.store, memory, url.pathname, response);
@@ -39,6 +64,28 @@ export async function handleMemoriesRoute(
     const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
     return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "记忆请求失败。" });
   }
+}
+
+function isMemoryCategory(value: string): value is MemoryCategory {
+  return ["all", "fact", "conversation", "video", "web", "diary", "learned", "reflection"].includes(value);
+}
+
+function isMemoryStatus(value: string): value is MemoryStatusFilter {
+  return ["all", "current", "historical"].includes(value);
+}
+
+function isMemoryRole(value: string): value is NonNullable<MemoryExplorerFilters["role"]> {
+  return ["all", "user", "assistant"].includes(value);
+}
+
+function dateBoundary(value: string | null, afterDay: boolean): string | undefined {
+  if (!value) return undefined;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (!match) throw new ChatInputError("日期格式无效。");
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (date.getFullYear() !== Number(match[1]) || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[3])) throw new ChatInputError("日期无效。");
+  if (afterDay) date.setDate(date.getDate() + 1);
+  return date.toISOString();
 }
 
 async function listMemories(store: ServerDeps["store"], memory: MemoryStore | undefined, response: ServerResponse) {
