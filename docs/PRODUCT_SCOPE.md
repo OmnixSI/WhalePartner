@@ -34,7 +34,7 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 | B2 人格 | 完成：每个角色一份身份和脾气文件 + 共用的说话方式和底线规则，四个角色的 13 项回归问卷在 DeepSeek 上都是 13/13。 |
 | 成长（人格延伸） | 完成：从看过的视频、读过的网页和用户的话里学新梗和新知识（自动入库，用户可删），定期写“近况小记”，记忆按清晰度衰减，聊天里发网页链接会读。设计与参考见 [`PERSONALITY.md`](PERSONALITY.md)。 |
 | B3 记忆 | 完成：mem0 + 本地中文向量模型，写入、重启、召回已验证。 |
-| B4 本地长期记忆与长会话上下文 | 实现中（[Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)）：本地 SQLite 原文档案、事实来源与时间版本、滚动会话观察、FTS5/向量/时间范围混合召回、上下文预算和可恢复任务队列。只做本机存储，不做云同步。 |
+| B4 本地长期记忆与长会话上下文 | 代码完成，待审查（[PR #32](https://github.com/OmnixSI/WhalePartner/pull/32)，[Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)）：本地 SQLite 原文档案、事实来源与时间版本、滚动会话观察、FTS5/向量/时间范围混合召回、上下文预算和可恢复任务队列。只做本机存储，不做云同步。 |
 | C1/C2 视频链路 | 完成（Spdor）；已接入聊天：发 B 站链接，角色看完再讲并记住。 |
 | 十条视频成本与质量基准 | 已记录 token 和阶段耗时（见 [构建记录](../implement-stage/BUILD_NOTE.md)）。人工评分和美元费用仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。 |
 | D1 定时日记、D2 日记页与添加链接入口 | 实现于本分支：B 站链接入 SQLite 待看队列，计划任务每次处理一条，页面展示队列和生成的摘要/日记；日记经历写入共享 mem0。接口见 [`API.md`](API.md)。 |
