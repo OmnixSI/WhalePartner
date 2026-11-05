@@ -14,6 +14,7 @@ export interface ChatSession {
   id: string;
   character: string;
   title: string;
+  titleManual?: boolean;
   createdAt: string;
   updatedAt: string;
   messageCount?: number;
@@ -23,7 +24,6 @@ export type ChatStreamEvent =
   | { type: "delta"; text: string }
   | { type: "video"; stage: "reading" | "watching" | "thinking" | "failed"; message: string; title?: string }
   | { type: "web"; stage: "reading" | "summarizing" | "failed"; message: string; title?: string }
-  | { type: "recall"; memories: string[] }
   | { type: "emotion"; emotion: AvatarEmotion }
   | { type: "done"; messageId: number; sessionId: string; emotion: AvatarEmotion; provider?: string }
   | { type: "error"; message: string };
@@ -74,10 +74,11 @@ export async function* streamChat(message: string, character: string, sessionId:
   }
 }
 
-export async function fetchHistory(character: string, limit = 50, signal?: AbortSignal, sessionId?: string): Promise<HistoryMessage[]> {
+export async function fetchHistory(character: string, limit = 50, signal?: AbortSignal, sessionId?: string, aroundId?: number): Promise<HistoryMessage[]> {
   try {
     const query = new URLSearchParams({ limit: String(limit), character });
     if (sessionId) query.set("sessionId", sessionId);
+    if (aroundId) query.set("aroundId", String(aroundId));
     const response = await fetch(`${API_BASE}/api/chat/history?${query}`, { signal });
     if (!response.ok) return [];
     return ((await response.json()) as { messages: HistoryMessage[] }).messages;
@@ -100,6 +101,26 @@ export async function createChatSession(character: string): Promise<ChatSession>
   });
   if (!response.ok) throw new Error(`新建聊天失败（HTTP ${response.status}）。`);
   return ((await response.json()) as { session: ChatSession }).session;
+}
+
+export async function renameChatSession(id: string, character: string, title: string): Promise<ChatSession> {
+  const response = await fetch(`${API_BASE}/api/chat/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ character, title }),
+  });
+  if (!response.ok) throw new Error(`重命名失败（HTTP ${response.status}）。`);
+  return ((await response.json()) as { session: ChatSession }).session;
+}
+
+export async function deleteChatSession(id: string, character: string): Promise<{ ok: boolean; memoriesCleared: boolean }> {
+  const response = await fetch(`${API_BASE}/api/chat/sessions/${encodeURIComponent(id)}?character=${encodeURIComponent(character)}`, { method: "DELETE" });
+  if (!response.ok) {
+    let message = `删除对话失败（HTTP ${response.status}）。`;
+    try { message = ((await response.json()) as { error?: string }).error ?? message; } catch { /* 非 JSON */ }
+    throw new Error(message);
+  }
+  return (await response.json()) as { ok: boolean; memoriesCleared: boolean };
 }
 
 export async function clearHistory(): Promise<{ ok: boolean; memoriesCleared: boolean }> {

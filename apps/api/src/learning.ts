@@ -76,12 +76,13 @@ export async function learnFrom(
   material: { title: string; text: string },
   sourceKey: string,
   signal?: AbortSignal,
+  sourceSessionIds: string[] = [],
 ): Promise<Learning[]> {
   if (!deps.memory && !deps.store) return [];
   try {
     const learnings = await extractLearnings(deps.provider, material, signal);
     for (const [index, item] of learnings.entries()) {
-      const experience = { kind: "learned", title: KIND_LABEL[item.kind], text: item.text, sourceId: `learned:${sourceKey}:${index}` };
+      const experience = { kind: "learned", title: KIND_LABEL[item.kind], text: item.text, sourceId: `learned:${sourceKey}:${index}`, sourceSessionIds };
       if (deps.store) await archiveExperience(deps.store, deps.memory, experience, "学习记录");
       else await deps.memory!.addExperience(experience);
     }

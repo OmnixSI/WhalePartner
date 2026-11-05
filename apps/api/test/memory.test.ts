@@ -37,15 +37,14 @@ async function collect(events: AsyncIterable<ChatEvent>) {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
 
-test("chat recalls facts into the prompt, announces them, and remembers the turn afterwards", async () => {
+test("chat recalls facts into the prompt without exposing recall diagnostics and remembers the turn afterwards", async () => {
   const seen: ChatMessage[][] = [];
   const { store: memory, calls } = fakeMemory();
   const query = "我的猫叫什么？最近我们一起看过什么？";
   const events = await collect(runChat({ provider: new FallbackChatProvider([scripted(seen)]), store: new ChatStore(":memory:"), memory }, query));
   await flush();
 
-  assert.deepEqual(events.map((e) => e.type), ["recall", "emotion", "delta", "done"]);
-  assert.deepEqual(events[0], { type: "recall", memories: ["历史记忆（日期不详，尚无原始消息来源）：用户养了一只叫团子的猫"] });
+  assert.deepEqual(events.map((e) => e.type), ["emotion", "delta", "done"]);
   assert.deepEqual(calls.queries, [query]);
   const system = seen[0].filter((message) => message.role === "system").map((message) => message.content).join("\n");
   assert.ok(system.includes("无原始消息来源") && system.includes("用户养了一只叫团子的猫"));

@@ -3,6 +3,9 @@ import { ExperienceRepository, type ExperienceInput } from "./store/experiences.
 import { FactRepository } from "./store/facts.ts";
 import { MemoryJobRepository, type MemoryQueueStatus } from "./store/jobs.ts";
 import { clearChatData } from "./store/maintenance.ts";
+import { deleteChatSession, type SessionDeletion } from "./store/session-deletion.ts";
+import { listMemoryExplorer, type MemoryExplorerFilters } from "./store/explorer.ts";
+import { journalSourcesForDay } from "./store/journal-sources.ts";
 import { ObservationRepository, type ObservationInput, type StoredObservation } from "./store/observations.ts";
 import { rebuildSearchIndexes } from "./store/search-index.ts";
 import { matchesTimeWindow, overlapsFactTimeWindow } from "./store/search.ts";
@@ -14,6 +17,8 @@ export type { ArchiveHit, ChatSession, FactCandidate, MemoryJob, StoredExperienc
 export type { ExperienceInput } from "./store/experiences.ts";
 export type { MemoryQueueStatus } from "./store/jobs.ts";
 export type { ObservationInput, StoredObservation } from "./store/observations.ts";
+export type { SessionDeletion } from "./store/session-deletion.ts";
+export type { MemoryExplorerFilters, MemoryExplorerItem, MemoryExplorerResult } from "./store/explorer.ts";
 export { matchesTimeWindow, overlapsFactTimeWindow } from "./store/search.ts";
 
 /** Stable storage API used by the chat service; feature repositories own each data domain. */
@@ -40,12 +45,17 @@ export class ChatStore {
   getSession(id: string, character?: string) { return this.#sessions.getSession(id, character); }
   getOrCreateSession(character: string, id?: string) { return this.#sessions.getOrCreateSession(character, id); }
   listSessions(character: string, limit?: number) { return this.#sessions.listSessions(character, limit); }
+  renameSession(id: string, character: string, title: string) { return this.#sessions.renameSession(id, character, title); }
+  deleteSession(id: string, character: string): SessionDeletion | undefined { return deleteChatSession(this.#db, id, character); }
   add(role: StoredRole, content: string, emotion?: string | null, character?: string, sessionId?: string) { return this.#sessions.add(role, content, emotion, character, sessionId); }
   recent(limit: number, character?: string, sessionId?: string) { return this.#sessions.recent(limit, character, sessionId); }
   messagesBetween(sessionId: string, fromId: number, throughId: number) { return this.#sessions.messagesBetween(sessionId, fromId, throughId); }
+  messagesAround(sessionId: string, messageId: number, radius?: number) { return this.#sessions.messagesAround(sessionId, messageId, radius); }
   message(id: number) { return this.#sessions.message(id); }
   remove(id: number) { return this.#sessions.remove(id); }
   searchArchive(query: string, limit?: number, excludeSessionId?: string, character?: string): ArchiveHit[] { return this.#sessions.searchArchive(query, limit, excludeSessionId, character); }
+  listMemoryExplorer(filters: MemoryExplorerFilters) { return listMemoryExplorer(this.#db, filters); }
+  journalSources(character: string, from: string, to: string) { return journalSourcesForDay(this.#db, character, from, to); }
   getNote(character: string) { return this.#sessions.getNote(character); }
   setNote(character: string, text: string, assistantCount: number) { return this.#sessions.setNote(character, text, assistantCount); }
   countAssistant(character: string) { return this.#sessions.countAssistant(character); }
@@ -74,6 +84,7 @@ export class ChatStore {
   markExperienceIndexFailed(id: number, error: string) { return this.#experiences.markExperienceIndexFailed(id, error); }
   removeExperience(id: number) { return this.#experiences.removeExperience(id); }
   removeExperienceBySourceId(sourceId: string) { return this.#experiences.removeExperienceBySourceId(sourceId); }
+  addLegacyMemorySource(vectorEntryId: string, sessionId: string) { return this.#experiences.addLegacyMemorySource(vectorEntryId, sessionId); }
 
   observation(sessionId: string): StoredObservation | undefined { return this.#observations.get(sessionId); }
   observationInput(sessionId: string, keepRecent?: number): ObservationInput | undefined { return this.#observations.input(sessionId, keepRecent); }

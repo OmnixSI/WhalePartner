@@ -16,7 +16,7 @@ function videoMaterial(video: { title: string; uploader: string; durationSeconds
   return ["## 这一轮的情况", SHARE_INSTRUCTIONS, "<video_material>", `标题：${video.title}`, `作者：${video.uploader}`, `时长：${minutes}`, summary, "</video_material>"].join("\n");
 }
 
-export async function* watchVideo(deps: ChatDeps, character: CharacterId, service: VideoService, target: string): AsyncGenerator<ChatEvent, string> {
+export async function* watchVideo(deps: ChatDeps, character: CharacterId, service: VideoService, target: string, sourceSessionId: string, sourceMessageId: number): AsyncGenerator<ChatEvent, string> {
   yield { type: "video", stage: "reading", message: "正在读这个视频的资料…" };
   let release: (() => void) | undefined;
   try {
@@ -25,8 +25,8 @@ export async function* watchVideo(deps: ChatDeps, character: CharacterId, servic
     yield { type: "video", stage: "watching", message: `正在看《${collected.title}》…`, title: collected.title };
     const summary = await service.summarize(collected);
     const shared = sharedParagraph(summary.summary);
-    await archiveExperience(deps.store, deps.memory, { kind: "video", title: summary.title, text: shared, url: summary.url, sourceId: summary.bvid }, "视频经历");
-    queueLearning(deps, character, { title: summary.title, text: summary.summary }, summary.bvid);
+    await archiveExperience(deps.store, deps.memory, { kind: "video", title: summary.title, text: shared, url: summary.url, sourceId: summary.bvid, sourceSessionId, sourceMessageId }, "视频经历");
+    queueLearning(deps, character, { title: summary.title, text: summary.summary }, summary.bvid, [sourceSessionId]);
     return videoMaterial(summary, shared);
   } catch (error) {
     const reason = error instanceof VideoError ? error.message : "处理视频时出了点问题。";
@@ -60,15 +60,15 @@ async function summarizeWebPage(provider: ChatDeps["provider"], page: WebPage): 
   return summary;
 }
 
-export async function* readWeb(deps: ChatDeps, character: CharacterId, service: WebService, target: string): AsyncGenerator<ChatEvent, string> {
+export async function* readWeb(deps: ChatDeps, character: CharacterId, service: WebService, target: string, sourceSessionId: string, sourceMessageId: number): AsyncGenerator<ChatEvent, string> {
   yield { type: "web", stage: "reading", message: "正在打开这个网页…" };
   try {
     const page = await service.read(target);
     yield { type: "web", stage: "summarizing", message: `正在读《${page.title}》…`, title: page.title };
     const summary = await summarizeWebPage(deps.provider, page);
     const key = createHash("sha1").update(page.url).digest("hex").slice(0, 16);
-    await archiveExperience(deps.store, deps.memory, { kind: "web", title: page.title.slice(0, 120), text: summary, url: page.url, sourceId: `web:${key}` }, "网页经历");
-    queueLearning(deps, character, { title: page.title, text: page.text }, `web:${key}`);
+    await archiveExperience(deps.store, deps.memory, { kind: "web", title: page.title.slice(0, 120), text: summary, url: page.url, sourceId: `web:${key}`, sourceSessionId, sourceMessageId }, "网页经历");
+    queueLearning(deps, character, { title: page.title, text: page.text }, `web:${key}`, [sourceSessionId]);
     return ["## 这一轮的情况", WEB_INSTRUCTIONS, "<web_material>", `标题：${page.title}`, summary, "</web_material>"].join("\n");
   } catch (error) {
     const reason = error instanceof WebError ? error.message : "读这个网页时出了点问题。";

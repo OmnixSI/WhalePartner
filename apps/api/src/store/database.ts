@@ -26,11 +26,13 @@ export function openChatDatabase(path: string): DatabaseSync {
       character TEXT NOT NULL,
       title TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      title_manual INTEGER NOT NULL DEFAULT 0
     );
   `);
 
   migrateMessages(db);
+  migrateSessions(db);
   db.exec(`
     INSERT OR IGNORE INTO chat_sessions (id, character, title, created_at, updated_at)
     SELECT 'legacy:' || character, character, '历史聊天', MIN(created_at), MAX(created_at)
@@ -101,6 +103,7 @@ export function openChatDatabase(path: string): DatabaseSync {
       source_id TEXT NOT NULL UNIQUE,
       source_session_id TEXT,
       source_message_id INTEGER,
+      source_missing INTEGER NOT NULL DEFAULT 0,
       vector_indexed INTEGER NOT NULL DEFAULT 0,
       vector_entry_id TEXT,
       attempts INTEGER NOT NULL DEFAULT 0,
@@ -109,6 +112,33 @@ export function openChatDatabase(path: string): DatabaseSync {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS memory_experience_sessions (
+      experience_id INTEGER NOT NULL REFERENCES memory_experiences(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      PRIMARY KEY (experience_id, session_id)
+    );
+    CREATE TABLE IF NOT EXISTS memory_experience_occurrences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      experience_id INTEGER NOT NULL REFERENCES memory_experiences(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      occurred_at TEXT NOT NULL,
+      UNIQUE (experience_id, session_id, message_id)
+    );
+    CREATE INDEX IF NOT EXISTS memory_experience_occurrences_date ON memory_experience_occurrences(occurred_at, experience_id);
+    CREATE INDEX IF NOT EXISTS memory_experience_occurrences_session ON memory_experience_occurrences(session_id, message_id);
+    INSERT OR IGNORE INTO memory_experience_occurrences(experience_id, session_id, message_id, occurred_at)
+      SELECT id, source_session_id, source_message_id, created_at FROM memory_experiences
+      WHERE kind IN ('video','web') AND source_session_id IS NOT NULL AND source_message_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS memory_experience_sessions_session ON memory_experience_sessions(session_id, experience_id);
+    INSERT OR IGNORE INTO memory_experience_sessions(experience_id, session_id)
+      SELECT id, source_session_id FROM memory_experiences WHERE source_session_id IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS memory_legacy_sources (
+      vector_entry_id TEXT NOT NULL,
+      session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      PRIMARY KEY (vector_entry_id, session_id)
+    );
+    CREATE INDEX IF NOT EXISTS memory_legacy_sources_session ON memory_legacy_sources(session_id, vector_entry_id);
     CREATE INDEX IF NOT EXISTS memory_experiences_kind_created ON memory_experiences(kind, created_at DESC);
     CREATE INDEX IF NOT EXISTS memory_experiences_vector_pending ON memory_experiences(vector_indexed, next_attempt_at, id);
 
@@ -126,6 +156,7 @@ export function openChatDatabase(path: string): DatabaseSync {
       value TEXT NOT NULL
     );
   `);
+  migrateExperiences(db);
   return db;
 }
 
@@ -136,5 +167,19 @@ function migrateMessages(db: DatabaseSync) {
   }
   if (!columns.some((column) => column.name === "session_id")) {
     db.exec("ALTER TABLE messages ADD COLUMN session_id TEXT");
+  }
+}
+
+function migrateSessions(db: DatabaseSync) {
+  const columns = db.prepare("PRAGMA table_info(chat_sessions)").all() as unknown as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "title_manual")) {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN title_manual INTEGER NOT NULL DEFAULT 0");
+  }
+}
+
+function migrateExperiences(db: DatabaseSync) {
+  const columns = db.prepare("PRAGMA table_info(memory_experiences)").all() as unknown as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === "source_missing")) {
+    db.exec("ALTER TABLE memory_experiences ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0");
   }
 }

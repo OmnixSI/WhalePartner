@@ -80,10 +80,11 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
 
       if (!job.legacyDone) {
         if (memory) {
-          await memory.remember([
+          const vectorIds = await memory.remember([
             { role: "user", content: user.content },
             { role: "assistant", content: assistant.content },
           ]);
+          for (const vectorId of vectorIds ?? []) store.addLegacyMemorySource(vectorId, job.sessionId);
         }
         store.markMemoryJobStep(job.id, "legacy");
       }

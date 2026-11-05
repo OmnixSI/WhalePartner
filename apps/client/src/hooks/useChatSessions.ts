@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createChatSession, fetchHistory, fetchSessions, type ChatSession, type HistoryMessage } from "../lib/chat";
+import { createChatSession, deleteChatSession as deleteSessionRequest, fetchHistory, fetchSessions, renameChatSession as renameSessionRequest, type ChatSession, type HistoryMessage } from "../lib/chat";
 
 export function useChatSessions(characterId: string, showHistory: (messages: HistoryMessage[]) => void) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -21,7 +21,10 @@ export function useChatSessions(characterId: string, showHistory: (messages: His
       const available = await fetchSessions(characterId, ctrl.signal);
       if (!isCurrent()) return;
       const key = `whalepartner:session:${characterId}`;
-      const remembered = localStorage.getItem(key);
+      const targetMessageId = Number(localStorage.getItem(`whalepartner:open-message:${characterId}`)) || undefined;
+      const remembered = targetMessageId
+        ? localStorage.getItem(`whalepartner:open-session:${characterId}`)
+        : localStorage.getItem(key);
       let active = available.find((session) => session.id === remembered) ?? available[0];
       let nextSessions = available;
       if (!active) {
@@ -32,8 +35,13 @@ export function useChatSessions(characterId: string, showHistory: (messages: His
       setSessions(nextSessions);
       setSessionId(active.id);
       localStorage.setItem(key, active.id);
-      const history = await fetchHistory(characterId, 200, ctrl.signal, active.id);
-      if (isCurrent()) showHistory(history);
+      const history = await fetchHistory(characterId, 200, ctrl.signal, active.id, targetMessageId);
+      if (isCurrent()) {
+        showHistory(history);
+        if (targetMessageId) {
+          localStorage.removeItem(`whalepartner:open-session:${characterId}`);
+        }
+      }
     })().catch((error: unknown) => {
       if (isCurrent()) console.warn("读取本地聊天会话失败：", error instanceof Error ? error.message : error);
     });
@@ -66,5 +74,31 @@ export function useChatSessions(characterId: string, showHistory: (messages: His
     }
   }, [characterId, showHistory]);
 
-  return { sessions, sessionId, setSessions, setSessionId, selectSession, startNewSession };
+  const renameSession = useCallback(async (title: string) => {
+    if (!sessionId) return;
+    const session = await renameSessionRequest(sessionId, characterId, title);
+    setSessions((previous) => previous.map((item) => item.id === session.id ? session : item));
+  }, [characterId, sessionId]);
+
+  const deleteSession = useCallback(async (id = sessionId) => {
+    if (!id) return;
+    const requestId = ++historyRequestId.current;
+    await deleteSessionRequest(id, characterId);
+    const remaining = sessions.filter((session) => session.id !== id);
+    setSessions(remaining);
+    if (sessionId !== id) return;
+    showHistory([]);
+    const next = remaining[0];
+    if (!next) {
+      setSessionId(undefined);
+      localStorage.removeItem(`whalepartner:session:${characterId}`);
+      return;
+    }
+    setSessionId(next.id);
+    localStorage.setItem(`whalepartner:session:${characterId}`, next.id);
+    const history = await fetchHistory(characterId, 200, undefined, next.id);
+    if (historyRequestId.current === requestId && currentCharacterId.current === characterId) showHistory(history);
+  }, [characterId, sessionId, sessions, showHistory]);
+
+  return { sessions, sessionId, setSessions, setSessionId, selectSession, startNewSession, renameSession, deleteSession };
 }

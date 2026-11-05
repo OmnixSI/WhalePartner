@@ -124,7 +124,7 @@ export class FactRepository {
     `).get(id) as unknown as Omit<StoredFact, "sources"> | undefined;
     if (!row) return undefined;
     const sources = this.db.prepare(`
-      SELECT fs.message_id AS messageId, m.session_id AS sessionId,
+      SELECT fs.message_id AS messageId, m.session_id AS sessionId, m.character AS character,
              m.created_at AS createdAt, fs.quote
       FROM memory_fact_sources fs JOIN messages m ON m.id = fs.message_id
       WHERE fs.fact_id = ? ORDER BY fs.recorded_at DESC

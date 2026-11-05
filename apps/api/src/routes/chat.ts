@@ -3,11 +3,13 @@ import { ChatInputError, runChat, validateUserMessage } from "../chat.ts";
 import { readJsonBody, sendJson, sendSse, startSse } from "../http.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "../persona/persona.ts";
 import type { ServerDeps } from "../server-types.ts";
+import type { ChatSessionRequests } from "./chat-session-requests.ts";
 
 export async function handleChatRoute(
   deps: Pick<ServerDeps, "config" | "provider" | "store" | "memory" | "video" | "web">,
   request: IncomingMessage,
   response: ServerResponse,
+  sessionRequests: ChatSessionRequests,
 ) {
   let text: string;
   let character: CharacterId = DEFAULT_CHARACTER;
@@ -29,7 +31,21 @@ export async function handleChatRoute(
     return;
   }
 
+  let activeSessionId: string;
+  try {
+    activeSessionId = deps.store.getOrCreateSession(character, sessionId).id;
+    sessionId = activeSessionId;
+  } catch (error) {
+    sendJson(response, 404, { error: error instanceof Error ? error.message : "没有找到这个聊天会话。" });
+    return;
+  }
+
   const abort = new AbortController();
+  const finishRequest = sessionRequests.begin(activeSessionId, abort);
+  if (!finishRequest) {
+    sendJson(response, 409, { error: "这个聊天会话正在删除，请稍后重试。" });
+    return;
+  }
   response.on("close", () => {
     if (!response.writableFinished) abort.abort();
   });
@@ -53,5 +69,6 @@ export async function handleChatRoute(
     if (!abort.signal.aborted) sendSse(response, "error", { message: error instanceof Error ? error.message : "聊天失败。" });
   } finally {
     response.end();
+    finishRequest();
   }
 }

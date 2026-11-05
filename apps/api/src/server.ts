@@ -14,10 +14,15 @@ import { createWebService } from "./web-service.ts";
 import { DiaryStore } from "./diary-store.ts";
 import { DiaryService } from "./diary-service.ts";
 import { startDiaryScheduler } from "./diary-scheduler.ts";
+import { JournalStore } from "./journal-store.ts";
+import { DailyJournalService } from "./daily-journal.ts";
+import { startDailyJournalScheduler } from "./daily-journal-scheduler.ts";
 import { handleAccountsRoute } from "./routes/accounts.ts";
 import { handleChatHistoryRoute } from "./routes/chat-history.ts";
 import { handleChatRoute } from "./routes/chat.ts";
+import { ChatSessionRequests } from "./routes/chat-session-requests.ts";
 import { handleDiaryRoute } from "./routes/diary.ts";
+import { handleJournalsRoute } from "./routes/journals.ts";
 import { handleMemoriesRoute } from "./routes/memories.ts";
 import { handleVideoSummaryRoute } from "./routes/video-summary.ts";
 import type { ServerDeps } from "./server-types.ts";
@@ -48,6 +53,7 @@ async function probe({ provider }: ServerDeps) {
 }
 
 export function createApiServer(deps: ServerDeps): Server {
+  const sessionRequests = new ChatSessionRequests();
   return createServer(async (request, response) => {
     applyCors(request, response);
     try {
@@ -71,9 +77,13 @@ export function createApiServer(deps: ServerDeps): Server {
         const note = deps.store.getNote(character);
         return sendJson(response, 200, { note: note ? { text: note.text, updatedAt: note.updatedAt } : null });
       }
-      if (await handleChatHistoryRoute(deps, request, response, url)) return;
+      if (await handleChatHistoryRoute(deps, request, response, url, sessionRequests)) return;
       if (url.pathname === "/api/diary" || url.pathname.startsWith("/api/diary/")) {
         await handleDiaryRoute(deps, request, response, url);
+        return;
+      }
+      if (url.pathname === "/api/journals" || url.pathname.startsWith("/api/journals/")) {
+        await handleJournalsRoute(deps, request, response, url);
         return;
       }
       if (url.pathname.startsWith("/api/memories")) {
@@ -85,7 +95,7 @@ export function createApiServer(deps: ServerDeps): Server {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/chat") {
-        await handleChatRoute(deps, request, response);
+        await handleChatRoute(deps, request, response, sessionRequests);
         return;
       }
       sendJson(response, 404, { error: "未找到。" });
@@ -103,16 +113,21 @@ if (import.meta.main) {
   const store = new ChatStore(config.dbPath);
   if (config.memoryEnabled && !existsSync(join(config.memoryDir, "vectors.db"))) store.resetMemoryVectorIndexes();
   const diaryStore = new DiaryStore(config.dbPath);
+  const journalStore = new JournalStore(config.dbPath);
   const memory = config.memoryEnabled
     ? new LazyMemoryStore({ dataDir: config.memoryDir, provider, archive: store })
     : undefined;
   const video = createVideoService();
   const diary = new DiaryService({ store: diaryStore, archive: store, provider, memory, video });
-  const server = createApiServer({ config, provider, store, memory, video, diary, web: createWebService(), accounts: createAccountService() });
+  const journal = new DailyJournalService({ store: journalStore, archive: store, provider, memory });
+  const server = createApiServer({ config, provider, store, memory, video, diary, journal, web: createWebService(), accounts: createAccountService() });
   let stopDiaryScheduler = () => {};
+  let stopJournalScheduler = () => {};
   server.on("close", () => {
     stopDiaryScheduler();
-    void Promise.all([diary.waitForIdle(), waitForMemoryJobs(store)]).finally(() => {
+    stopJournalScheduler();
+    void Promise.all([diary.waitForIdle(), journal.waitForIdle(), waitForMemoryJobs(store)]).finally(() => {
+      journalStore.close();
       diaryStore.close();
       store.close();
     });
@@ -120,8 +135,10 @@ if (import.meta.main) {
   server.listen(config.port, host, () => {
     void scheduleMemoryJobs({ store, provider, memory });
     stopDiaryScheduler = startDiaryScheduler(config.diaryCron, diary);
+    stopJournalScheduler = startDailyJournalScheduler(config.journalCron, journal);
     console.log(`WhalePartner API：http://${host}:${config.port}`);
-    console.log(`日记计划：${config.diaryCron}（本机时区；API 运行时生效）`);
+    console.log(`旧视频日记计划：${config.diaryCron}（本机时区；API 运行时生效）`);
+    console.log(`每日综合日记计划：${config.journalCron}（本机时区；API 运行时生效）`);
     console.log(`模型链：${provider.providers.map((item) => `${item.id}(${item.model})`).join(" → ")}`);
     if (lan) console.log("已开放局域网访问。没有登录保护，只在可信网络里使用。");
   });

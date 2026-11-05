@@ -16,7 +16,6 @@ export type ChatEvent =
   | { type: "delta"; text: string }
   | { type: "video"; stage: "reading" | "watching" | "thinking" | "failed"; message: string; title?: string }
   | { type: "web"; stage: "reading" | "summarizing" | "failed"; message: string; title?: string }
-  | { type: "recall"; memories: string[] }
   | { type: "emotion"; emotion: Emotion }
   | { type: "done"; messageId: number; sessionId: string; emotion: Emotion; provider?: string; usage?: LlmUsage };
 
@@ -56,15 +55,13 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   const session = store.getOrCreateSession(character, deps.sessionId);
   const userMessage = store.add("user", userText, null, character, session.id);
   const recalled = await recallChatMemory({ store, memory, character, sessionId: session.id, query: userText });
-  if (recalled.facts.length > 0) yield { type: "recall", memories: recalled.facts };
-
   let situation: string | undefined;
   const videoTarget = deps.video ? extractVideoTarget(userText) : undefined;
   const webTarget = deps.web && !videoTarget ? extractWebTarget(userText) : undefined;
   if (deps.video && videoTarget) {
-    situation = yield* watchVideo(deps, character, deps.video, videoTarget);
+    situation = yield* watchVideo(deps, character, deps.video, videoTarget, session.id, userMessage.id);
   } else if (deps.web && webTarget) {
-    situation = yield* readWeb(deps, character, deps.web, webTarget);
+    situation = yield* readWeb(deps, character, deps.web, webTarget, session.id, userMessage.id);
   }
 
   const messages = buildChatContext({

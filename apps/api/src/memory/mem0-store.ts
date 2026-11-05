@@ -44,7 +44,8 @@ class Mem0Store implements MemoryStore {
   }
 
   async remember(turns: ConversationTurn[]) {
-    await this.#memory.add(turns, { userId: USER_ID });
+    const added = await this.#memory.add(turns, { userId: USER_ID });
+    return added.results.map((item) => item.id);
   }
 
   async recall(query: string, limit = 5) {

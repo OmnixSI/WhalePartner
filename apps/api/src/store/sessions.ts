@@ -15,18 +15,27 @@ export class SessionRepository {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare("INSERT INTO chat_sessions (id, character, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, character, title, now, now);
-    return { id, character, title, createdAt: now, updatedAt: now, messageCount: 0 };
+    return { id, character, title, titleManual: false, createdAt: now, updatedAt: now, messageCount: 0 };
+  }
+
+  renameSession(id: string, character: string, title: string): ChatSession | undefined {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE chat_sessions SET title = ?, title_manual = 1, updated_at = ?
+      WHERE id = ? AND character = ?
+    `).run(title, now, id, character);
+    return Number(result.changes) > 0 ? this.getSession(id, character) : undefined;
   }
 
   getSession(id: string, character?: string): ChatSession | undefined {
     const row = this.db.prepare(`
-      SELECT s.id, s.character, s.title, s.created_at AS createdAt, s.updated_at AS updatedAt,
+      SELECT s.id, s.character, s.title, s.title_manual AS titleManual, s.created_at AS createdAt, s.updated_at AS updatedAt,
              COUNT(m.id) AS messageCount
       FROM chat_sessions s LEFT JOIN messages m ON m.session_id = s.id
       WHERE s.id = ? ${character ? "AND s.character = ?" : ""}
       GROUP BY s.id
     `).get(...(character ? [id, character] : [id])) as unknown as (ChatSession & { messageCount: number }) | undefined;
-    return row ? { ...row, messageCount: Number(row.messageCount) } : undefined;
+    return row ? { ...row, titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) } : undefined;
   }
 
   getOrCreateSession(character: string, id?: string): ChatSession {
@@ -41,13 +50,13 @@ export class SessionRepository {
 
   listSessions(character: string, limit = 100): ChatSession[] {
     const rows = this.db.prepare(`
-      SELECT s.id, s.character, s.title, s.created_at AS createdAt, s.updated_at AS updatedAt,
+      SELECT s.id, s.character, s.title, s.title_manual AS titleManual, s.created_at AS createdAt, s.updated_at AS updatedAt,
              COUNT(m.id) AS messageCount
       FROM chat_sessions s LEFT JOIN messages m ON m.session_id = s.id
       WHERE s.character = ? GROUP BY s.id
       ORDER BY s.updated_at DESC, s.created_at DESC LIMIT ?
     `).all(character, limit) as unknown as Array<ChatSession & { messageCount: number }>;
-    return rows.map((row) => ({ ...row, messageCount: Number(row.messageCount) }));
+    return rows.map((row) => ({ ...row, titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) }));
   }
 
   add(role: StoredRole, content: string, emotion: string | null = null, character = "whale", sessionId?: string): StoredMessage {
@@ -61,7 +70,7 @@ export class SessionRepository {
     if (role === "user") {
       const title = content.replace(/\s+/g, " ").trim().slice(0, 40) || "新聊天";
       this.db.prepare(`
-        UPDATE chat_sessions SET title = CASE WHEN title IN ('新聊天','历史聊天') THEN ? ELSE title END,
+        UPDATE chat_sessions SET title = CASE WHEN title_manual = 0 AND title IN ('新聊天','历史聊天') THEN ? ELSE title END,
           updated_at = ? WHERE id = ?
       `).run(title, result.createdAt, session.id);
     } else {
@@ -87,6 +96,20 @@ export class SessionRepository {
     return rows.map((row) => ({ ...row }));
   }
 
+  messagesAround(sessionId: string, messageId: number, radius = 50): StoredMessage[] | undefined {
+    const exists = this.db.prepare("SELECT 1 FROM messages WHERE id = ? AND session_id = ?").get(messageId, sessionId);
+    if (!exists) return undefined;
+    const before = this.db.prepare(`
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
+      FROM messages WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?
+    `).all(sessionId, messageId, radius) as unknown as StoredMessage[];
+    const after = this.db.prepare(`
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
+      FROM messages WHERE session_id = ? AND id >= ? ORDER BY id LIMIT ?
+    `).all(sessionId, messageId, radius + 1) as unknown as StoredMessage[];
+    return [...before.reverse(), ...after].map((row) => ({ ...row }));
+  }
+
   message(id: number): StoredMessage | undefined {
     const row = this.db.prepare(`
       SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
@@ -96,9 +119,23 @@ export class SessionRepository {
   }
 
   remove(id: number) {
-    this.db.prepare("DELETE FROM message_search WHERE rowid = ?").run(id);
-    this.db.prepare("DELETE FROM message_search_indexed WHERE message_id = ?").run(id);
-    this.db.prepare("DELETE FROM messages WHERE id = ?").run(id);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare("DELETE FROM message_search WHERE rowid = ?").run(id);
+      this.db.prepare("DELETE FROM message_search_indexed WHERE message_id = ?").run(id);
+      this.db.prepare("DELETE FROM messages WHERE id = ?").run(id);
+      this.db.prepare(`
+        UPDATE memory_experiences AS e SET
+          source_session_id = (SELECT session_id FROM memory_experience_occurrences WHERE experience_id = e.id ORDER BY occurred_at DESC, id DESC LIMIT 1),
+          source_message_id = (SELECT message_id FROM memory_experience_occurrences WHERE experience_id = e.id ORDER BY occurred_at DESC, id DESC LIMIT 1),
+          source_missing = CASE WHEN EXISTS (SELECT 1 FROM memory_experience_occurrences WHERE experience_id = e.id) THEN 0 ELSE 1 END
+        WHERE e.source_message_id = ?
+      `).run(id);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   searchArchive(query: string, limit = 6, excludeSessionId?: string, character?: string): ArchiveHit[] {
