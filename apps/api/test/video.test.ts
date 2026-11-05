@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import { runChat, type ChatEvent } from "../src/chat.ts";
+import { waitForMemoryJobs } from "../src/memory/jobs.ts";
 import { loadConfig } from "../src/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider } from "../src/llm/types.ts";
@@ -85,13 +86,21 @@ test("chat watches a shared video, reports progress, remembers it and talks abou
   const seen: ChatMessage[][] = [];
   const video = fakeVideo();
   const { memory, experiences } = recordingMemory();
-  const events = await collect(runChat({ provider: new FallbackChatProvider([scripted(seen)]), store: new ChatStore(":memory:"), memory, video, character: "deepseek" }, "帮我看看 BV1TESTTEST1"));
+  const store = new ChatStore(":memory:");
+  const events = await collect(runChat({ provider: new FallbackChatProvider([scripted(seen)]), store, memory, video, character: "deepseek" }, "帮我看看 BV1TESTTEST1"));
 
   assert.deepEqual(events.map((e) => e.type), ["video", "video", "emotion", "delta", "done"]);
   assert.deepEqual(events.filter((e) => e.type === "video").map((e) => (e.type === "video" ? e.stage : "")), ["reading", "watching"]);
   assert.equal(events[1].type === "video" && events[1].title, "深海纪录片");
   assert.deepEqual(video.calls, ["BV1TESTTEST1"]);
-  assert.deepEqual(experiences, [{ kind: "video", title: "深海纪录片", text: "这是一支讲深海发光水母的纪录片，画面很美。", url: "https://www.bilibili.com/video/BV1TESTTEST1", sourceId: "BV1TESTTEST1" }]);
+  const videoExperience = experiences.find((experience) => experience.kind === "video");
+  assert.deepEqual(videoExperience, {
+    kind: "video", title: "深海纪录片", text: "这是一支讲深海发光水母的纪录片，画面很美。",
+    url: "https://www.bilibili.com/video/BV1TESTTEST1", sourceId: "BV1TESTTEST1",
+    sourceSessionId: store.listSessions("deepseek")[0].id, sourceMessageId: 1,
+  });
+  await waitForMemoryJobs(store);
+  store.close();
 
   const system = chatPrompt(seen);
   assert.ok(system.startsWith("# 角色设定：大肥鱼"));

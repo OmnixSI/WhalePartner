@@ -11,6 +11,7 @@ export interface ExperienceInput {
   url?: string;
   sourceId?: string;
   sourceSessionId?: string;
+  sourceSessionIds?: string[];
   sourceMessageId?: number;
 }
 
@@ -33,7 +34,7 @@ export class ExperienceRepository {
       id = existing.id;
       this.db.prepare(`
         UPDATE memory_experiences SET kind = ?, title = ?, text = ?, url = ?,
-          source_session_id = ?, source_message_id = ?, vector_indexed = 0,
+          source_session_id = ?, source_message_id = ?, source_missing = 0, vector_indexed = 0,
           attempts = 0, last_error = NULL, next_attempt_at = ?, updated_at = ? WHERE id = ?
       `).run(input.kind, input.title, input.text, input.url ?? null, sessionId ?? null, messageId ?? null, now, now, id);
     } else {
@@ -43,6 +44,20 @@ export class ExperienceRepository {
       `).get(input.kind, input.title, input.text, input.url ?? null, sourceId, sessionId ?? null, messageId ?? null, now, now) as unknown as { id: number };
       id = row.id;
     }
+    const sessionIds = new Set(input.sourceSessionIds ?? []);
+    if (input.sourceSessionIds !== undefined) {
+      this.db.prepare("DELETE FROM memory_experience_sessions WHERE experience_id = ?").run(id);
+      const link = this.db.prepare("INSERT OR IGNORE INTO memory_experience_sessions(experience_id, session_id) VALUES (?, ?)");
+      for (const linkedSessionId of sessionIds) link.run(id, linkedSessionId);
+    }
+    if (sessionId) this.db.prepare("INSERT OR IGNORE INTO memory_experience_sessions(experience_id, session_id) VALUES (?, ?)").run(id, sessionId);
+    if ((input.kind === "video" || input.kind === "web") && sessionId && messageId !== undefined) {
+      this.db.prepare(`
+        INSERT INTO memory_experience_occurrences(experience_id, session_id, message_id, occurred_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(experience_id, session_id, message_id) DO UPDATE SET occurred_at = excluded.occurred_at
+      `).run(id, sessionId, messageId, now);
+    }
     indexExperience(this.db, id, `${input.kind} ${input.title} ${input.text}`);
     return this.getExperience(id)!;
   }
@@ -50,11 +65,11 @@ export class ExperienceRepository {
   getExperience(id: number): StoredExperience | undefined {
     const row = this.db.prepare(`
       SELECT id, kind, title, text, url, source_id AS sourceId, source_session_id AS sourceSessionId,
-        source_message_id AS sourceMessageId, vector_indexed AS vectorIndexed, attempts,
+        source_message_id AS sourceMessageId, source_missing AS sourceMissing, vector_indexed AS vectorIndexed, attempts,
         vector_entry_id AS vectorEntryId, last_error AS lastError, created_at AS createdAt
       FROM memory_experiences WHERE id = ?
-    `).get(id) as unknown as (Omit<StoredExperience, "vectorIndexed"> & { vectorIndexed: number }) | undefined;
-    return row ? { ...row, vectorIndexed: Boolean(row.vectorIndexed) } : undefined;
+    `).get(id) as unknown as (Omit<StoredExperience, "vectorIndexed" | "sourceMissing"> & { vectorIndexed: number; sourceMissing: number }) | undefined;
+    return row ? { ...row, vectorIndexed: Boolean(row.vectorIndexed), sourceMissing: Boolean(row.sourceMissing) } : undefined;
   }
 
   listExperiences(limit = 500, includeChat = true): StoredExperience[] {
@@ -80,10 +95,15 @@ export class ExperienceRepository {
       params.push(window.from, window.to);
     }
     if (character) {
-      filters.push("(e.kind <> 'chat' OR s.character = ?)");
-      params.push(character);
-      filters.push("(e.source_id NOT LIKE 'learned:chat:%' OR e.source_id LIKE ?)");
-      params.push(`learned:chat:${character}:%`);
+      filters.push(`(
+        (e.source_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM memory_experience_sessions es WHERE es.experience_id = e.id)
+          AND e.kind <> 'chat' AND e.source_id NOT LIKE 'learned:chat:%'
+          AND (e.kind <> 'journal' OR e.source_id LIKE ?))
+        OR s.character = ?
+        OR EXISTS (SELECT 1 FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ?)
+        OR (e.source_id LIKE 'learned:chat:%' AND e.source_id LIKE ?)
+      )`);
+      params.push(`journal:${character}:%`, character, character, `learned:chat:${character}:%`);
     }
     const rows = this.db.prepare(`
       SELECT e.id, ${match ? "bm25(experience_search)" : "0"} AS rank FROM experience_search
@@ -98,10 +118,15 @@ export class ExperienceRepository {
     const filters = [includeChat ? "1 = 1" : "e.kind <> 'chat'"];
     const params: Array<string | number> = [];
     if (character) {
-      filters.push("(e.kind <> 'chat' OR s.character = ?)");
-      params.push(character);
-      filters.push("(e.source_id NOT LIKE 'learned:chat:%' OR e.source_id LIKE ?)");
-      params.push(`learned:chat:${character}:%`);
+      filters.push(`(
+        (e.source_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM memory_experience_sessions es WHERE es.experience_id = e.id)
+          AND e.kind <> 'chat' AND e.source_id NOT LIKE 'learned:chat:%'
+          AND (e.kind <> 'journal' OR e.source_id LIKE ?))
+        OR s.character = ?
+        OR EXISTS (SELECT 1 FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ?)
+        OR (e.source_id LIKE 'learned:chat:%' AND e.source_id LIKE ?)
+      )`);
+      params.push(`journal:${character}:%`, character, character, `learned:chat:${character}:%`);
     }
     const filteredRows = this.db.prepare(`
       SELECT e.id FROM memory_experiences e LEFT JOIN chat_sessions s ON s.id = e.source_session_id
@@ -170,6 +195,10 @@ export class ExperienceRepository {
   removeExperienceBySourceId(sourceId: string) {
     const row = this.db.prepare("SELECT id FROM memory_experiences WHERE source_id = ?").get(sourceId) as unknown as { id: number } | undefined;
     if (row) this.removeExperience(row.id);
+  }
+
+  addLegacyMemorySource(vectorEntryId: string, sessionId: string) {
+    this.db.prepare("INSERT OR IGNORE INTO memory_legacy_sources(vector_entry_id, session_id) VALUES (?, ?)").run(vectorEntryId, sessionId);
   }
 
   resetVectorIndexes() {

@@ -1,9 +1,10 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AvatarEmotion } from "../avatar/model.config";
 import { fetchHealth, type Health } from "../lib/api";
 import type { Character } from "../characters";
 import { createChatSession, streamChat, type HistoryMessage } from "../lib/chat";
 import { useChatSessions } from "../hooks/useChatSessions";
+import { ChatSessionControls } from "./ChatSessionControls";
 
 interface Bubble {
   key: string;
@@ -11,7 +12,6 @@ interface Bubble {
   text: string;
   pending?: boolean;
   failed?: boolean;
-  recalled?: string[];
   /** 看视频时的进度提示，回复开始后消失。 */
   progress?: string;
 }
@@ -30,13 +30,16 @@ export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sessionError, setSessionError] = useState("");
   const list = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLTextAreaElement>(null);
   const abort = useRef<AbortController | null>(null);
+  const requestGeneration = useRef(0);
 
   const showHistory = useCallback((history: HistoryMessage[]) => {
     setBubbles(history.map((message) => ({ key: `h${message.id}`, role: message.role === "user" ? "me" : "her", text: message.content })));
   }, []);
-  const { sessions, sessionId, setSessions, setSessionId, selectSession, startNewSession } = useChatSessions(character.id, showHistory);
+  const { sessions, sessionId, setSessions, setSessionId, selectSession, startNewSession, renameSession, deleteSession } = useChatSessions(character.id, showHistory);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -65,13 +68,62 @@ export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
   }, [character.id]);
 
   useEffect(() => {
+    const targetId = localStorage.getItem(`whalepartner:open-message:${character.id}`);
+    const target = targetId ? document.getElementById(`message-h${targetId}`) : null;
+    if (target && list.current) {
+      list.current.scrollTop = target.getBoundingClientRect().top - list.current.getBoundingClientRect().top + list.current.scrollTop - 24;
+      localStorage.removeItem(`whalepartner:open-message:${character.id}`);
+      return;
+    }
+    if (targetId && bubbles.length === 0) return;
+    if (targetId) localStorage.removeItem(`whalepartner:open-message:${character.id}`);
     list.current?.scrollTo({ top: list.current.scrollHeight });
-  }, [bubbles]);
+  }, [bubbles, character.id]);
+
+  useEffect(() => {
+    const element = input.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${Math.min(element.scrollHeight, 240)}px`;
+  }, [draft]);
+
+  const stopCurrentReply = useCallback(() => {
+    requestGeneration.current++;
+    abort.current?.abort();
+    abort.current = null;
+    setBusy(false);
+    onSpeaking(false);
+  }, [onSpeaking]);
+
+  const chooseSession = useCallback((id: string) => {
+    stopCurrentReply();
+    setDraft("");
+    setSessionError("");
+    void selectSession(id);
+  }, [selectSession, stopCurrentReply]);
+
+  const createSession = useCallback(() => {
+    stopCurrentReply();
+    setDraft("");
+    setSessionError("");
+    void startNewSession();
+  }, [startNewSession, stopCurrentReply]);
+
+  const removeCurrentSession = useCallback(async () => {
+    stopCurrentReply();
+    setSessionError("");
+    try {
+      await deleteSession();
+    } catch (error) {
+      setSessionError(error instanceof Error ? error.message : "删除对话失败。");
+    }
+  }, [deleteSession, stopCurrentReply]);
 
   const send = useCallback(async (text: string) => {
     const message = text.trim();
     if (!message || busy || !sessionId) return;
-    setSessions((previous) => previous.map((session) => session.id === sessionId && session.title === "新聊天"
+    const generation = ++requestGeneration.current;
+    setSessions((previous) => previous.map((session) => session.id === sessionId && !session.titleManual && session.title === "新聊天"
       ? { ...session, title: message.slice(0, 40), updatedAt: new Date().toISOString() }
       : session));
     const reply = nextKey();
@@ -88,30 +140,33 @@ export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
     let started = false;
     try {
       for await (const event of streamChat(message, character.id, sessionId, ctrl.signal)) {
+        if (requestGeneration.current !== generation) break;
         if (event.type === "video" || event.type === "web") setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, progress: event.message } : b)));
-        else if (event.type === "recall") setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, recalled: event.memories } : b)));
         else if (event.type === "emotion") onEmotion(event.emotion);
         else if (event.type === "delta") {
           if (!started) { started = true; onSpeaking(true); }
           setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, text: b.text + event.text, pending: false, progress: undefined } : b)));
         } else if (event.type === "done") {
-          setSessionId(event.sessionId);
           setSessions((previous) => previous.map((session) => session.id === event.sessionId
-            ? { ...session, title: session.title === "新聊天" ? message.slice(0, 40) : session.title, updatedAt: new Date().toISOString() }
+            ? { ...session, title: !session.titleManual && session.title === "新聊天" ? message.slice(0, 40) : session.title, updatedAt: new Date().toISOString() }
             : session));
         } else if (event.type === "error") throw new Error(event.message);
       }
     } catch (error) {
-      if (ctrl.signal.aborted) return;
+      if (ctrl.signal.aborted || requestGeneration.current !== generation) return;
       const note = error instanceof Error ? error.message : "出错了。";
       setBubbles((prev) => prev.map((b) => (b.key === reply && !b.text ? { ...b, text: note, pending: false, failed: true } : b)));
       setDraft(message);
     } finally {
-      onSpeaking(false);
-      setBusy(false);
-      setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, pending: false } : b)));
+      if (requestGeneration.current === generation) {
+        onSpeaking(false);
+        setBusy(false);
+        setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, pending: false } : b)));
+      }
     }
-  }, [busy, character.id, onEmotion, onSpeaking, sessionId]);
+  }, [busy, character.id, onEmotion, onSpeaking, sessionId, setSessions]);
+
+  const isMac = /Macintosh|Mac OS X/u.test(navigator.userAgent);
 
   const online = health?.ok === true;
   return (
@@ -125,31 +180,31 @@ export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
           </span>
         </div>
         <div className="chat__session">
-          <label className="sr-only" htmlFor="chat-session">聊天记录</label>
-          <select id="chat-session" value={sessionId ?? ""} disabled={!sessionId || busy} onChange={(event) => void selectSession(event.target.value)}>
-            {sessions.map((session) => <option key={session.id} value={session.id}>{session.title || "新聊天"}</option>)}
-          </select>
-          <button className="chat__new" type="button" disabled={!online || busy} onClick={() => void startNewSession()}>新聊天</button>
+          <ChatSessionControls
+            sessions={sessions}
+            sessionId={sessionId}
+            onSelect={chooseSession}
+            onRename={async (title) => { await renameSession(title); setSessionError(""); }}
+            onDelete={removeCurrentSession}
+          />
+          <button className="chat__new" type="button" disabled={!online} onClick={createSession}>新聊天</button>
         </div>
         <span className="tag" title={`${character.name}是 AI 角色，不是真人`}>AI 角色</span>
       </header>
       <div className="chat__list" role="log" aria-live="polite" ref={list}>
         {bubbles.length === 0 && <div className="msg msg--her">{character.greeting}</div>}
-        {bubbles.map((b) => (
-          <Fragment key={b.key}>
-            <div className={`msg msg--${b.role}${b.failed ? " msg--failed" : ""}`}>
-              {b.pending ? (
-                <span className="waiting"><span className="typing" aria-label="正在输入"><i /><i /><i /></span>{b.progress && <span className="progress">{b.progress}</span>}</span>
-              ) : b.text}
-            </div>
-            {b.recalled && b.recalled.length > 0 && <div className="recall">想起了：{b.recalled.join("；")}</div>}
-          </Fragment>
-        ))}
+        {bubbles.map((b) => <div id={`message-${b.key}`} key={b.key} className={`msg msg--${b.role}${b.failed ? " msg--failed" : ""}`}>
+          {b.pending ? (
+            <span className="waiting"><span className="typing" aria-label="正在输入"><i /><i /><i /></span>{b.progress && <span className="progress">{b.progress}</span>}</span>
+          ) : b.text}
+        </div>)}
       </div>
+      {sessionError && <p className="chat__error" role="alert">{sessionError}</p>}
       <form className="chat__composer" onSubmit={(e) => { e.preventDefault(); void send(draft); }}>
         <label className="sr-only" htmlFor="chat-input">消息</label>
         <textarea
           id="chat-input"
+          ref={input}
           className="chat__input"
           rows={1}
           value={draft}
@@ -158,11 +213,12 @@ export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
           disabled={!online || !sessionId}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(draft); }
+            if (e.key === "Enter" && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229 && (isMac ? e.metaKey : e.ctrlKey)) { e.preventDefault(); void send(draft); }
           }}
         />
         <button className="send" type="submit" disabled={!online || !sessionId || busy || !draft.trim()} >发送</button>
       </form>
+      {isMac && <p className="chat__dictation-hint">按 macOS 听写快捷键可语音输入，内容会留在草稿中；未开启时到“系统设置 → 键盘 → 听写”启用并查看快捷键。</p>}
     </section>
   );
 }

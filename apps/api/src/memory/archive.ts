@@ -12,7 +12,10 @@ export async function archiveExperience(
   if (memory) {
     try {
       const indexed = await memory.addExperience({ ...input, sourceId: archived.sourceId });
-      if (!indexed.id.startsWith("local-exp:")) store.markExperienceIndexed(archived.id, indexed.id);
+      if (!indexed.id.startsWith("local-exp:")) {
+        if (store.experienceBySourceId(archived.sourceId)) store.markExperienceIndexed(archived.id, indexed.id);
+        else await memory.remove(indexed.id);
+      }
       return indexed;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);

@@ -14,6 +14,7 @@ export interface ChatSession {
   id: string;
   character: string;
   title: string;
+  titleManual?: boolean;
   createdAt: string;
   updatedAt: string;
   messageCount?: number;
@@ -43,7 +44,7 @@ export interface StoredFact {
   status: "active" | "superseded";
   createdAt: string;
   vectorEntryId?: string;
-  sources: Array<{ messageId: number; sessionId: string; createdAt: string; quote: string }>;
+  sources: Array<{ messageId: number; sessionId: string; character: string; createdAt: string; quote: string }>;
 }
 
 export interface StoredExperience {
@@ -55,6 +56,7 @@ export interface StoredExperience {
   sourceId: string;
   sourceSessionId?: string;
   sourceMessageId?: number;
+  sourceMissing?: boolean;
   createdAt: string;
   vectorIndexed: boolean;
   vectorEntryId?: string;
