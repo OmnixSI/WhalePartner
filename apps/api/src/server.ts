@@ -9,6 +9,9 @@ import type { MemoryStatus, MemoryStore } from "./memory/types.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "./persona/persona.ts";
 import { ChatStore } from "./store.ts";
 import { createVideoService, sharedParagraph, summarizeVideo, VideoError, type VideoService } from "./video-service.ts";
+import { DiaryStore } from "./diary-store.ts";
+import { DiaryService } from "./diary-service.ts";
+import { startDiaryScheduler } from "./diary-scheduler.ts";
 
 export interface ServerDeps {
   config: ApiConfig;
@@ -17,6 +20,8 @@ export interface ServerDeps {
   memory?: MemoryStore & { status?(): MemoryStatus };
   /** 提供后聊天里的 B 站链接会被看完，并开放 /api/videos/summarize。 */
   video?: VideoService;
+  /** 日记和待看队列；定时器只在服务进程入口启动。 */
+  diary?: DiaryService;
 }
 
 function healthBody(deps: ServerDeps) {
@@ -139,6 +144,38 @@ async function handleMemories(deps: ServerDeps, request: IncomingMessage, respon
   }
 }
 
+async function handleDiary(deps: ServerDeps, request: IncomingMessage, response: ServerResponse, url: URL) {
+  const diary = deps.diary;
+  if (!diary) return sendJson(response, 503, { error: "日记功能未启用。" });
+  try {
+    if (request.method === "GET" && url.pathname === "/api/diary") {
+      return sendJson(response, 200, { items: diary.list() });
+    }
+    if (request.method === "POST" && url.pathname === "/api/diary/queue") {
+      const link = text((await readJsonBody(request)).url, 500, "url")!;
+      try {
+        const result = diary.enqueue(link);
+        return sendJson(response, result.created ? 201 : 200, result);
+      } catch (error) {
+        throw new ChatInputError(error instanceof Error ? error.message : "视频链接无效。");
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/api/diary/run") {
+      return sendJson(response, 202, { started: diary.trigger() });
+    }
+    const retry = /^\/api\/diary\/items\/(\d+)\/retry$/.exec(url.pathname);
+    if (request.method === "POST" && retry) {
+      const result = diary.retry(Number(retry[1]));
+      if (result.result === "missing") return sendJson(response, 404, { error: "没有找到这篇日记或待看项。" });
+      return sendJson(response, 202, result);
+    }
+    return sendJson(response, 404, { error: "未找到。" });
+  } catch (error) {
+    const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
+    return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "日记请求失败。" });
+  }
+}
+
 export function createApiServer(deps: ServerDeps): Server {
   return createServer(async (request, response) => {
     applyCors(request, response);
@@ -163,6 +200,10 @@ export function createApiServer(deps: ServerDeps): Server {
       if (request.method === "DELETE" && url.pathname === "/api/chat/history") {
         deps.store.clear();
         sendJson(response, 200, { ok: true });
+        return;
+      }
+      if (url.pathname === "/api/diary" || url.pathname.startsWith("/api/diary/")) {
+        await handleDiary(deps, request, response, url);
         return;
       }
       if (url.pathname.startsWith("/api/memories")) {
@@ -190,12 +231,25 @@ if (import.meta.main) {
   const host = lan ? "0.0.0.0" : config.host;
   const provider = createChatProvider(config);
   const store = new ChatStore(config.dbPath);
+  const diaryStore = new DiaryStore(config.dbPath);
   const memory = config.memoryEnabled
     ? new LazyMemoryStore({ dataDir: config.memoryDir, provider })
     : undefined;
-  const server = createApiServer({ config, provider, store, memory, video: createVideoService() });
+  const video = createVideoService();
+  const diary = new DiaryService({ store: diaryStore, provider, memory, video });
+  const server = createApiServer({ config, provider, store, memory, video, diary });
+  let stopDiaryScheduler = () => {};
+  server.on("close", () => {
+    stopDiaryScheduler();
+    void diary.waitForIdle().finally(() => {
+      diaryStore.close();
+      store.close();
+    });
+  });
   server.listen(config.port, host, () => {
+    stopDiaryScheduler = startDiaryScheduler(config.diaryCron, diary);
     console.log(`WhalePartner API：http://${host}:${config.port}`);
+    console.log(`日记计划：${config.diaryCron}（本机时区；API 运行时生效）`);
     console.log(`模型链：${provider.providers.map((item) => `${item.id}(${item.model})`).join(" → ")}`);
     if (lan) console.log("已开放局域网访问。没有登录保护，只在可信网络里使用。");
   });
