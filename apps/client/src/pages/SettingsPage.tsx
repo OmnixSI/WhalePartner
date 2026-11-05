@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AVATAR_IS_PLACEHOLDER, AVATAR_MODELS } from "../avatar/model.config";
+import { Accounts } from "../components/Accounts";
 import { CHARACTERS, setCharacter, setModelOverride, useCharacter, useModel } from "../characters";
 import { clearHistory } from "../lib/chat";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
@@ -42,6 +43,7 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+          <Accounts />
           <div className="row row--stack">
             <div>
               <div className="row__label">角色</div>

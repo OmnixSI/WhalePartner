@@ -276,3 +276,27 @@ export async function logoutFromBilibili() {
   await rm(SESSION_PATH, { force: true });
   await clearPendingLogin();
 }
+
+/** 给应用界面用：只取二维码内容和 key，不渲染图片（界面自己画二维码，不依赖 macOS）。 */
+export async function requestBilibiliLoginQr() {
+  const response = await fetch(`${PASSPORT_BASE}/qrcode/generate?source=main-fe-header`, {
+    headers: HEADERS,
+    signal: AbortSignal.timeout(15_000),
+  });
+  const payload = (await readJson(response, "B 站二维码生成")) as QrPayload;
+  if (payload.code !== 0 || !payload.data?.url || !payload.data.qrcode_key) {
+    throw new Error(`B 站二维码生成失败（${payload.message ?? payload.code ?? "未知响应"}）。`);
+  }
+  return { qrcodeKey: payload.data.qrcode_key, url: payload.data.url, expiresInSeconds: LOGIN_TIMEOUT_MS / 1000 };
+}
+
+/** 给应用界面用：查询一次扫码状态；成功时验证并保存登录态，不返回登录态本身。 */
+export async function checkBilibiliLoginQr(qrcodeKey: string): Promise<LoginResult["status"]> {
+  const result = await pollLogin(qrcodeKey);
+  if (result.status === "success" && result.sessdata) {
+    if (!(await isBilibiliSessionValid(result.sessdata))) return "error";
+    await saveSession(result.sessdata);
+    return "success";
+  }
+  return result.status;
+}

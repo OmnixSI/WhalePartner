@@ -15,6 +15,7 @@
     "@fontsource-variable/fraunces": "^5.3.0",
     "@pixiv/three-vrm": "^3.5.5",
     "lxgw-wenkai-webfont": "^1.7.0",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.5",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^26.6.6",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.187.0",

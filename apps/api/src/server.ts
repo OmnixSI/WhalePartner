@@ -9,6 +9,7 @@ import type { MemoryStatus, MemoryStore } from "./memory/types.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "./persona/persona.ts";
 import { ChatStore } from "./store.ts";
 import { createVideoService, sharedParagraph, summarizeVideo, VideoError, type VideoService } from "./video-service.ts";
+import { AccountError, createAccountService, type AccountService } from "./accounts.ts";
 import { createWebService, type WebService } from "./web-service.ts";
 import { DiaryStore } from "./diary-store.ts";
 import { DiaryService } from "./diary-service.ts";
@@ -25,6 +26,8 @@ export interface ServerDeps {
   diary?: DiaryService;
   /** 提供后聊天里的普通网页链接会被读完再聊。 */
   web?: WebService;
+  /** 各平台账号接入（目前只有 B 站）。 */
+  accounts?: AccountService;
 }
 
 function healthBody(deps: ServerDeps) {
@@ -116,6 +119,34 @@ async function handleVideoSummary(deps: ServerDeps, request: IncomingMessage, re
   }
 }
 
+/** 账号接入：只开放给本机；登录态不会出现在任何响应里。 */
+async function handleAccounts(deps: ServerDeps, request: IncomingMessage, response: ServerResponse, url: URL) {
+  const accounts = deps.accounts;
+  if (!accounts) return sendJson(response, 503, { error: "账号功能未启用。" });
+  try {
+    if (request.method === "GET" && url.pathname === "/api/accounts") {
+      return sendJson(response, 200, { accounts: await accounts.list() });
+    }
+    const login = /^\/api\/accounts\/([a-z]+)\/login$/.exec(url.pathname);
+    if (login && request.method === "POST") return sendJson(response, 200, await accounts.startLogin(login[1]));
+    if (login && request.method === "GET") {
+      const key = url.searchParams.get("key") ?? "";
+      if (!/^[\w-]{16,64}$/.test(key)) throw new AccountError("二维码标识无效。");
+      return sendJson(response, 200, { status: await accounts.checkLogin(login[1], key) });
+    }
+    const account = /^\/api\/accounts\/([a-z]+)$/.exec(url.pathname);
+    if (account && request.method === "DELETE") {
+      await accounts.logout(account[1]);
+      return sendJson(response, 200, { ok: true });
+    }
+    return sendJson(response, 404, { error: "未找到。" });
+  } catch (error) {
+    const status = error instanceof AccountError ? 400 : 502;
+    const message = error instanceof Error ? error.message : "账号请求失败。";
+    return sendJson(response, status, { error: message.replace(/SESSDATA=[^\s&;]+/gi, "SESSDATA=[隐藏]") });
+  }
+}
+
 async function handleMemories(deps: ServerDeps, request: IncomingMessage, response: ServerResponse, url: URL) {
   const memory = deps.memory;
   if (!memory) return sendJson(response, 503, { error: "记忆功能未启用。" });
@@ -193,6 +224,10 @@ export function createApiServer(deps: ServerDeps): Server {
         sendJson(response, 200, url.searchParams.get("probe") === "1" ? { ...body, probe: await probe(deps) } : body);
         return;
       }
+      if (url.pathname === "/api/accounts" || url.pathname.startsWith("/api/accounts/")) {
+        await handleAccounts(deps, request, response, url);
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/api/note") {
         const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
         if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" });
@@ -246,7 +281,7 @@ if (import.meta.main) {
     : undefined;
   const video = createVideoService();
   const diary = new DiaryService({ store: diaryStore, provider, memory, video });
-  const server = createApiServer({ config, provider, store, memory, video, diary, web: createWebService() });
+  const server = createApiServer({ config, provider, store, memory, video, diary, web: createWebService(), accounts: createAccountService() });
   let stopDiaryScheduler = () => {};
   server.on("close", () => {
     stopDiaryScheduler();

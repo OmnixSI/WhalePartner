@@ -31,6 +31,17 @@
 
 `GET /api/chat/history?limit=50&character=deepseek` 返回 `{ messages: [{ id, role, content, emotion, character, createdAt }] }`，每个角色有自己的记录。`DELETE /api/chat/history` 清空全部。
 
+## 账号
+
+只开放给本机，登录状态保存在 `.local/bilibili-session.json`（权限 600），任何接口都不返回它。目前只有哔哩哔哩，其它平台返回 400。
+
+- `GET /api/accounts` → `{ accounts: [{ platform: "bilibili", name, connected, valid, savedAt }] }`，`valid` 是登录是否还有效（离线时为 `null`）。
+- `POST /api/accounts/bilibili/login` → `{ key, url, expiresInSeconds }`：`url` 是二维码内容，界面自己画成二维码。
+- `GET /api/accounts/bilibili/login?key=…` → `{ status: "waiting"｜"scanned"｜"expired"｜"success"｜"error" }`；成功时服务端验证并保存登录态。
+- `DELETE /api/accounts/bilibili` 退出登录并删除本机保存的登录态。
+
+命令行的 `pnpm --dir apps/api run login | status | logout` 仍然可用，两边共用同一份登录态。
+
 ## 近况小记
 
 `GET /api/note?character=deepseek` → `{ note: { text, updatedAt } | null }`。角色定期写给自己的一小段近况，没写过就是 `null`。说明见 [`PERSONALITY.md`](PERSONALITY.md)。
