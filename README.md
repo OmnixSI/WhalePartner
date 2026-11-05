@@ -86,7 +86,7 @@ flowchart LR
 | B1 聊天与形象 | 完成（PR #19、#22、#23）；选型结论见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) |
 | B2 人格提示词 | 完成（[PR #20](https://github.com/OmnixSI/WhalePartner/pull/20)、[#28](https://github.com/OmnixSI/WhalePartner/pull/28)）：说人话、有脾气，四个角色的 13 项问卷在 DeepSeek 上都是 13/13 |
 | B3 mem0 记忆 | 完成（[PR #21](https://github.com/OmnixSI/WhalePartner/pull/21)）：本地中文向量、对话事实和视频/日记经历 |
-| B4 本地长期记忆与长会话上下文 | 代码完成，待审查（[PR #32](https://github.com/OmnixSI/WhalePartner/pull/32)，[Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)）：SQLite 来源档案、事实时间版本、会话观察、全文/向量混合召回和预算上下文 |
+| B4 本地长期记忆与长会话上下文 | 已实现（[PR #32](https://github.com/OmnixSI/WhalePartner/pull/32)，[Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)）：SQLite 来源档案、事实时间版本、会话观察、全文/向量混合召回和预算上下文 |
 | C1/C2 视频链路 | 完成（Spdor，PR #15、#16）；已接入聊天（[PR #24](https://github.com/OmnixSI/WhalePartner/pull/24)） |
 | D1 定时日记、D2 日记页 | 完成（Spdor，[PR #26](https://github.com/OmnixSI/WhalePartner/pull/26)）；日记、队列持久化到 SQLite，Mem0 保存日记经历 |
 | 成长（人格延伸） | 完成（[PR #28](https://github.com/OmnixSI/WhalePartner/pull/28)）：从视频、网页和用户的话里学新梗和新知识，近况小记，记忆衰减，读网页；设计见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md) |

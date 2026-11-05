@@ -129,7 +129,15 @@ test("health reports the model chain and never exposes a key; CORS only for app 
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("access-control-allow-origin"), "tauri://localhost");
     assert.equal(text.includes(SECRET), false);
-    assert.deepEqual(JSON.parse(text), { ok: true, service: "whalepartner-api", provider: "deepseek", model: "deepseek-model", fallbacks: ["codex"], memory: { enabled: false, state: "idle" } });
+    assert.deepEqual(JSON.parse(text), {
+      ok: true,
+      service: "whalepartner-api",
+      provider: "deepseek",
+      model: "deepseek-model",
+      fallbacks: ["codex"],
+      memory: { enabled: false, state: "idle" },
+      memoryQueue: { pendingJobs: 0, retryingJobs: 0, pendingVectorIndexes: 0, pendingFactVectorIndexes: 0 },
+    });
 
     const foreign = await fetch(`${base}/api/health`, { headers: { origin: "https://evil.example" } });
     assert.equal(foreign.headers.get("access-control-allow-origin"), null);

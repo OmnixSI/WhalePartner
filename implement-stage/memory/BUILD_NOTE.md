@@ -15,6 +15,7 @@
 
 - Node `v26.13.0`，符合仓库 `>=26 <27` 要求。
 - API：`tsc --noEmit -p tsconfig.json` 通过。
+- API 全量测试：75 项通过（Node 26；包括回环 HTTP 路由和 FTS 启动恢复用例）。
 - 客户端：`tsc --noEmit` 通过；Vite production build 通过。
 - `git diff --check` 通过。
 - 本机 FTS 验收使用内存 SQLite 和 2501 条合成消息、100 次查询：找回约 2400 条消息之前的目标内容；角色过滤通过。查询 p50 `0.364 ms`、p95 `0.442 ms`。
@@ -28,6 +29,6 @@
 - 未调用外部模型验证事实提取或向量语义召回。只存在于旧 B3 Mem0 向量库、没有 B4 SQLite 来源档案的条目，在向量文件丢失时仍无法重建。
 - 客户端 bundle 成功构建；当前 JavaScript 主 chunk 为约 `1.08 MB`，Vite 提示超过 `900 kB` 的拆分建议。
 
-## 审查状态
+## 跟踪记录
 
-B4 代码提交见 [PR #32](https://github.com/OmnixSI/WhalePartner/pull/32)，对应 [Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)。实现已提交，等待独立审查；合并后再将任务标记完成。
+B4 实现由 [PR #32](https://github.com/OmnixSI/WhalePartner/pull/32) 跟踪，对应 [Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)。

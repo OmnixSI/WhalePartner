@@ -157,10 +157,12 @@ test("each character keeps its own history and gets its own persona", async () =
   await collect(runChat({ provider, store, character: "deepseek" }, "你好呀"));
   await collect(runChat({ provider, store, character: "claude" }, "早"));
 
-  assert.ok(seen[0][0].content.startsWith("# 角色设定：大肥鱼"));
-  assert.ok(seen[1][0].content.startsWith("# 角色设定：小克"));
+  const chats = seen.filter((messages) => messages[0]?.content.startsWith("# 角色设定"));
+  assert.equal(chats.length, 2);
+  assert.ok(chats[0][0].content.startsWith("# 角色设定：大肥鱼"));
+  assert.ok(chats[1][0].content.startsWith("# 角色设定：小克"));
   // 小克的上下文里看不到大肥鱼的对话。
-  assert.deepEqual(seen[1].slice(1).map((m) => m.content), ["早"]);
+  assert.deepEqual(chats[1].filter((message) => message.role !== "system").map((message) => message.content), ["早"]);
   assert.deepEqual(store.recent(10, "deepseek").map((m) => m.content), ["你好呀", "好"]);
   assert.deepEqual(store.recent(10, "claude").map((m) => m.content), ["早", "好"]);
   assert.deepEqual(store.recent(10, "whale"), []);
