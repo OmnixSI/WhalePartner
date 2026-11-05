@@ -1,4 +1,6 @@
 import type { ChatProvider } from "./llm/types.ts";
+import type { ChatStore } from "./store.ts";
+import { archiveExperience } from "./memory/archive.ts";
 import type { MemoryStore } from "./memory/types.ts";
 
 export type LearningKind = "meme" | "knowledge";
@@ -70,16 +72,18 @@ export async function extractLearnings(provider: ChatProvider, material: { title
 
 /** 读完视频或网页后，把学到的梗和知识记下来。同一个来源再读会替换上次的。失败不影响主流程。 */
 export async function learnFrom(
-  deps: { provider: ChatProvider; memory?: MemoryStore },
+  deps: { provider: ChatProvider; memory?: MemoryStore; store?: ChatStore },
   material: { title: string; text: string },
   sourceKey: string,
   signal?: AbortSignal,
 ): Promise<Learning[]> {
-  if (!deps.memory) return [];
+  if (!deps.memory && !deps.store) return [];
   try {
     const learnings = await extractLearnings(deps.provider, material, signal);
     for (const [index, item] of learnings.entries()) {
-      await deps.memory.addExperience({ kind: "learned", title: KIND_LABEL[item.kind], text: item.text, sourceId: `learned:${sourceKey}:${index}` });
+      const experience = { kind: "learned", title: KIND_LABEL[item.kind], text: item.text, sourceId: `learned:${sourceKey}:${index}` };
+      if (deps.store) await archiveExperience(deps.store, deps.memory, experience, "学习记录");
+      else await deps.memory!.addExperience(experience);
     }
     return learnings;
   } catch (error) {

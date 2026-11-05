@@ -1,91 +1,97 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { openChatDatabase } from "./store/database.ts";
+import { ExperienceRepository, type ExperienceInput } from "./store/experiences.ts";
+import { FactRepository } from "./store/facts.ts";
+import { MemoryJobRepository, type MemoryQueueStatus } from "./store/jobs.ts";
+import { clearChatData } from "./store/maintenance.ts";
+import { ObservationRepository, type ObservationInput, type StoredObservation } from "./store/observations.ts";
+import { rebuildSearchIndexes } from "./store/search-index.ts";
+import { matchesTimeWindow, overlapsFactTimeWindow } from "./store/search.ts";
+import { SessionRepository } from "./store/sessions.ts";
+import type { DatabaseSync } from "node:sqlite";
+import type { ArchiveHit, ChatSession, FactCandidate, MemoryJob, StoredExperience, StoredFact, StoredMessage, StoredRole } from "./store/types.ts";
 
-export type StoredRole = "user" | "assistant";
+export type { ArchiveHit, ChatSession, FactCandidate, MemoryJob, StoredExperience, StoredFact, StoredMessage, StoredRole } from "./store/types.ts";
+export type { ExperienceInput } from "./store/experiences.ts";
+export type { MemoryQueueStatus } from "./store/jobs.ts";
+export type { ObservationInput, StoredObservation } from "./store/observations.ts";
+export { matchesTimeWindow, overlapsFactTimeWindow } from "./store/search.ts";
 
-export interface StoredMessage {
-  id: number;
-  role: StoredRole;
-  content: string;
-  emotion: string | null;
-  character: string;
-  createdAt: string;
-}
-
-/** 聊天记录。本地原型用 node:sqlite 单文件；":memory:" 用于测试。 */
+/** Stable storage API used by the chat service; feature repositories own each data domain. */
 export class ChatStore {
   readonly #db: DatabaseSync;
+  readonly #sessions: SessionRepository;
+  readonly #facts: FactRepository;
+  readonly #experiences: ExperienceRepository;
+  readonly #observations: ObservationRepository;
+  readonly #jobs: MemoryJobRepository;
 
   constructor(path: string) {
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-    this.#db = new DatabaseSync(path);
-    this.#db.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        role TEXT NOT NULL CHECK (role IN ('user','assistant')),
-        content TEXT NOT NULL,
-        emotion TEXT,
-        character TEXT NOT NULL DEFAULT 'whale',
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-      );
-    `);
-    this.#db.exec(`
-      CREATE TABLE IF NOT EXISTS character_notes (
-        character TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        assistant_count INTEGER NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-      );
-    `);
-    // 旧库（没有 character 列）补上，已有记录归给默认角色。
-    const columns = this.#db.prepare("PRAGMA table_info(messages)").all() as unknown as Array<{ name: string }>;
-    if (!columns.some((column) => column.name === "character")) {
-      this.#db.exec("ALTER TABLE messages ADD COLUMN character TEXT NOT NULL DEFAULT 'whale'");
-    }
+    this.#db = openChatDatabase(path);
+    rebuildSearchIndexes(this.#db);
+    this.#db.prepare("UPDATE memory_jobs SET status = 'pending' WHERE status = 'running'").run();
+    this.#sessions = new SessionRepository(this.#db);
+    this.#facts = new FactRepository(this.#db);
+    this.#experiences = new ExperienceRepository(this.#db);
+    this.#observations = new ObservationRepository(this.#db);
+    this.#jobs = new MemoryJobRepository(this.#db);
   }
 
-  add(role: StoredRole, content: string, emotion: string | null = null, character = "whale"): StoredMessage {
-    const result = this.#db
-      .prepare("INSERT INTO messages (role, content, emotion, character) VALUES (?, ?, ?, ?) RETURNING id, role, content, emotion, character, created_at AS createdAt")
-      .get(role, content, emotion, character) as unknown as StoredMessage;
-    return { ...result };
+  createSession(character: string, title?: string) { return this.#sessions.createSession(character, title); }
+  getSession(id: string, character?: string) { return this.#sessions.getSession(id, character); }
+  getOrCreateSession(character: string, id?: string) { return this.#sessions.getOrCreateSession(character, id); }
+  listSessions(character: string, limit?: number) { return this.#sessions.listSessions(character, limit); }
+  add(role: StoredRole, content: string, emotion?: string | null, character?: string, sessionId?: string) { return this.#sessions.add(role, content, emotion, character, sessionId); }
+  recent(limit: number, character?: string, sessionId?: string) { return this.#sessions.recent(limit, character, sessionId); }
+  messagesBetween(sessionId: string, fromId: number, throughId: number) { return this.#sessions.messagesBetween(sessionId, fromId, throughId); }
+  message(id: number) { return this.#sessions.message(id); }
+  remove(id: number) { return this.#sessions.remove(id); }
+  searchArchive(query: string, limit?: number, excludeSessionId?: string, character?: string): ArchiveHit[] { return this.#sessions.searchArchive(query, limit, excludeSessionId, character); }
+  getNote(character: string) { return this.#sessions.getNote(character); }
+  setNote(character: string, text: string, assistantCount: number) { return this.#sessions.setNote(character, text, assistantCount); }
+  countAssistant(character: string) { return this.#sessions.countAssistant(character); }
+
+  saveFacts(sourceMessageId: number, candidates: FactCandidate[]) { return this.#facts.saveFacts(sourceMessageId, candidates); }
+  getFact(id: number) { return this.#facts.getFact(id); }
+  listFacts(limit?: number) { return this.#facts.listFacts(limit); }
+  searchFacts(query: string, limit?: number) { return this.#facts.searchFacts(query, limit); }
+  removeFact(id: number) { return this.#facts.removeFact(id); }
+  setFactVectorId(id: number, vectorEntryId: string | null) { return this.#facts.setFactVectorId(id, vectorEntryId); }
+  factVectorId(id: number) { return this.#facts.factVectorId(id); }
+  factVectorIds() { return this.#facts.factVectorIds(); }
+  pendingFacts(afterId?: number, limit?: number) { return this.#facts.pendingFacts(afterId, limit); }
+
+  upsertExperience(input: ExperienceInput) { return this.#experiences.upsertExperience(input); }
+  getExperience(id: number) { return this.#experiences.getExperience(id); }
+  listExperiences(limit?: number, includeChat?: boolean) { return this.#experiences.listExperiences(limit, includeChat); }
+  searchExperiences(query: string, limit?: number, character?: string) { return this.#experiences.searchExperiences(query, limit, character); }
+  recentExperiences(limit?: number, includeChat?: boolean, character?: string) { return this.#experiences.recentExperiences(limit, includeChat, character); }
+  pendingExperienceIndexes(limit?: number) { return this.#experiences.pendingExperienceIndexes(limit); }
+  markExperienceIndexed(id: number, vectorEntryId?: string) { return this.#experiences.markExperienceIndexed(id, vectorEntryId); }
+  experienceBySourceId(sourceId: string) { return this.#experiences.experienceBySourceId(sourceId); }
+  experienceVectorIds(kind?: string) { return this.#experiences.experienceVectorIds(kind); }
+  chatDerivedExperienceVectorIds() { return this.#experiences.chatDerivedExperienceVectorIds(); }
+  setExperienceVectorId(id: number, vectorEntryId: string | null) { return this.#experiences.setExperienceVectorId(id, vectorEntryId); }
+  markExperienceIndexFailed(id: number, error: string) { return this.#experiences.markExperienceIndexFailed(id, error); }
+  removeExperience(id: number) { return this.#experiences.removeExperience(id); }
+  removeExperienceBySourceId(sourceId: string) { return this.#experiences.removeExperienceBySourceId(sourceId); }
+
+  observation(sessionId: string): StoredObservation | undefined { return this.#observations.get(sessionId); }
+  observationInput(sessionId: string, keepRecent?: number): ObservationInput | undefined { return this.#observations.input(sessionId, keepRecent); }
+  saveObservation(sessionId: string, summary: string, fromMessageId: number, throughMessageId: number) { return this.#observations.save(sessionId, summary, fromMessageId, throughMessageId); }
+
+  enqueueMemoryJob(input: { sessionId: string; character: string; userMessageId: number; assistantMessageId: number }) { return this.#jobs.enqueue(input); }
+  claimMemoryJob() { return this.#jobs.claim(); }
+  markMemoryJobStep(id: number, step: "facts" | "vectors" | "summary" | "legacy") { return this.#jobs.markStep(id, step); }
+  completeMemoryJob(id: number) { return this.#jobs.complete(id); }
+  failMemoryJob(id: number, attempts: number, error: string) { return this.#jobs.fail(id, attempts, error); }
+  hasPendingMemoryJobs() { return this.#jobs.hasPending(); }
+  memoryQueueStatus(): MemoryQueueStatus { return this.#jobs.status(); }
+
+  resetMemoryVectorIndexes() {
+    this.#facts.resetVectorIndexes();
+    this.#experiences.resetVectorIndexes();
   }
 
-  /** 某个角色最近 limit 条，按时间从旧到新返回。每个角色有自己的聊天记录。 */
-  recent(limit: number, character = "whale"): StoredMessage[] {
-    const rows = this.#db
-      .prepare("SELECT id, role, content, emotion, character, created_at AS createdAt FROM messages WHERE character = ? ORDER BY id DESC LIMIT ?")
-      .all(character, limit) as unknown as StoredMessage[];
-    return rows.map((row) => ({ ...row })).reverse();
-  }
-
-  /** 角色自己的近况小记（定期反思写下，会慢慢变）。 */
-  getNote(character: string): { text: string; assistantCount: number; updatedAt: string } | undefined {
-    const row = this.#db.prepare("SELECT text, assistant_count AS assistantCount, updated_at AS updatedAt FROM character_notes WHERE character = ?").get(character) as unknown as { text: string; assistantCount: number; updatedAt: string } | undefined;
-    return row ? { ...row } : undefined;
-  }
-
-  setNote(character: string, text: string, assistantCount: number) {
-    this.#db
-      .prepare("INSERT INTO character_notes (character, text, assistant_count) VALUES (?, ?, ?) ON CONFLICT(character) DO UPDATE SET text = excluded.text, assistant_count = excluded.assistant_count, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')")
-      .run(character, text, assistantCount);
-  }
-
-  countAssistant(character: string): number {
-    const row = this.#db.prepare("SELECT COUNT(*) AS n FROM messages WHERE role = 'assistant' AND character = ?").get(character) as unknown as { n: number };
-    return Number(row.n);
-  }
-
-  remove(id: number) {
-    this.#db.prepare("DELETE FROM messages WHERE id = ?").run(id);
-  }
-
-  clear() {
-    this.#db.exec("DELETE FROM messages");
-  }
-
-  close() {
-    this.#db.close();
-  }
+  clear() { clearChatData(this.#db); }
+  close() { this.#db.close(); }
 }

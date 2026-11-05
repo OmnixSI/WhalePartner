@@ -8,6 +8,13 @@ export interface MemoryEntry {
   source?: string;
   title?: string;
   url?: string;
+  sourceId?: string;
+  status?: "active" | "superseded";
+  validFrom?: string;
+  validTo?: string | null;
+  sources?: Array<{ messageId: number; sessionId: string; createdAt: string; quote: string }>;
+  vectorIndexed?: boolean;
+  lastError?: string;
 }
 
 export async function fetchMemories(signal?: AbortSignal): Promise<MemoryEntry[]> {

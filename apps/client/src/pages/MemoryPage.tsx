@@ -12,12 +12,16 @@ function Entry({ entry, onDelete }: { entry: MemoryEntry; onDelete: (id: string)
   const [asking, setAsking] = useState(false);
   const [lead, ...rest] = entry.text.split("\n");
   const learned = entry.source === "learned";
+  const source = entry.sources?.[0];
   return (
     <li className="memory">
       <div className="memory__body">
         <div className="memory__text">{learned ? entry.text : entry.kind === "experience" ? `《${entry.title ?? lead}》` : entry.text}</div>
         {entry.kind === "experience" && !learned && <div className="memory__sub">{(entry.title ? entry.text.slice(entry.title.length).trim() : rest.join(" ")) || lead}</div>}
         {learned && entry.title && <div className="memory__sub">{entry.title}</div>}
+        {entry.kind === "fact" && <div className="memory__sub">{entry.status === "superseded" ? `历史记录 · ${when(entry.validFrom)} 至 ${when(entry.validTo ?? undefined) || "后来"}` : `当前记忆 · ${when(entry.validFrom)}`}</div>}
+        {source?.quote && <blockquote className="memory__source">原话：「{source.quote}」</blockquote>}
+        {entry.kind === "experience" && entry.vectorIndexed === false && <div className="memory__sub">本机全文已保存，语义索引将在后台重试。</div>}
         <div className="memory__meta">{when(entry.createdAt)}</div>
       </div>
       <button

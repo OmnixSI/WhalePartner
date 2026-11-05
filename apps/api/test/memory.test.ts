@@ -40,16 +40,17 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
 test("chat recalls facts into the prompt, announces them, and remembers the turn afterwards", async () => {
   const seen: ChatMessage[][] = [];
   const { store: memory, calls } = fakeMemory();
-  const events = await collect(runChat({ provider: new FallbackChatProvider([scripted(seen)]), store: new ChatStore(":memory:"), memory }, "我的猫叫什么"));
+  const query = "我的猫叫什么？最近我们一起看过什么？";
+  const events = await collect(runChat({ provider: new FallbackChatProvider([scripted(seen)]), store: new ChatStore(":memory:"), memory }, query));
   await flush();
 
   assert.deepEqual(events.map((e) => e.type), ["recall", "emotion", "delta", "done"]);
-  assert.deepEqual(events[0], { type: "recall", memories: ["用户养了一只叫团子的猫"] });
-  assert.deepEqual(calls.queries, ["我的猫叫什么"]);
-  const system = seen[0][0].content;
-  assert.ok(system.includes("- 用户养了一只叫团子的猫"));
-  assert.ok(system.includes("<experiences>") && system.includes("发光水母"));
-  assert.deepEqual(calls.remembered, [[{ role: "user", content: "我的猫叫什么" }, { role: "assistant", content: "团子呀" }]]);
+  assert.deepEqual(events[0], { type: "recall", memories: ["历史记忆（日期不详，尚无原始消息来源）：用户养了一只叫团子的猫"] });
+  assert.deepEqual(calls.queries, [query]);
+  const system = seen[0].filter((message) => message.role === "system").map((message) => message.content).join("\n");
+  assert.ok(system.includes("无原始消息来源") && system.includes("用户养了一只叫团子的猫"));
+  assert.ok(system.includes("<experience_evidence>") && system.includes("发光水母"));
+  assert.deepEqual(calls.remembered, [[{ role: "user", content: query }, { role: "assistant", content: "团子呀" }]]);
 });
 
 test("a failing memory never breaks chat", async () => {
@@ -105,15 +106,17 @@ test("memory routes list, delete and add experiences with validation", async () 
 
 test("memory routes report a disabled memory and surface store failures", async () => {
   await withServer(undefined, async (base) => {
-    assert.equal((await fetch(`${base}/api/memories`)).status, 503);
+    const memories = await fetch(`${base}/api/memories`);
+    assert.equal(memories.status, 200);
+    assert.deepEqual(await memories.json(), { entries: [], vectorError: "语义记忆索引未启用。" });
     const health = (await (await fetch(`${base}/api/health`)).json()) as { memory: { enabled: boolean } };
     assert.equal(health.memory.enabled, false);
   });
   const failing = fakeMemory({ async list() { throw new Error("磁盘满了"); } }).store;
   await withServer(failing, async (base) => {
     const res = await fetch(`${base}/api/memories`);
-    assert.equal(res.status, 500);
-    assert.match(((await res.json()) as { error: string }).error, /磁盘满了/);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { entries: [], vectorError: "磁盘满了" });
   });
 });
 
