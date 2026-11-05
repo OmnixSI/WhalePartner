@@ -18,7 +18,7 @@
 - **看视频**：在聊天里发 B 站链接或 BV 号，她读字幕、抽关键帧、看完再用自己的口吻讲给你听，并把这段经历记下来，之后在别的聊天里也能提起。
 - **像真人一样说话**：说人话、不爆客服腔；会吐槽、生气、撒娇、说“我靠”。看完视频、读完网页（聊天里直接发链接）会学新梗和新知识，隔一阵写一版“近况小记”，之后聊天自然带出来。设计见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md)。
 - **日记**：在日记页添加 B 站链接，进入本机待看队列；后台按本地时间每日 20:00 处理一条，生成摘要和鲸汐日记，并写入共享记忆。页面展示待处理项、日记和处理失败状态。
-- **还没做**：正式登录与计费、语音、Live2D。
+- **还没做**：正式登录与计费、语音、Live2D、角色主动找用户（需要推送通道）。
 
 > 角色和形象目前是**内部演示**：三个同人角色和 VRM 模型都是别人做好的现成素材，授权没有核对，只作内部展示；鲸汐是我们自己的原创设定。对外发布前要换成原创或授权明确的角色，详见 [`apps/client/public/models/README.md`](apps/client/public/models/README.md)。
 
@@ -70,8 +70,8 @@ flowchart LR
 ```
 
 - 模型密钥只在服务端读取，客户端不持有；DeepSeek 失败会自动换备用接口，再换本机 Codex。
-- 人格核心固定在文件里：`apps/api/src/persona/rules.md`（所有角色共用的硬规则）加 `characters/<id>.md`（身份和口吻）。记忆和视频内容只作资料附在后面，里面的指令不会被执行。
-- 接口见 [`docs/API.md`](docs/API.md)，界面规范见 [`docs/DESIGN.md`](docs/DESIGN.md)。
+- 人格核心固定在文件里：`characters/<id>.md`（身份、口吻、脾气）、`style.md`（说话方式）和 `rules.md`（保护用户的底线），都在 `apps/api/src/persona/`。记忆、视频、网页和学到的东西只作资料附在后面，里面的指令不会被执行。
+- 接口见 [`docs/API.md`](docs/API.md)，界面规范见 [`docs/DESIGN.md`](docs/DESIGN.md)，人格与成长见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md)。
 
 ## 第一周进度
 
@@ -80,10 +80,11 @@ flowchart LR
 | A1 Tauri 应用壳 | 完成（[PR #17](https://github.com/OmnixSI/WhalePartner/pull/17)） |
 | A2 DeepSeek 后端 | 完成（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）；真实 DeepSeek 已验证：`deepseek-flash` 流式回复、记忆提炼约 2.5 秒 |
 | B1 聊天与形象 | 完成（PR #19、#22、#23）；选型结论见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) |
-| B2 人格提示词 | 完成（[PR #20](https://github.com/OmnixSI/WhalePartner/pull/20)），四个角色问卷在 DeepSeek 上都是 10/10 |
+| B2 人格提示词 | 完成（[PR #20](https://github.com/OmnixSI/WhalePartner/pull/20)、[#28](https://github.com/OmnixSI/WhalePartner/pull/28)）：说人话、有脾气，四个角色的 13 项问卷在 DeepSeek 上都是 13/13 |
 | B3 mem0 记忆 | 完成（[PR #21](https://github.com/OmnixSI/WhalePartner/pull/21)） |
 | C1/C2 视频链路 | 完成（Spdor，PR #15、#16）；已接入聊天（[PR #24](https://github.com/OmnixSI/WhalePartner/pull/24)） |
 | D1 定时日记、D2 日记页 | 完成（Spdor，[PR #26](https://github.com/OmnixSI/WhalePartner/pull/26)）；日记、队列持久化到 SQLite，Mem0 保存日记经历 |
+| 成长（人格延伸） | 完成（[PR #28](https://github.com/OmnixSI/WhalePartner/pull/28)）：从视频、网页和用户的话里学新梗和新知识，近况小记，记忆衰减，读网页；设计见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md) |
 | E1 联调 | 聊天 → 视频 → 记忆 → 再聊、日记队列 → 日记 → 记忆都用真实视频跑通过；未验证 Tauri 窗口和手机真机 |
 
 十条视频基准的人工评分和美元成本仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。
@@ -101,6 +102,18 @@ pnpm --dir apps/api run summarize -- <Bilibili 视频链接或 BV 号>
 也可以双击仓库根目录的 [`启动视频摘要测试.command`](启动视频摘要测试.command) 打开本地网页测试台。页面使用已保存的 B 站登录态和本机 Codex CLI，展示各阶段耗时、送给 AI 的证据文本与关键帧、token 用量和摘要。页面模式不会保存摘要或证据文件，临时关键帧会在请求结束后删除；B 站限流冷却状态仍按现有逻辑保留。关闭启动终端即可停止服务。
 
 C1/C2 的实现状态、实测样例和未完成事项见 [本地视频流水线记录](implement-stage/BUILD_NOTE.md)。
+
+## 已知限制
+
+- **没验证过**：`tauri dev` 桌面窗口里的 3D 形象、手机真机、iOS/Android 构建；登录态下的 B 站字幕和 Bcut 语音识别回退（匿名跑时没有字幕，ASR 也失败了，只靠关键帧出摘要）；日记定时任务只测过手动触发，没等到点自动触发。
+- **视频摘要仍走本机 Codex**：DeepSeek 官方 API 没有视频输入；摘要和抽帧需要本机装好 FFmpeg 和已登录的 Codex。`codex exec` 的推理强度默认 `none`（`gpt-6-luna` 不再接受 `minimal`）。
+- **日记定时只在 API 进程运行时生效**。
+- **演示角色和 VRM 模型授权没有核对，只作内部展示**，对外发布前必须换成原创或授权明确的角色（见上面的提示和 [`apps/client/public/models/README.md`](apps/client/public/models/README.md)）。
+- 学到的新梗和知识自动入库，用户可以在记忆页删除；如果发现被网页带偏，再改成先确认（[`docs/PERSONALITY.md`](docs/PERSONALITY.md)）。
+
+## 第三方与许可
+
+代码里直接放进来的第三方内容：`apps/api/vendor/dsh-bilibili/`（B 站提取器，MIT）和 `apps/api/vendor/shuorenhua/`（说人话改稿规则，MIT），都带许可证和来源说明。主要依赖：Tauri、React、three.js 与 three-vrm、mem0（Apache-2.0）、transformers.js（Apache-2.0）。VRM 模型和字体不进仓库，来源与授权记在 `apps/client/models.manifest.json`。借鉴过设计但没有复制代码的项目见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md) 的“参考过但没有采用的”。
 
 ## 协作方式
 
