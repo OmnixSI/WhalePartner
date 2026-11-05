@@ -25,7 +25,7 @@ function DiaryEntry({ item, onRetry, retrying }: { item: DiaryItem; onRetry: (it
         <span>{when(item.processedAt ?? item.createdAt)}</span>
         <span className={`diary-status${item.memoryStatus === "failed" ? " diary-status--failed" : ""}`}>{statusText(item)}</span>
       </div>
-      <h3>{item.title ?? "今天看的视频"}</h3>
+      <h3>{item.title || "今天看的视频"}</h3>
       <p className="diary-entry__text">{item.diaryText}</p>
       {item.memoryError && <p className="diary-error" role="status">{item.memoryError}</p>}
       <div className="diary-entry__actions">
@@ -45,7 +45,7 @@ function QueueItem({ item, onRetry, retrying }: { item: DiaryItem; onRetry: (ite
   return (
     <li className="diary-queue__item">
       <div className="diary-queue__body">
-        <div className="diary-queue__title">{item.title ?? item.inputUrl}</div>
+        <div className="diary-queue__title">{item.title || item.inputUrl}</div>
         <div className={`diary-status${item.status === "failed" ? " diary-status--failed" : ""}`}>{statusText(item)}</div>
         {item.error && <p className="diary-error" role="alert">{item.error}</p>}
         {item.status === "duplicate" && item.duplicateOf !== null && (
@@ -64,24 +64,25 @@ function QueueItem({ item, onRetry, retrying }: { item: DiaryItem; onRetry: (ite
 export function DiaryPage() {
   const [items, setItems] = useState<DiaryItem[] | null>(null);
   const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
+  const [operationError, setOperationError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [running, setRunning] = useState(false);
   const [retrying, setRetrying] = useState<number | null>(null);
 
-  const load = useCallback(async (signal?: AbortSignal, quiet = false) => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     try {
       setItems(await fetchDiary(signal));
-      if (!quiet) setError("");
+      setLoadError("");
     } catch (cause) {
-      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "读取日记失败。");
+      if (!signal?.aborted) setLoadError(cause instanceof Error ? cause.message : "读取日记失败。");
     }
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
-    const timer = window.setInterval(() => { void load(controller.signal, true); }, 5000);
+    const timer = window.setInterval(() => { void load(controller.signal); }, 5000);
     return () => {
       controller.abort();
       window.clearInterval(timer);
@@ -93,13 +94,13 @@ export function DiaryPage() {
     const value = url.trim();
     if (!value || submitting) return;
     setSubmitting(true);
-    setError("");
+    setOperationError("");
     try {
       await enqueueDiaryVideo(value);
       setUrl("");
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "添加视频失败。");
+      setOperationError(cause instanceof Error ? cause.message : "添加视频失败。");
     } finally {
       setSubmitting(false);
     }
@@ -107,12 +108,12 @@ export function DiaryPage() {
 
   const run = async () => {
     setRunning(true);
-    setError("");
+    setOperationError("");
     try {
       await runDiaryQueue();
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "启动日记处理失败。");
+      setOperationError(cause instanceof Error ? cause.message : "启动日记处理失败。");
     } finally {
       setRunning(false);
     }
@@ -120,12 +121,12 @@ export function DiaryPage() {
 
   const retry = async (item: DiaryItem) => {
     setRetrying(item.id);
-    setError("");
+    setOperationError("");
     try {
       await retryDiaryItem(item.id);
       await load();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "重试失败。");
+      setOperationError(cause instanceof Error ? cause.message : "重试失败。");
     } finally {
       setRetrying(null);
     }
@@ -134,6 +135,7 @@ export function DiaryPage() {
   const pending = items?.some((item) => item.status === "pending" || item.status === "failed" || item.memoryStatus === "pending") ?? false;
   const queue = items?.filter((item) => !item.diaryText && item.status !== "done") ?? [];
   const entries = items?.filter((item) => Boolean(item.diaryText)) ?? [];
+  const error = operationError || loadError;
 
   return (
     <div className="page">
@@ -170,7 +172,7 @@ export function DiaryPage() {
           </div>
         </section>
 
-        {error && <div className="card diary-error-card" role="alert"><strong>日记服务暂不可用</strong><p>{error}</p><button className="diary-button diary-button--quiet" onClick={() => void load()}>重试读取</button></div>}
+        {error && <div className="card diary-error-card" role="alert"><strong>{operationError ? "操作失败" : "日记服务暂不可用"}</strong><p>{error}</p>{!operationError && <button className="diary-button diary-button--quiet" onClick={() => void load()}>重试读取</button>}</div>}
         {items === null && !error && <div className="card"><p>正在翻她的小本子…</p></div>}
 
         {items !== null && queue.length > 0 && (
