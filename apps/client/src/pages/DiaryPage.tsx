@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { DiaryIcon } from "../components/Icons";
 import { enqueueDiaryVideo, fetchDiary, retryDiaryItem, runDiaryQueue, type DiaryItem } from "../lib/diary";
 
 function when(iso?: string | null) {
@@ -141,9 +140,8 @@ export function DiaryPage() {
     <div className="page">
       <div className="page__inner">
         <header>
-          <p className="page__eyebrow">Diary</p>
           <h1 className="page__title">她的日记</h1>
-          <p className="page__lead">鲸汐看过的视频、想到的事，会在这里变成一篇篇日记。</p>
+          <p className="page__lead">她看过的视频、想到的事，会在这里变成一篇篇日记。</p>
         </header>
 
         <section className="card diary-add">
@@ -190,7 +188,6 @@ export function DiaryPage() {
 
         {items !== null && !error && entries.length === 0 && queue.length === 0 && (
           <div className="card empty">
-            <DiaryIcon style={{ width: 64, height: 64, color: "var(--accent)" }} />
             <h3>还没有日记</h3>
             <p>添加一个视频链接，她看完后就会在这里写下日记。</p>
           </div>

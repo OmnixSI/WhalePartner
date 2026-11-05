@@ -3,7 +3,6 @@ import type { AvatarEmotion } from "../avatar/model.config";
 import { fetchHealth, type Health } from "../lib/api";
 import type { Character } from "../characters";
 import { fetchHistory, streamChat } from "../lib/chat";
-import { SendIcon } from "./Icons";
 
 interface Bubble {
   key: string;
@@ -96,7 +95,7 @@ export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
             {health === undefined ? "正在连接…" : online ? `在线 · ${health.model ?? health.provider}` : "后端未连接"}
           </span>
         </div>
-        <span className="badge" title={`${character.name}是 AI 角色，不是真人`}>AI 角色</span>
+        <span className="tag" title={`${character.name}是 AI 角色，不是真人`}>AI 角色</span>
       </header>
       <div className="chat__list" role="log" aria-live="polite" ref={list}>
         {bubbles.length === 0 && <div className="msg msg--her">{character.greeting}</div>}
@@ -126,7 +125,7 @@ export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(draft); }
           }}
         />
-        <button className="send" type="submit" disabled={!online || busy || !draft.trim()} aria-label="发送"><SendIcon /></button>
+        <button className="send" type="submit" disabled={!online || busy || !draft.trim()} >发送</button>
       </form>
     </section>
   );

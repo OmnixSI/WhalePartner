@@ -1,24 +1,20 @@
 import { NavLink } from "react-router-dom";
-import { ChatIcon, DiaryIcon, MemoryIcon, SettingsIcon, TailMark } from "./Icons";
+import { TailMark } from "./Icons";
 
 const ITEMS = [
-  { to: "/", label: "聊天", icon: ChatIcon, end: true },
-  { to: "/diary", label: "日记", icon: DiaryIcon },
-  { to: "/memory", label: "记忆", icon: MemoryIcon },
-  { to: "/settings", label: "设置", icon: SettingsIcon },
+  { to: "/", label: "聊天", end: true },
+  { to: "/diary", label: "日记" },
+  { to: "/memory", label: "记忆" },
+  { to: "/settings", label: "设置" },
 ];
 
 export function Nav() {
   return (
     <nav className="nav" aria-label="主导航">
       <div className="nav__brand"><TailMark /></div>
-      {ITEMS.map(({ to, label, icon: Icon, end }) => (
-        <NavLink key={to} to={to} end={end} className="nav__link">
-          <Icon />
-          <span>{label}</span>
-        </NavLink>
+      {ITEMS.map(({ to, label, end }) => (
+        <NavLink key={to} to={to} end={end} className="nav__link">{label}</NavLink>
       ))}
-      <div className="nav__spacer" />
     </nav>
   );
 }

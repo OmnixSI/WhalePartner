@@ -28,7 +28,6 @@ export function SettingsPage() {
     <div className="page">
       <div className="page__inner">
         <header>
-          <p className="page__eyebrow">Settings</p>
           <h1 className="page__title">设置</h1>
         </header>
         <div className="card">
@@ -72,7 +71,7 @@ export function SettingsPage() {
               <div className="row__label">聊天记录</div>
               <div className="row__desc">{confirming ? "再点一次确认。清空后不能撤销，鲸汐不会再看到之前的对话。" : cleared === true ? "已清空。" : cleared === false ? "清空失败，后端未连接。" : "清空后，鲸汐不会再看到之前的对话内容。"}</div>
             </div>
-            <button className="seg" onClick={() => void clear()}><span style={{ padding: "7px 16px", color: "var(--coral)", fontWeight: 600 }}>{confirming ? "确认清空" : "清空"}</span></button>
+            <button className="link-danger" onClick={() => void clear()}>{confirming ? "确认清空" : "清空"}</button>
           </div>
           <div className="row">
             <div>

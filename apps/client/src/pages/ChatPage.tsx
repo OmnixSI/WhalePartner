@@ -19,13 +19,12 @@ export function ChatPage() {
         <div className="stage__tag">
           <div>
             <div className="stage__name">{character.name}</div>
-            <div className="stage__latin">{character.latin}</div>
+            <div className="stage__sub">{character.fan ? `${character.tagline} · 同人演示` : character.tagline}</div>
           </div>
-          <span className="badge">{character.fan ? `${character.tagline} · 同人演示` : character.tagline}</span>
         </div>
         {status !== "ready" && <WhaleFigure />}
         <VrmStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={speaking} />
-        <p className="stage__hint">现成的演示形象，仅内部展示</p>
+        <p className="stage__hint">演示形象 · 仅内部展示</p>
       </section>
       <ChatPanel key={character.id} character={character} onEmotion={setEmotion} onSpeaking={setSpeaking} />
     </div>
