@@ -20,4 +20,4 @@ export const AVATAR_MODELS: readonly AvatarModel[] = manifest.models.map((m) => 
 /** 目前用的都是别人做好的现成模型，授权没有核对，只作内部展示；对外发布前要换成有授权的角色。 */
 export const AVATAR_IS_PLACEHOLDER = true;
 
-export type AvatarEmotion = "neutral" | "happy" | "sad" | "surprised" | "relaxed";
+export type AvatarEmotion = "neutral" | "happy" | "sad" | "angry" | "surprised" | "relaxed";

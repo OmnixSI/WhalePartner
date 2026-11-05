@@ -44,7 +44,7 @@ test("emotion filter strips tags, even when a tag is split across chunks", () =>
 
 test("emotion filter drops unknown emotion names but keeps ordinary brackets", () => {
   const filter = new EmotionFilter();
-  const result = filter.feed("[emotion:angry]好的[1]");
+  const result = filter.feed("[emotion:furious]好的[1]");
   assert.equal(result.text, "好的[1]");
   assert.deepEqual(result.emotions, []);
 });

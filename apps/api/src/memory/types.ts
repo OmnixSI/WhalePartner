@@ -32,8 +32,10 @@ export interface MemoryStore {
   remember(turns: ConversationTurn[]): Promise<void>;
   /** 按语义召回与 query 相关的用户事实。 */
   recall(query: string, limit?: number): Promise<MemoryEntry[]>;
-  /** 最近的经历（视频摘要、日记），新的在前。 */
+  /** 最近的经历（视频摘要、日记），新的在前；不含“学到的”。 */
   recentExperiences(limit?: number): Promise<MemoryEntry[]>;
+  /** 最近学到的梗和知识，新的在前。 */
+  recentLearnings(limit?: number): Promise<MemoryEntry[]>;
   /** 原样保存一段经历，不经过事实提炼。 */
   addExperience(input: ExperienceInput): Promise<MemoryEntry>;
   list(): Promise<MemoryEntry[]>;

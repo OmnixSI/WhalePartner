@@ -30,6 +30,14 @@ export class ChatStore {
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
       );
     `);
+    this.#db.exec(`
+      CREATE TABLE IF NOT EXISTS character_notes (
+        character TEXT PRIMARY KEY,
+        text TEXT NOT NULL,
+        assistant_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      );
+    `);
     // 旧库（没有 character 列）补上，已有记录归给默认角色。
     const columns = this.#db.prepare("PRAGMA table_info(messages)").all() as unknown as Array<{ name: string }>;
     if (!columns.some((column) => column.name === "character")) {
@@ -50,6 +58,23 @@ export class ChatStore {
       .prepare("SELECT id, role, content, emotion, character, created_at AS createdAt FROM messages WHERE character = ? ORDER BY id DESC LIMIT ?")
       .all(character, limit) as unknown as StoredMessage[];
     return rows.map((row) => ({ ...row })).reverse();
+  }
+
+  /** 角色自己的近况小记（定期反思写下，会慢慢变）。 */
+  getNote(character: string): { text: string; assistantCount: number; updatedAt: string } | undefined {
+    const row = this.#db.prepare("SELECT text, assistant_count AS assistantCount, updated_at AS updatedAt FROM character_notes WHERE character = ?").get(character) as unknown as { text: string; assistantCount: number; updatedAt: string } | undefined;
+    return row ? { ...row } : undefined;
+  }
+
+  setNote(character: string, text: string, assistantCount: number) {
+    this.#db
+      .prepare("INSERT INTO character_notes (character, text, assistant_count) VALUES (?, ?, ?) ON CONFLICT(character) DO UPDATE SET text = excluded.text, assistant_count = excluded.assistant_count, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')")
+      .run(character, text, assistantCount);
+  }
+
+  countAssistant(character: string): number {
+    const row = this.#db.prepare("SELECT COUNT(*) AS n FROM messages WHERE role = 'assistant' AND character = ?").get(character) as unknown as { n: number };
+    return Number(row.n);
   }
 
   remove(id: number) {

@@ -1,4 +1,5 @@
 import { EmotionFilter } from "./emotion.ts";
+import { humanizeText } from "./humanize.ts";
 import type { ChatProvider } from "./llm/types.ts";
 import type { MemoryStore } from "./memory/types.ts";
 import { buildSystemPrompt } from "./persona/persona.ts";
@@ -38,7 +39,8 @@ export async function generateDiaryText(provider: ChatProvider, video: DiarySour
   text += filter.flush();
   const diary = text.trim();
   if (!diary) throw new Error("模型没有生成日记正文。");
-  return diary.slice(0, 4000);
+  // 用“说人话”规则再过一遍，去掉套话和 AI 腔；失败就用原文。
+  return (await humanizeText(provider, diary.slice(0, 4000))).slice(0, 4000);
 }
 
 function messageOf(error: unknown) {

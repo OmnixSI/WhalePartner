@@ -24,3 +24,19 @@ export async function deleteMemory(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!response.ok) throw new Error(`删除失败（HTTP ${response.status}）`);
 }
+
+export interface CharacterNote {
+  text: string;
+  updatedAt: string;
+}
+
+/** 角色自己写的近况小记；还没写过就是 null。 */
+export async function fetchNote(character: string, signal?: AbortSignal): Promise<CharacterNote | null> {
+  try {
+    const response = await fetch(`${API_BASE}/api/note?character=${encodeURIComponent(character)}`, { signal });
+    if (!response.ok) return null;
+    return ((await response.json()) as { note: CharacterNote | null }).note;
+  } catch {
+    return null;
+  }
+}

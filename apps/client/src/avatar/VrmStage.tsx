@@ -11,7 +11,7 @@ interface Props {
   speaking: boolean;
 }
 
-const EXPRESSIONS = ["happy", "sad", "surprised", "relaxed"] as const;
+const EXPRESSIONS = ["happy", "sad", "angry", "surprised", "relaxed"] as const;
 const EMOTION_HOLD_MS = 6000;
 
 /** 把情绪权重、口型和眨眼平滑地推向目标值。 */
@@ -79,7 +79,7 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
     let disposed = false;
     let frame = 0;
     const clock = new THREE.Clock();
-    const weights: Record<string, number> = { happy: 0, sad: 0, surprised: 0, relaxed: 0, aa: 0, blink: 0 };
+    const weights: Record<string, number> = { happy: 0, sad: 0, angry: 0, surprised: 0, relaxed: 0, aa: 0, blink: 0 };
     let nextBlink = 1.5;
     let blinkPhase = -1;
     let elapsed = 0;
