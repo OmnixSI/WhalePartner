@@ -90,6 +90,7 @@
 .link-danger:hover { border-bottom-color: var(--alert); }
 
 /* 记忆页 */
+.note { font-family: var(--font-serif); font-size: 17px; line-height: 1.9; color: var(--ink); }
 .memories { list-style: none; margin: 0; padding: 0; }
 .memory { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; padding: 14px 0; border-top: 1px solid var(--rule); }
 .memory:first-child { border-top: 0; padding-top: 0; }

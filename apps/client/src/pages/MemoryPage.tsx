@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { deleteMemory, fetchMemories, type MemoryEntry } from "../lib/memory";
+import { useCharacter } from "../characters";
+import { deleteMemory, fetchMemories, fetchNote, type CharacterNote, type MemoryEntry } from "../lib/memory";
 
 function when(iso?: string) {
   if (!iso) return "";
@@ -10,11 +11,13 @@ function when(iso?: string) {
 function Entry({ entry, onDelete }: { entry: MemoryEntry; onDelete: (id: string) => void }) {
   const [asking, setAsking] = useState(false);
   const [lead, ...rest] = entry.text.split("\n");
+  const learned = entry.source === "learned";
   return (
     <li className="memory">
       <div className="memory__body">
-        <div className="memory__text">{entry.kind === "experience" ? `《${entry.title ?? lead}》` : entry.text}</div>
-        {entry.kind === "experience" && <div className="memory__sub">{(entry.title ? entry.text.slice(entry.title.length).trim() : rest.join(" ")) || lead}</div>}
+        <div className="memory__text">{learned ? entry.text : entry.kind === "experience" ? `《${entry.title ?? lead}》` : entry.text}</div>
+        {entry.kind === "experience" && !learned && <div className="memory__sub">{(entry.title ? entry.text.slice(entry.title.length).trim() : rest.join(" ")) || lead}</div>}
+        {learned && entry.title && <div className="memory__sub">{entry.title}</div>}
         <div className="memory__meta">{when(entry.createdAt)}</div>
       </div>
       <button
@@ -31,7 +34,9 @@ function Entry({ entry, onDelete }: { entry: MemoryEntry; onDelete: (id: string)
 
 /** 她记得的事：用户的事实（可查看、可删除）和她看过的内容。 */
 export function MemoryPage() {
+  const character = useCharacter();
   const [entries, setEntries] = useState<MemoryEntry[] | null>(null);
+  const [note, setNote] = useState<CharacterNote | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback((signal?: AbortSignal) => {
@@ -44,8 +49,9 @@ export function MemoryPage() {
   useEffect(() => {
     const ctrl = new AbortController();
     load(ctrl.signal);
+    fetchNote(character.id, ctrl.signal).then(setNote);
     return () => ctrl.abort();
-  }, [load]);
+  }, [load, character.id]);
 
   const remove = async (id: string) => {
     try {
@@ -57,7 +63,8 @@ export function MemoryPage() {
   };
 
   const facts = entries?.filter((e) => e.kind === "fact") ?? [];
-  const experiences = entries?.filter((e) => e.kind === "experience") ?? [];
+  const learned = entries?.filter((e) => e.kind === "experience" && e.source === "learned") ?? [];
+  const experiences = entries?.filter((e) => e.kind === "experience" && e.source !== "learned") ?? [];
 
   return (
     <div className="page">
@@ -81,10 +88,22 @@ export function MemoryPage() {
             <p>多聊几句，她就会开始记住你。聊完后她需要几秒钟整理，再刷新这里。</p>
           </div>
         )}
+        {note && (
+          <section className="card">
+            <h3>{character.name}的近况</h3>
+            <p className="note">{note.text}</p>
+          </section>
+        )}
         {facts.length > 0 && (
           <section className="card">
             <h3>关于你</h3>
             <ul className="memories">{facts.map((e) => <Entry key={e.id} entry={e} onDelete={remove} />)}</ul>
+          </section>
+        )}
+        {learned.length > 0 && (
+          <section className="card">
+            <h3>她学到的</h3>
+            <ul className="memories">{learned.map((e) => <Entry key={e.id} entry={e} onDelete={remove} />)}</ul>
           </section>
         )}
         {experiences.length > 0 && (

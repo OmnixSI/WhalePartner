@@ -9,6 +9,7 @@ import type { MemoryStatus, MemoryStore } from "./memory/types.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "./persona/persona.ts";
 import { ChatStore } from "./store.ts";
 import { createVideoService, sharedParagraph, summarizeVideo, VideoError, type VideoService } from "./video-service.ts";
+import { createWebService, type WebService } from "./web-service.ts";
 import { DiaryStore } from "./diary-store.ts";
 import { DiaryService } from "./diary-service.ts";
 import { startDiaryScheduler } from "./diary-scheduler.ts";
@@ -22,6 +23,8 @@ export interface ServerDeps {
   video?: VideoService;
   /** 日记和待看队列；定时器只在服务进程入口启动。 */
   diary?: DiaryService;
+  /** 提供后聊天里的普通网页链接会被读完再聊。 */
+  web?: WebService;
 }
 
 function healthBody(deps: ServerDeps) {
@@ -71,7 +74,7 @@ async function handleChat(deps: ServerDeps, request: IncomingMessage, response: 
 
   startSse(response);
   try {
-    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory, character, video: deps.video }, text, abort.signal)) {
+    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory, character, video: deps.video, web: deps.web }, text, abort.signal)) {
       const { type, ...data } = event;
       sendSse(response, type, data);
     }
@@ -190,6 +193,12 @@ export function createApiServer(deps: ServerDeps): Server {
         sendJson(response, 200, url.searchParams.get("probe") === "1" ? { ...body, probe: await probe(deps) } : body);
         return;
       }
+      if (request.method === "GET" && url.pathname === "/api/note") {
+        const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
+        if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" });
+        const note = deps.store.getNote(character);
+        return sendJson(response, 200, { note: note ? { text: note.text, updatedAt: note.updatedAt } : null });
+      }
       if (request.method === "GET" && url.pathname === "/api/chat/history") {
         const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
         const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
@@ -237,7 +246,7 @@ if (import.meta.main) {
     : undefined;
   const video = createVideoService();
   const diary = new DiaryService({ store: diaryStore, provider, memory, video });
-  const server = createApiServer({ config, provider, store, memory, video, diary });
+  const server = createApiServer({ config, provider, store, memory, video, diary, web: createWebService() });
   let stopDiaryScheduler = () => {};
   server.on("close", () => {
     stopDiaryScheduler();

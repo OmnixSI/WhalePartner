@@ -21,7 +21,8 @@
 |---|---|---|
 | `recall` | `{ memories: string[] }` | 这一轮召回并用到的用户事实，没有就不发 |
 | `video` | `{ stage: "reading"｜"watching"｜"failed", message, title? }` | 消息里有 B 站链接时的进度；`failed` 后角色会如实说没看成 |
-| `emotion` | `{ emotion: "neutral"｜"happy"｜"sad"｜"surprised"｜"relaxed" }` | 驱动形象表情；标签已从正文剥离 |
+| `web` | `{ stage: "reading"｜"summarizing"｜"failed", message, title? }` | 消息里有普通网页链接时的进度；失败后角色会如实说没读成 |
+| `emotion` | `{ emotion: "neutral"｜"happy"｜"sad"｜"angry"｜"surprised"｜"relaxed" }` | 驱动形象表情；标签已从正文剥离 |
 | `delta` | `{ text }` | 回复文字增量 |
 | `done` | `{ messageId, emotion, provider?, usage? }` | 结束；`provider` 是实际用到的模型提供方 |
 | `error` | `{ message }` | 失败。一个字都没回出来时这条用户消息会被撤掉，重试不会重复 |
@@ -29,6 +30,10 @@
 客户端断开连接会中止上游请求；被中止的半句回复不入库。
 
 `GET /api/chat/history?limit=50&character=deepseek` 返回 `{ messages: [{ id, role, content, emotion, character, createdAt }] }`，每个角色有自己的记录。`DELETE /api/chat/history` 清空全部。
+
+## 近况小记
+
+`GET /api/note?character=deepseek` → `{ note: { text, updatedAt } | null }`。角色定期写给自己的一小段近况，没写过就是 `null`。说明见 [`PERSONALITY.md`](PERSONALITY.md)。
 
 ## 记忆
 

@@ -1,4 +1,4 @@
-export const EMOTIONS = ["neutral", "happy", "sad", "surprised", "relaxed"] as const;
+export const EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "relaxed"] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
 const TAG = /^\[emotion:([a-z]+)\]/;

@@ -64,7 +64,7 @@ export function ChatPanel({ character, onEmotion, onSpeaking }: Props) {
     let started = false;
     try {
       for await (const event of streamChat(message, character.id, ctrl.signal)) {
-        if (event.type === "video") setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, progress: event.message } : b)));
+        if (event.type === "video" || event.type === "web") setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, progress: event.message } : b)));
         else if (event.type === "recall") setBubbles((prev) => prev.map((b) => (b.key === reply ? { ...b, recalled: event.memories } : b)));
         else if (event.type === "emotion") onEmotion(event.emotion);
         else if (event.type === "delta") {

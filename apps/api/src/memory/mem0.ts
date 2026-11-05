@@ -60,7 +60,11 @@ class Mem0Store implements MemoryStore {
   }
 
   async recentExperiences(limit = 3) {
-    return (await this.list()).filter((entry) => entry.kind === "experience").slice(0, limit);
+    return (await this.list()).filter((entry) => entry.kind === "experience" && entry.source !== "learned").slice(0, limit);
+  }
+
+  async recentLearnings(limit = 4) {
+    return (await this.list()).filter((entry) => entry.kind === "experience" && entry.source === "learned").slice(0, limit);
   }
 
   async addExperience(input: ExperienceInput) {
@@ -144,6 +148,7 @@ export class LazyMemoryStore implements MemoryStore {
   async remember(turns: ConversationTurn[]) { return (await this.#ready()).remember(turns); }
   async recall(query: string, limit?: number) { return (await this.#ready()).recall(query, limit); }
   async recentExperiences(limit?: number) { return (await this.#ready()).recentExperiences(limit); }
+  async recentLearnings(limit?: number) { return (await this.#ready()).recentLearnings(limit); }
   async addExperience(input: ExperienceInput) { return (await this.#ready()).addExperience(input); }
   async list() { return (await this.#ready()).list(); }
   async remove(id: string) { return (await this.#ready()).remove(id); }

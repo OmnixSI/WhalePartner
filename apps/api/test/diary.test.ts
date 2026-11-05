@@ -62,6 +62,7 @@ function fakeProvider(options: { failDiary?: () => boolean; messages?: ChatMessa
 function fakeMemory(options: { fail?: () => boolean } = {}) {
   const experiences: ExperienceInput[] = [];
   const memory: MemoryStore = {
+    async recentLearnings() { return []; },
     async remember() {},
     async recall() { return []; },
     async recentExperiences() {

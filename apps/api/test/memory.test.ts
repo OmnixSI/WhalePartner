@@ -13,6 +13,7 @@ import { ChatStore } from "../src/store.ts";
 function fakeMemory(overrides: Partial<MemoryStore> = {}) {
   const calls = { remembered: [] as ConversationTurn[][], experiences: [] as ExperienceInput[], removed: [] as string[], queries: [] as string[] };
   const store: MemoryStore = {
+    async recentLearnings() { return []; },
     async remember(turns) { calls.remembered.push(turns); },
     async recall(query) { calls.queries.push(query); return [{ id: "f1", kind: "fact", text: "用户养了一只叫团子的猫" }]; },
     async recentExperiences() { return [{ id: "e1", kind: "experience", text: "深海纪录片\n讲了发光水母" }]; },
