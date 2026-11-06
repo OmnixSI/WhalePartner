@@ -34,7 +34,7 @@ export function ChatPage() {
             <VrmStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={speaking} />
           </>
         )}
-        <p className="stage__hint">{status === "failed" ? "形象暂时无法加载" : model.renderer === "live2d" ? "点一点她，看看反应" : "演示形象 · 仅内部展示"}</p>
+        <p className="stage__hint">{status === "failed" ? "形象暂时无法加载" : model.renderer === "live2d" ? "移动指针看她追视，点击切换动作" : "演示形象 · 仅内部展示"}</p>
       </section>
       <ChatPanel key={character.id} character={character} onEmotion={setEmotion} onSpeaking={setSpeaking} />
     </div>
