@@ -1,1 +1,2 @@
 {"at":"2026-11-07T01:52:00+11:00","phase":"plan","round":0,"verdict":"init","gates":{},"score":null,"note":"执行计划 / 任务书 / 三层记忆契约落地；跟踪 Issue #42，阶段 Issue #43-#49","pr":null}
+{"at":"2026-11-07T05:55:00+11:00","phase":"PB-rest","round":1,"verdict":"pass","gates":{"api_typecheck":true,"api_test":"159/159"},"score":null,"note":"导出/删除、消息附件、记忆编号、排班字段落地；mood 与额度拦截/昵称注入留下轮","pr":60}
