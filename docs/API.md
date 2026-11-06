@@ -85,6 +85,30 @@
 
 `DiaryItem` 包含 `id`、`inputUrl`、`bvid`、`title`、`sourceUrl`、`summary`、`diaryText`、`status`、`errorStage`、`error`、`memoryStatus`、`memoryError`、`createdAt`、`processedAt`、`duplicateOf`。队列状态为 `pending`、`processing`、`failed`、`done`、`duplicate`；记忆状态为 `pending`、`saved`、`failed` 或 `null`。摘要在生成日记前落盘；重试会从已保存的阶段继续。已生成日记的同一 BV 号只保留一篇，记忆使用独立的 `diary:<BV号>` 来源标识。
 
+## 额度（用量透明表）
+
+`GET /api/quota` → `{ "monthly": 3000, "used": 128, "remaining": 2872, "enforce": false, "period": "2026-11" }`。
+每次会产生模型调用的动作都记一笔：`chat`（默认 1）、`video`、`web`、`journal`。默认只记账不拦截（`QUOTA_ENFORCE=0`）；
+开启后额度用完时 `POST /api/chat` 在开流前返回 `402 { "error": "quota_exceeded" }`。
+
+## 导出与删除全部
+
+- `POST /api/export` → `{ "id": "…" }`；`GET /api/export?id=…` → `application/zip`（`content-disposition: attachment`）。
+  白名单内容：manifest / README / profile / messages / character-notes / memories / diary / usage / memory-seq。
+- `DELETE /api/data`，请求体 `{ "confirm": "DELETE_ALL" }`；缺参数返回 `400 { "error": "confirm_required" }`。
+  清空白名单表与记忆库、重置计数器并登出 B 站；导出或删除进行中时聊天返回 `409`。
+
+## 昵称
+
+- `GET /api/profile` → `{ "userName": "…" | null }`
+- `PUT /api/profile`，请求体 `{ "userName": "…" }`；1–12 字，禁止控制字符与 `<` `>` 反引号。
+  注入到聊天与日记生成的 system prompt（`persona.withUserName`）。
+
+## 记忆编号
+
+`GET /api/memories` 每项带 `seq`（`No.` 编号，删除旧条目不回退）；`GET /api/memories/:id` 返回单条。
+编号表 `memory_seq` + 计数器 `memory_seq_counter`，按 (character, ref_id) 唯一。
+
 ## 配置（`apps/api/.env`，见 `.env.example`）
 
 | 变量 | 说明 |
