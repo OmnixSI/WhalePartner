@@ -13,6 +13,8 @@ export interface ApiConfig {
   memoryDir: string;
   port: number;
   diaryCron: string;
+  journalCron: string;
+  chatContextTokens: number;
   deepseek?: OpenAiCompatibleConfig;
   backup?: OpenAiCompatibleConfig;
   codexFallback: boolean;
@@ -49,6 +51,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     dbPath: text(env.APP_DB_PATH) ?? resolve(import.meta.dirname, "../.local/app.db"),
     port: positiveInt(env.API_PORT, 8787, "API_PORT"),
     diaryCron: text(env.DIARY_CRON) ?? "0 20 * * *",
+    journalCron: text(env.JOURNAL_CRON) ?? "30 20 * * *",
+    chatContextTokens: positiveInt(env.CHAT_CONTEXT_TOKENS, 32_000, "CHAT_CONTEXT_TOKENS"),
     deepseek: deepseekKey
       ? {
           baseUrl: text(env.DEEPSEEK_BASE_URL) ?? DEFAULT_DEEPSEEK_BASE_URL,

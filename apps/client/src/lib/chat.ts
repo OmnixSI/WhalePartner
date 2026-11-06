@@ -7,15 +7,25 @@ export interface HistoryMessage {
   content: string;
   emotion: string | null;
   createdAt: string;
+  sessionId: string;
+}
+
+export interface ChatSession {
+  id: string;
+  character: string;
+  title: string;
+  titleManual?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  messageCount?: number;
 }
 
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
   | { type: "video"; stage: "reading" | "watching" | "thinking" | "failed"; message: string; title?: string }
   | { type: "web"; stage: "reading" | "summarizing" | "failed"; message: string; title?: string }
-  | { type: "recall"; memories: string[] }
   | { type: "emotion"; emotion: AvatarEmotion }
-  | { type: "done"; messageId: number; emotion: AvatarEmotion; provider?: string }
+  | { type: "done"; messageId: number; sessionId: string; emotion: AvatarEmotion; provider?: string }
   | { type: "error"; message: string };
 
 /** 解析 SSE：每个事件形如 `event: name\ndata: {json}`。 */
@@ -34,11 +44,11 @@ export function parseSseBlock(block: string): ChatStreamEvent | null {
   }
 }
 
-export async function* streamChat(message: string, character: string, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
+export async function* streamChat(message: string, character: string, sessionId: string, signal?: AbortSignal): AsyncGenerator<ChatStreamEvent> {
   const response = await fetch(`${API_BASE}/api/chat`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ message, character }),
+    body: JSON.stringify({ message, character, sessionId }),
     signal,
   });
   if (!response.ok || !response.body) {
@@ -64,9 +74,12 @@ export async function* streamChat(message: string, character: string, signal?: A
   }
 }
 
-export async function fetchHistory(character: string, limit = 50, signal?: AbortSignal): Promise<HistoryMessage[]> {
+export async function fetchHistory(character: string, limit = 50, signal?: AbortSignal, sessionId?: string, aroundId?: number): Promise<HistoryMessage[]> {
   try {
-    const response = await fetch(`${API_BASE}/api/chat/history?limit=${limit}&character=${encodeURIComponent(character)}`, { signal });
+    const query = new URLSearchParams({ limit: String(limit), character });
+    if (sessionId) query.set("sessionId", sessionId);
+    if (aroundId) query.set("aroundId", String(aroundId));
+    const response = await fetch(`${API_BASE}/api/chat/history?${query}`, { signal });
     if (!response.ok) return [];
     return ((await response.json()) as { messages: HistoryMessage[] }).messages;
   } catch {
@@ -74,10 +87,50 @@ export async function fetchHistory(character: string, limit = 50, signal?: Abort
   }
 }
 
-export async function clearHistory(): Promise<boolean> {
+export async function fetchSessions(character: string, signal?: AbortSignal): Promise<ChatSession[]> {
+  const response = await fetch(`${API_BASE}/api/chat/sessions?character=${encodeURIComponent(character)}`, { signal });
+  if (!response.ok) throw new Error(`读取聊天记录失败（HTTP ${response.status}）。`);
+  return ((await response.json()) as { sessions: ChatSession[] }).sessions;
+}
+
+export async function createChatSession(character: string): Promise<ChatSession> {
+  const response = await fetch(`${API_BASE}/api/chat/sessions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ character }),
+  });
+  if (!response.ok) throw new Error(`新建聊天失败（HTTP ${response.status}）。`);
+  return ((await response.json()) as { session: ChatSession }).session;
+}
+
+export async function renameChatSession(id: string, character: string, title: string): Promise<ChatSession> {
+  const response = await fetch(`${API_BASE}/api/chat/sessions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ character, title }),
+  });
+  if (!response.ok) throw new Error(`重命名失败（HTTP ${response.status}）。`);
+  return ((await response.json()) as { session: ChatSession }).session;
+}
+
+export async function deleteChatSession(id: string, character: string): Promise<{ ok: boolean; memoriesCleared: boolean }> {
+  const response = await fetch(`${API_BASE}/api/chat/sessions/${encodeURIComponent(id)}?character=${encodeURIComponent(character)}`, { method: "DELETE" });
+  if (!response.ok) {
+    let message = `删除对话失败（HTTP ${response.status}）。`;
+    try { message = ((await response.json()) as { error?: string }).error ?? message; } catch { /* 非 JSON */ }
+    throw new Error(message);
+  }
+  return (await response.json()) as { ok: boolean; memoriesCleared: boolean };
+}
+
+export async function clearHistory(): Promise<{ ok: boolean; memoriesCleared: boolean }> {
   try {
-    return (await fetch(`${API_BASE}/api/chat/history`, { method: "DELETE" })).ok;
+    const response = await fetch(`${API_BASE}/api/chat/history`, { method: "DELETE" });
+    if (!response.ok) return { ok: false, memoriesCleared: false };
+    const result = (await response.json()) as { memoriesCleared?: boolean };
+    window.dispatchEvent(new Event("whalepartner:history-cleared"));
+    return { ok: true, memoriesCleared: result.memoriesCleared !== false };
   } catch {
-    return false;
+    return { ok: false, memoriesCleared: false };
   }
 }

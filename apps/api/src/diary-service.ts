@@ -2,12 +2,15 @@ import { EmotionFilter } from "./emotion.ts";
 import { humanizeText } from "./humanize.ts";
 import type { ChatProvider } from "./llm/types.ts";
 import type { MemoryStore } from "./memory/types.ts";
+import { archiveExperience } from "./memory/archive.ts";
 import { buildSystemPrompt } from "./persona/persona.ts";
 import { DiaryStore, type DiaryItem } from "./diary-store.ts";
 import { acquireVideoLock, VideoBusyError, type VideoService, type VideoSummary } from "./video-service.ts";
+import type { ChatStore } from "./store.ts";
 
 export interface DiaryServiceDeps {
   store: DiaryStore;
+  archive?: ChatStore;
   video: VideoService;
   provider: ChatProvider;
   memory?: MemoryStore;
@@ -160,18 +163,29 @@ export class DiaryService {
 
   async #writeMemory(item: DiaryItem) {
     if (!item.diaryText || !item.bvid) return;
-    if (!this.#deps.memory) {
-      this.#deps.store.markMemoryFailed(item.id, "记忆功能未启用。");
-      return;
-    }
     try {
-      await this.#deps.memory.addExperience({
+      const video = {
+        kind: "video",
+        title: (item.title ?? "今天看的视频").slice(0, 120),
+        text: (item.summary ?? item.diaryText).slice(0, 6000),
+        url: item.sourceUrl ?? undefined,
+        sourceId: item.bvid,
+      };
+      const diary = {
         kind: "diary",
         title: (item.title ?? "今天看的视频").slice(0, 120),
         text: item.diaryText.slice(0, 4000),
         url: item.sourceUrl ?? undefined,
         sourceId: `diary:${item.bvid}`,
-      });
+      };
+      if (this.#deps.archive) {
+        await archiveExperience(this.#deps.archive, this.#deps.memory, video, "视频经历");
+        await archiveExperience(this.#deps.archive, this.#deps.memory, diary, "日记经历");
+      } else if (this.#deps.memory) {
+        await this.#deps.memory.addExperience(diary);
+      } else {
+        throw new Error("本机经历档案不可用。");
+      }
       this.#deps.store.markMemorySaved(item.id);
     } catch (error) {
       const message = messageOf(error);

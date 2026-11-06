@@ -23,7 +23,7 @@ export const CHARACTERS: readonly Character[] = [
     latin: "DeepSeek · whale girl",
     tagline: "DeepSeek 鲸鱼娘",
     greeting: "哦鲸鲸～你来啦！我是大肥鱼。\n今天有什么想聊的，或者想让我帮你看的视频吗？",
-    modelId: "deepseek-whale",
+    modelId: "dafeiyu-live2d",
     fan: true,
   },
   {

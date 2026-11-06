@@ -6,9 +6,37 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { loadConfig } from "../src/config.ts";
 import { createChatProvider } from "../src/llm/index.ts";
+import { estimateTokens } from "../src/memory/context.ts";
 import { LazyMemoryStore } from "../src/memory/mem0.ts";
 
-const provider = createChatProvider(loadConfig());
+const baseProvider = createChatProvider(loadConfig());
+const providerCalls = [];
+let rememberDurationMs = 0;
+const provider = {
+  id: baseProvider.id,
+  model: baseProvider.model,
+  async *stream(messages, options) {
+    const started = performance.now();
+    const localInputTokenEstimate = messages.reduce((sum, message) => sum + estimateTokens(message.content), 0);
+    let actualProvider = baseProvider.id;
+    let usage;
+    try {
+      for await (const delta of baseProvider.stream(messages, options)) {
+        actualProvider = delta.provider ?? actualProvider;
+        if (delta.usage) usage = delta.usage;
+        yield delta;
+      }
+    } finally {
+      providerCalls.push({
+        provider: actualProvider,
+        model: baseProvider.model,
+        durationMs: Number((performance.now() - started).toFixed(1)),
+        localInputTokenEstimate,
+        providerUsage: usage ?? null,
+      });
+    }
+  },
+};
 const dir = mkdtempSync(join(tmpdir(), "wp-memory-smoke-"));
 const cache = resolve(import.meta.dirname, "../.local/memory/models");
 if (existsSync(cache)) cpSync(cache, join(dir, "models"), { recursive: true });
@@ -19,10 +47,12 @@ const lap = (() => { let t = performance.now(); return () => { const ms = Math.r
 
 try {
   const first = new LazyMemoryStore({ dataDir: dir, provider });
+  const rememberStarted = performance.now();
   await first.remember([
     { role: "user", content: "我养了一只叫团子的猫，今年三岁。" },
     { role: "assistant", content: "团子听起来好可爱呀。" },
   ]);
+  rememberDurationMs = Number((performance.now() - rememberStarted).toFixed(1));
   const facts = (await first.list()).filter((e) => e.kind === "fact");
   check("写入并提炼出事实", facts.length > 0 && facts.some((f) => f.text.includes("团子")), `${lap()}  ${facts.map((f) => f.text).join(" | ")}`);
 
@@ -42,6 +72,13 @@ try {
   await second.remove(fact.id);
   check("删除后不再召回", !(await second.list()).some((e) => e.id === fact.id));
 } finally {
+  const providerDurationMs = providerCalls.reduce((sum, call) => sum + call.durationMs, 0);
+  console.log("模型测量（本地输入估算与提供方用量分别记录）：", JSON.stringify({
+    configuredProvider: baseProvider.id,
+    memoryRememberDurationMs: rememberDurationMs,
+    remainingLocalProcessingMs: Number((rememberDurationMs - providerDurationMs).toFixed(1)),
+    providerCalls,
+  }));
   rmSync(dir, { recursive: true, force: true });
 }
 console.log(failed ? `\n${failed} 项失败` : "\n全部通过");

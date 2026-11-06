@@ -16,7 +16,7 @@ export function applyCors(request: IncomingMessage, response: ServerResponse) {
   if (typeof origin === "string" && ALLOWED_ORIGINS.has(origin)) {
     response.setHeader("access-control-allow-origin", origin);
     response.setHeader("vary", "origin");
-    response.setHeader("access-control-allow-methods", "GET,POST,DELETE,OPTIONS");
+    response.setHeader("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
     response.setHeader("access-control-allow-headers", "content-type");
   }
 }
