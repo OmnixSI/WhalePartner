@@ -15,6 +15,7 @@
     "summarize": "node src/cli.ts summarize",
     "web": "node src/dev-server.ts",
     "benchmark:videos": "node scripts/video-benchmark.mjs",
+    "memory:profile": "node scripts/memory-recall-profile.mjs",
     "serve": "node --env-file-if-exists=.env src/server.ts",
     "llm:ping": "node --env-file-if-exists=.env src/llm-ping.ts",
     "persona:eval": "node scripts/persona-eval.mjs",

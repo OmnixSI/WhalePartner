@@ -5,7 +5,10 @@
  */
 import { Dialog } from "radix-ui";
 import { useEffect, useId, useRef, useState } from "react";
-import { AVATAR_IS_PLACEHOLDER, AVATAR_MODELS } from "../../avatar/model.config";
+import { AVATAR_MODELS } from "../../avatar/model.config";
+
+/** 有没有真正可渲染的形象文件（main 的 Live2D/VRM 清单里任何一条有 url 就不算占位）。 */
+const AVATAR_IS_PLACEHOLDER = AVATAR_MODELS.every((model) => !model.url);
 import { CHARACTERS, setCharacter, setModelOverride, useCharacter, useModel } from "../../characters";
 import { setCompanionMood } from "../CompanionCorner";
 import { WhaleSticker } from "../WhaleSticker";
