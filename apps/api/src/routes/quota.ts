@@ -7,7 +7,7 @@ import type { ServerDeps } from "../server-types.ts";
  * 额度（用量透明表，规范 §10.5 B1）——从 P-B 分支移植到 main 的新路由结构。
  *
  * 只做「只读 + 记账准备」：GET /api/quota 返回本月用量；没有 usage_ledger 表时按 0 计。
- * 开启拦截（QUOTA_ENFORCE=1）与 402 需要聊天链路注入，留到后续；这里保证界面拿得到真实数字。
+ * 开启拦截（QUOTA_ENFORCE=1）时，聊天链路在开流前读 quotaUsage() 并返回 402；这里保证界面拿得到真实数字。
  */
 const MONTHLY_UNITS = Number(process.env.QUOTA_MONTHLY_UNITS ?? 3000);
 
