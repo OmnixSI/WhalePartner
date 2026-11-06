@@ -13,7 +13,8 @@ phases:
   - id: P0
     issue: 43
     title: tokens / 字体 / 纹理 / 手绘基元
-    status: todo
+    status: done
+    pr: #51
     attempts: 0
     branch: redesign/P0
     worktree: ../whale-P0
@@ -40,7 +41,8 @@ phases:
   - id: PB
     issue: 44
     title: 后端补齐 B1-B6（额度 / 导出删除 / mood-weather / 编号 / 昵称 / schedule）
-    status: todo
+    status: done
+    pr: #58
     attempts: 0
     branch: redesign/PB
     worktree: ../whale-PB
@@ -62,7 +64,8 @@ phases:
   - id: P1
     issue: 45
     title: 聊天页重组（对话框 / 名字牌 / 思考 / 纸条 / 往回翻 / 输入条）
-    status: todo
+    status: done
+    pr: #53
     attempts: 0
     branch: redesign/P1
     worktree: ../whale-P1
@@ -85,7 +88,8 @@ phases:
   - id: P2
     issue: 46
     title: 日记 + 记忆（日期戳 / 涂鸦 / 卡片编号 / 翻页 / 忘掉与撤回）
-    status: todo
+    status: done
+    pr: #54
     attempts: 0
     branch: redesign/P2
     worktree: ../whale-P2
@@ -105,7 +109,8 @@ phases:
   - id: P3
     issue: 47
     title: 设置 / 引导 / 老人模式 / CompanionCorner 全页接入
-    status: todo
+    status: done
+    pr: #55
     attempts: 0
     branch: redesign/P3
     worktree: ../whale-P3
@@ -127,7 +132,8 @@ phases:
   - id: P4
     issue: 48
     title: 打磨（清 layout.css / 动效调参 / DESIGN.md 终稿 / 全量验收）
-    status: todo
+    status: done
+    pr: #57
     attempts: 0
     branch: redesign/P4
     worktree: ../whale-P4
@@ -145,7 +151,8 @@ phases:
   - id: P5
     issue: 49
     title: 她自己去逛（后端调度 + /surf 见闻页 + 聊天明信片 + 记忆第 5 类）
-    status: todo
+    status: done
+    pr: #56
     attempts: 0
     branch: redesign/P5
     worktree: ../whale-P5
