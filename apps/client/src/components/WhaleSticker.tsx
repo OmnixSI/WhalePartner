@@ -58,7 +58,9 @@ type Props = {
 const INK = "var(--ink)";
 const SHEET = "var(--sheet)";
 const BODY = "color-mix(in oklab, var(--accent) 55%, var(--sheet))";
-const BLUSH = "var(--coral-soft)";
+const BLUSH = "var(--blush, var(--coral-soft))";
+/** 贴纸纸边：亮色=纸面色，暗色比纸面高出一档（`--sticker-halo`），否则白边与夜空只差 1.06:1。 */
+const HALO = "var(--sticker-halo, var(--sheet))";
 
 /* ------------------------------------------------------------------ *
  * 轮廓：头背 + 尾叶（可摆） + 腹线，一条闭合路径
@@ -397,7 +399,7 @@ export function WhaleSticker({ mood = "idle", className = "", label }: Props) {
     >
       <Behind wave={wave} />
       {/* 贴纸白边：同一轮廓描边 8 的 --sheet，垫在最底层 */}
-      <path d={ink} fill={SHEET} stroke={SHEET} strokeWidth={WHITE} strokeLinejoin="round" />
+      <path d={ink} fill={HALO} stroke={HALO} strokeWidth={WHITE} strokeLinejoin="round" />
       {/* 平涂：身体 → 腹带 → 胸鳍 → 腮红 */}
       <path d={flat} fill={BODY} />
       <path d={BELLY_FLAT} fill={SHEET} />

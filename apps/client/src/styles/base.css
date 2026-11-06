@@ -10,8 +10,8 @@ body {
   font-size: var(--fs-body);
   line-height: var(--lh-body);
   color: var(--ink);
-  /* 纸纹是背景图层（规范 §5.1）：颗粒 + 纤维 + 纸色，不盖在内容之上 */
-  background: var(--grain), var(--fiber), var(--paper);
+  /* 纸纹是背景图层（规范 §5.1）：颗粒铺在纸色之上，不盖内容 */
+  background-color: var(--paper);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
@@ -27,3 +27,12 @@ p { margin: 0; }
 
 /* reduced-motion 交给 tokens 里的 --dur-*（=1ms）与各组件的 useReducedMotion；
    不再用 !important 杀掉所有动画——那会让 Radix/motion 的退出动画不触发，元素不卸载（规范 §4.9）。 */
+
+/* 纸纹作为最底层的一块（规范 §5.1：是背景，不是盖在所有东西上的叠层）。
+   放在 body::before 而不是 body 的 background-image：body 的背景在多页面布局下会被
+   局部不透明容器压住，实测铺不出来；这里是固定在最底层的独立图层。 */
+.app {
+  background-image: var(--grain);
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}

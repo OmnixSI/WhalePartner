@@ -104,7 +104,7 @@ export function Stamp({ kind, lines, size = 72, tone, animate = false, className
       <motion.div
         className={cls}
         initial={{ scale: 1.3, rotate: round ? -14 : 0, opacity: 0 }}
-        animate={{ scale: 1, rotate: tilt, opacity: 0.9 }}
+        animate={{ scale: 1, rotate: tilt }}
         transition={SPRING}
       >
         {inner}
@@ -112,7 +112,7 @@ export function Stamp({ kind, lines, size = 72, tone, animate = false, className
     );
   }
   return (
-    <div className={cls} style={{ transform: `rotate(${tilt}deg)`, opacity: 0.9 }}>
+    <div className={cls} style={{ transform: `rotate(${tilt}deg)` }}>
       {inner}
     </div>
   );
