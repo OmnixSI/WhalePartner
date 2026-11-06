@@ -1,5 +1,17 @@
 # 更新记录
 
+## 0.2.1 — P-B 补齐
+
+- **导出 / 删除全部**：纯 Node zip（deflate + crc32），`POST /api/export` → `GET /api/export?id=` 下载；`DELETE /api/data` 必须 `confirm: "DELETE_ALL"`；导出/删除期间聊天 409
+- **日记心情与天气**：`diary_items` 加 `mood`/`weather`（旧库自动迁移），生成后一次短调用解析，白名单校验、失败留空；补文本不会抹掉已有值
+- **额度**：`GET /api/quota` + `QUOTA_ENFORCE=1` 时用满返回 402
+- **昵称**：`GET|PUT /api/profile`，并注入 system prompt
+- **记忆编号**：`/api/memories` 每条带 `seq`（同一角色单调、删了不复用）
+- **消息附件**：`messages.attachment_json` 迁移，历史消息带 `attachment`
+- **排班**：health 增加 `schedule.journalTime`
+
+`apps/api` 测试 161/161。
+
 ## 0.2.0 — 潮汐手帐 2.0 · 海边绘本日记
 
 按 `docs/redesign/spec/WhalePartner_UI重设计规范.md`（2307 行）全量重做界面，分七个阶段推进，每阶段独立分支与 PR、独立验收。
