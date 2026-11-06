@@ -1,5 +1,6 @@
 @import "lxgw-wenkai-webfont/lxgwwenkai-regular.css";
 @import "lxgw-wenkai-webfont/lxgwwenkai-bold.css";
+@import "@fontsource-variable/fraunces/index.css";
 @import "./tokens.css";
 
 *, *::before, *::after { box-sizing: border-box; }
