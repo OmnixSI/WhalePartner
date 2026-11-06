@@ -1,0 +1,143 @@
+/* ============================================================================
+   手绘基元（重设计规范 §5.2–§5.5）：线 / 框 / 胶带 / 邮戳 / 浪。
+   规矩：颜色、圆角、间距、时长一律走 tokens.css 的 var()；
+   不出现 gradient、backdrop-filter、filter: drop-shadow。
+   动画只改 transform / opacity / clip-path；calm 与 prefers-reduced-motion 一律给完成态。
+   ============================================================================ */
+
+/* ---------- §5.2 手绘线 ---------- */
+.ink-line { display: block; width: 100%; max-width: 100%; color: var(--ink-mute); overflow: visible; }
+.ink-line--divider { color: color-mix(in srgb, var(--ink) 38%, transparent); }
+.ink-line--underline { color: var(--accent); }
+.ink-line--squiggle { color: var(--ink-mute); }
+
+.ink-line--once { animation: ink-draw var(--dur-page) var(--ease-out) both; }
+.ink-line--loop { animation: ink-loop 1800ms var(--ease-inout) infinite; }
+@keyframes ink-draw {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+/* 每轮画完停 600ms：1800ms 里 0–66.7% 画线，剩下停住 */
+@keyframes ink-loop {
+  0% { clip-path: inset(0 100% 0 0); }
+  66.7% { clip-path: inset(0 0 0 0); }
+  100% { clip-path: inset(0 0 0 0); }
+}
+
+/* ---------- §5.3 手绘框 ---------- */
+.ink-frame { position: relative; border-radius: var(--r-md); }
+.ink-frame__ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.ink-frame--fill-sheet { background: var(--sheet); }
+.ink-frame--fill-paper-2 { background: var(--paper-2); }
+.ink-frame--fill-none { background: transparent; }
+.ink-frame--ink { color: var(--ink-mute); }
+.ink-frame--accent { color: var(--accent); }
+.ink-frame--alert { color: var(--alert); }
+
+/* ---------- §5.4 胶带 ---------- */
+.tape {
+  position: absolute;
+  width: var(--w, 72px);
+  height: var(--h, 22px);
+  background: var(--tape, var(--tape-a));
+  opacity: 0.88;
+  transform: rotate(var(--angle, -3deg));
+  border-radius: var(--r-xs);
+  pointer-events: none;
+  /* 斜纹用 SVG 描边（不是 CSS gradient） */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><path d='M-2 2 L2 -2 M0 8 L8 0 M6 10 L10 6' stroke='white' stroke-opacity='.28' stroke-width='1.6'/></svg>");
+  /* 上下边撕成不齐的小锯齿 */
+  clip-path: polygon(0 0, 3% 18%, 0 36%, 3% 54%, 0 72%, 3% 100%, 100% 100%, 97% 82%, 100% 64%, 97% 46%, 100% 28%, 97% 0);
+}
+
+/* ---------- §5.4 邮戳 / 标签 ---------- */
+.stamp { display: inline-block; }
+.stamp--accent { color: var(--accent); }
+.stamp--alert { color: var(--alert); }
+
+.stamp__round {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--stamp-size, 72px);
+  height: var(--stamp-size, 72px);
+}
+.stamp__ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stamp__lines { display: flex; flex-direction: column; align-items: center; line-height: 1.15; text-align: center; }
+.stamp__line--voice { font-family: var(--font-voice); font-size: var(--fs-small); letter-spacing: var(--ls-voice); }
+.stamp__line--num { font-family: var(--font-num); font-size: var(--fs-micro); letter-spacing: 0.04em; }
+
+.stamp__rect { display: inline-block; }
+.stamp__rect .ink-frame { display: flex; align-items: center; min-height: 22px; padding: 0 var(--sp-2); }
+.stamp__label { font-family: var(--font-ui); font-size: var(--fs-micro); letter-spacing: var(--ls-label); color: var(--accent); }
+.stamp--alert .stamp__label { color: var(--alert); }
+
+/* ---------- §5.5 浪 ---------- */
+.tide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 28%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: var(--z-bg);
+}
+.tide--stage { height: 28%; }
+/* 其他页的「潮线」：只占内容的最后 72px，页面要留 padding-bottom: 96px 才不会压住字 */
+.tide--sill { height: 72px; }
+
+.tide__sky { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.tide__layer { position: absolute; inset: 0; }
+.tide__layer svg {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: block;
+  width: 200%;
+  height: 100%;
+  will-change: transform;
+}
+.tide__layer--far svg { animation: tide-drift 90s linear infinite; }
+.tide__layer--mid svg { animation: tide-drift 60s linear infinite reverse; }
+.tide__layer--near svg { animation: tide-drift 40s linear infinite; }
+@keyframes tide-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-50%, 0, 0); }
+}
+
+/* 潮线不动 */
+.tide--sill .tide__layer svg { animation: none; }
+
+@media (max-width: 767px) {
+  .tide--stage { height: 22%; }
+}
+
+/* ---------- 老人模式：胶带压平，只做装饰 ---------- */
+:root[data-elder="on"] .tape { transform: rotate(0deg); }
+
+/* ---------- 安静 / 减少动态：一律给完成态 ---------- */
+:root[data-motion="calm"] .ink-line,
+:root[data-motion="calm"] .tide__layer svg {
+  animation: none;
+  clip-path: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ink-line,
+  .tide__layer svg {
+    animation: none;
+    clip-path: none;
+  }
+}
+
+/* ---------- §5.6 手绘图标 ---------- */
+.icon { display: inline-block; flex: none; vertical-align: -0.15em; }
