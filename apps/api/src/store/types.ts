@@ -8,6 +8,8 @@ export interface StoredMessage {
   character: string;
   sessionId: string;
   createdAt: string;
+  /** B6.3：随消息附带的材料（她逛到的明信片等）；没有就是 null。 */
+  attachment?: unknown | null;
 }
 
 export interface ChatSession {

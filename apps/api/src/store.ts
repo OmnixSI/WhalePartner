@@ -30,7 +30,10 @@ export class ChatStore {
   readonly #observations: ObservationRepository;
   readonly #jobs: MemoryJobRepository;
 
+  readonly dbPath: string;
+
   constructor(path: string) {
+    this.dbPath = path;
     this.#db = openChatDatabase(path);
     rebuildSearchIndexes(this.#db);
     this.#db.prepare("UPDATE memory_jobs SET status = 'pending' WHERE status = 'running'").run();

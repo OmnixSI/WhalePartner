@@ -169,6 +169,10 @@ function migrateMessages(db: DatabaseSync) {
   if (!columns.some((column) => column.name === "session_id")) {
     db.exec("ALTER TABLE messages ADD COLUMN session_id TEXT");
   }
+  // B6.3：随消息附带的材料（例如她逛到的明信片）；旧库自动补列。
+  if (!columns.some((column) => column.name === "attachment_json")) {
+    db.exec("ALTER TABLE messages ADD COLUMN attachment_json TEXT");
+  }
 }
 
 function migrateSessions(db: DatabaseSync) {
