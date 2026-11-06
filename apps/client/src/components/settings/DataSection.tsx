@@ -20,7 +20,6 @@ type Props = {
   onUnavailable: () => void;
 };
 
-const fileName = (path: string) => path.split(/[\\/]/).pop() || path;
 
 export function DataSection({ offline, onToast, onUnavailable }: Props) {
   const [exporting, setExporting] = useState(false);
@@ -39,7 +38,7 @@ export function DataSection({ offline, onToast, onUnavailable }: Props) {
     setExportFailed(false);
     try {
       const result = await exportAll();
-      onToast("download" in result ? "已开始下载，去下载文件夹看看。" : `已导出到下载文件夹：${fileName(result.path)}。`);
+      onToast(`已开始下载：${result.filename}（去下载文件夹看看）。`);
     } catch {
       setExportFailed(true);
       onUnavailable();
