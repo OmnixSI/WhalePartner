@@ -139,7 +139,8 @@ export function openChatDatabase(path: string): DatabaseSync {
       PRIMARY KEY (vector_entry_id, session_id)
     );
     CREATE INDEX IF NOT EXISTS memory_legacy_sources_session ON memory_legacy_sources(session_id, vector_entry_id);
-    CREATE INDEX IF NOT EXISTS memory_experiences_kind_created ON memory_experiences(kind, created_at DESC);
+    CREATE INDEX IF NOT EXISTS memory_experiences_kind_created_id ON memory_experiences(kind, created_at DESC, id DESC);
+    DROP INDEX IF EXISTS memory_experiences_kind_created;
     CREATE INDEX IF NOT EXISTS memory_experiences_vector_pending ON memory_experiences(vector_indexed, next_attempt_at, id);
 
     CREATE VIRTUAL TABLE IF NOT EXISTS message_search USING fts5(terms, tokenize='unicode61');

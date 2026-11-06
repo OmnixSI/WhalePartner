@@ -90,3 +90,39 @@ test("memory explorer searches paginated chat archive and returns source-backed 
     store.close();
   }
 });
+
+test("recent learned material uses archived rows with character scope", () => {
+  const store = new ChatStore(":memory:");
+  try {
+    const whale = store.createSession("whale", "鲸鱼分享");
+    const claude = store.createSession("claude", "另一段分享");
+    store.upsertExperience({
+      kind: "learned", title: "聊天学习", text: "鲸鱼的声音传播很远。",
+      sourceId: "learned:chat:whale:12:0", sourceSessionIds: [whale.id],
+    });
+    store.upsertExperience({
+      kind: "learned", title: "视频学习", text: "鲸鱼会用声音交流。",
+      sourceId: "learned:video:BV1WHALE:0", sourceSessionIds: [whale.id],
+    });
+    store.upsertExperience({
+      kind: "learned", title: "另一角色学习", text: "海豚会使用回声定位。",
+      sourceId: "learned:chat:claude:9:0", sourceSessionIds: [claude.id],
+    });
+    store.upsertExperience({
+      kind: "learned", title: "公共学习", text: "潮汐受月球引力影响。",
+      sourceId: "learned:video:global:0",
+    });
+
+    const whaleSources = store.recentLearnings(10, "whale").map((entry) => entry.sourceId);
+    const claudeSources = store.recentLearnings(10, "claude").map((entry) => entry.sourceId);
+    assert.ok(whaleSources.includes("learned:chat:whale:12:0"));
+    assert.ok(whaleSources.includes("learned:video:BV1WHALE:0"));
+    assert.ok(whaleSources.includes("learned:video:global:0"));
+    assert.equal(whaleSources.includes("learned:chat:claude:9:0"), false);
+    assert.ok(claudeSources.includes("learned:chat:claude:9:0"));
+    assert.ok(claudeSources.includes("learned:video:global:0"));
+    assert.equal(claudeSources.includes("learned:video:BV1WHALE:0"), false);
+  } finally {
+    store.close();
+  }
+});

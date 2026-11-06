@@ -28,6 +28,7 @@ test("database migration adds source status without replacing saved experiences"
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE INDEX memory_experiences_kind_created ON memory_experiences(kind, created_at DESC);
     INSERT INTO memory_experiences(kind, title, text, source_id, created_at, updated_at)
     VALUES ('video', '海边的鲸', '保留的经历内容', 'video:existing', '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z');
   `);
@@ -36,9 +37,14 @@ test("database migration adds source status without replacing saved experiences"
   const db = openChatDatabase(path);
   try {
     const columns = db.prepare("PRAGMA table_info(memory_experiences)").all() as unknown as Array<{ name: string }>;
+    const indexes = db.prepare("PRAGMA index_list(memory_experiences)").all() as unknown as Array<{ name: string }>;
+    const recentIndexColumns = db.prepare("PRAGMA index_info(memory_experiences_kind_created_id)").all() as unknown as Array<{ name: string }>;
     const experience = db.prepare("SELECT text, source_missing AS sourceMissing FROM memory_experiences WHERE source_id = 'video:existing'")
       .get() as unknown as { text: string; sourceMissing: number };
     assert.ok(columns.some((column) => column.name === "source_missing"));
+    assert.ok(indexes.some((index) => index.name === "memory_experiences_kind_created_id"));
+    assert.equal(indexes.some((index) => index.name === "memory_experiences_kind_created"), false);
+    assert.deepEqual(recentIndexColumns.map((column) => column.name), ["kind", "created_at", "id"]);
     assert.equal(experience.text, "保留的经历内容");
     assert.equal(experience.sourceMissing, 0);
   } finally {
