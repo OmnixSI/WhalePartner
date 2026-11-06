@@ -1,0 +1,137 @@
+/* 样品页 /__kit 自己的样式；只用于验收截图，不参与主页面。
+   P0 返修：B1 整页可滚动、M1 手绘标签、M2 图标 5 列网格、M3 字阶标注。 */
+
+/* ---------- B1：/__kit 下放开高度，让样品图能整页拍、2400px 内不裁内容 ----------
+   其它页面沿用 base.css 的 `html,body{height:100%}` + 内部滚动，不受影响。 */
+html:has(.kit) { height: auto; overflow-y: auto; }
+html:has(.kit) body { height: auto; overflow: visible; }
+html:has(.kit) #root { height: auto; }
+html:has(.kit) .app { height: auto; min-height: 100dvh; }
+html:has(.kit) .main { min-height: 0; }
+
+.kit { padding: var(--sp-6) var(--sp-8) var(--sp-10); display: flex; flex-direction: column; gap: var(--sp-6); height: auto; overflow: visible; }
+
+.kit__bar { display: flex; gap: var(--sp-4); align-items: center; flex-wrap: wrap; padding-block: var(--sp-2); }
+.kit__group { display: flex; gap: var(--sp-2); }
+.kit__chip { min-height: var(--hit); padding: 0 var(--sp-3); border-radius: var(--r-sm); border: var(--stroke-1) solid var(--line-strong); background: transparent; color: var(--ink); }
+.kit__chip[data-active] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+
+/* ---------- 分区 ---------- */
+.kit__section { display: flex; flex-direction: column; gap: var(--sp-3); }
+.kit__section > h2 { font-family: var(--font-voice); font-size: var(--fs-h2); }
+
+/* ---------- 纸与墨：8 列 × 2 行 ---------- */
+.kit__swatches { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-3); }
+.kit__swatch { margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-micro); color: var(--ink-mute); }
+.kit__chipColor { height: 40px; border-radius: var(--r-sm); border: var(--stroke-1) solid var(--line); }
+
+/* ---------- M3 字阶：每行「token + 字号 / 行高 / 字体族」 ---------- */
+.kit__type { display: flex; flex-direction: column; }
+/* 表头：说清「13 / 1.4 / 界面黑」这一串是什么（M3） */
+.kit__typeHead {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-1);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--ls-label);
+  color: var(--ink-mute);
+}
+.kit__typeRow {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: var(--sp-4);
+  align-items: baseline;
+  padding-block: var(--sp-1);
+  border-top: var(--stroke-1) solid var(--line);
+}
+.kit__typeRow:first-child { border-top: 0; }
+.kit__typeMeta { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-micro); line-height: var(--lh-ui); color: var(--ink-mute); }
+.kit__typeMeta code { font-family: var(--font-ui); letter-spacing: .02em; color: var(--ink-soft); }
+/* 字号 / 行高 / 字体族：等宽数字，三行样品一眼能对齐比 */
+.kit__typeMeta span { font-family: var(--font-num); font-variant-numeric: lining-nums tabular-nums; }
+.kit__typeSample { position: relative; display: flex; align-items: baseline; gap: var(--sp-3); }
+.kit__typeNote { font-family: var(--font-num); font-size: var(--fs-micro); color: var(--ink-mute); white-space: nowrap; }
+
+/* 36px 横线本：在日记样例上压两条**虚线**（18 × 2.0 = 36px），
+   虚线和行分隔的实线一眼分得开，不会被当成第三条分隔线 */
+.kit__typeRow--ruled .kit__typeSample { padding-bottom: var(--sp-10); }
+.kit__baseline { position: absolute; inset: 0 auto 0 0; right: 0; pointer-events: none; }
+.kit__baseline i {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px dashed color-mix(in oklab, var(--line-strong) 55%, transparent);
+}
+.kit__baseline i:nth-child(1) { top: 36px; }
+.kit__baseline i:nth-child(2) { top: 72px; }
+.kit__baseline em {
+  position: absolute;
+  right: 0;
+  top: 36px;
+  padding-left: var(--sp-2);
+  background: var(--paper);
+  font-family: var(--font-num);
+  font-size: var(--fs-micro);
+  font-style: normal;
+  color: var(--ink-mute);
+  transform: translateY(-50%);
+  letter-spacing: var(--ls-label);
+}
+
+/* ---------- M1 手绘：每个基元一个中文小标签，同色同端点 ---------- */
+.kit__specs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4) var(--sp-6); }
+.kit__spec { margin: 0; display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); align-items: center; gap: var(--sp-2) var(--sp-3); }
+.kit__specLabel {
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--ls-label);
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+.kit__specBody { position: relative; display: flex; align-items: center; min-width: 0; }
+/* 两条横线同色同端点：都从标签右侧起、到同一右边界止，不再一灰一青像重影 */
+.kit .ink-line--divider,
+.kit .ink-line--underline { color: var(--ink-mute); }
+
+.kit__frame { width: 100%; }
+.kit__frame p { font-family: var(--font-voice); font-size: var(--fs-small); }
+
+/* m3：开口角要真有断口——沿 45° 把左上角那一截线**裁掉**（真透明，不是盖一块纸），
+   框的其余三边保持满宽（多留 8px 给描边外溢），所以看得出来是「一笔没接上」。 */
+.kit__frame--open .ink-frame__ink {
+  --open-cut: 15px;
+  clip-path: polygon(
+    calc(var(--open-cut) + 8px) -8px,
+    calc(100% + 8px) -8px,
+    calc(100% + 8px) calc(100% + 8px),
+    -8px calc(100% + 8px),
+    -8px calc(var(--open-cut) + 8px)
+  );
+}
+
+/* 胶带在流内是 inline，宽高不生效——样品格里给它 block */
+.kit__tape { display: block; padding: var(--sp-3) var(--sp-4); }
+.kit__tape .tape { display: block; }
+
+/* 浪在流内没有内容宽度，必须显式撑满，否则宽 0 什么都看不见 */
+.kit__spec--wave .kit__specBody { --tide-flow-h: 104px; width: 100%; }
+.kit__spec--wave .tide { width: 100%; flex: 1 1 auto; border-radius: var(--r-sm); }
+
+/* ---------- M2 图标：固定 5 列（19 = 5+5+5+4，最后一行居中） ---------- */
+.kit__icons { display: flex; flex-wrap: wrap; justify-content: center; }
+.kit__icon { flex: 0 0 20%; display: flex; flex-direction: column; align-items: center; gap: 2px; padding-block: var(--sp-2); font-size: var(--fs-micro); color: var(--ink-mute); }
+.kit__icon em { font-style: normal; }
+.kit__icon .icon { color: var(--ink-soft); }
+
+/* ---------- m1 她：5 列 × 2 行，中文在前 ---------- */
+.kit__moods { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-3) var(--sp-4); }
+.kit__mood { margin: 0; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); }
+.kit__mood figcaption { display: flex; align-items: baseline; gap: var(--sp-1); font-size: var(--fs-small); color: var(--ink); }
+.kit__mood b { font-family: var(--font-voice); font-weight: 600; letter-spacing: var(--ls-voice); }
+.kit__mood span { font-family: var(--font-ui); font-size: var(--fs-micro); color: var(--ink-mute); }
+
+/* ---------- B3 邮戳：日期与「海边」同色，且不带透明度衰减 ---------- */
+.kit .stamp { opacity: 1 !important; }
+.kit .stamp .stamp__line { color: var(--ink); }
