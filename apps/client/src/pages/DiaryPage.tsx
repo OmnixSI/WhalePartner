@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCharacter } from "../characters";
+import { DailyJournalList } from "../components/DailyJournalList";
 import { enqueueDiaryVideo, fetchDiary, retryDiaryItem, runDiaryQueue, type DiaryItem } from "../lib/diary";
 
 function when(iso?: string | null) {
@@ -61,6 +63,7 @@ function QueueItem({ item, onRetry, retrying }: { item: DiaryItem; onRetry: (ite
 }
 
 export function DiaryPage() {
+  const character = useCharacter();
   const [items, setItems] = useState<DiaryItem[] | null>(null);
   const [url, setUrl] = useState("");
   const [operationError, setOperationError] = useState("");
@@ -141,12 +144,14 @@ export function DiaryPage() {
       <div className="page__inner">
         <header>
           <h1 className="page__title">她的日记</h1>
-          <p className="page__lead">她看过的视频、想到的事，会在这里变成一篇篇日记。</p>
         </header>
 
+        <DailyJournalList character={character} />
+
+        <details className="legacy-diary">
+        <summary>视频与待看列表</summary>
         <section className="card diary-add">
-          <h3>分享一个视频</h3>
-          <p>加入待看列表后，她会在定时任务中看完并写下日记。</p>
+          <h3>分享视频</h3>
           <form className="diary-form" onSubmit={add}>
             <label className="sr-only" htmlFor="diary-video-url">Bilibili 视频链接或 BV 号</label>
             <input
@@ -163,7 +168,7 @@ export function DiaryPage() {
             </button>
           </form>
           <div className="diary-add__actions">
-            <span>定时任务每次处理一条；API 运行期间生效。也可以立即开始处理。</span>
+            <span>自动处理</span>
             <button className="diary-button diary-button--quiet" onClick={run} disabled={running || !pending}>
               {running ? "正在启动…" : "立即处理一条"}
             </button>
@@ -188,10 +193,10 @@ export function DiaryPage() {
 
         {items !== null && !error && entries.length === 0 && queue.length === 0 && (
           <div className="card empty">
-            <h3>还没有日记</h3>
-            <p>添加一个视频链接，她看完后就会在这里写下日记。</p>
+            <h3>没有视频记录</h3>
           </div>
         )}
+        </details>
       </div>
     </div>
   );
