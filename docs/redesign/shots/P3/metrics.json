@@ -1,0 +1,126 @@
+{
+  "report": [
+    {
+      "name": "settings-desktop",
+      "rootFontSize": "16px",
+      "hit": "44px",
+      "scale": "1",
+      "elder": "off",
+      "motion": "full",
+      "navLinks": [
+        "聊天",
+        "日记",
+        "记忆",
+        "设置"
+      ],
+      "horizontalScrollPx": 0,
+      "targets": 20,
+      "axe": {
+        "violations": 0,
+        "list": [],
+        "incomplete": 0
+      }
+    },
+    {
+      "name": "settings-mobile",
+      "rootFontSize": "16px",
+      "hit": "44px",
+      "scale": "1",
+      "elder": "off",
+      "motion": "full",
+      "navLinks": [
+        "聊天",
+        "日记",
+        "记忆",
+        "设置"
+      ],
+      "horizontalScrollPx": 0,
+      "targets": 20,
+      "axe": {
+        "violations": 0,
+        "list": [],
+        "incomplete": 0
+      }
+    },
+    {
+      "name": "settings-elder",
+      "rootFontSize": "20px",
+      "hit": "56px",
+      "scale": "1.25",
+      "elder": "on",
+      "motion": "calm",
+      "navLinks": [
+        "聊天",
+        "日记",
+        "设置"
+      ],
+      "horizontalScrollPx": 0,
+      "targets": 19,
+      "axe": {
+        "violations": 0,
+        "list": [],
+        "incomplete": 0
+      }
+    },
+    {
+      "name": "onboarding-step1",
+      "rootFontSize": "16px",
+      "hit": "44px",
+      "scale": "1",
+      "elder": "off",
+      "motion": "full",
+      "navLinks": [
+        "聊天",
+        "日记",
+        "记忆",
+        "设置"
+      ],
+      "horizontalScrollPx": 0,
+      "targets": 22,
+      "axe": {
+        "violations": 0,
+        "list": [],
+        "incomplete": 2
+      }
+    },
+    {
+      "name": "onboarding-step1-mobile",
+      "rootFontSize": "16px",
+      "hit": "44px",
+      "scale": "1",
+      "elder": "off",
+      "motion": "full",
+      "navLinks": [
+        "聊天",
+        "日记",
+        "记忆",
+        "设置"
+      ],
+      "horizontalScrollPx": 0,
+      "targets": 22,
+      "axe": {
+        "violations": 0,
+        "list": [],
+        "incomplete": 2
+      }
+    },
+    {
+      "name": "settings-offline",
+      "rootFontSize": "16px",
+      "hit": "44px",
+      "scale": "1",
+      "elder": "off",
+      "motion": "full",
+      "navLinks": [
+        "聊天",
+        "日记",
+        "记忆",
+        "设置"
+      ],
+      "horizontalScrollPx": 0,
+      "targets": 22,
+      "axe": null
+    }
+  ],
+  "problems": []
+}
