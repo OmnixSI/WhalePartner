@@ -66,7 +66,8 @@ pnpm --dir apps/client run dev              # http://127.0.0.1:1420
 
 - 桌面窗口：`pnpm --dir apps/client run tauri dev`
 - 手机联调：`WP_LAN=1 pnpm --dir apps/client run dev` + `pnpm --dir apps/api run serve -- --lan`（没有登录保护，只在可信网络里用）
-- 没有 Cubism Core 时显示默认鲸鱼形象；它的许可见 [Live2D 评估](docs/LIVE2D_ASSESSMENT.md)
+- 没有 Cubism Core 时舞台退回贴纸兜底；它的许可见 [Live2D 评估](docs/LIVE2D_ASSESSMENT.md)
+- Cubism Core 可用 Live2D 官方 CDN 那一份（https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js），放到 `apps/client/public/live2d/libs/live2dcubismcore.min.js`；仓库不入库
 
 ---
 
