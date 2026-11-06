@@ -13,3 +13,4 @@
 {"at":"2026-11-07T04:36:00+11:00","phase":"P5","round":1,"verdict":"doing","gates":{},"score":null,"note":"P5 MVP 开工；分支无 PB 后端，要求自建 usage_ledger 且不 import 不存在的模块","pr":null}
 {"at":"2026-11-07T04:55:00+11:00","phase":"P0","round":7,"verdict":"pass","gates":{"ai16":"16/16 否","score_min":4,"score_avg":4.0,"blockers":0},"score":4.0,"note":"第二轮独立视觉评审通过（附条件：动效/老人模式/200% 字号在页面阶段补评）；唯一 major（暗色小克贴纸纸边）已修","pr":51}
 {"at":"2026-11-07T05:20:00+11:00","phase":"P5","round":1,"verdict":"pass","gates":{"api_typecheck":true,"api_test":"133/133","client_typecheck":true,"client_build":true,"loop":"3 items + ledger + SSE order"},"score":null,"note":"冲浪 MVP 完成；记忆第 5 类与导航入口记为缺口（需 P-B store）","pr":56}
+{"at":"2026-11-07T06:35:00+11:00","phase":"0.2.3","round":1,"verdict":"pass","gates":{"api_test":"170/170","check_mjs":"10/10","e2e":"全部通过（含真实一轮对话）","app":"安装到 /Applications，与 API 建立连接"},"score":null,"note":"桌面版可用性：开场用真人、VRM 曝光与构图、开关整行可点、模型接入、海星 NaN/导出 zip/见闻计数/额度周期四个真 bug","pr":null}
