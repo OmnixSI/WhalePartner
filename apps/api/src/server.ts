@@ -14,6 +14,9 @@ import { createWebService, type WebService } from "./web-service.ts";
 import { DiaryStore } from "./diary-store.ts";
 import { DiaryService } from "./diary-service.ts";
 import { startDiaryScheduler } from "./diary-scheduler.ts";
+import { handleSurf } from "./routes/surf.ts";
+import { createSurf } from "./surf/index.ts";
+import type { SurfService } from "./surf/service.ts";
 
 export interface ServerDeps {
   config: ApiConfig;
@@ -28,7 +31,12 @@ export interface ServerDeps {
   web?: WebService;
   /** 各平台账号接入（目前只有 B 站）。 */
   accounts?: AccountService;
+  /** 「她自己去逛」：见闻、设置、调度、SSE。 */
+  surf?: SurfService;
 }
+
+/** 最近一次聊天请求的时间，用来判断“用户正在和她聊天”（冲浪要让路）。 */
+export const chatActivity = { last: 0 };
 
 function healthBody(deps: ServerDeps) {
   const { provider } = deps;
@@ -54,6 +62,7 @@ async function probe({ provider }: ServerDeps) {
 }
 
 async function handleChat(deps: ServerDeps, request: IncomingMessage, response: ServerResponse) {
+  chatActivity.last = Date.now();
   let text: string;
   let character: CharacterId = DEFAULT_CHARACTER;
   try {
@@ -238,12 +247,20 @@ export function createApiServer(deps: ServerDeps): Server {
         const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
         const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
         if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" });
-        sendJson(response, 200, { messages: deps.store.recent(limit, character) });
+        const messages = deps.store.recent(limit, character).map((message) => {
+          const attachment = deps.surf?.attachmentOf(message.id);
+          return attachment ? { ...message, attachment } : message;
+        });
+        sendJson(response, 200, { messages });
         return;
       }
       if (request.method === "DELETE" && url.pathname === "/api/chat/history") {
         deps.store.clear();
         sendJson(response, 200, { ok: true });
+        return;
+      }
+      if (url.pathname === "/api/surf" || url.pathname.startsWith("/api/surf/")) {
+        await handleSurf(deps, request, response, url);
         return;
       }
       if (url.pathname === "/api/diary" || url.pathname.startsWith("/api/diary/")) {
@@ -281,10 +298,32 @@ if (import.meta.main) {
     : undefined;
   const video = createVideoService();
   const diary = new DiaryService({ store: diaryStore, provider, memory, video });
-  const server = createApiServer({ config, provider, store, memory, video, diary, web: createWebService(), accounts: createAccountService() });
+  const surf = createSurf({
+    dbPath: config.dbPath,
+    config,
+    provider,
+    memory,
+    messages: store,
+    journal: diary,
+    isUserChatting: () => Date.now() - chatActivity.last < 3 * 60_000,
+    userIdleMinutes: () => (chatActivity.last === 0 ? Number.POSITIVE_INFINITY : (Date.now() - chatActivity.last) / 60_000),
+  });
+  const server = createApiServer({
+    config,
+    provider,
+    store,
+    memory,
+    video,
+    diary,
+    web: createWebService(),
+    accounts: createAccountService(),
+    surf: surf.service,
+  });
   let stopDiaryScheduler = () => {};
+  let stopSurfScheduler = () => {};
   server.on("close", () => {
     stopDiaryScheduler();
+    stopSurfScheduler();
     void diary.waitForIdle().finally(() => {
       diaryStore.close();
       store.close();
@@ -292,7 +331,9 @@ if (import.meta.main) {
   });
   server.listen(config.port, host, () => {
     stopDiaryScheduler = startDiaryScheduler(config.diaryCron, diary);
+    if (config.surfEnabled) stopSurfScheduler = surf.start();
     console.log(`WhalePartner API：http://${host}:${config.port}`);
+    console.log(`她自己逛：${config.surfEnabled ? "开（每 5 分钟看一眼有没有到点）" : "关（SURF_ENABLED=0）"}`);
     console.log(`日记计划：${config.diaryCron}（本机时区；API 运行时生效）`);
     console.log(`模型链：${provider.providers.map((item) => `${item.id}(${item.model})`).join(" → ")}`);
     if (lan) console.log("已开放局域网访问。没有登录保护，只在可信网络里使用。");

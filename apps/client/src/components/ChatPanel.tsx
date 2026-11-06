@@ -28,6 +28,8 @@ import { Backlog } from "./chat/Backlog";
 import { ComposerBar } from "./chat/ComposerBar";
 import { ConfirmDialog } from "./chat/ConfirmDialog";
 import { DialogBox } from "./chat/DialogBox";
+import { SurfStatus, type SurfPhase } from "./surf/SurfStatus";
+import { useSurfEvents } from "./surf/useSurfEvents";
 import { Slip } from "./chat/Slip";
 import { SuggestionChips } from "./chat/SuggestionChips";
 import { useKeyboardInset, useMediaQuery } from "./chat/useViewport";
@@ -282,6 +284,15 @@ export function ChatPanel({ character }: Props) {
     />
   );
 
+  const [surfPhase, setSurfPhase] = useState<SurfPhase | null>(null);
+  useSurfEvents(character.id, {
+    onSession: (event) =>
+      setSurfPhase(event.state === "start"
+        ? { kind: "browsing", stage: "searching" }
+        : event.count && event.count > 0 ? { kind: "done", count: event.count } : { kind: "empty" }),
+    onStep: (event) => setSurfPhase({ kind: "browsing", stage: event.stage }),
+  });
+
   return (
     <>
       <div className="room" data-backlog={wide ? (backlogOpen ? "open" : "closed") : "closed"}>
@@ -294,6 +305,8 @@ export function ChatPanel({ character }: Props) {
           </header>
 
           <section className="scene" aria-label="角色舞台">
+            {/* 规范 §7.7.3：她在逛的时候，舞台左上角挂一张小便签，字随阶段变 */}
+            <SurfStatus phase={surfPhase} onDismiss={() => setSurfPhase(null)} />
             <div
               className="scene__figure"
               role="button"
