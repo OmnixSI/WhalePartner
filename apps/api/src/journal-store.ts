@@ -24,6 +24,16 @@ export interface DailyJournal {
   createdAt: string;
 }
 
+export interface DailyJournalTask {
+  character: string;
+  localDate: string;
+  status: "pending" | "running" | "complete" | "failed";
+  attempts: number;
+  bodySaved: boolean;
+  force: boolean;
+  lastError: string | null;
+}
+
 interface JournalRow extends Omit<DailyJournal, "sources"> {
   sourcesJson: string;
 }
@@ -62,18 +72,105 @@ export class JournalStore {
         FOREIGN KEY (journal_id, revision) REFERENCES daily_journal_revisions(journal_id, revision) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS daily_journal_sources_session ON daily_journal_sources(session_id, journal_id);
+      CREATE TABLE IF NOT EXISTS daily_journal_tasks (
+        character TEXT NOT NULL,
+        local_date TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending','running','complete','failed')),
+        attempts INTEGER NOT NULL DEFAULT 0,
+        body_saved INTEGER NOT NULL DEFAULT 0,
+        force INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (character, local_date)
+      );
+      CREATE INDEX IF NOT EXISTS daily_journal_tasks_pending ON daily_journal_tasks(status, updated_at);
     `);
   }
 
-  listCurrent(character: string, limit = 100): DailyJournal[] {
+  listCurrent(character: string, options: { from?: string; to?: string; limit?: number; offset?: number } = {}): { items: DailyJournal[]; total: number } {
+    const from = options.from ?? "0000-01-01";
+    const to = options.to ?? "9999-12-31";
+    const limit = Math.max(1, Math.min(366, Math.trunc(options.limit ?? 100)));
+    const offset = Math.max(0, Math.trunc(options.offset ?? 0));
     const rows = this.#db.prepare(`
       SELECT j.id, j.character, j.local_date AS localDate, r.revision, r.text,
         r.sources_json AS sourcesJson, r.model_id AS modelId, r.created_at AS createdAt
       FROM daily_journals j JOIN daily_journal_revisions r
         ON r.journal_id = j.id AND r.revision = j.current_revision
-      WHERE j.character = ? ORDER BY j.local_date DESC LIMIT ?
-    `).all(character, limit) as unknown as JournalRow[];
-    return rows.map((row) => this.#asJournal(row));
+      WHERE j.character = ? AND j.local_date >= ? AND j.local_date <= ?
+      ORDER BY j.local_date DESC LIMIT ? OFFSET ?
+    `).all(character, from, to, limit, offset) as unknown as JournalRow[];
+    const total = this.#db.prepare(`
+      SELECT COUNT(*) AS count FROM daily_journals
+      WHERE character = ? AND local_date >= ? AND local_date <= ?
+    `).get(character, from, to) as unknown as { count: number };
+    return { items: rows.map((row) => this.#asJournal(row)), total: Number(total.count) };
+  }
+
+  task(character: string, localDate: string): DailyJournalTask | undefined {
+    const row = this.#db.prepare(`
+      SELECT character, local_date AS localDate, status, attempts,
+        body_saved AS bodySaved, force, last_error AS lastError
+      FROM daily_journal_tasks WHERE character = ? AND local_date = ?
+    `).get(character, localDate) as unknown as (Omit<DailyJournalTask, "bodySaved" | "force"> & { bodySaved: number; force: number }) | undefined;
+    return row ? { ...row, bodySaved: Boolean(row.bodySaved), force: Boolean(row.force) } : undefined;
+  }
+
+  enqueueTask(character: string, localDate: string, force = false) {
+    const now = new Date().toISOString();
+    this.#db.prepare(`
+      INSERT INTO daily_journal_tasks(character, local_date, status, attempts, body_saved, force, updated_at)
+      VALUES (?, ?, 'pending', 0, 0, ?, ?)
+      ON CONFLICT(character, local_date) DO UPDATE SET
+        status = CASE WHEN daily_journal_tasks.status IN ('complete','failed') THEN 'pending' ELSE daily_journal_tasks.status END,
+        attempts = CASE WHEN daily_journal_tasks.status = 'complete' THEN 0 ELSE daily_journal_tasks.attempts END,
+        body_saved = CASE WHEN daily_journal_tasks.status = 'complete' THEN 0 ELSE daily_journal_tasks.body_saved END,
+        force = MAX(daily_journal_tasks.force, excluded.force),
+        last_error = NULL,
+        updated_at = excluded.updated_at
+    `).run(character, localDate, force ? 1 : 0, now);
+  }
+
+  claimTask(character: string, localDate: string): boolean {
+    const result = this.#db.prepare(`
+      UPDATE daily_journal_tasks SET status = 'running', attempts = attempts + 1, updated_at = ?
+      WHERE character = ? AND local_date = ? AND status IN ('pending','failed')
+    `).run(new Date().toISOString(), character, localDate);
+    return Number(result.changes) === 1;
+  }
+
+  recoverInterruptedTasks() {
+    this.#db.prepare("UPDATE daily_journal_tasks SET status = 'pending', updated_at = ? WHERE status = 'running'")
+      .run(new Date().toISOString());
+  }
+
+  incompleteTasks(limit = 100): DailyJournalTask[] {
+    const rows = this.#db.prepare(`
+      SELECT character, local_date AS localDate, status, attempts,
+        body_saved AS bodySaved, force, last_error AS lastError
+      FROM daily_journal_tasks WHERE status IN ('pending','failed')
+      ORDER BY updated_at, local_date LIMIT ?
+    `).all(Math.max(1, Math.min(500, Math.trunc(limit)))) as unknown as Array<Omit<DailyJournalTask, "bodySaved" | "force"> & { bodySaved: number; force: number }>;
+    return rows.map((row) => ({ ...row, bodySaved: Boolean(row.bodySaved), force: Boolean(row.force) }));
+  }
+
+  markBodySaved(character: string, localDate: string) {
+    this.#db.prepare("UPDATE daily_journal_tasks SET body_saved = 1, updated_at = ? WHERE character = ? AND local_date = ?")
+      .run(new Date().toISOString(), character, localDate);
+  }
+
+  completeTask(character: string, localDate: string) {
+    this.#db.prepare(`
+      UPDATE daily_journal_tasks SET status = 'complete', body_saved = 1, force = 0,
+        last_error = NULL, updated_at = ? WHERE character = ? AND local_date = ?
+    `).run(new Date().toISOString(), character, localDate);
+  }
+
+  failTask(character: string, localDate: string, error: string) {
+    this.#db.prepare(`
+      UPDATE daily_journal_tasks SET status = 'failed', last_error = ?, updated_at = ?
+      WHERE character = ? AND local_date = ?
+    `).run(error.slice(0, 1_000), new Date().toISOString(), character, localDate);
   }
 
   current(character: string, localDate: string): DailyJournal | undefined {
@@ -97,6 +194,8 @@ export class JournalStore {
       const sourceIds = input.sources.map((source) => source.id).sort();
       const oldSourceIds = current?.sources.map((source) => source.id).sort() ?? [];
       if (current && !force && sourceIds.length === oldSourceIds.length && sourceIds.every((id, index) => id === oldSourceIds[index])) {
+        this.#db.prepare("UPDATE daily_journal_tasks SET body_saved = 1, updated_at = ? WHERE character = ? AND local_date = ?")
+          .run(now, input.character, input.localDate);
         this.#db.exec("COMMIT");
         return current;
       }
@@ -109,6 +208,8 @@ export class JournalStore {
       for (const source of input.sources) link.run(input.id, revision, source.id, source.sessionId ?? null);
       this.#db.prepare("UPDATE daily_journals SET current_revision = ?, updated_at = ? WHERE id = ?")
         .run(revision, now, input.id);
+      this.#db.prepare("UPDATE daily_journal_tasks SET body_saved = 1, updated_at = ? WHERE character = ? AND local_date = ?")
+        .run(now, input.character, input.localDate);
       this.#db.exec("COMMIT");
       return { ...input, revision, createdAt: now };
     } catch (error) {

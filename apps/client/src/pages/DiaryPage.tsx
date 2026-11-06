@@ -144,17 +144,14 @@ export function DiaryPage() {
       <div className="page__inner">
         <header>
           <h1 className="page__title">她的日记</h1>
-          <p className="page__lead">按天记录她与你的聊天、共同经历和当天的想法。</p>
         </header>
 
         <DailyJournalList character={character} />
 
         <details className="legacy-diary">
-        <summary>旧版视频日记与待看队列</summary>
-        <p className="legacy-diary__lead">已保存的视频日记和待看任务仍可查看与重试。</p>
+        <summary>视频与待看列表</summary>
         <section className="card diary-add">
-          <h3>分享一个视频</h3>
-          <p>加入待看列表后，她会在定时任务中看完并写下日记。</p>
+          <h3>分享视频</h3>
           <form className="diary-form" onSubmit={add}>
             <label className="sr-only" htmlFor="diary-video-url">Bilibili 视频链接或 BV 号</label>
             <input
@@ -171,7 +168,7 @@ export function DiaryPage() {
             </button>
           </form>
           <div className="diary-add__actions">
-            <span>定时任务每次处理一条；API 运行期间生效。也可以立即开始处理。</span>
+            <span>自动处理</span>
             <button className="diary-button diary-button--quiet" onClick={run} disabled={running || !pending}>
               {running ? "正在启动…" : "立即处理一条"}
             </button>
@@ -196,8 +193,7 @@ export function DiaryPage() {
 
         {items !== null && !error && entries.length === 0 && queue.length === 0 && (
           <div className="card empty">
-            <h3>还没有日记</h3>
-            <p>添加一个视频链接，她看完后就会在这里写下日记。</p>
+            <h3>没有视频记录</h3>
           </div>
         )}
         </details>

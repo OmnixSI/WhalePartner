@@ -12,6 +12,20 @@ import { JournalStore } from "../src/journal-store.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
 
+function localDayRange(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const from = new Date(year, month - 1, day);
+  const to = new Date(year, month - 1, day + 1);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+function shiftLocalDate(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12);
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 test("daily journal combines local-day chat and shared media, keeps revisions, and stays out of its own sources", async () => {
   const directory = mkdtempSync(join(tmpdir(), "whale-journal-"));
   const path = join(directory, "chat.db");
@@ -86,6 +100,76 @@ test("daily journal source packing keeps evidence from across a long day", async
     assert.match(prompt, /片段开头 0/u);
     assert.match(prompt, /片段结尾 35/u);
     assert.ok(prompt.length < 22_000);
+  } finally {
+    journals.close();
+    archive.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("startup resumes an interrupted journal generation and indexes a saved body without another model call", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "whale-journal-resume-"));
+  const path = join(directory, "chat.db");
+  const archive = new ChatStore(path);
+  const journals = new JournalStore(path);
+  const session = archive.createSession("whale", "恢复测试");
+  archive.add("user", "今天聊了海边的事。", null, "whale", session.id);
+  const today = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const bounds = localDayRange(today);
+  const sources = archive.journalSources("whale", bounds.from, bounds.to);
+  let calls = 0;
+  const provider: ChatProvider = {
+    id: "fake", model: "resume-test",
+    async *stream() { calls++; yield { text: "今天我们聊到了海边。" }; },
+  };
+  try {
+    journals.enqueueTask("whale", today);
+    assert.equal(journals.claimTask("whale", today), true);
+    journals.save({
+      id: `journal:whale:${today}`,
+      character: "whale",
+      localDate: today,
+      text: "已经保存的日记正文。",
+      sources,
+      modelId: "fake/resume-test",
+    });
+
+    const service = new DailyJournalService({ store: journals, archive, provider });
+    await service.resumeInterrupted();
+
+    assert.equal(calls, 0);
+    assert.equal(journals.task("whale", today)?.status, "complete");
+    assert.equal(archive.experienceBySourceId(`journal:whale:${today}`)?.text, "已经保存的日记正文。");
+  } finally {
+    journals.close();
+    archive.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("startup does not restore a pending journal after its source session was deleted", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "whale-journal-delete-resume-"));
+  const path = join(directory, "chat.db");
+  const archive = new ChatStore(path);
+  const journals = new JournalStore(path);
+  const session = archive.createSession("whale", "删除后恢复");
+  archive.add("user", "这段内容之后会被删除。", null, "whale", session.id);
+  const today = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  let calls = 0;
+  const provider: ChatProvider = {
+    id: "fake", model: "deleted-source-test",
+    async *stream() { calls++; yield { text: "不应恢复的日记。" }; },
+  };
+  try {
+    journals.enqueueTask("whale", today);
+    assert.equal(journals.claimTask("whale", today), true);
+    archive.deleteSession(session.id, "whale");
+
+    await new DailyJournalService({ store: journals, archive, provider }).resumeInterrupted();
+
+    assert.equal(calls, 0);
+    assert.equal(journals.current("whale", today), undefined);
+    assert.equal(journals.task("whale", today)?.status, "complete");
   } finally {
     journals.close();
     archive.close();
@@ -174,9 +258,17 @@ test("journal routes generate, list, and expose prior revisions", async () => {
   const retainedMessage = archive.add("user", "后来又聊了海里的小鱼", null, "whale", retainedSession.id);
   const provider: ChatProvider = { id: "fake", model: "route-test", async *stream() { yield { text: "今天你跟我说了海边的事，我也跟着想象了一下那阵海风。" }; } };
   const journal = new DailyJournalService({ store: journals, archive, provider });
+  const today = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  for (const date of [shiftLocalDate(today, -2), shiftLocalDate(today, -1)]) journals.save({
+    id: `journal:whale:${date}`,
+    character: "whale",
+    localDate: date,
+    text: `日期 ${date} 的日记。`,
+    sources: [],
+    modelId: "fake/route-test",
+  });
   const server = createApiServer({ config: loadConfig({}), provider: new FallbackChatProvider([provider]), store: archive, journal });
   const base = await new Promise<string>((resolve) => server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
-  const today = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   try {
     const generated = await fetch(`${base}/api/journals/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ character: "whale", date: today }) });
     assert.equal(generated.status, 200);
@@ -184,7 +276,13 @@ test("journal routes generate, list, and expose prior revisions", async () => {
     assert.equal(body.journal.id, `journal:whale:${today}`);
     assert.equal(body.journal.revision, 1);
     const listed = await fetch(`${base}/api/journals?character=whale`);
-    assert.equal((await listed.json() as { items: unknown[] }).items.length, 1);
+    assert.equal((await listed.json() as { items: unknown[]; total: number }).total, 3);
+    const page = await fetch(`${base}/api/journals?character=whale&from=${shiftLocalDate(today, -2)}&to=${today}&limit=1&offset=1`);
+    const pageBody = await page.json() as { items: Array<{ localDate: string }>; total: number };
+    assert.equal(pageBody.total, 3);
+    assert.equal(pageBody.items[0].localDate, shiftLocalDate(today, -1));
+    const invalidDate = await fetch(`${base}/api/journals?character=whale&from=2026-02-30&to=${today}`);
+    assert.equal(invalidDate.status, 400);
     const revisions = await fetch(`${base}/api/journals/${encodeURIComponent(body.journal.id)}/revisions`);
     assert.equal((await revisions.json() as { revisions: unknown[] }).revisions.length, 1);
     const deleted = await fetch(`${base}/api/chat/sessions/${session.id}?character=whale`, { method: "DELETE" });

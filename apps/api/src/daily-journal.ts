@@ -24,8 +24,8 @@ export class DailyJournalService {
     this.#deps = deps;
   }
 
-  list(character: CharacterId) {
-    return this.#deps.store.listCurrent(character);
+  list(character: CharacterId, options: { from?: string; to?: string; limit?: number; offset?: number } = {}) {
+    return this.#deps.store.listCurrent(character, options);
   }
 
   revisions(id: string) {
@@ -52,6 +52,18 @@ export class DailyJournalService {
         await this.generate(character, date);
       } catch (error) {
         console.warn(`${CHARACTERS[character].name}的日记生成失败：`, error instanceof Error ? error.message : error);
+      }
+    }
+  }
+
+  async resumeInterrupted() {
+    this.#deps.store.recoverInterruptedTasks();
+    for (const task of this.#deps.store.incompleteTasks()) {
+      if (!isCharacterId(task.character)) continue;
+      try {
+        await this.generate(task.character, task.localDate);
+      } catch (error) {
+        console.warn(`${CHARACTERS[task.character].name}的${task.localDate}日记恢复失败：`, error instanceof Error ? error.message : error);
       }
     }
   }
@@ -93,31 +105,59 @@ export class DailyJournalService {
   async #generate(character: CharacterId, localDate: string, force: boolean): Promise<DailyJournal | null> {
     const { from, to } = localDayBounds(localDate);
     const sources = this.#deps.archive.journalSources(character, from, to);
-    if (sources.length === 0) return null;
+    const task = this.#deps.store.task(character, localDate);
+    const effectiveForce = force || task?.force === true;
+    if (sources.length === 0) {
+      if (task) this.#deps.store.completeTask(character, localDate);
+      return null;
+    }
     const id = `journal:${character}:${localDate}`;
     const current = this.#deps.store.current(character, localDate);
     const sourceIds = sources.map((source) => source.id).sort();
     const previousIds = current?.sources.map((source) => source.id).sort() ?? [];
-    if (current && !force && sameIds(sourceIds, previousIds)) return current;
+    if (current && !effectiveForce && sameIds(sourceIds, previousIds) && task?.status === "complete") return current;
 
-    const text = await writeJournal(this.#deps.provider, character, localDate, sources);
-    const journal = this.#deps.store.save({
-      id,
-      character,
-      localDate,
-      text,
-      sources,
-      modelId: `${this.#deps.provider.id}/${this.#deps.provider.model}`,
-    }, force);
-    await archiveExperience(this.#deps.archive, this.#deps.memory, {
-      kind: "journal",
-      title: `${CHARACTERS[character].name}的日记 · ${localDate}`,
-      text: journal.text,
-      sourceId: journal.id,
-      sourceSessionIds: [...new Set(sources.flatMap((source) => source.sessionId ? [source.sessionId] : []))],
-    }, "日记经历");
-    return journal;
+    this.#deps.store.enqueueTask(character, localDate, effectiveForce);
+    if (!this.#deps.store.claimTask(character, localDate)) return this.#deps.store.current(character, localDate) ?? null;
+
+    try {
+      const activeTask = this.#deps.store.task(character, localDate);
+      let journal = activeTask?.bodySaved ? this.#deps.store.current(character, localDate) : undefined;
+      const bodyMatchesSources = journal && sameIds(sourceIds, journal.sources.map((source) => source.id).sort());
+      if (!journal || !bodyMatchesSources) {
+        if (current && !effectiveForce && sameIds(sourceIds, previousIds)) {
+          journal = current;
+          this.#deps.store.markBodySaved(character, localDate);
+        } else {
+          const text = await writeJournal(this.#deps.provider, character, localDate, sources);
+          journal = this.#deps.store.save({
+            id,
+            character,
+            localDate,
+            text,
+            sources,
+            modelId: `${this.#deps.provider.id}/${this.#deps.provider.model}`,
+          }, effectiveForce);
+        }
+      }
+      await archiveExperience(this.#deps.archive, this.#deps.memory, {
+        kind: "journal",
+        title: `${CHARACTERS[character].name}的日记 · ${localDate}`,
+        text: journal.text,
+        sourceId: journal.id,
+        sourceSessionIds: [...new Set(sources.flatMap((source) => source.sessionId ? [source.sessionId] : []))],
+      }, "日记经历");
+      this.#deps.store.completeTask(character, localDate);
+      return journal;
+    } catch (error) {
+      this.#deps.store.failTask(character, localDate, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
   }
+}
+
+function isCharacterId(value: string): value is CharacterId {
+  return Object.hasOwn(CHARACTERS, value);
 }
 
 async function writeJournal(provider: ChatProvider, character: CharacterId, localDate: string, sources: JournalSource[]) {

@@ -12,7 +12,12 @@ export async function handleJournalsRoute(deps: Pick<ServerDeps, "journal">, req
     if (request.method === "GET" && url.pathname === "/api/journals") {
       const character = url.searchParams.get("character") ?? "whale";
       if (!isCharacterId(character)) throw new ChatInputError("未知的角色。");
-      return sendJson(response, 200, { items: journal.list(character) });
+      const from = readDate(url.searchParams.get("from"), "from");
+      const to = readDate(url.searchParams.get("to"), "to");
+      if (from && to && from > to) throw new ChatInputError("起始日期不能晚于结束日期。");
+      const limit = readInteger(url.searchParams.get("limit"), 100, 1, 366, "limit");
+      const offset = readInteger(url.searchParams.get("offset"), 0, 0, 1_000_000, "offset");
+      return sendJson(response, 200, journal.list(character, { from, to, limit, offset }));
     }
     if (request.method === "POST" && url.pathname === "/api/journals/generate") {
       const body = await readJsonBody(request);
@@ -34,4 +39,22 @@ export async function handleJournalsRoute(deps: Pick<ServerDeps, "journal">, req
     const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
     return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "日记请求失败。" });
   }
+}
+
+function readDate(value: string | null, name: string) {
+  if (value === null) return undefined;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value) || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
+    throw new ChatInputError(`${name} 需要是有效的 YYYY-MM-DD 日期。`);
+  }
+  return value;
+}
+
+function readInteger(value: string | null, fallback: number, minimum: number, maximum: number, name: string) {
+  if (value === null) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new ChatInputError(`${name} 超出允许范围。`);
+  }
+  return parsed;
 }

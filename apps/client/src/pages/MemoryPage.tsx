@@ -145,13 +145,13 @@ export function MemoryPage() {
     event.preventDefault();
     update({ query: queryDraft.trim() || undefined });
   };
+  const activeFilterCount = [filters.from, filters.to, filters.role !== "all", filters.status !== "all"].filter(Boolean).length;
 
   return (
     <div className="page">
       <div className="page__inner memory-page">
         <header>
           <h1 className="page__title">她记得的事</h1>
-          <p className="page__lead">按类别、时间和对话来源翻找共同经历。聊天原文完整保存在本机，可定位回原会话。</p>
         </header>
 
         {note && <section className="card memory-note"><h2>{selectedCharacter.name}的近况</h2><p className="note">{note.text}</p></section>}
@@ -162,22 +162,19 @@ export function MemoryPage() {
           <button className="diary-button" type="submit">搜索</button>
         </form>
 
-        <nav className="memory-categories" aria-label="记忆分类">
-          <button type="button" aria-pressed={filters.category === "all"} onClick={() => update({ category: "all" })}>
-            全部 <small>{result?.total.toLocaleString("zh-CN") ?? "—"}</small>
-          </button>
-          {CATEGORY_GROUPS.map((group) => <details className="memory-category-group" key={group.title} open={filters.category !== "all" && group.categories.includes(filters.category)}>
-            <summary>{group.title}<small>{group.categories.reduce((count, category) => count + (result?.counts[category] ?? 0), 0)}</small></summary>
-            <div>{group.categories.map((category) => <button
-              key={category}
-              type="button"
-              aria-pressed={filters.category === category}
-              onClick={() => update({ category })}
-            >{CATEGORY_LABELS[category]} <small>{result?.counts[category] ?? "—"}</small></button>)}</div>
-          </details>)}
-        </nav>
-
-        <div className="memory-filters">
+        <div className="memory-tools">
+          <label className="memory-category">
+            <span>分类</span>
+            <select value={filters.category} onChange={(event) => update({ category: event.target.value as MemoryCategory })}>
+              <option value="all">全部 · {result?.total.toLocaleString("zh-CN") ?? "—"}</option>
+              {CATEGORY_GROUPS.map((group) => <optgroup key={group.title} label={group.title}>
+                {group.categories.map((category) => <option key={category} value={category}>{CATEGORY_LABELS[category]} · {result?.counts[category] ?? "—"}</option>)}
+              </optgroup>)}
+            </select>
+          </label>
+          <details className="memory-filter-panel">
+            <summary>筛选{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</summary>
+            <div className="memory-filters">
           <label>角色 <select value={filters.character} onChange={(event) => update({ character: event.target.value })}>
             {CHARACTERS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select></label>
@@ -201,6 +198,8 @@ export function MemoryPage() {
             setQueryDraft(""); setFromDate(""); setToDate("");
             setFilters({ character: filters.character, category: filters.category, status: "all", role: "all", page: 1, pageSize: PAGE_SIZE });
           }}>清除筛选</button>}
+            </div>
+          </details>
         </div>
 
         {error && <div className="card diary-error-card" role="alert"><h3>记忆读取失败</h3><p>{error}</p><button className="diary-button diary-button--quiet" type="button" onClick={() => load()}>重试</button></div>}

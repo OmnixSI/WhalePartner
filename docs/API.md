@@ -92,9 +92,9 @@
 
 `DiaryItem` 包含 `id`、`inputUrl`、`bvid`、`title`、`sourceUrl`、`summary`、`diaryText`、`status`、`errorStage`、`error`、`memoryStatus`、`memoryError`、`createdAt`、`processedAt`、`duplicateOf`。队列状态为 `pending`、`processing`、`failed`、`done`、`duplicate`；记忆状态为 `pending`、`saved`、`failed` 或 `null`。`saved` 表示视频摘要和日记已进入本机 SQLite 经历档案。摘要在生成日记前落盘；重试会从已保存的阶段继续。已生成日记的同一 BV 号只保留一篇，记忆使用独立的 `diary:<BV号>` 来源标识。
 
-综合日记独立于旧版单视频队列，按角色和 API 主机本机日期生成。它可以使用聊天、已处理视频/网页、学习记录、会话观察与角色近况；纯聊天当天也可生成。素材无变化的定时重复触发保持当前版本，手动更新追加历史版本。稳定 source ID `journal:<character>:<YYYY-MM-DD>` 用于归档与索引，日记记录不会作为自己的输入。删除被引用的会话会移除受影响版本，并用当天剩余来源重建当前日记。
+综合日记独立于旧版单视频队列，按角色和 API 主机本机日期生成。它可以使用聊天、已处理视频/网页、学习记录、会话观察与角色近况；纯聊天当天也可生成。素材无变化的定时重复触发保持当前版本，手动更新追加历史版本。稳定 source ID `journal:<character>:<YYYY-MM-DD>` 用于归档与索引，日记记录不会作为自己的输入。删除被引用的会话会移除受影响版本，并用当天剩余来源重建当前日记。API 启动会恢复持久化的未完成任务；正文已保存时从归档阶段继续，不重复请求模型。若本机当天计划时间已过，启动时会补跑当天一次。
 
-- `GET /api/journals?character=deepseek` → `{ items: DailyJournal[] }`，返回该角色每个日期的当前版本。
+- `GET /api/journals?character=deepseek&from=2026-11-01&to=2026-11-30&limit=30&offset=0` → `{ items: DailyJournal[], total }`，日期边界均包含在内，按日期倒序；`from`、`to` 可省略，`limit` 默认为 100、最大为 366，`offset` 默认为 0。日记页按周、月、年传入范围，并对结果分页。
 - `POST /api/journals/generate` 请求体 `{ "character": "deepseek", "date": "2026-11-05", "force": true }` → `{ journal }`；`date` 可省略为本机今天，`force` 用于显式重新生成并留存旧版本。当天无素材时返回 `{ "journal": null, "reason": "no_sources" }`。
 - `GET /api/journals/:id/revisions` → `{ revisions: DailyJournal[] }`，返回含正文和来源的版本记录。
 
