@@ -8,7 +8,7 @@ import { queueLearning, queueReflection } from "./chat-background.ts";
 import { readWeb, watchVideo } from "./chat-materials.ts";
 import { extractVideoTarget, type VideoService } from "./video-service.ts";
 import { extractWebTarget, type WebService } from "./web-service.ts";
-import { buildPersonaCore, CHARACTERS, DEFAULT_CHARACTER, type CharacterId } from "./persona/persona.ts";
+import { buildPersonaCore, CHARACTERS, DEFAULT_CHARACTER, withUserName, type CharacterId } from "./persona/persona.ts";
 import type { ChatStore } from "./store.ts";
 
 export const MAX_MESSAGE_CHARS = 2000;
@@ -34,6 +34,8 @@ export interface ChatDeps {
   video?: VideoService;
   /** 提供后，用户消息里的普通网页链接会被读完再聊。 */
   web?: WebService;
+  /** B5：用户希望被称呼的名字；没设就传 null。 */
+  nickname?: string | null;
 }
 
 export class ChatInputError extends Error {}
@@ -65,7 +67,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   }
 
   const messages = buildChatContext({
-    persona: buildPersonaCore(character),
+    persona: withUserName(buildPersonaCore(character), deps.nickname),
     observation: recalled.observation,
     memories: recalled.facts.slice(0, 8),
     experiences: recalled.experiences.slice(0, 5),

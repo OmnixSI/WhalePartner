@@ -16,6 +16,20 @@ function monthStart(now = new Date()): string {
   return `${now.getFullYear()}-${month}-01T00:00:00.000Z`;
 }
 
+/** 供聊天链路判断要不要拦：返回本月已用与总量；表不存在按 0。 */
+export function quotaUsage(dbPath: string): { used: number; total: number; enforced: boolean } {
+  let db: DatabaseSync | undefined;
+  try {
+    db = openLedger(dbPath);
+    const row = db.prepare("SELECT COALESCE(SUM(units), 0) AS used FROM usage_ledger WHERE at >= ?").get(monthStart()) as { used?: number } | undefined;
+    return { used: Number(row?.used ?? 0), total: MONTHLY_UNITS, enforced: process.env.QUOTA_ENFORCE === "1" };
+  } catch {
+    return { used: 0, total: MONTHLY_UNITS, enforced: process.env.QUOTA_ENFORCE === "1" };
+  } finally {
+    db?.close();
+  }
+}
+
 function openLedger(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec(`
