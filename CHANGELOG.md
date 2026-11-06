@@ -1,5 +1,9 @@
 # 更新记录
 
+## 0.2.2
+
+- 见闻页动效时长收进 tokens（P5 在 P4 之后合入带回的两个字面值），`check.mjs` 复跑 10 项全绿
+
 ## 0.2.1 — P-B 补齐
 
 - **导出 / 删除全部**：纯 Node zip（deflate + crc32），`POST /api/export` → `GET /api/export?id=` 下载；`DELETE /api/data` 必须 `confirm: "DELETE_ALL"`；导出/删除期间聊天 409
