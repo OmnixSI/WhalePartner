@@ -50,7 +50,10 @@ export async function getQuota(signal?: AbortSignal): Promise<QuotaSummary | nul
   try {
     const response = await fetch(`${API_BASE}/api/quota`, { signal });
     if (!response.ok) return null;
-    return (await response.json()) as QuotaSummary;
+    const body = await response.json() as Partial<QuotaSummary> | null;
+    // 服务端 200 但形状不对时不要原样返回：上层会拿 undefined 去算，整页白屏。
+    if (!body || typeof body.total !== "number" || typeof body.used !== "number") return null;
+    return body as QuotaSummary;
   } catch {
     return null;
   }
@@ -58,7 +61,7 @@ export async function getQuota(signal?: AbortSignal): Promise<QuotaSummary | nul
 
 /** “下次刷新 12月1日”。 */
 export function formatResetDate(period: QuotaPeriod): string {
-  const [, month, day] = /^(\d{4})-(\d{2})-(\d{2})/.exec(period.resetsAt) ?? [];
+  const [, , month, day] = /^(\d{4})-(\d{2})-(\d{2})/.exec(period.resetsAt) ?? [];
   if (!month || !day) return period.resetsAt;
   return `${Number(month)}月${Number(day)}日`;
 }
