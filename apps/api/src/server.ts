@@ -25,8 +25,13 @@ import { handleDiaryRoute } from "./routes/diary.ts";
 import { handleJournalsRoute } from "./routes/journals.ts";
 import { handleMemoriesRoute } from "./routes/memories.ts";
 import { handleVideoSummaryRoute } from "./routes/video-summary.ts";
+import { handleSurf } from "./routes/surf.ts";
+import { createSurf } from "./surf/index.ts";
 import type { ServerDeps } from "./server-types.ts";
 export type { ServerDeps } from "./server-types.ts";
+
+// 她逛之前先看用户在不在聊：最后一次聊天时间。main 的 routes/chat.ts 里没有这个状态，这里补一个。
+const chatActivity = { last: 0 };
 
 function healthBody(deps: ServerDeps) {
   const { provider } = deps;
@@ -77,6 +82,10 @@ export function createApiServer(deps: ServerDeps): Server {
         const note = deps.store.getNote(character);
         return sendJson(response, 200, { note: note ? { text: note.text, updatedAt: note.updatedAt } : null });
       }
+      if (url.pathname === "/api/surf" || url.pathname.startsWith("/api/surf/")) {
+        await handleSurf(deps, request, response, url);
+        return;
+      }
       if (await handleChatHistoryRoute(deps, request, response, url, sessionRequests)) return;
       if (url.pathname === "/api/diary" || url.pathname.startsWith("/api/diary/")) {
         await handleDiaryRoute(deps, request, response, url);
@@ -95,6 +104,7 @@ export function createApiServer(deps: ServerDeps): Server {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/chat") {
+        chatActivity.last = Date.now();
         await handleChatRoute(deps, request, response, sessionRequests);
         return;
       }
@@ -120,7 +130,18 @@ if (import.meta.main) {
   const video = createVideoService();
   const diary = new DiaryService({ store: diaryStore, archive: store, provider, memory, video });
   const journal = new DailyJournalService({ store: journalStore, archive: store, provider, memory });
-  const server = createApiServer({ config, provider, store, memory, video, diary, journal, web: createWebService(), accounts: createAccountService() });
+  const surf = createSurf({
+    dbPath: config.dbPath,
+    config,
+    provider,
+    memory,
+    messages: store,
+    journal: diary,
+    isUserChatting: () => Date.now() - chatActivity.last < 3 * 60_000,
+    userIdleMinutes: () => (chatActivity.last === 0 ? Number.POSITIVE_INFINITY : (Date.now() - chatActivity.last) / 60_000),
+  });
+  let stopSurfScheduler = () => {};
+  const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService() });
   let stopDiaryScheduler = () => {};
   let stopJournalScheduler = () => {};
   server.on("close", () => {
@@ -132,7 +153,9 @@ if (import.meta.main) {
       store.close();
     });
   });
+  server.on("close", () => { stopSurfScheduler(); });
   server.listen(config.port, host, () => {
+    if (config.surfEnabled) stopSurfScheduler = surf.start();
     void scheduleMemoryJobs({ store, provider, memory });
     stopDiaryScheduler = startDiaryScheduler(config.diaryCron, diary);
     stopJournalScheduler = startDailyJournalScheduler(config.journalCron, journal);

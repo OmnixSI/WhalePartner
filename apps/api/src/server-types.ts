@@ -7,6 +7,7 @@ import type { VideoService } from "./video-service.ts";
 import type { WebService } from "./web-service.ts";
 import type { ChatStore } from "./store.ts";
 import type { DailyJournalService } from "./daily-journal.ts";
+import type { SurfService } from "./surf/service.ts";
 
 export interface ServerDeps {
   config: ApiConfig;
@@ -23,4 +24,6 @@ export interface ServerDeps {
   web?: WebService;
   /** 各平台账号接入（目前只有 B 站）。 */
   accounts?: AccountService;
+  /** 「她自己去逛」：见闻、设置、调度、SSE。 */
+  surf?: SurfService;
 }

@@ -19,6 +19,12 @@ export interface ApiConfig {
   backup?: OpenAiCompatibleConfig;
   codexFallback: boolean;
   llmTimeoutMs: number;
+  /** 「她自己去逛」的全局总闸（SURF_ENABLED，默认开）。 */
+  surfEnabled: boolean;
+  /** 自定义 Chromium 路径（SURF_CHROMIUM_PATH），默认用 playwright 自带的。 */
+  surfChromiumPath?: string;
+  /** 冲浪留下的东西（缩略图）放这儿，默认 .local/surf。 */
+  surfDir: string;
 }
 
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
@@ -66,5 +72,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         : undefined,
     codexFallback: text(env.CODEX_FALLBACK) !== "0",
     llmTimeoutMs: positiveInt(env.LLM_TIMEOUT_MS, 30000, "LLM_TIMEOUT_MS"),
+    surfEnabled: text(env.SURF_ENABLED) !== "0",
+    surfChromiumPath: text(env.SURF_CHROMIUM_PATH),
+    surfDir: text(env.SURF_DIR) ?? resolve(import.meta.dirname, "../.local/surf"),
   };
 }

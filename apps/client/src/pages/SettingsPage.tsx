@@ -24,6 +24,16 @@ import { DataSection } from "../components/settings/DataSection";
 import { CharacterDialog } from "../components/settings/CharacterDialog";
 import { Toast } from "../components/settings/Toast";
 import { updateA11y, ELDER_MIN_SCALE, SCALE_MAX } from "../components/settings/prefs";
+import { TagField } from "../components/surf/TagField";
+import {
+  FREQUENCY_HINT,
+  FREQUENCY_LABEL,
+  getSurfSettings,
+  putSurfSettings,
+  type SurfFrequency,
+  type SurfSettings,
+  type SurfSettingsPatch,
+} from "../lib/surf";
 import "../styles/settings.css";
 
 const THEMES: Array<{ id: ThemeChoice; label: string; hint: string }> = [
@@ -44,6 +54,8 @@ export function SettingsPage() {
   const [savingNick, setSavingNick] = useState(false);
   const [nickFailed, setNickFailed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [surf, setSurf] = useState<SurfSettings | null>(null);
+  const [surfError, setSurfError] = useState("");
 
   const offline = backend === "down";
 
@@ -60,6 +72,9 @@ export function SettingsPage() {
     });
     void getProfile().then((profile) => {
       if (alive && profile.nickname) setNickname(profile.nickname);
+    });
+    void getSurfSettings(character.id).then((settings) => {
+      if (alive) setSurf(settings);
     });
     return () => {
       alive = false;
@@ -96,6 +111,20 @@ export function SettingsPage() {
       setToast("现在拿不到，昵称没存上。");
     } finally {
       setSavingNick(false);
+    }
+  };
+
+  /** 「她自己去逛」的两组设置：改一项存一项，失败就退回原值并说明。 */
+  const saveSurf = async (patch: SurfSettingsPatch) => {
+    if (!surf) return;
+    const before = surf;
+    setSurf({ ...surf, ...patch, quiet: { ...surf.quiet, ...(patch.quiet ?? {}) } });
+    setSurfError("");
+    try {
+      setSurf(await putSurfSettings(character.id, patch));
+    } catch (error) {
+      setSurf(before);
+      setSurfError(error instanceof Error ? error.message : "现在存不上，待会儿再试。");
     }
   };
 
@@ -170,12 +199,120 @@ export function SettingsPage() {
           </SettingRow>
         </SettingGroup>
 
-        <SettingGroup
-          title="让她自己逛"
-          note="她可以自己去看看视频、翻翻网页。这块还没接上，先留个位置。"
-        >
-          <SettingRow title="自己去逛、逛的频率、逛到有意思的告诉我" desc="现在拿不到：等逛的设置接上，这里才放开关。" icon="phone">
-            <span className="set-offline">还没接上</span>
+        <SettingGroup title="让她自己逛" note="她可以自己去看看视频、翻翻网页，回来讲给你听。">
+          {surf === null ? (
+            <SettingRow title="自己去逛" desc="现在拿不到她的逛设置。" icon="phone">
+              <span className="set-offline">还没接上</span>
+            </SettingRow>
+          ) : (
+            <>
+              <SettingRow icon="phone" title="自己去逛" desc="开了之后，她会自己去看视频、翻网页，回来讲给你听。">
+                <Switch label="让她自己逛" checked={surf.enabled} onChange={(next) => void saveSurf({ enabled: next })} />
+              </SettingRow>
+
+              <SettingRow title="频率" desc="每次最多看 1–2 个视频、翻 3 个网页。" stacked>
+                <div className="set-choices" role="group" aria-label="逛的频率">
+                  {(["rare", "normal", "often"] as SurfFrequency[]).map((value) => (
+                    <ChoiceCard
+                      key={value}
+                      groupLabel="逛的频率"
+                      label={FREQUENCY_LABEL[value]}
+                      hint={FREQUENCY_HINT[value]}
+                      selected={surf.frequency === value}
+                      onSelect={() => void saveSurf({ frequency: value })}
+                    />
+                  ))}
+                </div>
+              </SettingRow>
+
+              <SettingRow title="看什么" desc="两样都可以关掉；都关掉她就不出门了。">
+                <div className="set-surf-toggles">
+                  <Switch label="看视频（B 站）" checked={surf.video} onChange={(next) => void saveSurf({ video: next })} />
+                  <Switch label="翻网页" checked={surf.web} onChange={(next) => void saveSurf({ web: next })} />
+                </div>
+              </SettingRow>
+              <p className="set-surf-legend" aria-hidden="true">
+                左边是看视频（B 站），右边是翻网页。
+              </p>
+
+              <SettingRow title="讲给我听" desc="逛到有意思的，她会在聊天里告诉我。">
+                <Switch label="讲给我听" checked={surf.shareToChat} onChange={(next) => void saveSurf({ shareToChat: next })} />
+              </SettingRow>
+            </>
+          )}
+        </SettingGroup>
+
+        <SettingGroup title="她逛什么">
+          {surf === null ? (
+            <SettingRow title="兴趣和屏蔽词" desc="现在拿不到她的逛设置。" icon="newspaper">
+              <span className="set-offline">还没接上</span>
+            </SettingRow>
+          ) : (
+            <>
+              <SettingRow title="兴趣" stacked desc="她自己也有喜欢的，这里是帮她多想几个。">
+                <TagField
+                  label="兴趣"
+                  placeholder="加一个她可能喜欢的，比如：鲸歌"
+                  hint="最多 8 个，每个不超过 12 个字。"
+                  values={surf.interests}
+                  max={8}
+                  maxChars={12}
+                  onChange={(next) => void saveSurf({ interests: next })}
+                />
+              </SettingRow>
+
+              <SettingRow title="不想看的" stacked desc="带这些词的内容，她会直接跳过。">
+                <TagField
+                  label="不想看的"
+                  placeholder="加一个不想让她看的词"
+                  hint="最多 20 个，每个不超过 12 个字。"
+                  values={surf.blocked}
+                  max={20}
+                  maxChars={12}
+                  onChange={(next) => void saveSurf({ blocked: next })}
+                />
+              </SettingRow>
+
+              <details className="set-fold set-fold--inline">
+                <summary className="set-fold__summary">更多：安静时段</summary>
+                <div className="set-fold__body set-surf-quiet">
+                  <label className="set-surf-time">
+                    <span>开始</span>
+                    <input
+                      className="field"
+                      type="time"
+                      value={surf.quiet.start}
+                      aria-label="安静时段开始"
+                      onChange={(event) => void saveSurf({ quiet: { start: event.target.value } })}
+                    />
+                  </label>
+                  <label className="set-surf-time">
+                    <span>结束</span>
+                    <input
+                      className="field"
+                      type="time"
+                      value={surf.quiet.end}
+                      aria-label="安静时段结束"
+                      onChange={(event) => void saveSurf({ quiet: { end: event.target.value } })}
+                    />
+                  </label>
+                  <p className="set-surf-quiet__hint">这段时间她不出门，也不主动发消息。</p>
+                </div>
+              </details>
+
+              <p className="set-surf-quota">
+                她自己去逛也会用贝壳：看一个视频 20 个，翻一个网页 3 个。贝壳少于一成时她会先歇着。
+              </p>
+            </>
+          )}
+          {surfError && <p className="set-row__bad" role="alert">{surfError}</p>}
+        </SettingGroup>
+
+        <SettingGroup title="她的见闻" note="她自己逛回来的东西都收在这里。">
+          <SettingRow icon="postcard" title="看看她逛到了什么" desc="剪报墙：按天排，可以搜，也可以一条条忘掉。">
+            <Link className="btn btn--secondary" to="/surf">
+              去看看
+            </Link>
           </SettingRow>
         </SettingGroup>
 
