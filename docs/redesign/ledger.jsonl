@@ -3,3 +3,4 @@
 {"at":"2026-11-07T02:22:00+11:00","phase":"P0","round":2,"verdict":"doing","gates":{},"score":null,"note":"§5.2-5.7 手绘基元（ink/InkLine/InkFrame/Tape/Stamp/Tide/Icon/WhaleSticker/CompanionCorner）交给子代理，任务卡限定行区间与写入路径","pr":51}
 {"at":"2026-11-07T02:30:00+11:00","phase":"PB","round":1,"verdict":"pass","gates":{"api_typecheck":true,"api_test":"104/104","client_typecheck":true,"scope":"no-out-of-write"},"score":null,"note":"B1-B6 全做；纯 Node zip；旧库自动迁移；docs/API.md 已补","pr":52}
 {"at":"2026-11-07T02:31:00+11:00","phase":"P0","round":3,"verdict":"doing","gates":{},"score":null,"note":"截图暴露四处缺陷已退回子代理修（InkFrame/Stamp/WhaleSticker 形/ Tide 层级）","pr":51}
+{"at":"2026-11-07T03:05:00+11:00","phase":"P0","round":5,"verdict":"doing","gates":{"typecheck":true,"build":true,"contrast":"90/90","font_kb":195.2},"score":null,"note":"四处硬伤返修完成并重拍 8 张；WhaleSticker 仍读作鱼，最后一轮只改轮廓；P1 已从 P0 分支（stacked）开工","pr":51}
