@@ -1,6 +1,6 @@
 /* ============================================================================
    日记页（规范 §7.2 + §6.10 的 DateStamp / IndexTabs / MiniCalendar / QuotaMeter）
-   规矩：颜色、圆角、间距、时长全部走 tokens；不出现 gradient / backdrop-filter / 骨架屏条纹。
+   规矩：颜色、圆角、间距、时长全部走 tokens；不出现渐变 / 毛玻璃 / 骨架屏条纹。
    ============================================================================ */
 
 .diary-page {
@@ -210,7 +210,7 @@
   overflow-wrap: anywhere;
 }
 
-/* 横线本：SVG 逐行画线（不用 gradient），行高与正文一致 */
+/* 横线本：SVG 逐行画线（不用渐变），行高与正文一致 */
 .leaf__paper {
   position: relative;
   padding: 0 0 var(--sp-1);
@@ -298,7 +298,7 @@
   justify-content: center;
   gap: var(--sp-2);
   min-width: 56px;
-  min-height: 48px;
+  min-height: var(--hit);
   padding: 0 var(--sp-4);
   border-radius: var(--r-md);
   background: var(--sheet);
