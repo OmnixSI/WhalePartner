@@ -554,3 +554,20 @@
 :root[data-motion="calm"] .onb,
 :root[data-motion="calm"] .set-toast,
 :root[data-motion="calm"] .set-dialog { animation: none; }
+
+/* 开关类设置整行可点（规范：触控目标是"行"而不是那颗小圆点） */
+.set-row[data-tap="on"] { cursor: pointer; }
+.set-row[data-tap="on"]:hover { background: var(--accent-wash); }
+.set-row[data-tap="on"]:active { transform: translateY(1px); }
+
+/* 最近一次保存的回执：把"点了没反应"变成一句看得见的话 */
+.set-receipt {
+  display: inline-block;
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-xs);
+  font-size: var(--fs-micro);
+  color: var(--ink-mute);
+  border: var(--stroke-1) solid var(--line);
+}
+.set-receipt[data-ok="off"] { color: var(--alert); border-color: var(--alert); }

@@ -56,6 +56,8 @@ export function SettingsPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [surf, setSurf] = useState<SurfSettings | null>(null);
   const [surfError, setSurfError] = useState("");
+  /** 最近一次保存的回执：让"点了没反应"变成看得见的一句话 */
+  const [surfNote, setSurfNote] = useState<{ at: string; ok: boolean; text: string } | null>(null);
 
   const offline = backend === "down";
 
@@ -120,11 +122,15 @@ export function SettingsPage() {
     const before = surf;
     setSurf({ ...surf, ...patch, quiet: { ...surf.quiet, ...(patch.quiet ?? {}) } });
     setSurfError("");
+    const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     try {
       setSurf(await putSurfSettings(character.id, patch));
+      setSurfNote({ at: stamp, ok: true, text: "已保存" });
     } catch (error) {
       setSurf(before);
-      setSurfError(error instanceof Error ? error.message : "现在存不上，待会儿再试。");
+      const why = error instanceof Error ? error.message : "现在存不上，待会儿再试。";
+      setSurfError(why);
+      setSurfNote({ at: stamp, ok: false, text: why });
     }
   };
 
@@ -199,14 +205,21 @@ export function SettingsPage() {
           </SettingRow>
         </SettingGroup>
 
-        <SettingGroup title="让她自己逛" note="她可以自己去看看视频、翻翻网页，回来讲给你听。">
+        <SettingGroup
+          title="让她自己逛"
+          note={<>她可以自己去看看视频、翻翻网页，回来讲给你听。{surfNote && (
+            <span className="set-receipt" data-ok={surfNote.ok ? "on" : "off"} role="status">
+              {surfNote.at} {surfNote.text}
+            </span>
+          )}</>}
+        >
           {surf === null ? (
             <SettingRow title="自己去逛" desc="现在拿不到她的逛设置。" icon="phone">
               <span className="set-offline">还没接上</span>
             </SettingRow>
           ) : (
             <>
-              <SettingRow icon="phone" title="自己去逛" desc="开了之后，她会自己去看视频、翻网页，回来讲给你听。">
+              <SettingRow icon="phone" title="自己去逛" desc="开了之后，她会自己去看视频、翻网页，回来讲给你听。" onActivate={() => void saveSurf({ enabled: !surf.enabled })}>
                 <Switch label="让她自己逛" checked={surf.enabled} onChange={(next) => void saveSurf({ enabled: next })} />
               </SettingRow>
 
@@ -235,7 +248,7 @@ export function SettingsPage() {
                 左边是看视频（B 站），右边是翻网页。
               </p>
 
-              <SettingRow title="讲给我听" desc="逛到有意思的，她会在聊天里告诉我。">
+              <SettingRow title="讲给我听" desc="逛到有意思的，她会在聊天里告诉我。" onActivate={() => void saveSurf({ shareToChat: !surf.shareToChat })}>
                 <Switch label="讲给我听" checked={surf.shareToChat} onChange={(next) => void saveSurf({ shareToChat: next })} />
               </SettingRow>
             </>
