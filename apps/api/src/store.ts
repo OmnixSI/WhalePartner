@@ -1,6 +1,5 @@
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { openAppDatabase } from "./db.ts";
 
 export type StoredRole = "user" | "assistant";
 
@@ -11,6 +10,18 @@ export interface StoredMessage {
   emotion: string | null;
   character: string;
   createdAt: string;
+  /** B6.3：随消息附带的材料（例如看过的视频）；没有就是 null。 */
+  attachment: unknown;
+}
+
+interface MessageRow {
+  id: number;
+  role: StoredRole;
+  content: string;
+  emotion: string | null;
+  character: string;
+  createdAt: string;
+  attachmentJson: string | null;
 }
 
 /** 聊天记录。本地原型用 node:sqlite 单文件；":memory:" 用于测试。 */
@@ -18,46 +29,30 @@ export class ChatStore {
   readonly #db: DatabaseSync;
 
   constructor(path: string) {
-    if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-    this.#db = new DatabaseSync(path);
-    this.#db.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        role TEXT NOT NULL CHECK (role IN ('user','assistant')),
-        content TEXT NOT NULL,
-        emotion TEXT,
-        character TEXT NOT NULL DEFAULT 'whale',
-        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-      );
-    `);
-    this.#db.exec(`
-      CREATE TABLE IF NOT EXISTS character_notes (
-        character TEXT PRIMARY KEY,
-        text TEXT NOT NULL,
-        assistant_count INTEGER NOT NULL DEFAULT 0,
-        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-      );
-    `);
-    // 旧库（没有 character 列）补上，已有记录归给默认角色。
-    const columns = this.#db.prepare("PRAGMA table_info(messages)").all() as unknown as Array<{ name: string }>;
-    if (!columns.some((column) => column.name === "character")) {
-      this.#db.exec("ALTER TABLE messages ADD COLUMN character TEXT NOT NULL DEFAULT 'whale'");
-    }
+    this.#db = openAppDatabase(path);
   }
 
-  add(role: StoredRole, content: string, emotion: string | null = null, character = "whale"): StoredMessage {
+  /** 同一个库里的额度、昵称、记忆编号也通过它读写。 */
+  get db(): DatabaseSync {
+    return this.#db;
+  }
+
+  add(role: StoredRole, content: string, emotion: string | null = null, character = "whale", attachment: unknown = null): StoredMessage {
     const result = this.#db
-      .prepare("INSERT INTO messages (role, content, emotion, character) VALUES (?, ?, ?, ?) RETURNING id, role, content, emotion, character, created_at AS createdAt")
-      .get(role, content, emotion, character) as unknown as StoredMessage;
-    return { ...result };
+      .prepare("INSERT INTO messages (role, content, emotion, character, attachment_json) VALUES (?, ?, ?, ?, ?) RETURNING id, role, content, emotion, character, created_at AS createdAt")
+      .get(role, content, emotion, character, attachment === null ? null : JSON.stringify(attachment)) as unknown as Omit<StoredMessage, "attachment">;
+    return { ...result, attachment };
   }
 
   /** 某个角色最近 limit 条，按时间从旧到新返回。每个角色有自己的聊天记录。 */
   recent(limit: number, character = "whale"): StoredMessage[] {
     const rows = this.#db
-      .prepare("SELECT id, role, content, emotion, character, created_at AS createdAt FROM messages WHERE character = ? ORDER BY id DESC LIMIT ?")
-      .all(character, limit) as unknown as StoredMessage[];
-    return rows.map((row) => ({ ...row })).reverse();
+      .prepare("SELECT id, role, content, emotion, character, created_at AS createdAt, attachment_json AS attachmentJson FROM messages WHERE character = ? ORDER BY id DESC LIMIT ?")
+      .all(character, limit) as unknown as MessageRow[];
+    return rows.map((row) => {
+      const { attachmentJson, ...rest } = row;
+      return { ...rest, attachment: parseAttachment(attachmentJson) };
+    }).reverse();
   }
 
   /** 角色自己的近况小记（定期反思写下，会慢慢变）。 */
@@ -87,5 +82,14 @@ export class ChatStore {
 
   close() {
     this.#db.close();
+  }
+}
+
+function parseAttachment(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return null;
   }
 }

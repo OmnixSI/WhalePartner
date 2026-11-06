@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { loadConfig, type ApiConfig } from "./config.ts";
+import { journalTimeFromCron, loadConfig, type ApiConfig } from "./config.ts";
 import { ChatInputError, runChat, validateUserMessage } from "./chat.ts";
 import { applyCors, readJsonBody, sendJson, sendSse, startSse } from "./http.ts";
 import { createChatProvider } from "./llm/index.ts";
@@ -14,6 +14,12 @@ import { createWebService, type WebService } from "./web-service.ts";
 import { DiaryStore } from "./diary-store.ts";
 import { DiaryService } from "./diary-service.ts";
 import { startDiaryScheduler } from "./diary-scheduler.ts";
+import { buildExport, exportFileName, writeExport } from "./export.ts";
+import { beginExclusiveLock, BUSY_MESSAGE, isExclusiveActive } from "./locks.ts";
+import { clearAllData } from "./maintenance.ts";
+import { ensureSeq, seqOf } from "./memory-seq.ts";
+import { getNickname, NicknameError, setNickname } from "./profile.ts";
+import { QuotaExceededError, QuotaService, UNIT_COSTS } from "./quota.ts";
 
 export interface ServerDeps {
   config: ApiConfig;
@@ -28,6 +34,8 @@ export interface ServerDeps {
   web?: WebService;
   /** 各平台账号接入（目前只有 B 站）。 */
   accounts?: AccountService;
+  /** 额度服务（B1）；不传就按 config 就地建一个，测试可以直接注入自己算的时间。 */
+  quota?: QuotaService;
 }
 
 function healthBody(deps: ServerDeps) {
@@ -39,6 +47,9 @@ function healthBody(deps: ServerDeps) {
     model: provider.model,
     fallbacks: provider.providers.slice(1).map((item) => item.id),
     memory: deps.memory?.status?.() ?? { enabled: Boolean(deps.memory), state: deps.memory ? "ready" : "idle" },
+    // B6.1：日记计划时间，界面空态文案用；没接日记任务就不带这一项。
+    // 表达式不是“每天固定时刻”时 journalTime 是 null。
+    ...(deps.diary ? { schedule: { journalTime: journalTimeFromCron(deps.config.diaryCron) } } : {}),
   };
 }
 
@@ -53,7 +64,9 @@ async function probe({ provider }: ServerDeps) {
   }
 }
 
-async function handleChat(deps: ServerDeps, request: IncomingMessage, response: ServerResponse) {
+async function handleChat(deps: ServerDeps, quota: QuotaService, request: IncomingMessage, response: ServerResponse) {
+  // B2：导出、清空全部数据期间挡住聊天写入，避免写到一半被改。
+  if (isExclusiveActive()) return sendJson(response, 409, { error: "busy", message: BUSY_MESSAGE });
   let text: string;
   let character: CharacterId = DEFAULT_CHARACTER;
   try {
@@ -69,6 +82,14 @@ async function handleChat(deps: ServerDeps, request: IncomingMessage, response: 
     return;
   }
 
+  // B1：额度用完时在开流之前返回 402，前端好显示“这个月的贝壳用完了”。
+  try {
+    quota.assertAvailable(UNIT_COSTS.chat);
+  } catch (error) {
+    if (error instanceof QuotaExceededError) return sendJson(response, 402, { error: "quota_exceeded", message: error.message });
+    throw error;
+  }
+
   // 客户端断开就中止上游请求，避免白白消耗额度。
   const abort = new AbortController();
   response.on("close", () => {
@@ -77,7 +98,7 @@ async function handleChat(deps: ServerDeps, request: IncomingMessage, response: 
 
   startSse(response);
   try {
-    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory, character, video: deps.video, web: deps.web }, text, abort.signal)) {
+    for await (const event of runChat({ provider: deps.provider, store: deps.store, memory: deps.memory, character, video: deps.video, web: deps.web, quota, nickname: getNickname(deps.store.db) }, text, abort.signal)) {
       const { type, ...data } = event;
       sendSse(response, type, data);
     }
@@ -103,6 +124,8 @@ async function handleVideoSummary(deps: ServerDeps, request: IncomingMessage, re
   try {
     const url = text((await readJsonBody(request)).url, 500, "url")!;
     const result = await summarizeVideo(deps.video, url);
+    // B1：看完一个视频记 20 个贝壳。
+    deps.quota?.record("video", UNIT_COSTS.video);
     let remembered = false;
     if (deps.memory) {
       try {
@@ -152,7 +175,22 @@ async function handleMemories(deps: ServerDeps, request: IncomingMessage, respon
   if (!memory) return sendJson(response, 503, { error: "记忆功能未启用。" });
   try {
     if (request.method === "GET" && url.pathname === "/api/memories") {
-      return sendJson(response, 200, { entries: await memory.list() });
+      const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
+      if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" });
+      const entries = await memory.list();
+      // B4：惰性补编号（旧库第一次打开记忆页时按历史顺序回填）。
+      const assigned = ensureSeq(deps.store.db, character, entries);
+      return sendJson(response, 200, { entries: entries.map((entry) => ({ ...entry, seq: seqOf(assigned, entry) })) });
+    }
+    const one = /^\/api\/memories\/([^/]+)$/.exec(url.pathname);
+    if (request.method === "GET" && one) {
+      const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
+      if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" });
+      const entries = await memory.list();
+      const entry = entries.find((item) => item.id === decodeURIComponent(one[1]));
+      if (!entry) return sendJson(response, 404, { error: "not_found", message: "没有找到这条记忆。" });
+      const assigned = ensureSeq(deps.store.db, character, entries);
+      return sendJson(response, 200, { entry: { ...entry, seq: seqOf(assigned, entry) } });
     }
     if (request.method === "DELETE" && url.pathname.startsWith("/api/memories/") && url.pathname !== "/api/memories/experience") {
       await memory.remove(decodeURIComponent(url.pathname.slice("/api/memories/".length)));
@@ -210,7 +248,74 @@ async function handleDiary(deps: ServerDeps, request: IncomingMessage, response:
   }
 }
 
+/** B5：昵称读写的形状固定 `{"nickname": string | null}`。 */
+async function handleProfile(deps: ServerDeps, request: IncomingMessage, response: ServerResponse) {
+  if (request.method === "GET") return sendJson(response, 200, { nickname: getNickname(deps.store.db) });
+  if (request.method !== "PUT") return sendJson(response, 405, { error: "method_not_allowed", message: "这个接口只接受 GET 和 PUT。" });
+  try {
+    const body = await readJsonBody(request);
+    return sendJson(response, 200, { nickname: setNickname(deps.store.db, body.nickname) });
+  } catch (error) {
+    if (error instanceof NicknameError) return sendJson(response, 400, { error: "invalid_nickname", message: error.message });
+    if (error instanceof SyntaxError) return sendJson(response, 400, { error: "invalid_json", message: "请求体不是有效的 JSON。" });
+    throw error;
+  }
+}
+
+/**
+ * B2：导出全部数据。POST 写进 `EXPORT_DIR` 并返回路径，GET 直接把同一个 zip 流给浏览器。
+ * 导出期间持有排他锁，聊天写入会拿到 409。
+ */
+async function handleExport(deps: ServerDeps, request: IncomingMessage, response: ServerResponse) {
+  const exportDeps = { db: deps.store.db, memory: deps.memory, exportDir: deps.config.exportDir };
+  if (request.method === "POST") {
+    const release = beginExclusiveLock();
+    try {
+      return sendJson(response, 200, await writeExport(exportDeps));
+    } finally {
+      release();
+    }
+  }
+  if (request.method !== "GET") return sendJson(response, 405, { error: "method_not_allowed", message: "这个接口只接受 GET 和 POST。" });
+  const release = beginExclusiveLock();
+  try {
+    const bundle = await buildExport(exportDeps);
+    response.writeHead(200, {
+      "content-type": "application/zip",
+      "content-disposition": `attachment; filename="${exportFileName(bundle.at)}"`,
+      "content-length": bundle.buffer.length,
+      "cache-control": "no-store",
+    });
+    response.end(bundle.buffer);
+  } finally {
+    release();
+  }
+}
+
+/** B2：删除全部数据。请求体必须带 `{"confirm":"DELETE_ALL"}`。 */
+async function handleDeleteAll(deps: ServerDeps, request: IncomingMessage, response: ServerResponse) {
+  if (request.method !== "DELETE") return sendJson(response, 405, { error: "method_not_allowed", message: "这个接口只接受 DELETE。" });
+  let body: Record<string, unknown>;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    return sendJson(response, 400, { error: "invalid_json", message: "请求体不是有效的 JSON。" });
+  }
+  if (body.confirm !== "DELETE_ALL") {
+    return sendJson(response, 400, { error: "confirm_required", message: '删除全部数据前需要确认：请在请求体里带上 {"confirm":"DELETE_ALL"}。' });
+  }
+  if (isExclusiveActive()) return sendJson(response, 409, { error: "busy", message: BUSY_MESSAGE });
+  const release = beginExclusiveLock();
+  try {
+    const deleted = await clearAllData({ db: deps.store.db, memory: deps.memory, accounts: deps.accounts });
+    return sendJson(response, 200, { ok: true, deleted });
+  } finally {
+    release();
+  }
+}
+
 export function createApiServer(deps: ServerDeps): Server {
+  const quota = deps.quota ?? new QuotaService(deps.store.db, deps.config);
   return createServer(async (request, response) => {
     applyCors(request, response);
     try {
@@ -222,6 +327,24 @@ export function createApiServer(deps: ServerDeps): Server {
       if (request.method === "GET" && url.pathname === "/api/health") {
         const body = healthBody(deps);
         sendJson(response, 200, url.searchParams.get("probe") === "1" ? { ...body, probe: await probe(deps) } : body);
+        return;
+      }
+      // B1：额度透明表。
+      if (request.method === "GET" && url.pathname === "/api/quota") {
+        return sendJson(response, 200, quota.summary());
+      }
+      // B5：她怎么称呼你。
+      if (url.pathname === "/api/profile") {
+        await handleProfile(deps, request, response);
+        return;
+      }
+      // B2：导出与删除全部。
+      if (url.pathname === "/api/export") {
+        await handleExport(deps, request, response);
+        return;
+      }
+      if (url.pathname === "/api/data") {
+        await handleDeleteAll(deps, request, response);
         return;
       }
       if (url.pathname === "/api/accounts" || url.pathname.startsWith("/api/accounts/")) {
@@ -259,7 +382,7 @@ export function createApiServer(deps: ServerDeps): Server {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/chat") {
-        await handleChat(deps, request, response);
+        await handleChat(deps, quota, request, response);
         return;
       }
       sendJson(response, 404, { error: "未找到。" });
@@ -280,8 +403,9 @@ if (import.meta.main) {
     ? new LazyMemoryStore({ dataDir: config.memoryDir, provider })
     : undefined;
   const video = createVideoService();
-  const diary = new DiaryService({ store: diaryStore, provider, memory, video });
-  const server = createApiServer({ config, provider, store, memory, video, diary, web: createWebService(), accounts: createAccountService() });
+  const quota = new QuotaService(store.db, config);
+  const diary = new DiaryService({ store: diaryStore, provider, memory, video, quota, nickname: () => getNickname(store.db) });
+  const server = createApiServer({ config, provider, store, memory, video, diary, web: createWebService(), accounts: createAccountService(), quota });
   let stopDiaryScheduler = () => {};
   server.on("close", () => {
     stopDiaryScheduler();
@@ -296,5 +420,9 @@ if (import.meta.main) {
     console.log(`日记计划：${config.diaryCron}（本机时区；API 运行时生效）`);
     console.log(`模型链：${provider.providers.map((item) => `${item.id}(${item.model})`).join(" → ")}`);
     if (lan) console.log("已开放局域网访问。没有登录保护，只在可信网络里使用。");
+    // B3：启动后异步补齐最近 30 条没有心情的旧日记；失败不影响服务。
+    void diary.backfillMood().catch((error: unknown) => {
+      console.warn("回填日记心情失败：", error instanceof Error ? error.message : error);
+    });
   });
 }

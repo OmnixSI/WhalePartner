@@ -7,6 +7,8 @@ export interface HistoryMessage {
   content: string;
   emotion: string | null;
   createdAt: string;
+  /** B6.3：随消息附带的材料（例如看过的视频）；没有就是 null。 */
+  attachment?: unknown | null;
 }
 
 export type ChatStreamEvent =

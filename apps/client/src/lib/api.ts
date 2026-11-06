@@ -7,6 +7,8 @@ export interface Health {
   ok: boolean;
   provider?: string;
   model?: string;
+  /** B6.1：日记计划时间；没接日记任务时后端不带这一项。 */
+  schedule?: { journalTime: string | null };
 }
 
 /** 后端状态探测。A2 之前服务不存在时返回 null，界面显示“未连接”。 */

@@ -78,3 +78,13 @@ export function buildSystemPrompt(context: PersonaContext = {}, character: Chara
   if (context.situation?.trim()) parts.push(context.situation.trim());
   return parts.join("\n\n");
 }
+
+/**
+ * 把用户希望被称呼的名字注入人格提示（B5）。
+ * 没设昵称时原样返回；设了就在末尾追加一段，要求自然、偶尔使用。
+ */
+export function withUserName(core: string, nickname: string | null | undefined): string {
+  const name = nickname?.trim();
+  if (!name) return core;
+  return `${core}\n\n【对方】\n对方希望你称呼 TA 为「${name}」。自然地偶尔使用即可，不要每句都叫，也不要解释这个称呼的来源。`;
+}

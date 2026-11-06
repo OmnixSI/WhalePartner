@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 export interface OpenAiCompatibleConfig {
@@ -17,6 +18,12 @@ export interface ApiConfig {
   backup?: OpenAiCompatibleConfig;
   codexFallback: boolean;
   llmTimeoutMs: number;
+  /** B1：每个自然月的“贝壳”总量；目前只记账不拦截。 */
+  quotaMonthlyUnits: number;
+  /** B1：`QUOTA_ENFORCE=1` 时额度不够会返回 402。 */
+  quotaEnforce: boolean;
+  /** B2：导出 zip 落在哪里，默认 `~/Downloads`。 */
+  exportDir: string;
 }
 
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
@@ -62,5 +69,21 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
         : undefined,
     codexFallback: text(env.CODEX_FALLBACK) !== "0",
     llmTimeoutMs: positiveInt(env.LLM_TIMEOUT_MS, 30000, "LLM_TIMEOUT_MS"),
+    quotaMonthlyUnits: positiveInt(env.QUOTA_MONTHLY_UNITS, 3000, "QUOTA_MONTHLY_UNITS"),
+    quotaEnforce: text(env.QUOTA_ENFORCE) === "1",
+    exportDir: text(env.EXPORT_DIR) ?? resolve(homedir(), "Downloads"),
   };
+}
+
+/**
+ * 把日记的 cron 表达式读成人能看懂的时间（B6.1）：
+ * 只有 `M H * * *` 这种每天固定时刻的写法能转成 `"HH:MM"`，其余返回 null。
+ */
+export function journalTimeFromCron(expression: string): string | null {
+  const match = /^(\d{1,2})\s+(\d{1,2})\s+\*\s+\*\s+\*$/.exec(expression.trim());
+  if (!match) return null;
+  const minute = Number(match[1]);
+  const hour = Number(match[2]);
+  if (minute > 59 || hour > 23) return null;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }

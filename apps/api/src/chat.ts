@@ -7,7 +7,8 @@ import { decayForPrompt } from "./memory/decay.ts";
 import { reflect } from "./reflect.ts";
 import { acquireVideoLock, extractVideoTarget, sharedParagraph, VideoError, type VideoService } from "./video-service.ts";
 import { extractWebTarget, WebError, type WebPage, type WebService } from "./web-service.ts";
-import { buildSystemPrompt, CHARACTERS, DEFAULT_CHARACTER, type CharacterId } from "./persona/persona.ts";
+import { buildSystemPrompt, CHARACTERS, DEFAULT_CHARACTER, withUserName, type CharacterId } from "./persona/persona.ts";
+import { UNIT_COSTS, type QuotaService } from "./quota.ts";
 import type { ChatStore } from "./store.ts";
 
 export const MAX_MESSAGE_CHARS = 2000;
@@ -32,6 +33,10 @@ export interface ChatDeps {
   video?: VideoService;
   /** 提供后，用户消息里的普通网页链接会被读完再聊。 */
   web?: WebService;
+  /** 用户希望被称呼的名字（B5）；空字符串和 null 都表示没设。 */
+  nickname?: string | null;
+  /** 额度服务（B1）：每次会有模型调用的动作记一笔贝壳。 */
+  quota?: QuotaService;
 }
 
 const MEMORY_TIMEOUT_MS = 8000;
@@ -133,6 +138,7 @@ async function* watchVideo(deps: ChatDeps, character: CharacterId, service: Vide
       }
     }
     queueLearning(deps, character, { title: summary.title, text: summary.summary }, summary.bvid);
+    deps.quota?.record("video", UNIT_COSTS.video, { character });
     return videoMaterial(summary, shared);
   } catch (error) {
     const reason = error instanceof VideoError ? error.message : "处理视频时出了点问题。";
@@ -182,6 +188,7 @@ async function* readWeb(deps: ChatDeps, character: CharacterId, service: WebServ
       }
     }
     queueLearning(deps, character, { title: page.title, text: page.text }, `web:${key}`);
+    deps.quota?.record("web", UNIT_COSTS.web, { character });
     return ["## 这一轮的情况", WEB_INSTRUCTIONS, "<web_material>", `标题：${page.title}`, summary, "</web_material>"].join("\n");
   } catch (error) {
     const reason = error instanceof WebError ? error.message : "读这个网页时出了点问题。";
@@ -197,6 +204,8 @@ async function* readWeb(deps: ChatDeps, character: CharacterId, service: WebServ
 export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
   const { provider, store, memory } = deps;
   const character = deps.character ?? DEFAULT_CHARACTER;
+  // 打开拦截且额度不够时直接抛 QuotaExceededError，路由层转成 402。
+  deps.quota?.assertAvailable(UNIT_COSTS.chat);
   const userMessage = store.add("user", userText, null, character);
 
   let facts: string[] = [];
@@ -225,7 +234,8 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   }
 
   const history: ChatMessage[] = store.recent(HISTORY_LIMIT, character).map((message) => ({ role: message.role, content: message.content }));
-  const messages: ChatMessage[] = [{ role: "system", content: buildSystemPrompt({ memories: facts, experiences, learned, note: store.getNote(character)?.text, situation }, character) }, ...history];
+  const core = buildSystemPrompt({ memories: facts, experiences, learned, note: store.getNote(character)?.text, situation }, character);
+  const messages: ChatMessage[] = [{ role: "system", content: withUserName(core, deps.nickname ?? null) }, ...history];
 
   const filter = new EmotionFilter();
   let reply = "";
@@ -265,6 +275,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   const emotion = first ?? "neutral";
   if (!reply.trim()) throw new Error("模型没有返回内容。");
   const saved = store.add("assistant", reply.trimEnd(), emotion, character);
+  deps.quota?.record("chat", UNIT_COSTS.chat, { character });
   if (memory) queueRemember(memory, [{ role: "user", content: userText }, { role: "assistant", content: reply.trimEnd() }]);
   queueReflection(deps, character, false);
   yield { type: "done", messageId: saved.id, emotion, provider: usedProvider, usage };

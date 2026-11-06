@@ -8,6 +8,13 @@ export interface MemoryEntry {
   source?: string;
   title?: string;
   url?: string;
+  /** B4：图鉴编号，按创建顺序分配、永不复用；消息类为 null。 */
+  seq: number | null;
+}
+
+/** 卡片上的 `No.0042`；消息类（seq 为 null）不显示编号。 */
+export function formatMemoryNo(seq: number | null): string | null {
+  return seq === null ? null : `No.${String(seq).padStart(4, "0")}`;
 }
 
 export async function fetchMemories(signal?: AbortSignal): Promise<MemoryEntry[]> {

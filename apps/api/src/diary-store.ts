@@ -2,6 +2,8 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { normalizeBilibiliInput } from "./bilibili.ts";
+import { addColumn } from "./db.ts";
+import type { DiaryMeta } from "./diary-mood.ts";
 import type { VideoSummary } from "./video-service.ts";
 
 export type DiaryItemStatus = "pending" | "processing" | "failed" | "done" | "duplicate";
@@ -15,6 +17,12 @@ export interface DiaryItem {
   sourceUrl: string | null;
   summary: string | null;
   diaryText: string | null;
+  /** 她这一天的心情（B3）；旧数据或还没生成时是 null。 */
+  mood: string | null;
+  /** 她“心里的天气”（B3）。 */
+  weather: string | null;
+  /** 日记小标题（B3），最多 12 个字。 */
+  diaryTitle: string | null;
   status: DiaryItemStatus;
   errorStage: "video" | "diary" | null;
   error: string | null;
@@ -27,7 +35,8 @@ export interface DiaryItem {
 
 const SELECT_ITEM = `
   SELECT id, input_url AS inputUrl, bvid, title, source_url AS sourceUrl,
-         summary, diary_text AS diaryText, status, error_stage AS errorStage,
+         summary, diary_text AS diaryText, mood, weather,
+         diary_title AS diaryTitle, status, error_stage AS errorStage,
          error, memory_status AS memoryStatus, memory_error AS memoryError,
          created_at AS createdAt, processed_at AS processedAt,
          duplicate_of AS duplicateOf
@@ -65,6 +74,10 @@ export class DiaryStore {
       UPDATE diary_items SET status = 'pending', error = NULL, error_stage = NULL
         WHERE status = 'processing';
     `);
+    // B3：旧库补三列，旧数据是 NULL。
+    addColumn(this.#db, "diary_items", "mood", "TEXT");
+    addColumn(this.#db, "diary_items", "weather", "TEXT");
+    addColumn(this.#db, "diary_items", "diary_title", "TEXT");
   }
 
   enqueue(input: string): { item: DiaryItem; created: boolean } {
@@ -123,6 +136,21 @@ export class DiaryStore {
       WHERE id = ?
     `).run(text, id);
     return this.get(id)!;
+  }
+
+  /** 保存心情、心里的天气和小标题（B3）。 */
+  saveDiaryMeta(id: number, meta: DiaryMeta): DiaryItem {
+    this.#db.prepare("UPDATE diary_items SET mood = ?, weather = ?, diary_title = ? WHERE id = ?")
+      .run(meta.mood, meta.weather, meta.title, id);
+    return this.get(id)!;
+  }
+
+  /** 启动回填用：最近 30 条有正文但还没有心情的日记，新的在前。 */
+  listNeedingMood(limit = 30): DiaryItem[] {
+    const rows = this.#db
+      .prepare(`${SELECT_ITEM} WHERE diary_text IS NOT NULL AND mood IS NULL ORDER BY processed_at DESC, id DESC LIMIT ?`)
+      .all(limit) as unknown as DiaryItem[];
+    return rows.map((row) => ({ ...row }));
   }
 
   markDuplicate(id: number, existing: DiaryItem) {
