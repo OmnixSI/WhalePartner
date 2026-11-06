@@ -4,6 +4,17 @@ import { indexMessage } from "./search-index.ts";
 import { matchExpression, timeWindow } from "./search.ts";
 import type { ArchiveHit, ChatSession, StoredMessage, StoredRole } from "./types.ts";
 
+
+/** 行 → 消息：把 attachment_json 解析成 attachment，别把裸列名漏给上层。 */
+function mapMessage(row: unknown): StoredMessage {
+  const { attachment_json: raw, ...rest } = row as { attachment_json?: string | null } & Record<string, unknown>;
+  let attachment: unknown | null = null;
+  if (typeof raw === "string" && raw.length > 0) {
+    try { attachment = JSON.parse(raw) } catch { attachment = null }
+  }
+  return { ...(rest as unknown as StoredMessage), attachment };
+}
+
 export class SessionRepository {
   private readonly db: DatabaseSync;
 
@@ -64,7 +75,7 @@ export class SessionRepository {
     const result = this.db.prepare(`
       INSERT INTO messages (role, content, emotion, character, session_id)
       VALUES (?, ?, ?, ?, ?)
-      RETURNING id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
+      RETURNING id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
     `).get(role, content, emotion, character, session.id) as unknown as StoredMessage;
     indexMessage(this.db, result.id, content);
     if (role === "user") {
@@ -82,37 +93,37 @@ export class SessionRepository {
   recent(limit: number, character = "whale", sessionId?: string): StoredMessage[] {
     const where = sessionId ? "session_id = ?" : "character = ?";
     const rows = this.db.prepare(`
-      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
       FROM messages WHERE ${where} ORDER BY id DESC LIMIT ?
     `).all(sessionId ?? character, limit) as unknown as StoredMessage[];
-    return rows.map((row) => ({ ...row })).reverse();
+    return rows.map(mapMessage).reverse();
   }
 
   messagesBetween(sessionId: string, fromId: number, throughId: number): StoredMessage[] {
     const rows = this.db.prepare(`
-      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
       FROM messages WHERE session_id = ? AND id BETWEEN ? AND ? ORDER BY id
     `).all(sessionId, fromId, throughId) as unknown as StoredMessage[];
-    return rows.map((row) => ({ ...row }));
+    return rows.map(mapMessage);
   }
 
   messagesAround(sessionId: string, messageId: number, radius = 50): StoredMessage[] | undefined {
     const exists = this.db.prepare("SELECT 1 FROM messages WHERE id = ? AND session_id = ?").get(messageId, sessionId);
     if (!exists) return undefined;
     const before = this.db.prepare(`
-      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
       FROM messages WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?
     `).all(sessionId, messageId, radius) as unknown as StoredMessage[];
     const after = this.db.prepare(`
-      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
       FROM messages WHERE session_id = ? AND id >= ? ORDER BY id LIMIT ?
     `).all(sessionId, messageId, radius + 1) as unknown as StoredMessage[];
-    return [...before.reverse(), ...after].map((row) => ({ ...row }));
+    return [...before.reverse(), ...after].map(mapMessage);
   }
 
   message(id: number): StoredMessage | undefined {
     const row = this.db.prepare(`
-      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
       FROM messages WHERE id = ?
     `).get(id) as unknown as StoredMessage | undefined;
     return row ? { ...row } : undefined;

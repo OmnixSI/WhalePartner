@@ -3,6 +3,7 @@ import { ChatInputError } from "../chat.ts";
 import { readJsonBody, sendJson } from "../http.ts";
 import { archiveExperience } from "../memory/archive.ts";
 import type { MemoryStore } from "../memory/types.ts";
+import { DatabaseSync } from "node:sqlite";
 import type { ServerDeps } from "../server-types.ts";
 import { text } from "./input.ts";
 import { isCharacterId } from "../persona/persona.ts";
@@ -17,7 +18,9 @@ export async function handleMemoriesRoute(
   const memory = deps.memory;
   try {
     if (request.method === "GET" && url.pathname === "/api/memories") {
-      return await listMemories(deps.store, memory, response);
+      const who = url.searchParams.get("character") ?? "whale";
+      if (!isCharacterId(who)) throw new ChatInputError("未知的角色。");
+      return await listMemories(deps.store, memory, response, who);
     }
     if (request.method === "GET" && url.pathname === "/api/memories/explorer") {
       const character = url.searchParams.get("character") ?? "whale";
@@ -88,7 +91,37 @@ function dateBoundary(value: string | null, afterDay: boolean): string | undefin
   return date.toISOString();
 }
 
-async function listMemories(store: ServerDeps["store"], memory: MemoryStore | undefined, response: ServerResponse) {
+
+/** B4：图鉴编号。按 (角色, 条目) 惰性分配，删掉旧条目不回退，保证 No. 永不复用。 */
+function assignSeq(dbPath: string, character: string, refs: string[]): Map<string, number> {
+  const out = new Map<string, number>();
+  let db: DatabaseSync | undefined;
+  try {
+    db = new DatabaseSync(dbPath);
+    db.exec("CREATE TABLE IF NOT EXISTS memory_seq (character TEXT NOT NULL, ref TEXT NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY (character, ref))");
+    db.exec("CREATE TABLE IF NOT EXISTS memory_seq_counter (character TEXT PRIMARY KEY, next INTEGER NOT NULL)");
+    db.exec("INSERT OR IGNORE INTO memory_seq_counter(character, next) VALUES (?, 1)");
+    const existing = db.prepare("SELECT ref, seq FROM memory_seq WHERE character = ?").all(character) as unknown as Array<{ ref: string; seq: number }>;
+    for (const row of existing) out.set(row.ref, row.seq);
+    const missing = refs.filter((ref) => !out.has(ref));
+    if (missing.length > 0) {
+      const insert = db.prepare("INSERT INTO memory_seq(character, ref, seq) VALUES (?, ?, ?)");
+      for (const ref of missing) {
+        const row = db.prepare("UPDATE memory_seq_counter SET next = next + 1 WHERE character = ? RETURNING next").get(character) as { next: number } | undefined;
+        const seq = (row?.next ?? 1) - 1;
+        insert.run(character, ref, seq);
+        out.set(ref, seq);
+      }
+    }
+  } catch {
+    // 编号只是展示用：拿不到就不显示，别拖垮整页。
+  } finally {
+    db?.close();
+  }
+  return out;
+}
+
+async function listMemories(store: ServerDeps["store"], memory: MemoryStore | undefined, response: ServerResponse, character = "whale") {
   let entries: Awaited<ReturnType<MemoryStore["list"]>> = [];
   let vectorError: string | undefined;
   if (memory) {
@@ -130,12 +163,15 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
     lastError: experience.lastError,
   }));
   const indexedSources = new Set(archivedExperiences.map((experience) => experience.sourceId));
+  const all = [
+    ...facts,
+    ...experiences,
+    ...entries.filter((entry) => (!entry.sourceId || !indexedSources.has(entry.sourceId)) && !(entry.kind === "fact" && structuredValues.some((value) => entry.text.includes(value)))),
+  ];
+  // B4：给每条分配 No. 编号（同一角色内单调、删了也不复用）。
+  const seqs = assignSeq(store.dbPath, character, all.map((entry) => entry.id));
   return sendJson(response, 200, {
-    entries: [
-      ...facts,
-      ...experiences,
-      ...entries.filter((entry) => (!entry.sourceId || !indexedSources.has(entry.sourceId)) && !(entry.kind === "fact" && structuredValues.some((value) => entry.text.includes(value)))),
-    ],
+    entries: all.map((entry) => ({ ...entry, seq: seqs.get(entry.id) ?? null })),
     ...(vectorError ? { vectorError } : {}),
   });
 }

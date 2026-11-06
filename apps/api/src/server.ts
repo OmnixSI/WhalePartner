@@ -24,6 +24,9 @@ import { ChatSessionRequests } from "./routes/chat-session-requests.ts";
 import { handleDiaryRoute } from "./routes/diary.ts";
 import { handleJournalsRoute } from "./routes/journals.ts";
 import { handleMemoriesRoute } from "./routes/memories.ts";
+import { handleQuotaRoute } from "./routes/quota.ts";
+import { handleProfileRoute } from "./routes/profile.ts";
+import { handleExportRoute, dataMaintenanceBusy } from "./routes/export.ts";
 import { handleVideoSummaryRoute } from "./routes/video-summary.ts";
 import { handleSurf } from "./routes/surf.ts";
 import { createSurf } from "./surf/index.ts";
@@ -43,7 +46,16 @@ function healthBody(deps: ServerDeps) {
     fallbacks: provider.providers.slice(1).map((item) => item.id),
     memory: deps.memory?.status?.() ?? { enabled: Boolean(deps.memory), state: deps.memory ? "ready" : "idle" },
     memoryQueue: deps.store.memoryQueueStatus(),
+    // B6.4：把 cron 里的时间摊给人看（界面「她一般什么时候写日记」用它）。
+    schedule: { journalTime: cronClock(deps.config.diaryCron) },
   };
+}
+
+/** `0 20 * * *` → `20:00`；解析不了就原样返回。 */
+function cronClock(cron: string): string {
+  const [minute, hour] = cron.trim().split(/\s+/);
+  if (!/^\d{1,2}$/.test(minute ?? "") || !/^\d{1,2}$/.test(hour ?? "")) return cron;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 async function probe({ provider }: ServerDeps) {
@@ -86,6 +98,9 @@ export function createApiServer(deps: ServerDeps): Server {
         await handleSurf(deps, request, response, url);
         return;
       }
+      if (await handleQuotaRoute(deps, request, response, url)) return;
+      if (await handleProfileRoute(deps, request, response, url)) return;
+      if (await handleExportRoute(deps, request, response, url)) return;
       if (await handleChatHistoryRoute(deps, request, response, url, sessionRequests)) return;
       if (url.pathname === "/api/diary" || url.pathname.startsWith("/api/diary/")) {
         await handleDiaryRoute(deps, request, response, url);
@@ -104,6 +119,7 @@ export function createApiServer(deps: ServerDeps): Server {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/chat") {
+        if (dataMaintenanceBusy()) { sendJson(response, 409, { error: "busy", message: "正在导出或删除，稍等一下再聊。" }); return; }
         chatActivity.last = Date.now();
         await handleChatRoute(deps, request, response, sessionRequests);
         return;
