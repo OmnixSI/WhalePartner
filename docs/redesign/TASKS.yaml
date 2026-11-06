@@ -1,0 +1,166 @@
+# 阶段任务书。执行层只读「当前这一条」，不要通读整份。
+# 规范冻结副本：docs/redesign/spec/WhalePartner_UI重设计规范.md（行号稳定，按 spec_refs 用 sed 取）
+# status: todo | doing | review | done | blocked
+# attempts: 同一阶段已跑轮数（≤5，超过写差距报告后进下一阶段）
+# 写回规则：开始做改 doing；PR 开出改 review；G1–G5 全绿改 done。
+
+project: OmnixSI/WhalePartner
+tracker_issue: 42
+spec: docs/redesign/spec/WhalePartner_UI重设计规范.md
+order: [P0, PB, P1, P2, P3, P4, P5]
+
+phases:
+  - id: P0
+    issue: 43
+    title: tokens / 字体 / 纹理 / 手绘基元
+    status: todo
+    attempts: 0
+    branch: redesign/P0
+    worktree: ../whale-P0
+    spec_refs:
+      - "§0.2 十二条核心决定 · 12-31"
+      - "§4 设计 tokens（含 4.2 tokens.css 全文、4.3 对比度、4.4 characters.css、4.8 a11y.ts/theme.ts、4.9 base.css）· 148-428"
+      - "§5 纹理与插画系统（纸纹 / ink.ts / InkLine / InkFrame / Stamp / Tape / Tide / Icon / WhaleSticker）· 428-670"
+      - "§10.1-10.3 流程、依赖清单、文件改动清单 · 1350-1471"
+      - "§12.2-12.3 对比度与量化阈值 · 1915-1955"
+    done:
+      - "现有 4 个页面在新 tokens 下无破版（旧 class 仍工作）"
+      - "pnpm --dir apps/client typecheck 与 build 通过"
+      - "对比度脚本全绿（scripts/redesign/check-contrast.mjs）"
+      - "首屏字体 ≤220KB"
+      - "grep gradient 为 0"
+      - "纸纹验收（§5.1）"
+      - "亮/暗 × 4 角色的「样品页」隐藏路由 /__kit 截图入 PR"
+    checks:
+      - "pnpm --dir apps/client typecheck"
+      - "pnpm --dir apps/client build"
+      - "node scripts/redesign/check-contrast.mjs"
+      - "rg -n 'gradient|backdrop-filter' apps/client/src apps/client/public"
+
+  - id: PB
+    issue: 44
+    title: 后端补齐 B1-B6（额度 / 导出删除 / mood-weather / 编号 / 昵称 / schedule）
+    status: todo
+    attempts: 0
+    branch: redesign/PB
+    worktree: ../whale-PB
+    spec_refs:
+      - "§10.5 P-B 后端补齐（B1-B6 全部 schema 与测试要求）· 1487-1645"
+      - "§12.8 后端验收 · 2009-2028"
+      - "§10.4 P-B 完成定义 · 1471-1487"
+    done:
+      - "pnpm --dir apps/api typecheck 与 test 全绿，新增测试覆盖 §12.8"
+      - "每个接口按 §10.5 的请求/响应 schema 返回（测试逐字段断言）"
+      - "旧库打开自动迁移，旧数据可读，旧测试不改动即通过"
+      - "客户端 lib/quota.ts、data.ts、profile.ts 与类型扩展就绪（typecheck 通过）"
+      - "每个接口一条手动 curl 记录贴进 PR"
+    checks:
+      - "pnpm --dir apps/api typecheck"
+      - "pnpm --dir apps/api test"
+      - "pnpm --dir apps/client typecheck"
+
+  - id: P1
+    issue: 45
+    title: 聊天页重组（对话框 / 名字牌 / 思考 / 纸条 / 往回翻 / 输入条）
+    status: todo
+    attempts: 0
+    branch: redesign/P1
+    worktree: ../whale-P1
+    spec_refs:
+      - "§6 组件规范（Button/Field/Switch/Dialog/Thinking/NameTab/对话组件/ConfirmDialog）· 670-774"
+      - "§7.1 聊天页 · 799-904"
+      - "§8 动效规范 · 1251-1315"
+      - "§7.6 空/加载/错误状态总表 · 1130-1156"
+    done:
+      - "§7.1 的 8 个状态截图齐全"
+      - "无 chat__status、无三点 typing、无模型名"
+      - "流式有 ink-in 动效"
+      - "手机键盘弹起截图（模拟 visualViewport）"
+      - "axe 0 严重"
+    checks:
+      - "pnpm --dir apps/client typecheck && pnpm --dir apps/client build"
+      - "pnpm -w e2e -- chat.spec.ts（若已建）"
+      - "rg -n 'window.confirm|window.alert' apps/client/src"
+
+  - id: P2
+    issue: 46
+    title: 日记 + 记忆（日期戳 / 涂鸦 / 卡片编号 / 翻页 / 忘掉与撤回）
+    status: todo
+    attempts: 0
+    branch: redesign/P2
+    worktree: ../whale-P2
+    spec_refs:
+      - "§7.2 日记页 · 904-977"
+      - "§7.3 记忆页 · 977-1046"
+      - "§6.10 日记与记忆专用组件 · 764-774"
+    done:
+      - "§7.2、§7.3 状态截图齐全"
+      - "无 window.confirm"
+      - "编号来自 seq"
+      - "「忘掉」动画与撤回可用（Playwright 断言 5s 内撤回不发 DELETE）"
+    checks:
+      - "pnpm --dir apps/client typecheck && pnpm --dir apps/client build"
+      - "rg -n 'window.confirm' apps/client/src"
+
+  - id: P3
+    issue: 47
+    title: 设置 / 引导 / 老人模式 / CompanionCorner 全页接入
+    status: todo
+    attempts: 0
+    branch: redesign/P3
+    worktree: ../whale-P3
+    spec_refs:
+      - "§7.4 设置页 · 1046-1101"
+      - "§7.5 首次引导 · 1101-1130"
+      - "§9 适老化与无障碍 · 1315-1348"
+      - "§12.1 截图矩阵 · 1897-1915"
+    done:
+      - "老人模式截图矩阵（§12.1）全齐"
+      - "所有触控 ≥56"
+      - "导航 3 项"
+      - "引导 3 步可完成 / 可跳过"
+      - "导出得到有效 zip；删除全部后各页回到空态（对真实 API 的 e2e 冒烟）"
+    checks:
+      - "pnpm --dir apps/client typecheck && pnpm --dir apps/client build"
+      - "pnpm --dir apps/api test"
+
+  - id: P4
+    issue: 48
+    title: 打磨（清 layout.css / 动效调参 / DESIGN.md 终稿 / 全量验收）
+    status: todo
+    attempts: 0
+    branch: redesign/P4
+    worktree: ../whale-P4
+    spec_refs:
+      - "§12.1-12.7 验收与迭代循环 · 1895-2001"
+      - "§10.3 文件改动清单（清理项）· 1394-1471"
+      - "§2 设计原则 · 91-123"
+    done:
+      - "§12.1-12.7 全部通过，或把差距报告写进 PR 后结束本阶段"
+      - "docs/DESIGN.md 与实现一致"
+    checks:
+      - "node scripts/redesign/check.mjs"
+      - "rg -n 'ink-faint|--rule\\b|--ground|--radius' apps/client/src"
+
+  - id: P5
+    issue: 49
+    title: 她自己去逛（后端调度 + /surf 见闻页 + 聊天明信片 + 记忆第 5 类）
+    status: todo
+    attempts: 0
+    branch: redesign/P5
+    worktree: ../whale-P5
+    spec_refs:
+      - "§7.7 她自己去逛界面 · 1156-1251"
+      - "§10.6 P5 自主冲浪后端 · 1645-1865"
+      - "§12.8 P5 验收 · 2009-2028"
+    done:
+      - "surf-* 测试全绿"
+      - "POST /api/surf/run 本机真跑：≥1 条 surf_items + 对应 experiences(sourceId 以 surf: 开头) + usage_ledger 记账 + SSE 事件顺序正确"
+      - "§7.7 全部状态截图（含 d/m/亮/暗/老人）"
+      - "surf.spec.ts 通过"
+      - "P0-P4 回归仍绿"
+      - "关闭开关后调度器不再触发（测试断言）"
+    checks:
+      - "pnpm --dir apps/api test"
+      - "pnpm --dir apps/client build"
+      - "curl -X POST localhost:PORT/api/surf/run"
