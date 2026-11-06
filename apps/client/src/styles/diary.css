@@ -1,0 +1,550 @@
+/* ============================================================================
+   日记页（规范 §7.2 + §6.10 的 DateStamp / IndexTabs / MiniCalendar / QuotaMeter）
+   规矩：颜色、圆角、间距、时长全部走 tokens；不出现 gradient / backdrop-filter / 骨架屏条纹。
+   ============================================================================ */
+
+.diary-page {
+  padding: var(--sp-12) clamp(var(--sp-5), 5vw, var(--sp-12)) var(--sp-20) var(--sp-6);
+}
+
+.diary-page__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  max-width: var(--memory-max);
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------- 页头 */
+.diary-page__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.diary-page__title {
+  font-family: var(--font-voice);
+  font-size: clamp(var(--fs-h1), 3.4vw, var(--fs-display));
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-voice);
+}
+
+.diary-page__write { flex: none; }
+
+/* ---------------------------------------------------------------- 笔记本 + 侧边标签 */
+.diary-page__stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.diary-page__panel {
+  order: 1;
+  min-width: 0;
+  width: min(var(--page-max), 100% - var(--sp-6));
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.diary-page__leaves {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+/* IndexTabs：桌面竖排贴右缘，选中向外探出 8px；手机横排贴顶部 */
+.indextabs {
+  order: 2;
+  display: flex;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.indextabs[data-orientation="vertical"] {
+  flex-direction: column;
+  padding-top: var(--sp-6);
+}
+
+.indextabs__tab {
+  display: grid;
+  place-items: center;
+  min-width: var(--hit);
+  min-height: var(--hit);
+  padding: 0;
+  border-radius: var(--r-sm);
+  background: var(--sheet);
+  color: var(--ink-mute);
+  font-family: var(--font-voice);
+  font-size: var(--fs-body);
+  letter-spacing: var(--ls-voice);
+  box-shadow: inset 0 0 0 var(--stroke-1) var(--line);
+  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out),
+    transform var(--dur-hover) var(--ease-out);
+}
+
+.indextabs__tab:hover { color: var(--ink); background: var(--paper-2); }
+
+.indextabs__tab[aria-selected="true"] {
+  background: var(--accent-wash);
+  color: var(--accent);
+  box-shadow: var(--shadow-1);
+}
+
+.indextabs[data-orientation="vertical"] .indextabs__tab {
+  width: 44px;
+  height: 72px;
+}
+
+.indextabs[data-orientation="vertical"] .indextabs__label {
+  writing-mode: vertical-rl;
+  letter-spacing: .18em;
+}
+
+.indextabs[data-orientation="vertical"] .indextabs__tab[aria-selected="true"] {
+  transform: translateX(var(--sp-2));
+}
+
+.indextabs[data-orientation="horizontal"] { flex-wrap: nowrap; }
+.indextabs[data-orientation="horizontal"] .indextabs__tab { flex: 1 1 0; min-width: 64px; }
+
+/* ---------------------------------------------------------------- 日期戳 */
+.dts { position: relative; flex: 1 1 auto; min-width: 0; padding-bottom: var(--sp-1); }
+
+.dts__time {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-height: var(--fs-date);
+}
+
+.dts__day {
+  font-family: var(--font-num);
+  font-size: var(--fs-date);
+  line-height: .85;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: .01em;
+  color: var(--ink);
+}
+
+.dts__meta {
+  padding-top: var(--sp-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  white-space: nowrap;
+}
+
+.dts__rule { color: color-mix(in oklab, var(--ink) 30%, transparent); }
+
+/* ---------------------------------------------------------------- 一页纸 */
+.leaf.ink-frame {
+  display: block;
+  padding: var(--sp-6) var(--sp-6) var(--sp-5) calc(var(--sp-6) + 24px);
+  background: var(--sheet);
+  box-shadow: var(--shadow-1);
+  min-width: 0;
+}
+
+.leaf__binding {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-evenly;
+  padding: var(--sp-8) 0;
+}
+
+.leaf__hole {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--r-round);
+  background: var(--paper-2);
+  box-shadow: inset 0 0 0 var(--stroke-1) var(--line-strong);
+  flex: none;
+}
+
+.leaf__body { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+
+.leaf__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.leaf__nodate {
+  font-family: var(--font-voice);
+  font-size: var(--fs-h3);
+  color: var(--ink-mute);
+}
+
+.leaf__stamp { display: inline-flex; }
+
+.leaf__marks {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: none;
+}
+
+.leaf__weather { color: var(--ink-mute); display: inline-flex; }
+.leaf__weather .doodle { display: block; }
+
+.leaf__title {
+  font-family: var(--font-voice);
+  font-size: var(--fs-h3);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-voice);
+  overflow-wrap: anywhere;
+}
+
+/* 横线本：SVG 逐行画线（不用 gradient），行高与正文一致 */
+.leaf__paper {
+  position: relative;
+  padding: 0 0 var(--sp-1);
+  min-height: calc(var(--fs-diary) * var(--lh-diary));
+}
+
+.leaf__ruled {
+  position: absolute;
+  inset: 0;
+  font-size: var(--fs-diary);
+  line-height: var(--lh-diary);
+  color: color-mix(in oklab, var(--ink) 9%, transparent);
+  pointer-events: none;
+}
+
+.ruled__ink { display: block; width: 100%; }
+
+.leaf__text {
+  position: relative;
+  margin: 0;
+  font-family: var(--font-voice);
+  font-size: var(--fs-diary);
+  line-height: var(--lh-diary);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.leaf__fold[data-open="false"] .leaf__text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.leaf__toggle { align-self: flex-start; }
+
+.leaf__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--ink-mute);
+  flex-wrap: wrap;
+}
+
+.leaf__mood { font-family: var(--font-ui); }
+.leaf__source {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--hit);
+  margin-block: calc(-1 * var(--sp-2));
+  color: var(--accent);
+}
+
+.leaf__summary { margin-top: var(--sp-2); font-size: var(--fs-small); color: var(--ink-soft); }
+.leaf__summary summary { min-height: var(--hit); display: flex; align-items: center; cursor: pointer; color: var(--accent); }
+.leaf__summary p { white-space: pre-wrap; line-height: var(--lh-body); overflow-wrap: anywhere; }
+
+/* 月 / 年模式的分页 */
+.diary-page__pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.diary-page__pageno { font-size: var(--fs-small); color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- 底部导航条 */
+.pagebar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  width: min(var(--page-max), 100% - var(--sp-6));
+}
+
+.pagebar__step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-width: 56px;
+  min-height: 48px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--sheet);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  box-shadow: inset 0 0 0 var(--stroke-1) var(--line-strong);
+  transition: background var(--dur-hover) var(--ease-out), transform var(--dur-hover) var(--ease-out);
+}
+
+.pagebar__step:hover:not(:disabled) { background: var(--paper-2); }
+.pagebar__step:active:not(:disabled) { transform: scale(.98); }
+.pagebar__step:disabled { color: var(--ink-mute); box-shadow: inset 0 0 0 var(--stroke-1) var(--line); cursor: not-allowed; }
+
+.pagebar__cal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--hit);
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.pagebar__today { margin-left: auto; }
+
+/* ---------------------------------------------------------------- MiniCalendar */
+.mini { display: flex; flex-direction: column; gap: var(--sp-2); width: min(320px, 100%); }
+
+.mini__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+
+.mini__step {
+  display: grid;
+  place-items: center;
+  width: var(--hit);
+  height: var(--hit);
+  border-radius: var(--r-sm);
+  color: var(--ink-soft);
+  font-size: var(--fs-h3);
+  transition: background var(--dur-hover) var(--ease-out);
+}
+
+.mini__step:hover { background: var(--paper-2); color: var(--ink); }
+
+.mini__month { display: flex; align-items: baseline; gap: var(--sp-2); }
+.mini__month-num { font-family: var(--font-voice); font-size: var(--fs-h3); }
+.mini__month-en { font-family: var(--font-num); font-size: var(--fs-micro); letter-spacing: var(--ls-label); color: var(--ink-mute); }
+
+.mini__week,
+.mini__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.mini__weekday { font-size: var(--fs-micro); color: var(--ink-mute); text-align: center; letter-spacing: var(--ls-label); }
+
+.mini__cell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: var(--hit);
+  min-height: var(--hit);
+  border-radius: var(--r-sm);
+  color: var(--ink);
+  font-family: var(--font-num);
+  font-size: var(--fs-body);
+  font-variant-numeric: lining-nums tabular-nums;
+  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
+}
+
+.mini__cell--gap { pointer-events: none; }
+.mini__cell:hover { background: var(--paper-2); }
+.mini__cell[data-selected] { background: var(--accent); color: var(--accent-ink); }
+.mini__cell[data-today] { color: var(--accent); }
+.mini__cell[data-today][data-selected] { color: var(--accent-ink); }
+
+.mini__dot {
+  position: absolute;
+  top: var(--sp-1);
+  right: var(--sp-1);
+  width: 6px;
+  height: 6px;
+  border-radius: var(--r-round);
+  background: var(--accent);
+}
+
+.mini__cell[data-selected] .mini__dot { background: var(--accent-ink); }
+
+.mini__ring {
+  position: absolute;
+  inset: 1px;
+  width: calc(100% - 2px);
+  height: calc(100% - 2px);
+  color: currentColor;
+  opacity: .8;
+  pointer-events: none;
+}
+
+.mini__rule { color: color-mix(in oklab, var(--ink) 24%, transparent); }
+.mini__foot { font-size: var(--fs-micro); color: var(--ink-mute); text-align: center; }
+
+.pagebar__pop { padding: var(--sp-3); }
+
+/* ---------------------------------------------------------------- 她在写 */
+.diary-page__writing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-family: var(--font-voice);
+  font-size: var(--fs-small);
+  color: var(--ink-mute);
+}
+
+/* ---------------------------------------------------------------- 给她看的视频（降级区） */
+.vids {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: min(var(--page-max), 100% - var(--sp-6));
+  padding-top: var(--sp-2);
+}
+
+.vids__head { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+.vids__title {
+  font-family: var(--font-voice);
+  font-size: var(--fs-h3);
+  letter-spacing: var(--ls-voice);
+}
+
+.vids__lead { font-size: var(--fs-small); color: var(--ink-soft); max-width: 46ch; }
+
+.vids__form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-2); }
+.vids__input { min-width: 0; }
+
+.vids__error { color: var(--alert); font-size: var(--fs-small); }
+
+.vids__bar { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; }
+.vids__count { font-size: var(--fs-micro); color: var(--ink-mute); font-variant-numeric: tabular-nums; }
+
+.vids__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+
+.vids__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: var(--hit);
+  padding: var(--sp-2) 0;
+  border-top: var(--stroke-1) solid var(--line);
+}
+
+.vids__rowbody { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vids__rowtitle { font-family: var(--font-voice); font-size: var(--fs-chat); overflow-wrap: anywhere; }
+.vids__status { font-size: var(--fs-micro); color: var(--ink-mute); }
+.vids__status[data-status="failed"] { color: var(--alert); }
+.vids__why { font-size: var(--fs-micro); color: var(--alert); overflow-wrap: anywhere; }
+
+.vids__old { display: flex; flex-direction: column; gap: var(--sp-2); }
+.vids__rule { color: color-mix(in oklab, var(--ink) 20%, transparent); }
+.vids__fold { align-self: flex-start; }
+.vids__oldlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.vids__oldlist li { display: flex; flex-direction: column; gap: 2px; padding: var(--sp-2) 0; border-top: var(--stroke-1) solid var(--line); }
+.vids__oldtitle { font-family: var(--font-voice); font-size: var(--fs-body); }
+.vids__oldtext { font-size: var(--fs-small); color: var(--ink-soft); line-height: var(--lh-body); overflow-wrap: anywhere; }
+
+/* ---------------------------------------------------------------- 状态块 */
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  width: min(360px, 100%);
+  margin: var(--sp-6) auto;
+  padding: var(--sp-6) var(--sp-4);
+  text-align: center;
+}
+
+.state__sticker { width: 120px; height: auto; }
+.state__title { font-family: var(--font-voice); font-size: var(--fs-h3); letter-spacing: var(--ls-voice); }
+.state__body { font-size: var(--fs-body); line-height: var(--lh-body); color: var(--ink-soft); }
+.state__ink { width: 96px; color: var(--ink-mute); }
+.state__actions { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; justify-content: center; }
+.state__detail { font-size: var(--fs-micro); color: var(--ink-mute); overflow-wrap: anywhere; }
+.state--error .state__title { color: var(--alert); }
+
+/* ---------------------------------------------------------------- 小提示便签 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-8) + env(safe-area-inset-bottom));
+  z-index: var(--z-toast);
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+}
+
+.toast__panel.ink-frame {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--sheet);
+  box-shadow: var(--shadow-2);
+}
+
+.toast__text { flex: 1 1 auto; font-family: var(--font-voice); font-size: var(--fs-chat); }
+.toast__action { flex: none; min-height: var(--hit); }
+.toast[data-tone="alert"] .toast__text { color: var(--alert); }
+
+/* ---------------------------------------------------------------- 手机 */
+@media (max-width: 959px) {
+  .diary-page { padding: var(--sp-6) var(--sp-4) var(--sp-16); }
+
+  .diary-page__stage { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
+
+  .indextabs[data-orientation="horizontal"] { order: -1; }
+
+  .diary-page__panel { width: 100%; }
+
+  .leaf.ink-frame { padding: var(--sp-5) var(--sp-4) var(--sp-4) calc(var(--sp-4) + 20px); }
+
+  .leaf__head { gap: var(--sp-2); }
+  .leaf__stamp { display: inline-flex; }
+
+.leaf__marks { gap: var(--sp-2); }
+  .leaf__weather .doodle { width: 44px; height: 44px; }
+  .leaf__stamp { transform: scale(.8); transform-origin: top right; }
+
+  .pagebar { width: 100%; }
+  .pagebar__today { margin-left: 0; }
+  .vids { width: 100%; }
+  .vids__form { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indextabs__tab,
+  .pagebar__step,
+  .mini__cell { transition: none; }
+  .indextabs[data-orientation="vertical"] .indextabs__tab[aria-selected="true"] { transform: none; }
+}
+
+:root[data-motion="calm"] .indextabs__tab,
+:root[data-motion="calm"] .pagebar__step,
+:root[data-motion="calm"] .mini__cell { transition: none; }
