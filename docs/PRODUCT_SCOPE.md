@@ -30,14 +30,14 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 |---|---|
 | A1 应用壳 | 完成：Tauri 2 + React 单页应用，桌面和手机共用界面（[PR #17](https://github.com/OmnixSI/WhalePartner/pull/17)）。 |
 | A2 DeepSeek 后端 | 代码完成：流式聊天、DeepSeek → 备用 → 本机 Codex 回退链（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）。真实 DeepSeek 请求待验证，跟踪于 [Issue #2](https://github.com/OmnixSI/WhalePartner/issues/2)。 |
-| B1 聊天与形象 | 完成：自写 React 聊天 + three-vrm 形象，选型依据见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3)。 |
+| B1 聊天与形象 | 完成：自写 React 聊天、Live2D 舞台与 three-vrm 演示形象；选型依据见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) 和 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。 |
 | B2 人格 | 完成：每个角色一份身份和脾气文件 + 共用的说话方式和底线规则，四个角色的 13 项回归问卷在 DeepSeek 上都是 13/13。 |
 | 成长（人格延伸） | 完成：从看过的视频、读过的网页和用户的话里学新梗和新知识（自动入库，用户可删），定期写“近况小记”，记忆按清晰度衰减，聊天里发网页链接会读。设计与参考见 [`PERSONALITY.md`](PERSONALITY.md)。 |
 | B3 记忆 | 完成：mem0 + 本地中文向量模型，写入、重启、召回已验证。 |
 | B4 本地长期记忆与长会话上下文 | 已实现（[PR #32](https://github.com/OmnixSI/WhalePartner/pull/32)，[Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)）：本地 SQLite 原文档案、事实来源与时间版本、滚动会话观察、FTS5/向量/时间范围混合召回、上下文预算和可恢复任务队列。只做本机存储，不做云同步。 |
 | C1/C2 视频链路 | 完成（Spdor）；已接入聊天：发 B 站链接，角色看完再讲并记住。 |
 | 十条视频成本与质量基准 | 已记录 token 和阶段耗时（见 [构建记录](../implement-stage/BUILD_NOTE.md)）。人工评分和美元费用仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。 |
-| 主应用界面与日记管理 | Issue #39 当前分支：聊天工具栏、记忆分类与设置页已收紧；日记支持周/月/年范围和分页。API 日记任务已持久化，支持启动恢复及当天漏触发补跑。待 PR 审查。 |
+| 主应用界面与日记管理 | Issue #39 / PR #40：聊天工具栏、记忆分类与设置页已收紧；日记支持周/月/年范围和分页。API 日记任务已持久化，支持启动恢复及当天漏触发补跑。大肥鱼 Live2D 已接入主聊天舞台，支持待机、聊天情绪表情、视线跟随、点击互动和聊天时嘴型。模型素材为 CC BY-NC-SA 4.0 非商业许可；Cubism Core 为 Live2D 专有组件，需开发者从官方 SDK 获取并遵循许可。PR 待审查。 |
 | D1 定时日记、D2 日记页与添加链接入口 | 已实现：B 站链接进入 SQLite 待看队列，计划任务每次处理一条，页面展示队列和生成的摘要/日记；日记经历写入共享 mem0。接口见 [`API.md`](API.md)。 |
 | E1 端到端联调 | 聊天 → 视频 → 记忆 → 再聊已跑通；日记链路的真实视频联调见本分支 PR 验证记录。 |
 
@@ -45,7 +45,7 @@ PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不
 
 ## 演示角色与形象（内部展示，不是产品定稿）
 
-为了演示，首页现在提供四个角色：大肥鱼（DeepSeek 鲸鱼娘，默认）、小克（Claude 娘）、小智（ChatGPT 娘）和原创的鲸汐，形象用的是别人做好的现成 VRM 模型。这**偏离了下面“内容与许可约束”里的原创要求**，只作内部展示：授权没有核对，部分模型明确限制个人非商业使用、禁止再分发（模型文件不进仓库，各机器从作者的发布页自行下载）。对外发布前要换成原创或授权明确的角色，并先在 Notion 更新这条决定。三个同人角色的设定里写明自己是粉丝二创、不是官方，也不替背后的模型说话。模型清单与来源在 `apps/client/models.manifest.json`。
+首页提供大肥鱼（默认）、小克、小智和鲸汐四个陪伴角色。大肥鱼使用 A8Chann 发布的 Cubism 4 模型，角色形象源自上善无形，DeepSeek 女仆设计由 ZipZipPipe 完成，Live2D 绑定由氵六青完成；模型由固定版本脚本从 GitHub 下载，画面不叠加水印。模型素材许可为 CC BY-NC-SA 4.0，仅限非商业用途，改编素材须相同方式共享；商业使用前须取得各权利人授权。运行模型需要 Cubism Core；它是 Live2D 专有组件，开发者须从官方 SDK 单独获取并遵循适用许可，不随仓库分发。其余 VRM 形象只作内部展示。三个同人角色的人格设定明确写明其粉丝创作属性。VRM 来源与使用限制记在 `apps/client/models.manifest.json`；完整 Live2D 来源和运行方式见 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。
 
 ## 当前技术方向
 
@@ -70,13 +70,13 @@ PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不
 
 ## 第一周不做
 
-正式登录、充值和计费、年龄核验、AI 标识、多端同步、实时语音对话、家庭/老人模式，以及自动在第三方平台发布评论。macOS 系统听写只是把语音写进聊天草稿，不属于实时语音对话。Live2D 已由 Issue #39 提出，但运行时与模型授权仍待明确。
+正式登录、充值和计费、年龄核验、AI 标识、多端同步、实时语音对话、家庭/老人模式，以及自动在第三方平台发布评论。macOS 系统听写只是把语音写进聊天草稿，不属于实时语音对话。
 
 ## 内容与许可约束
 
-- 角色必须是原创鲸系设定；不使用 DeepSeek 名称或 Logo，也不复制已有社区角色形象。
+- 对外发布的角色必须原创或获得明确授权；不使用 DeepSeek 名称或 Logo。当前主界面的大肥鱼模型仅用于非商业演示，适用 CC BY-NC-SA 4.0；商业使用前必须取得相关权利人授权。
 - 视频处理使用用户添加或明确授权的内容。当前原型默认只读，不代替用户在外部平台发言。
-- 计划只复用 MIT 或 Apache-2.0 许可的代码。GPL/AGPL 项目只可参考设计，不复制代码。
+- 复用的应用代码使用 MIT 或 Apache-2.0 许可；GPL/AGPL 项目只可参考设计，不复制代码。Live2D 渲染包装库 `pixi-live2d-display` 与 PixiJS 为 MIT；Cubism Core 与角色模型是独立素材，只存放于开发者本机，不随仓库提交。当前大肥鱼角色模型为 CC BY-NC-SA 4.0 非商业素材，不可用于商业版或以商业方式分发。
 - `dsh-bilibili` 与 `dsh-video-lens` 的仓库当前标注 MIT。FFmpeg 是本地外部运行时依赖；Bcut ASR 仅在平台字幕不可用时接收 Bilibili 音频流地址进行转写。
 
 ## 尚待在 Issue 中明确

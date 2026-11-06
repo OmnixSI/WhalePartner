@@ -1,27 +1,33 @@
-# Live2D runtime and model licensing
+# 大肥鱼 Live2D
 
-Status as of 2026-11-06: runtime selection is waiting for an owner decision. No SDK or model files have been downloaded or added to WhalePartner.
+## 模型来源与许可
 
-## Runtime findings
+应用使用 [A8Chann/dsh-pet-live2d](https://github.com/A8Chann/dsh-pet-live2d/tree/9b7cd8ed0d16bd23fb098bc0c4fdbac63d89de75/dsh-live2d-pet/pets/ds-whale-girl) 发布的 DS 鲸鱼娘 Cubism 4 模型（commit `9b7cd8ed0d16bd23fb098bc0c4fdbac63d89de75`，模型 `c_0120.model3.json`）。该模型由上善无形的原创角色「溟月」、ZipZipPipe 的 DeepSeek 女仆设计与氵六青的 Live2D 绑定组成。应用显示模型原始素材，不叠加水印。
 
-The official Cubism Web SDK uses two separately licensed components:
+模型素材许可为 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh)：须署名、仅限非商业用途；改编素材须以相同许可共享。各权利人和作品链详见上游的 [`LICENSE`](https://github.com/A8Chann/dsh-pet-live2d/blob/9b7cd8ed0d16bd23fb098bc0c4fdbac63d89de75/dsh-live2d-pet/pets/ds-whale-girl/LICENSE) 与 [`NOTICE.md`](https://github.com/A8Chann/dsh-pet-live2d/blob/9b7cd8ed0d16bd23fb098bc0c4fdbac63d89de75/NOTICE.md)。WhalePartner 将许可原文和完整署名随模型下载到本机；素材不提交到 WhalePartner 仓库。商业使用需先取得各权利人授权。
 
-- `CubismWebFramework` is distributed under Live2D Open Software License, which is not MIT or Apache-2.0. The framework requires Cubism Core to load and render Cubism models.
-- Cubism Core is proprietary and is not published in the public framework repository. The official Web SDK package contains it.
-- The official download page requires agreement to both the Live2D Proprietary Software License Agreement and Live2D Open Software License Agreement; it states that downloading or launching the SDK constitutes consent.
-- Live2D describes SDK development as available without an initial fee subject to those agreements. Release terms vary by use; its AI/chatbot flow includes an expandable-application review path. Individual and small-scale exemptions have conditions and do not remove the SDK download agreements.
+## 运行时与许可
 
-Official references: [Cubism Web SDK manual](https://docs.live2d.com/en/cubism-sdk-manual/cubism-sdk-for-web/), [Web SDK download and agreements](https://www.live2d.com/en/sdk/download/web/), [SDK release licensing, including AI/chatbot use](https://www.live2d.com/en/sdk/license/), and the [CubismWebFramework license](https://github.com/Live2D/CubismWebFramework/blob/develop/LICENSE.md).
+- `pixi-live2d-display` 0.4.0 与 PixiJS 6.5.10 用于加载和渲染，源码采用 MIT 许可。
+- Cubism Core 是模型运行所需组件，但它不是开源软件，也未由 Live2D 发布到 GitHub。Live2D 官方文档说明 Core 随 SDK 包提供；下载 SDK 要求接受 Live2D Proprietary Software License Agreement 与 Live2D Open Software License Agreement。AI/聊天机器人应用的发布还需按官方流程判断对应发布许可。
+- WhalePartner 不提交或从第三方仓库镜像下载 Cubism Core。下载脚本仅获取模型文件、署名及模型许可证。开发者若自行从 [Live2D 官方 SDK 页面](https://www.live2d.com/en/sdk/download/web/)获取并放入 `apps/client/public/live2d/libs/live2dcubismcore.min.js`，须自行阅读并遵循适用条款；缺少 Core 时应用回退到默认鲸鱼形象。
 
-## Model findings
+官方依据：[Web SDK 下载与协议](https://www.live2d.com/en/sdk/download/web/)、[Cubism Web SDK 手册](https://docs.live2d.com/en/cubism-sdk-manual/cubism-sdk-for-web/)、[SDK 发布许可（含 AI/聊天机器人）](https://www.live2d.com/en/sdk/license/)。
 
-The license for a Live2D model is separate from the renderer. Each model must be checked for use in an AI companion, redistribution in an installed application, modification, and required attribution. Public availability does not grant those rights. The official sample-model license also has per-model conditions: [Live2D Free Material License Agreement](https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html) and [official sample-model FAQ](https://help.live2d.com/en/other/other_16/).
+## 集成方式
 
-## Decision needed
+- React 聊天页通过 `pixi-live2d-display` 0.4.0 与 PixiJS 6.5.10 加载 Cubism 4；运行时与模型均通过现有主应用入口加载。
+- `pnpm --dir apps/client run fetch-live2d` 从固定的 Git commit 下载模型 JSON、MOC、贴图、物理、动作、表情、署名许可至 Git 忽略的 `apps/client/public/live2d/whale-maid/`。模型资源不随 Git 提交；Cubism Core 需单独按官方条款获取。
+- 表情依据聊天情绪切换；点击角色触发“调皮”和“爱心眼”表情；模型持续播放原生待机动作，视线跟随指针，回复生成时轻微驱动嘴部开合。
+- 缺少模型资源或 WebGL 初始化失败时，聊天页沿用现有鲸鱼形象回退，并报告形象加载状态。
 
-Choose one direction before runtime integration:
+## 验证
 
-1. Keep the repository's MIT/Apache-2.0 code reuse constraint and choose an avatar format/runtime that meets it. This does not satisfy Issue #39's Live2D acceptance condition.
-2. Permit the official Cubism runtime as a separately licensed dependency. The owner must first review and accept the SDK download agreements, then confirm that the application's intended use fits Live2D's AI/chatbot release terms. A model with documented app-use and redistribution rights must be selected separately.
+在同一台 Mac 上从 Tauri 主应用构建验证客户端类型检查、生产构建、模型加载和聊天页显示；截图确认角色无可见水印、点击有表情反应且自动恢复默认表情。项目应用标识 `com.omnixsi.whalepartner` 未改动。截图在本次任务对话中完成视觉检查，但没有保存为仓库 PNG 附件。
 
-The current branch continues with the chat, diary, memory, settings, and recovery work. Live2D remains unimplemented until this decision is recorded.
+本次运行受限网络环境无法通过脚本连接 GitHub 下载资源；模型素材来自隔离研究目录中固定 commit 的副本，Cubism Core 使用本机现有文件。新环境的模型下载及 Core 安装路径按上文说明分别处理。
+
+```sh
+pnpm --dir apps/client run fetch-live2d
+pnpm --dir apps/client run build
+```

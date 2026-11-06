@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AVATAR_IS_PLACEHOLDER, AVATAR_MODELS } from "../avatar/model.config";
+import { AVATAR_MODELS } from "../avatar/model.config";
 import { Accounts } from "../components/Accounts";
 import { CHARACTERS, setCharacter, setModelOverride, useCharacter, useModel } from "../characters";
 import { clearHistory } from "../lib/chat";
@@ -58,7 +58,12 @@ export function SettingsPage() {
           </div>
           <details className="setting-info">
             <summary>形象来源与授权</summary>
-            <p>{model.source}。{model.licenseNote}{AVATAR_IS_PLACEHOLDER ? " 当前形象仅作内部展示。" : ""}</p>
+            <p>{model.source}。{model.licenseNote}{model.internalOnly ? " 当前仅供内部展示。" : ""}</p>
+            {model.id === "dafeiyu-live2d" && <p className="setting-info__links">
+              <a href="https://github.com/A8Chann/dsh-pet-live2d/tree/9b7cd8ed0d16bd23fb098bc0c4fdbac63d89de75/dsh-live2d-pet/pets/ds-whale-girl" target="_blank" rel="noreferrer">Live2D 模型与素材来源</a>
+              <a href="https://github.com/A8Chann/dsh-pet-live2d/blob/9b7cd8ed0d16bd23fb098bc0c4fdbac63d89de75/dsh-live2d-pet/pets/ds-whale-girl/LICENSE" target="_blank" rel="noreferrer">模型许可与署名</a>
+              <a href="/live2d/whale-maid/LICENSE" target="_blank" rel="noreferrer">本机许可文本</a>
+            </p>}
           </details>
         </section>
 
