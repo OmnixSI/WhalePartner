@@ -1,226 +1,351 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
-import { CHARACTERS, setCharacter, useCharacter, type CharacterId } from "../characters";
-import { deleteMemory, fetchMemoryExplorer, fetchNote, type CharacterNote, type MemoryCategory, type MemoryExplorerFilters, type MemoryExplorerItem, type MemoryExplorerResult } from "../lib/memory";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { CompanionCorner, setCompanionMood } from "../components/CompanionCorner";
+import { ConfirmDialog } from "../components/chat/ConfirmDialog";
+import { useMediaQuery } from "../components/chat/useViewport";
+import { Tape } from "../components/ink";
+import { StateBlock } from "../components/diary/StateBlock";
+import { Toast } from "../components/diary/Toast";
+import { FilterBar } from "../components/memory/FilterBar";
+import { MemoryCard } from "../components/memory/MemoryCard";
+import { MemoryDialog } from "../components/memory/MemoryDialog";
+import { useCharacter } from "../characters";
+import { deleteMemory, fetchMemories, fetchNote, type CharacterNote } from "../lib/memory";
+import {
+  EMPTY_FILTERS,
+  filterActive,
+  groupOf,
+  isSuperseded,
+  type GroupKey,
+  type MemoryEntryP2,
+  type OwnFilters,
+} from "../components/memory/types";
+import "../styles/memory.css";
 
-const PAGE_SIZE = 30;
-const CATEGORY_LABELS: Record<MemoryCategory, string> = {
-  all: "全部", fact: "关于你", conversation: "聊天原文", video: "视频", web: "网页", diary: "日记", learned: "她学到的", reflection: "反思",
-};
-const CATEGORY_GROUPS: Array<{ title: string; categories: Array<Exclude<MemoryCategory, "all">> }> = [
-  { title: "关于你", categories: ["fact"] },
-  { title: "共同经历", categories: ["conversation", "video", "web", "diary"] },
-  { title: "她学到的", categories: ["learned"] },
-  { title: "角色近况", categories: ["reflection"] },
-];
-
-function when(iso: string) {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString("zh-CN", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-
-function groupByDay(items: MemoryExplorerItem[]) {
-  const groups = new Map<string, MemoryExplorerItem[]>();
-  for (const item of items) {
-    const day = new Date(item.createdAt).toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "long" });
-    groups.set(day, [...(groups.get(day) ?? []), item]);
-  }
-  return [...groups.entries()];
-}
-
-function MemoryRow({ item, onOpen, onOpenJournal, onForget }: {
-  item: MemoryExplorerItem;
-  onOpen: (character: CharacterId, sessionId: string, messageId?: number) => void;
-  onOpenJournal: (item: MemoryExplorerItem) => void;
-  onForget: (item: MemoryExplorerItem) => void;
-}) {
-  const messageId = item.type === "message" ? Number(item.id.slice("message:".length)) : item.messageId;
-  const firstSource = item.sources?.[0];
-  const hasSource = Boolean(item.sessionId || firstSource?.sessionId);
-  const canForget = item.type === "fact" || item.type === "experience";
-
-  return (
-    <article className="memory-entry">
-      <div className="memory-entry__meta">
-        <span>{CATEGORY_LABELS[item.category]}{item.role ? ` · ${item.role === "user" ? "你" : "她"}` : ""}</span>
-        <time dateTime={item.createdAt}>{when(item.createdAt)}</time>
-      </div>
-      <h3 className="memory-entry__title">{item.title}</h3>
-      <p className="memory-entry__text">{item.text}</p>
-      {item.status && <p className="memory-entry__state">{item.status === "active" ? "当前记忆" : `历史记忆 · ${when(item.validFrom ?? item.createdAt)} 至 ${item.validTo ? when(item.validTo) : "后来"}`}</p>}
-      {item.sessionTitle && <p className="memory-entry__source">来自对话：{item.sessionTitle}</p>}
-      {item.sourceMissing && <p className="memory-entry__source">来源聊天原文已不可用，保留的资料内容仍可查看。</p>}
-      {item.sources && item.sources.length > 0 && <details className="memory-entry__sources">
-        <summary>查看 {item.sources.length} 条原话来源</summary>
-        {item.sources.map((source) => <blockquote className="memory-entry__quote" key={`${source.messageId}:${source.sessionId}`}>
-          <p>「{source.quote}」</p>
-          <small>{when(source.createdAt)}</small>
-          <button type="button" onClick={() => onOpen(source.character as CharacterId, source.sessionId, source.messageId)}>打开原话</button>
-        </blockquote>)}
-      </details>}
-      {item.url && <a className="memory-entry__url" href={item.url} target="_blank" rel="noreferrer">打开原内容 ↗</a>}
-      <div className="memory-entry__actions">
-        {hasSource && <button type="button" onClick={() => onOpen((firstSource?.character ?? item.character) as CharacterId, firstSource?.sessionId ?? item.sessionId!, messageId ?? firstSource?.messageId)}>打开原聊天</button>}
-        {item.category === "diary" && item.sourceId?.startsWith("journal:") && <button type="button" onClick={() => onOpenJournal(item)}>打开这篇日记</button>}
-        {canForget && <button className="link-danger" type="button" onClick={() => onForget(item)}>忘掉这条记忆</button>}
-      </div>
-    </article>
-  );
-}
+/** 一屏最多几张卡：桌面 3 列 × 3 行，手机 1 列 × 6。 */
+const PAGE_WIDE = 9;
+const PAGE_NARROW = 6;
+/** 撤回窗口（规范 §7.3.5）：5 秒内不删，超时才真删。 */
+const UNDO_MS = 5000;
+const FOLD_MS = 480;
 
 export function MemoryPage() {
   const character = useCharacter();
-  const navigate = useNavigate();
-  const [result, setResult] = useState<MemoryExplorerResult | null>(null);
+  const wide = useMediaQuery("(min-width: 768px)");
+
+  const [entries, setEntries] = useState<MemoryEntryP2[] | null>(null);
   const [note, setNote] = useState<CharacterNote | null>(null);
-  const [queryDraft, setQueryDraft] = useState("");
-  const [filters, setFilters] = useState<MemoryExplorerFilters>({ character: character.id, category: "all", status: "all", role: "all", page: 1, pageSize: PAGE_SIZE });
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
   const [error, setError] = useState("");
-  const selectedCharacter = CHARACTERS.find((item) => item.id === filters.character) ?? character;
+
+  const [detail, setDetail] = useState<MemoryEntryP2 | null>(null);
+  const [confirming, setConfirming] = useState<MemoryEntryP2 | null>(null);
+
+  const [forgetting, setForgetting] = useState<Set<string>>(() => new Set());
+  const [gone, setGone] = useState<Set<string>>(() => new Set());
+
+  const [query, setQuery] = useState("");
+  const [applied, setApplied] = useState("");
+  const [group, setGroup] = useState<GroupKey>("all");
+  const [filters, setFilters] = useState<OwnFilters>(EMPTY_FILTERS);
+  const [page, setPage] = useState(0);
+
+  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
+  const deleteTimers = useRef(new Map<string, number>());
+  const foldTimers = useRef(new Map<string, number>());
 
   const load = useCallback((signal?: AbortSignal) => {
     setError("");
-    fetchMemoryExplorer(filters, signal).then(setResult, (cause: unknown) => {
-      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "记忆读取失败。");
-    });
-  }, [filters]);
+    fetchMemories(signal).then(
+      (list) => setEntries(list as MemoryEntryP2[]),
+      (cause: unknown) => {
+        if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "读取失败。");
+      },
+    );
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
     load(controller.signal);
+    fetchNote(character.id, controller.signal).then(setNote).catch(() => setNote(null));
     return () => controller.abort();
-  }, [load]);
+  }, [load, character.id]);
+
+  // 离开页面 / 关标签：还没到 5 秒的那几条立刻提交，别把用户的意图丢掉。
+  useEffect(() => {
+    const timers = deleteTimers.current;
+    const flush = () => {
+      timers.forEach((timer, id) => {
+        window.clearTimeout(timer);
+        void deleteMemory(id).catch(() => undefined);
+      });
+      timers.clear();
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+      foldTimers.current.forEach((timer) => window.clearTimeout(timer));
+      foldTimers.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
-    if (!result || result.page !== filters.page || result.total === 0) return;
-    const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
-    if (filters.page > lastPage) setFilters((current) => ({ ...current, page: lastPage }));
-  }, [filters.page, result]);
+    setPage(0);
+  }, [group, applied, filters]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchNote(filters.character, controller.signal).then(setNote);
-    return () => controller.abort();
-  }, [filters.character]);
+  const alive = useMemo(() => (entries ?? []).filter((entry) => !gone.has(entry.id)), [entries, gone]);
 
-  const update = (change: Partial<MemoryExplorerFilters>) => setFilters((current) => ({
-    ...current,
-    ...change,
-    ...(change.category && change.category !== "fact" ? { status: "all" } : {}),
-    page: 1,
-  }));
-  const openSession = (sourceCharacter: CharacterId, sessionId: string, messageId?: number) => {
-    setCharacter(sourceCharacter);
-    localStorage.setItem(`whalepartner:session:${sourceCharacter}`, sessionId);
-    if (messageId) {
-      localStorage.setItem(`whalepartner:open-session:${sourceCharacter}`, sessionId);
-      localStorage.setItem(`whalepartner:open-message:${sourceCharacter}`, String(messageId));
+  const counts = useMemo(() => {
+    const out = { all: 0, about: 0, together: 0, learned: 0, surf: 0, now: 0 } as Record<GroupKey, number>;
+    for (const entry of alive) {
+      out.all += 1;
+      out[groupOf(entry)] += 1;
     }
-    navigate("/");
-  };
+    return out;
+  }, [alive]);
 
-  const openJournal = (item: MemoryExplorerItem) => {
-    if (!item.sourceId?.startsWith("journal:")) return;
-    setCharacter(item.character as CharacterId);
-    localStorage.setItem(`whalepartner:open-journal:${item.character}`, item.sourceId);
-    navigate("/diary");
-  };
+  const searching = Boolean(applied.trim()) || filterActive(filters);
 
-  const forget = async (item: MemoryExplorerItem) => {
-    const id = item.type === "fact"
-      ? `local:${item.id.slice("fact:".length)}`
-      : `local-exp:${item.id.slice("experience:".length)}`;
-    if (!window.confirm("从长期记忆中忘掉这条内容？聊天原文仍保留，可通过删除整段对话清除。")) return;
+  const filtered = useMemo(() => {
+    const needle = applied.trim().toLowerCase();
+    return alive.filter((entry) => {
+      if (group !== "all" && groupOf(entry) !== group) return false;
+      if (filters.era === "past" && !isSuperseded(entry)) return false;
+      if (filters.era === "current" && isSuperseded(entry)) return false;
+      if (filters.from || filters.to) {
+        const at = entry.createdAt ? new Date(entry.createdAt) : null;
+        if (!at || Number.isNaN(at.getTime())) return false;
+        if (filters.from && at < filters.from) return false;
+        if (filters.to && at > new Date(filters.to.getFullYear(), filters.to.getMonth(), filters.to.getDate(), 23, 59, 59)) return false;
+      }
+      if (needle) {
+        const haystack = `${entry.text} ${entry.title ?? ""}`.toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      return true;
+    });
+  }, [alive, group, filters, applied]);
+
+  const pageSize = wide ? PAGE_WIDE : PAGE_NARROW;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const current = Math.min(page, pageCount - 1);
+  const visible = filtered.slice(current * pageSize, current * pageSize + pageSize);
+
+  const commit = useCallback(async (id: string) => {
+    deleteTimers.current.delete(id);
     try {
       await deleteMemory(id);
-      load();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "删除记忆失败。");
+      setEntries((prev) => prev?.filter((entry) => entry.id !== id) ?? null);
+      setGone((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    } catch {
+      // 失败：卡片弹回原位 + 错误便签（规范 §7.3.5 第 4 步）。
+      setGone((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setForgetting((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setToast({ text: "没能忘掉，再试一次？" });
     }
+  }, []);
+
+  const forget = (entry: MemoryEntryP2) => {
+    setConfirming(null);
+    setDetail(null);
+    setForgetting((prev) => new Set(prev).add(entry.id));
+    setCompanionMood("sorry", { ttl: 2000 });
+
+    const fold = window.setTimeout(() => {
+      foldTimers.current.delete(entry.id);
+      setGone((prev) => new Set(prev).add(entry.id));
+      setForgetting((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
+    }, FOLD_MS);
+    foldTimers.current.set(entry.id, fold);
+
+    const timer = window.setTimeout(() => void commit(entry.id), UNDO_MS);
+    deleteTimers.current.set(entry.id, timer);
+
+    setToast({
+      text: "已经忘掉了。",
+      undo: () => {
+        const pending = deleteTimers.current.get(entry.id);
+        if (pending) window.clearTimeout(pending);
+        deleteTimers.current.delete(entry.id);
+        const folding = foldTimers.current.get(entry.id);
+        if (folding) window.clearTimeout(folding);
+        foldTimers.current.delete(entry.id);
+        setForgetting((prev) => {
+          const next = new Set(prev);
+          next.delete(entry.id);
+          return next;
+        });
+        setGone((prev) => {
+          const next = new Set(prev);
+          next.delete(entry.id);
+          return next;
+        });
+        setToast(null);
+      },
+    });
   };
 
-  const submitSearch = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    update({ query: queryDraft.trim() || undefined });
+  const clearAll = () => {
+    setGroup("all");
+    setFilters(EMPTY_FILTERS);
+    setQuery("");
+    setApplied("");
+    setPage(0);
   };
-  const activeFilterCount = [filters.from, filters.to, filters.role !== "all", filters.status !== "all"].filter(Boolean).length;
+
+  const emptySearch = searching && filtered.length === 0;
+  const total = alive.length;
 
   return (
-    <div className="page">
-      <div className="page__inner memory-page">
-        <header>
-          <h1 className="page__title">她记得的事</h1>
+    <div className="page memory-page">
+      <div className="memory-page__inner">
+        <header className="memory-page__head">
+          <h1 className="memory-page__title">她记得的事</h1>
+          {entries !== null && <p className="memory-page__count">已收好 {total} 件</p>}
         </header>
 
-        {note && <section className="card memory-note"><h2>{selectedCharacter.name}的近况</h2><p className="note">{note.text}</p></section>}
+        <div className={`memory-page__top${note ? "" : " memory-page__top--bare"}`}>
+          {note && (
+            <figure className="nslip">
+              <Tape color="c" w={56} h={18} angle={-4} className="nslip__tape" />
+              <figcaption className="nslip__label">{character.name}的近况</figcaption>
+              <blockquote className="nslip__text">{note.text}</blockquote>
+            </figure>
+          )}
 
-        <form className="memory-search" onSubmit={submitSearch}>
-          <label className="sr-only" htmlFor="memory-search">搜索聊天、事实和经历</label>
-          <input id="memory-search" value={queryDraft} onChange={(event) => setQueryDraft(event.target.value)} placeholder="搜索你们聊过的话、看过的内容…" />
-          <button className="diary-button" type="submit">搜索</button>
-        </form>
-
-        <div className="memory-tools">
-          <label className="memory-category">
-            <span>分类</span>
-            <select value={filters.category} onChange={(event) => update({ category: event.target.value as MemoryCategory })}>
-              <option value="all">全部 · {result?.total.toLocaleString("zh-CN") ?? "—"}</option>
-              {CATEGORY_GROUPS.map((group) => <optgroup key={group.title} label={group.title}>
-                {group.categories.map((category) => <option key={category} value={category}>{CATEGORY_LABELS[category]} · {result?.counts[category] ?? "—"}</option>)}
-              </optgroup>)}
-            </select>
-          </label>
-          <details className="memory-filter-panel">
-            <summary>筛选{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}</summary>
-            <div className="memory-filters">
-          <label>角色 <select value={filters.character} onChange={(event) => update({ character: event.target.value })}>
-            {CHARACTERS.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select></label>
-          <label>从 <input type="date" value={fromDate} onChange={(event) => {
-            const value = event.target.value;
-            setFromDate(value);
-            update({ from: value || undefined });
-          }} /></label>
-          <label>到 <input type="date" value={toDate} onChange={(event) => {
-            const value = event.target.value;
-            setToDate(value);
-            update({ to: value ? `${value}` : undefined });
-          }} /></label>
-          <label>聊天发言 <select value={filters.role} onChange={(event) => update({ role: event.target.value as MemoryExplorerFilters["role"] })}>
-            <option value="all">全部</option><option value="user">我说的</option><option value="assistant">她说的</option>
-          </select></label>
-          {filters.category === "fact" && <label>事实状态 <select value={filters.status} onChange={(event) => update({ status: event.target.value as MemoryExplorerFilters["status"] })}>
-            <option value="all">当前和历史</option><option value="current">当前</option><option value="historical">历史</option>
-          </select></label>}
-          {(filters.query || filters.from || filters.to || filters.role !== "all" || filters.status !== "all") && <button type="button" onClick={() => {
-            setQueryDraft(""); setFromDate(""); setToDate("");
-            setFilters({ character: filters.character, category: filters.category, status: "all", role: "all", page: 1, pageSize: PAGE_SIZE });
-          }}>清除筛选</button>}
-            </div>
-          </details>
+          {(entries !== null || !error) && (
+          <FilterBar
+            query={query}
+            onQuery={setQuery}
+            onSearch={() => {
+              setApplied(query);
+              setPage(0);
+            }}
+            onClearSearch={() => {
+              setQuery("");
+              setApplied("");
+            }}
+            group={group}
+            onGroup={setGroup}
+            filters={filters}
+            onFilters={setFilters}
+            onClearAll={clearAll}
+            resultCount={searching ? filtered.length : null}
+            counts={counts}
+          />
+          )}
         </div>
 
-        {error && <div className="card diary-error-card" role="alert"><h3>记忆读取失败</h3><p>{error}</p><button className="diary-button diary-button--quiet" type="button" onClick={() => load()}>重试</button></div>}
-        {!result && !error && <div className="card"><p>正在翻她的小本子…</p></div>}
-        {result && result.total === 0 && <div className="card empty"><h3>这里还没有记录</h3><p>试试其他分类或时间范围。聊天原文会在发送后立即保存在本机。</p></div>}
+        {entries === null && !error && <StateBlock kind="loading" title="她在翻小本子…" body="马上就好。" />}
 
-        {result && result.total > 0 && <>
-          <div className="memory-result-count">共找到 {result.total.toLocaleString("zh-CN")} 条记录</div>
-          <section className="memory-timeline" aria-label="记忆时间线">
-            {groupByDay(result.items).map(([day, items]) => <section className="memory-day" key={day}>
-              <h2>{day}</h2>
-              {items.map((item) => <MemoryRow key={`${item.type}:${item.id}`} item={item} onOpen={openSession} onOpenJournal={openJournal} onForget={forget} />)}
-            </section>)}
-          </section>
-          <nav className="memory-pagination" aria-label="记忆分页">
-            <button type="button" disabled={filters.page <= 1} onClick={() => setFilters((current) => ({ ...current, page: current.page - 1 }))}>上一页</button>
-            <span>第 {result.page} 页 / 共 {Math.max(1, Math.ceil(result.total / result.pageSize))} 页</span>
-            <button type="button" disabled={result.page * result.pageSize >= result.total} onClick={() => setFilters((current) => ({ ...current, page: current.page + 1 }))}>下一页</button>
-          </nav>
-        </>}
+        {error && entries === null && (
+          <StateBlock
+            kind="error"
+            title="翻不开了"
+            body="网络好像不太好。"
+            detail={error}
+            action={{ label: "再试一次", onClick: () => load() }}
+          />
+        )}
+
+        {entries !== null && total === 0 && (
+          <StateBlock
+            kind="empty"
+            title="她还在认识你"
+            body="多聊几句，她记住的事就会放在这儿。"
+            mood="hold"
+          >
+            <Link className="btn btn--secondary memory-page__gochat" to="/">
+              去和她聊聊
+            </Link>
+          </StateBlock>
+        )}
+
+        {emptySearch && total > 0 && (
+          <StateBlock
+            kind="empty"
+            title={applied.trim() ? `没找到带「${applied.trim()}」的纸条` : "这几种筛选下，暂时没有纸条"}
+            body="换个词试试，或者把筛选清掉。"
+            action={{ label: "清掉筛选", onClick: clearAll }}
+          />
+        )}
+
+        {visible.length > 0 && (
+          <>
+            <ul className="mgrid">
+              {visible.map((entry) => (
+                <MemoryCard key={entry.id} entry={entry} onOpen={setDetail} forgetting={forgetting.has(entry.id)} />
+              ))}
+            </ul>
+
+            <div className="mpager">
+              <button type="button" className="mpager__step" disabled={current === 0} onClick={() => setPage(current - 1)}>
+                <span aria-hidden>‹</span> 上一页
+              </button>
+              <span className="mpager__no" aria-live="polite">
+                第 {current + 1} / {pageCount} 页
+              </span>
+              <button
+                type="button"
+                className="mpager__step"
+                disabled={current >= pageCount - 1}
+                onClick={() => setPage(current + 1)}
+              >
+                下一页 <span aria-hidden>›</span>
+              </button>
+            </div>
+          </>
+        )}
+
+        {error && entries !== null && (
+          <p className="memory-page__opnote" role="alert">
+            {error}
+          </p>
+        )}
       </div>
+
+      <CompanionCorner mood="hold" />
+
+      <MemoryDialog entry={detail} onClose={() => setDetail(null)} onForget={setConfirming} />
+
+      <ConfirmDialog
+        open={Boolean(confirming)}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        title="要忘掉这条吗？"
+        body="忘掉以后，她就不会再提这件事了——这条记忆会从她的小本子里消失，日记和聊天记录不受影响。"
+        cancelLabel="先留着"
+        confirmLabel="忘掉这条"
+        danger
+        onConfirm={() => {
+          if (confirming) forget(confirming);
+        }}
+      />
+
+      <Toast
+        open={Boolean(toast)}
+        text={toast?.text ?? ""}
+        actionLabel={toast?.undo ? "撤回" : undefined}
+        onAction={toast?.undo}
+        onClose={() => setToast(null)}
+        duration={toast?.undo ? UNDO_MS : 3600}
+        tone={toast?.undo ? "plain" : "alert"}
+      />
     </div>
   );
 }

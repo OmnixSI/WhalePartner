@@ -1,0 +1,22 @@
+[
+  {
+    "name": "diary-desktop",
+    "horizontalScrollPx": 0,
+    "smallTargets": []
+  },
+  {
+    "name": "diary-mobile",
+    "horizontalScrollPx": 0,
+    "smallTargets": []
+  },
+  {
+    "name": "memory-desktop",
+    "horizontalScrollPx": 0,
+    "smallTargets": []
+  },
+  {
+    "name": "memory-mobile",
+    "horizontalScrollPx": 0,
+    "smallTargets": []
+  }
+]
