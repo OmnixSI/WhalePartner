@@ -16,6 +16,21 @@ function monthStart(now = new Date()): string {
   return `${now.getFullYear()}-${month}-01T00:00:00.000Z`;
 }
 
+/** 本月的边界：start = 1 号，end = 当月最后一天，resetsAt = 下月 1 号（界面「下次刷新」用它）。 */
+function monthWindow(now = new Date()) {
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const start = new Date(y, m, 1);
+  const end = new Date(y, m + 1, 0);
+  const next = new Date(y, m + 1, 1);
+  return {
+    start: `${iso(start)}T00:00:00.000Z`,
+    end: `${iso(end)}T23:59:59.999Z`,
+    resetsAt: `${iso(next)}T00:00:00.000Z`,
+  };
+}
+
 /** 供聊天链路判断要不要拦：返回本月已用与总量；表不存在按 0。 */
 export function quotaUsage(dbPath: string): { used: number; total: number; enforced: boolean } {
   let db: DatabaseSync | undefined;
@@ -70,7 +85,7 @@ export async function handleQuotaRoute(
     sendJson(response, 200, {
       billing: "off",
       enforced: process.env.QUOTA_ENFORCE === "1",
-      period: { start: since, end: since.slice(0, 8) + "31", resetsAt: since },
+      period: monthWindow(),
       total: MONTHLY_UNITS,
       used,
       remaining,
