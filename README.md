@@ -47,9 +47,24 @@
 
 ---
 
-## 快速开始
+## 装到本机（macOS）
 
-需要 **Node 26**（`.node-version`）、**pnpm**、**FFmpeg**；本机装好并登录 **Codex CLI**（没有 DeepSeek key 时它是兜底模型）；桌面窗口另需 Rust。
+已经构建好并装进 `/Applications`：**鲸汐.app v0.2.2**（`CFBundleShortVersionString` 已核对）。
+安装包：`apps/client/src-tauri/target/release/bundle/dmg/鲸汐_0.2.2_aarch64.dmg`。
+
+**打开方式（二选一）**
+
+1. 双击仓库根目录的 [`启动鲸汐.command`](启动鲸汐.command)：它会先确认 `127.0.0.1:8787` 的后端在跑（没跑就后台拉起来），再打开 App
+2. 手动：先 `pnpm --dir apps/api run serve`，再从聚焦搜索 / 启动台打开「鲸汐」
+
+> App 只负责界面，模型调用都在后端。后端没启动时，聊天区会显示「网络好像断了，我在这儿等你」。
+> 关掉后端：`lsof -ti:8787 | xargs kill`。
+
+改完代码重新打包：`pnpm --dir apps/client run tauri build`（首次编译 Rust 约 3 分钟，产物在 `apps/client/src-tauri/target/release/bundle/`）。
+
+## 开发模式（热更新）
+
+需要 **Node 26**（`.node-version`）、**pnpm**、**FFmpeg**；本机装好并登录 **Codex CLI**（没有 DeepSeek key 时它是兜底模型）。
 
 ```sh
 # 服务端
@@ -59,15 +74,17 @@ pnpm --dir apps/api run serve               # http://127.0.0.1:8787
 
 # 客户端
 pnpm --dir apps/client install
-pnpm --dir apps/client run fetch-live2d     # 大肥鱼 Live2D（需自备 Cubism Core）
+pnpm --dir apps/client run fetch-live2d     # 大肥鱼 Live2D 模型
 pnpm --dir apps/client run fetch-model      # VRM 演示形象
 pnpm --dir apps/client run dev              # http://127.0.0.1:1420
 ```
 
-- 桌面窗口：`pnpm --dir apps/client run tauri dev`
+- 桌面窗口（开发）：`pnpm --dir apps/client run tauri dev`
 - 手机联调：`WP_LAN=1 pnpm --dir apps/client run dev` + `pnpm --dir apps/api run serve -- --lan`（没有登录保护，只在可信网络里用）
-- 没有 Cubism Core 时舞台退回贴纸兜底；它的许可见 [Live2D 评估](docs/LIVE2D_ASSESSMENT.md)
-- Cubism Core 可用 Live2D 官方 CDN 那一份（https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js），放到 `apps/client/public/live2d/libs/live2dcubismcore.min.js`；仓库不入库
+
+**Live2D 的 Cubism Core**（专有组件，仓库不分发）：从 [官方 SDK](https://www.live2d.com/en/sdk/download/web/) 或官方 CDN 取一份
+`https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js`，
+放到 `apps/client/public/live2d/libs/live2dcubismcore.min.js`。缺这个文件时舞台退回贴纸兜底，聊天不受影响。
 
 ---
 
