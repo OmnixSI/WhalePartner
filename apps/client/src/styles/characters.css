@@ -1,15 +1,9 @@
-/* 每个角色只换一种强调色（亮色取深、暗色取浅），整套界面跟着变；鲸汐沿用默认的深青。 */
-:root[data-character="deepseek"] { --accent: #3552c9; }
-:root[data-character="claude"] { --accent: #b4532f; }
-:root[data-character="chatgpt"] { --accent: #0f7c63; }
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"])[data-character="whale"] { --accent: #6fc0c6; }
-  :root:not([data-theme="light"])[data-character="deepseek"] { --accent: #8fa6ff; }
-  :root:not([data-theme="light"])[data-character="claude"] { --accent: #f0a07d; }
-  :root:not([data-theme="light"])[data-character="chatgpt"] { --accent: #6fd3b8; }
-}
-:root[data-theme="dark"][data-character="whale"] { --accent: #6fc0c6; }
-:root[data-theme="dark"][data-character="deepseek"] { --accent: #8fa6ff; }
-:root[data-theme="dark"][data-character="claude"] { --accent: #f0a07d; }
-:root[data-theme="dark"][data-character="chatgpt"] { --accent: #6fd3b8; }
+/* 每个角色一种强调色；亮色取深、暗色取浅。整套界面（名字牌、按钮、浪、胶带高光）随之变化。 */
+:root[data-character="whale"]    { --accent: #1A6670; }
+:root[data-character="deepseek"] { --accent: #2E4BB8; }
+:root[data-character="claude"]   { --accent: #9F4326; }
+:root[data-character="chatgpt"]  { --accent: #0A6B53; }
+:root[data-theme="dark"][data-character="whale"]    { --accent: #7CCBD2; }
+:root[data-theme="dark"][data-character="deepseek"] { --accent: #9DB2FF; }
+:root[data-theme="dark"][data-character="claude"]   { --accent: #F2A582; }
+:root[data-theme="dark"][data-character="chatgpt"]  { --accent: #79D9BC; }

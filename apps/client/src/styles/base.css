@@ -7,31 +7,23 @@ html, body, #root { height: 100%; }
 body {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: 15px;
-  line-height: 1.65;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   color: var(--ink);
-  background: var(--ground);
+  /* 纸纹是背景图层（规范 §5.1）：颗粒 + 纤维 + 纸色，不盖在内容之上 */
+  background: var(--grain), var(--fiber), var(--paper);
   -webkit-font-smoothing: antialiased;
-  font-variant-numeric: tabular-nums;
   overflow: hidden;
 }
-/* 纸的颗粒：很淡，只为了不那么平。 */
-body::after {
-  content: ""; position: fixed; inset: 0; z-index: 50; pointer-events: none; opacity: .07; mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) body::after { mix-blend-mode: screen; opacity: .05; } }
-:root[data-theme="dark"] body::after { mix-blend-mode: screen; opacity: .05; }
 
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; }
 a { color: var(--accent); text-underline-offset: 3px; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
-h1, h2, h3 { margin: 0; font-family: var(--font-serif); font-weight: 700; letter-spacing: .02em; }
+:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-xs); }
+h1, h2, h3 { margin: 0; font-family: var(--font-voice); font-weight: 700; letter-spacing: var(--ls-voice); }
 p { margin: 0; }
-::selection { background: var(--accent); color: var(--accent-ink); }
+::selection { background: var(--accent-wash); color: var(--ink); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
-}
+/* reduced-motion 交给 tokens 里的 --dur-*（=1ms）与各组件的 useReducedMotion；
+   不再用 !important 杀掉所有动画——那会让 Radix/motion 的退出动画不触发，元素不卸载（规范 §4.9）。 */

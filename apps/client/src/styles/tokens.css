@@ -1,58 +1,148 @@
-/* 潮汐手帐 · design tokens。
-   亮色是“纸”，暗色是“夜里的海”；颜色只有墨、纸、一种强调色（随角色变），不用渐变和发光。 */
+/* 潮汐手帐 2.0 · design tokens
+   纸 / 墨 / 一种强调色（随角色）/ 珊瑚只做装饰与危险底色。
+   禁止：任何 gradient、backdrop-filter、发光阴影。 */
+@layer tokens {
 :root {
-  --font-serif: "LXGW WenKai", "Songti SC", "Noto Serif CJK SC", serif;
-  --font-ui: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  /* ---- 字体 ---- */
+  --font-voice: "LXGW WenKai", "LXGW WenKai Subset", "Songti SC", "Noto Serif CJK SC", serif;      /* 她的声音/标题/日记 */
+  --font-ui: "LXGW Neo XiHei", system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; /* 界面 chrome */
+  --font-num: "Fraunces Variable", "LXGW WenKai", Georgia, serif;                                  /* 日期/编号数字 */
 
-  --ground: #f4f1e8;
-  --ground-2: #eae6da;
-  --sheet: #faf8f2;
-  --ink: #17222d;
-  --ink-soft: #55616c;
-  --ink-faint: #858e96;
-  --rule: rgb(23 34 45 / 0.14);
-  --accent: #1f6f78;
-  --accent-ink: #faf8f2;
-  --alert: #b94a35;
-  --sea: color-mix(in srgb, var(--accent) 20%, var(--ground));
-  --sea-2: color-mix(in srgb, var(--accent) 32%, var(--ground));
+  /* ---- 字号（rem；1rem = 16px × --scale） ---- */
+  --fs-micro: .8125rem;   /* 13px  邮戳/编号/时间，唯一允许 <14px 的档，且只用 --ink-mute 及更深 */
+  --fs-small: .875rem;    /* 14px  辅助说明 */
+  --fs-body: 1rem;        /* 16px  UI 正文 */
+  --fs-chat: 1.0625rem;   /* 17px  她的话（文楷） */
+  --fs-diary: 1.125rem;   /* 18px  日记正文（文楷） */
+  --fs-h3: 1.25rem;       /* 20px */
+  --fs-h2: 1.5rem;        /* 24px */
+  --fs-h1: 2rem;          /* 32px */
+  --fs-display: 2.75rem;  /* 44px  页面大标题（仅桌面） */
+  --fs-date: 3.5rem;      /* 56px  日记日期大数字（Fraunces） */
+  --lh-tight: 1.25; --lh-ui: 1.5; --lh-body: 1.7; --lh-voice: 1.9; --lh-diary: 2; /* 18px×2 = 36px 横线本行距 */
+  --ls-voice: .02em; --ls-label: .06em;
 
-  --radius: 6px;
-  --radius-lg: 10px;
-  --nav-w: 104px;
-  --chat-w: 420px;
-  --tabbar-h: 60px;
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* ---- 颜色 · 晨光（亮）---- */
+  color-scheme: light;
+  --paper: #F6EFE2;      /* 底 */
+  --paper-2: #EDE3D0;    /* 次级纸：输入底、凹陷、选中底 */
+  --sheet: #FBF7EE;      /* 抬起的纸：对话框、卡片、弹层 */
+  --ink: #2F3A4A;        /* 正文 */
+  --ink-soft: #3F4A5C;   /* 次要正文（仍 ≥7:1） */
+  --ink-mute: #525D70;   /* 时间/编号/说明，≥5.2:1，用于 ≥13px */
+  --line: rgb(47 58 74 / .20);        /* 装饰性细线（不承载信息） */
+  --line-strong: #7D8795;             /* 输入框/开关等“控件边界”，≥3:1 */
+  --accent: #1A6670;                  /* 随角色，见 characters.css */
+  --accent-ink: #FBF7EE;              /* 实心强调色上的字 */
+  --accent-wash: color-mix(in oklab, var(--accent) 14%, var(--sheet)); /* 名字牌/选中底；其上用 --ink 或 --accent */
+  --coral: #E8765E;      /* 仅：胶带/邮戳大图形/插画；严禁文字 */
+  --coral-soft: #F4B9A8; /* 其上可放 --ink（6.77:1） */
+  --alert: #A8372B;      /* 危险/错误：文字、实心按钮、点 */
+  --alert-ink: #FBF7EE;
+  --alert-wash: #F3E4DB; /* 错误纸条底，其上 --alert 5.2:1、--ink 9.3:1 */
+  --ok: #2F6B3F;
+  --lamp: #F2C14E;       /* 灯塔黄：仅装饰（星、灯、胶带） */
+  --lamp-text: #7A5200;  /* 需要黄色系文字时用它 */
+  --slip: #FFF1B8;       /* 你的话：手写便签底 */
+  --tape-a: #F2B8A8; --tape-b: #BFE0DC; --tape-c: #F2D58A; --tape-d: #D9C7E8; /* 4 色胶带 */
+  --sea-1: color-mix(in oklab, var(--accent) 14%, var(--paper)); /* 远浪 */
+  --sea-2: color-mix(in oklab, var(--accent) 22%, var(--paper)); /* 中浪 */
+  --sea-3: color-mix(in oklab, var(--accent) 34%, var(--paper)); /* 近浪，其上 --ink ≥5.8:1 */
+  --shadow-1: 0 1px 0 rgb(47 58 74 / .10), 0 2px 4px -1px rgb(47 58 74 / .14);  /* 平放的纸 */
+  --shadow-2: 0 1px 0 rgb(47 58 74 / .10), 0 8px 12px -6px rgb(47 58 74 / .26); /* 被拿起的纸（拖拽/弹层） */
+
+  /* ---- 间距 4px 体系 ---- */
+  --sp-1: .25rem; --sp-2: .5rem; --sp-3: .75rem; --sp-4: 1rem; --sp-5: 1.25rem; --sp-6: 1.5rem;
+  --sp-8: 2rem; --sp-10: 2.5rem; --sp-12: 3rem; --sp-16: 4rem; --sp-20: 5rem;
+
+  /* ---- 圆角：只有 4 档 + 1 个圆 ---- */
+  --r-xs: 4px;    /* 胶带、kbd、焦点环 */
+  --r-sm: 8px;    /* 输入框、芯片、小按钮 */
+  --r-md: 14px;   /* 按钮、便签、卡片 */
+  --r-lg: 20px;   /* 对话框、底部抽屉 */
+  --r-round: 999px; /* 仅：开关轨道、头像、徽点 */
+
+  /* ---- 线条与焦点 ---- */
+  --stroke-1: 1.5px; --stroke-2: 2.5px;
+  --focus-ring: 0 0 0 2px var(--paper), 0 0 0 5px var(--accent); /* 双环：任何底色上都可见 */
+
+  /* ---- 布局与触控 ---- */
+  --hit: 44px;               /* 触控最小目标；老人模式 56px */
+  --nav-w: 112px; --backlog-w: 360px; --tabbar-h: 64px; --scene-min: 480px;
+  --page-max: 760px; --memory-max: 960px;
+
+  /* ---- 层级 ---- */
+  --z-bg: 0; --z-stage: 1; --z-ui: 10; --z-nav: 20; --z-sheet: 30; --z-dialog: 40; --z-toast: 50;
+
+  /* ---- 动效 ---- */
+  --dur-press: 120ms; --dur-hover: 160ms; --dur-fade: 200ms; --dur-panel: 280ms; --dur-ink: 240ms; --dur-page: 520ms;
+  --ease-out: cubic-bezier(.23, 1, .32, 1);
+  --ease-inout: cubic-bezier(.65, 0, .35, 1);
+  --breath: 4.5s; /* 呼吸周期，4–5s */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --ground: #0e1a26;
-    --ground-2: #16263a;
-    --sheet: #111f2d;
-    --ink: #e9e4d6;
-    --ink-soft: #a9b1b6;
-    --ink-faint: #7b858d;
-    --rule: rgb(233 228 214 / 0.14);
-    --accent-ink: #0e1a26;
-    --alert: #e98b72;
-    --sea: color-mix(in srgb, var(--accent) 24%, var(--ground));
-    --sea-2: color-mix(in srgb, var(--accent) 38%, var(--ground));
-  }
-}
-
+/* ---- 深海夜（暗）：唯一一份 ---- */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --ground: #0e1a26;
-  --ground-2: #16263a;
-  --sheet: #111f2d;
-  --ink: #e9e4d6;
-  --ink-soft: #a9b1b6;
-  --ink-faint: #7b858d;
-  --rule: rgb(233 228 214 / 0.14);
-  --accent-ink: #0e1a26;
-  --alert: #e98b72;
-  --sea: color-mix(in srgb, var(--accent) 24%, var(--ground));
-  --sea-2: color-mix(in srgb, var(--accent) 38%, var(--ground));
+  --paper: #0F1C2A; --paper-2: #17283A; --sheet: #13222F;
+  --ink: #EDE6D6; --ink-soft: #CBD2D7; --ink-mute: #A0ACB6;
+  --line: rgb(237 230 214 / .18); --line-strong: #6B7A88;
+  --accent-ink: #0F1C2A;
+  --accent-wash: color-mix(in oklab, var(--accent) 16%, var(--sheet));
+  --coral: #F08A72; --coral-soft: #5C3A34;
+  --alert: #FF9C86; --alert-ink: #0F1C2A; --alert-wash: #3A2A2A;
+  --ok: #8FD3A0; --lamp: #F2C14E; --lamp-text: #F2C14E;
+  --slip: #3A3420;
+  --tape-a: #8A5A52; --tape-b: #3F6B6B; --tape-c: #8A7440; --tape-d: #5E4F78;
+  --sea-1: color-mix(in oklab, var(--accent) 14%, var(--paper));
+  --sea-2: color-mix(in oklab, var(--accent) 22%, var(--paper));
+  --sea-3: color-mix(in oklab, var(--accent) 34%, var(--paper));
+  --shadow-1: 0 1px 0 rgb(0 0 0 / .35), 0 2px 4px -1px rgb(0 0 0 / .45);
+  --shadow-2: 0 1px 0 rgb(0 0 0 / .35), 0 8px 12px -6px rgb(0 0 0 / .6);
+}
+
+/* ---- 老人模式 / 高对比 / 安静 ---- */
+:root[data-elder="on"] {
+  --hit: 56px;
+  --ink-mute: var(--ink-soft);           /* 取消最浅的一档灰 */
+  --line-strong: var(--ink-mute);        /* 控件边界升到 ≥5:1 */
+  --stroke-1: 2px; --stroke-2: 3px;
+  --r-md: 16px;
+  --page-max: 680px;
+}
+:root[data-contrast="high"] { --ink-mute: var(--ink-soft); --line-strong: var(--ink-mute); }
+:root[data-motion="calm"] { --dur-press: 1ms; --dur-hover: 1ms; --dur-panel: 120ms; --dur-page: 120ms; }
+
+html { font-size: calc(16px * var(--scale, 1)); }
+:root { -webkit-text-size-adjust: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-press: 1ms; --dur-hover: 1ms; --dur-panel: 120ms; --dur-page: 120ms; --dur-ink: 120ms; }
+}
+}
+
+/* ---- 兼容别名（P0 过渡用；P4 清理，见规范 §12.3「淘汰 token」） ----
+   旧组件仍引用旧名字；这里把旧名指到新 token，保证四个页面在新 tokens 下不破版。 */
+:root {
+  --font-serif: var(--font-voice);
+  --ground: var(--paper);
+  --ground-2: var(--paper-2);
+  --ink-faint: var(--ink-mute);
+  --rule: var(--line);
+  --radius: var(--r-sm);
+  --radius-lg: var(--r-md);
+  --sea: var(--sea-1);
+  --chat-w: 420px;
+  --ease: var(--ease-out);
+}
+
+/* ---- 背景图层（规范 §5.1）：纸纹是背景，不是盖在所有东西上的叠层 ----
+   亮：墨色颗粒；暗：暖纸色颗粒。纤维层 P0 先不做（规范允许「只做颗粒」）。 */
+:root {
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='g' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .184  0 0 0 0 .227  0 0 0 0 .29  0 0 0 .6 -.22'/></filter><rect width='200' height='200' filter='url(%23g)'/></svg>");
+  --fiber: none;
+}
+:root[data-theme="dark"] {
+  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='g' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='11' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .93  0 0 0 0 .9  0 0 0 0 .84  0 0 0 .5 -.2'/></filter><rect width='200' height='200' filter='url(%23g)'/></svg>");
+  --fiber: none;
 }
