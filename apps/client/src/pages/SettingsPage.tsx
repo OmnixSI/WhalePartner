@@ -6,7 +6,7 @@
  * 页面自己绝不编一个数字出来。
  */
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { version as clientVersion } from "../../package.json";
 import { fetchHealth } from "../lib/api";
 import { getProfile, putNickname } from "../lib/profile";
@@ -21,6 +21,7 @@ import { Switch } from "../components/settings/Switch";
 import { ChoiceCard } from "../components/settings/ChoiceCard";
 import { QuotaMeter } from "../components/settings/QuotaMeter";
 import { DataSection } from "../components/settings/DataSection";
+import { ModelSetup } from "../components/settings/ModelSetup";
 import { CharacterDialog } from "../components/settings/CharacterDialog";
 import { Toast } from "../components/settings/Toast";
 import { updateA11y, ELDER_MIN_SCALE, SCALE_MAX } from "../components/settings/prefs";
@@ -46,6 +47,7 @@ type Backend = "checking" | "ok" | "down";
 
 export function SettingsPage() {
   const character = useCharacter();
+  const { hash } = useLocation();
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const [a11y, setA11y] = useState(readA11y);
   const [backend, setBackend] = useState<Backend>("checking");
@@ -80,6 +82,12 @@ export function SettingsPage() {
       alive = false;
     };
   }, []);
+
+  // 从首导第 3 步的「模型接入」入口跳进来时带 `#model`：滚到那一组，别让人自己找。
+  useEffect(() => {
+    if (!hash) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
+  }, [hash]);
 
   const chooseTheme = (next: ThemeChoice) => {
     setTheme(next);
@@ -369,6 +377,10 @@ export function SettingsPage() {
           <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。">
             <Switch label="减少动画" checked={a11y.calm} onChange={setCalm} />
           </SettingRow>
+        </SettingGroup>
+
+        <SettingGroup title="模型接入" id="model" note="接哪家模型、用多大强度，都在这儿改；以前只能翻 .env 和本机配置。">
+          <ModelSetup offline={offline} onToast={setToast} />
         </SettingGroup>
 
         <SettingGroup title="额度" id="quota">

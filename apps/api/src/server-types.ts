@@ -9,6 +9,14 @@ import type { ChatStore } from "./store.ts";
 import type { DailyJournalService } from "./daily-journal.ts";
 import type { SurfService } from "./surf/service.ts";
 
+/** 模型接入（设置 › 模型接入）：要读写的两个文件，测试时注入临时路径。 */
+export interface SetupPaths {
+  /** 写 `DEEPSEEK_API_KEY` 的 `.env`；不传就用 `apps/api/.env`。 */
+  envPath?: string;
+  /** Codex 的 `config.toml`；不传就用 `~/.codex/config.toml`。 */
+  codexPath?: string;
+}
+
 export interface ServerDeps {
   config: ApiConfig;
   provider: FallbackChatProvider;
@@ -26,4 +34,6 @@ export interface ServerDeps {
   accounts?: AccountService;
   /** 「她自己去逛」：见闻、设置、调度、SSE。 */
   surf?: SurfService;
+  /** 模型接入要写的两个文件；只有测试会传，正常启动走默认路径。 */
+  setup?: SetupPaths;
 }
