@@ -151,3 +151,36 @@ test("聊天痕迹：最近 14 天有消息才算活跃角色", () => {
   assert.deepEqual(store.recentUserMessages("whale", since), ["在吗"]);
   store.close();
 });
+
+test("统计：被忘掉的条目不计入「今天逛了几个地方」", () => {
+  const { store } = makeStore();
+  const { session } = store.startSession("whale", "2026-11-07 09:30", at(7));
+  const ids: number[] = [];
+  for (let i = 0; i < 2; i += 1) {
+    const item = store.insertItem({
+      character: "whale",
+      sessionId: session.id,
+      kind: "video",
+      title: `第 ${i} 条`,
+      url: `https://example.com/v${i}`,
+      sourceSite: "bilibili",
+      summary: "摘要",
+      comment: "感想",
+      tags: [],
+      score: 3,
+      dedupeKey: `v-${i}`,
+      createdAt: "2026-11-07T09:00:00.000Z",
+    });
+    assert.ok(item);
+    ids.push(item.id);
+  }
+  assert.equal(store.countSince("whale", "video", "2026-11-07T00:00:00.000Z"), 2);
+  store.hideItem(ids[0]);
+  assert.equal(store.feed({ character: "whale", page: 1, pageSize: 10 }).total, 1);
+  assert.equal(
+    store.countSince("whale", "video", "2026-11-07T00:00:00.000Z"),
+    1,
+    "数字要和列表一致：忘掉的那条不该再算进去",
+  );
+  store.close();
+});

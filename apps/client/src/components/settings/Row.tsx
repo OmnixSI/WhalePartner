@@ -34,11 +34,23 @@ type RowProps = {
   children?: ReactNode;
   /** 右侧控件换行到下面（输入框、卡片组用） */
   stacked?: boolean;
+  /** 整行可点：点标题/说明也能切换（开关类设置用它，别逼用户去点小圆点） */
+  onActivate?: () => void;
 };
 
-export function SettingRow({ title, desc, icon, children, stacked = false }: RowProps) {
+export function SettingRow({ title, desc, icon, children, stacked = false, onActivate }: RowProps) {
   return (
-    <div className="set-row" data-stacked={stacked ? "on" : "off"}>
+    <div
+      className="set-row"
+      data-stacked={stacked ? "on" : "off"}
+      data-tap={onActivate ? "on" : "off"}
+      onClick={onActivate ? (event) => {
+        // 点到右侧控件本身时让它自己处理，避免一次点击切两次
+        const target = event.target as HTMLElement;
+        if (target.closest("button, input, label, a")) return;
+        onActivate();
+      } : undefined}
+    >
       <div className="set-row__text">
         <p className="set-row__title">
           {icon && <Icon name={icon} size={24} className="set-row__icon" />}

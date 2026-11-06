@@ -9,10 +9,6 @@ export interface ExportResult {
   createdAt: string;
 }
 
-function inTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
 async function readError(response: Response): Promise<never> {
   let detail = `请求失败（HTTP ${response.status}）`;
   try {
@@ -26,20 +22,31 @@ async function readError(response: Response): Promise<never> {
  * 导出全部数据。Tauri 里走 POST，落到下载目录并拿到路径；
  * 浏览器开发环境走 GET，让浏览器自己下载（Content-Disposition: attachment）。
  */
-export async function exportAll(): Promise<ExportResult | { download: true }> {
-  if (!inTauri()) {
-    const link = document.createElement("a");
-    link.href = `${API_BASE}/api/export`;
-    link.download = "";
-    link.rel = "noopener";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    return { download: true };
-  }
-  const response = await fetch(`${API_BASE}/api/export`, { method: "POST" });
-  if (!response.ok) return readError(response);
-  return (await response.json()) as ExportResult;
+/**
+ * 导出全部数据：先 POST 拿 id，再 GET 下载 zip。
+ * 两个环境都走「抓成 blob 再点链」，这样文件名固定是 .zip，
+ * 也不会出现浏览器直接 GET 到 404 JSON 的情况。
+ */
+export async function exportAll(): Promise<{ download: true; filename: string }> {
+  const created = await fetch(`${API_BASE}/api/export`, { method: "POST" });
+  if (!created.ok) await readError(created);
+  const { id } = (await created.json()) as { id: string };
+  const file = await fetch(`${API_BASE}/api/export?id=${encodeURIComponent(id)}`);
+  if (!file.ok) await readError(file);
+
+  const blob = await file.blob();
+  const stamp = new Date().toISOString().slice(0, 10);
+  const filename = `whalepartner-${stamp}.zip`;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return { download: true, filename };
 }
 
 export interface DeleteAllResult {

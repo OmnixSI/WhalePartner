@@ -6,7 +6,7 @@
  * 页面自己绝不编一个数字出来。
  */
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { version as clientVersion } from "../../package.json";
 import { fetchHealth } from "../lib/api";
 import { getProfile, putNickname } from "../lib/profile";
@@ -21,6 +21,7 @@ import { Switch } from "../components/settings/Switch";
 import { ChoiceCard } from "../components/settings/ChoiceCard";
 import { QuotaMeter } from "../components/settings/QuotaMeter";
 import { DataSection } from "../components/settings/DataSection";
+import { ModelSetup } from "../components/settings/ModelSetup";
 import { CharacterDialog } from "../components/settings/CharacterDialog";
 import { Toast } from "../components/settings/Toast";
 import { updateA11y, ELDER_MIN_SCALE, SCALE_MAX } from "../components/settings/prefs";
@@ -46,6 +47,7 @@ type Backend = "checking" | "ok" | "down";
 
 export function SettingsPage() {
   const character = useCharacter();
+  const { hash } = useLocation();
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const [a11y, setA11y] = useState(readA11y);
   const [backend, setBackend] = useState<Backend>("checking");
@@ -56,6 +58,8 @@ export function SettingsPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [surf, setSurf] = useState<SurfSettings | null>(null);
   const [surfError, setSurfError] = useState("");
+  /** 最近一次保存的回执：让"点了没反应"变成看得见的一句话 */
+  const [surfNote, setSurfNote] = useState<{ at: string; ok: boolean; text: string } | null>(null);
 
   const offline = backend === "down";
 
@@ -81,12 +85,18 @@ export function SettingsPage() {
     };
   }, []);
 
+  // 从首导第 3 步的「模型接入」入口跳进来时带 `#model`：滚到那一组，别让人自己找。
+  useEffect(() => {
+    if (!hash) return;
+    document.getElementById(hash.slice(1))?.scrollIntoView({ block: "start" });
+  }, [hash]);
+
   const chooseTheme = (next: ThemeChoice) => {
     setTheme(next);
     applyTheme(next);
   };
 
-  const setNick = (next: boolean) => {
+  const setElder = (next: boolean) => {
     setA11y(updateA11y({ elder: next }));
   };
   const setCalm = (next: boolean) => {
@@ -120,11 +130,15 @@ export function SettingsPage() {
     const before = surf;
     setSurf({ ...surf, ...patch, quiet: { ...surf.quiet, ...(patch.quiet ?? {}) } });
     setSurfError("");
+    const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     try {
       setSurf(await putSurfSettings(character.id, patch));
+      setSurfNote({ at: stamp, ok: true, text: "已保存" });
     } catch (error) {
       setSurf(before);
-      setSurfError(error instanceof Error ? error.message : "现在存不上，待会儿再试。");
+      const why = error instanceof Error ? error.message : "现在存不上，待会儿再试。";
+      setSurfError(why);
+      setSurfNote({ at: stamp, ok: false, text: why });
     }
   };
 
@@ -199,14 +213,21 @@ export function SettingsPage() {
           </SettingRow>
         </SettingGroup>
 
-        <SettingGroup title="让她自己逛" note="她可以自己去看看视频、翻翻网页，回来讲给你听。">
+        <SettingGroup
+          title="让她自己逛"
+          note={<>她可以自己去看看视频、翻翻网页，回来讲给你听。{surfNote && (
+            <span className="set-receipt" data-ok={surfNote.ok ? "on" : "off"} role="status">
+              {surfNote.at} {surfNote.text}
+            </span>
+          )}</>}
+        >
           {surf === null ? (
             <SettingRow title="自己去逛" desc="现在拿不到她的逛设置。" icon="phone">
               <span className="set-offline">还没接上</span>
             </SettingRow>
           ) : (
             <>
-              <SettingRow icon="phone" title="自己去逛" desc="开了之后，她会自己去看视频、翻网页，回来讲给你听。">
+              <SettingRow icon="phone" title="自己去逛" desc="开了之后，她会自己去看视频、翻网页，回来讲给你听。" onActivate={() => void saveSurf({ enabled: !surf.enabled })}>
                 <Switch label="让她自己逛" checked={surf.enabled} onChange={(next) => void saveSurf({ enabled: next })} />
               </SettingRow>
 
@@ -235,7 +256,7 @@ export function SettingsPage() {
                 左边是看视频（B 站），右边是翻网页。
               </p>
 
-              <SettingRow title="讲给我听" desc="逛到有意思的，她会在聊天里告诉我。">
+              <SettingRow title="讲给我听" desc="逛到有意思的，她会在聊天里告诉我。" onActivate={() => void saveSurf({ shareToChat: !surf.shareToChat })}>
                 <Switch label="讲给我听" checked={surf.shareToChat} onChange={(next) => void saveSurf({ shareToChat: next })} />
               </SettingRow>
             </>
@@ -336,8 +357,9 @@ export function SettingsPage() {
             icon="settings"
             title="老人模式"
             desc="大字、大按钮，导航只留聊天、她的日记、设置三个入口，也不做会动的花样。"
+            onActivate={() => setElder(!a11y.elder)}
           >
-            <Switch label="老人模式" checked={a11y.elder} onChange={setNick} />
+            <Switch label="老人模式" checked={a11y.elder} onChange={setElder} />
           </SettingRow>
 
           <SettingRow
@@ -366,9 +388,13 @@ export function SettingsPage() {
             <p className="set-scale__preview">预览：今天天气很好</p>
           </SettingRow>
 
-          <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。">
+          <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。" onActivate={() => setCalm(!a11y.calm)}>
             <Switch label="减少动画" checked={a11y.calm} onChange={setCalm} />
           </SettingRow>
+        </SettingGroup>
+
+        <SettingGroup title="模型接入" id="model" note="接哪家模型、用多大强度，都在这儿改；以前只能翻 .env 和本机配置。">
+          <ModelSetup offline={offline} onToast={setToast} />
         </SettingGroup>
 
         <SettingGroup title="额度" id="quota">

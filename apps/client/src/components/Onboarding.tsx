@@ -9,6 +9,7 @@
  * 第 2、3 步沿用原来的昵称 / 角色卡与约定 / 字号。
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAvatarStatus } from "../avatar/avatar-state";
 import { Live2DStage } from "../avatar/Live2DStage";
 import type { AvatarEmotion } from "../avatar/model.config";
@@ -83,6 +84,7 @@ const POKE_MS = 1800;
 
 export function Onboarding() {
   const open = useOnboardingOpen();
+  const navigate = useNavigate();
   const character = useCharacter();
   const model = useModel();
   const avatar = useAvatarStatus();
@@ -286,6 +288,17 @@ export function Onboarding() {
                     ))}
                   </div>
                   {fontChoice === "huge" && <p className="onb__note">大字、大按钮、只留三个入口。以后在设置里还能改。</p>}
+                  <p className="onb__sub">用的是哪家模型？</p>
+                  <button
+                    type="button"
+                    className="btn btn--secondary onb__model"
+                    onClick={() => {
+                      finish(false);
+                      navigate("/settings#model");
+                    }}
+                  >
+                    去设置里填 DeepSeek key、改 Codex
+                  </button>
                 </div>
               )}
             </>

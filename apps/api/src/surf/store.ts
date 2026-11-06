@@ -358,7 +358,9 @@ export class SurfRepository {
 
   countSince(character: string, kind: SurfItemKind, sinceIso: string): number {
     const row = this.#db
-      .prepare("SELECT COUNT(*) AS n FROM surf_items WHERE character = ? AND kind = ? AND created_at >= ?")
+      // 与 feed 保持一致：被「忘掉」的（hidden=1）不算进「今天逛了几个地方」，否则会出现
+    // 「今天逛了 2 个地方」+ 空列表的矛盾。
+    .prepare("SELECT COUNT(*) AS n FROM surf_items WHERE character = ? AND kind = ? AND hidden = 0 AND created_at >= ?")
       .get(character, kind, sinceIso) as { n: number };
     return Number(row.n);
   }
