@@ -72,6 +72,8 @@ export function ChatPanel({ character }: Props) {
   const [showOffline, setShowOffline] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  /** main 的会话机制：第一次拉历史时把 sessionId 记住，后续发送沿用。 */
+  const sessionIdRef = useRef("");
   const [draft, setDraft] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [live, setLive] = useState<{ key: string; chunks: string[] } | null>(null);
@@ -97,6 +99,8 @@ export function ChatPanel({ character }: Props) {
     setHistoryLoaded(false);
     fetchHealth(ctrl.signal).then(setHealth);
     fetchHistory(character.id, HISTORY_LIMIT, ctrl.signal).then((history) => {
+      const sid = history.find((m) => m.sessionId)?.sessionId;
+      if (sid) sessionIdRef.current = sid;
       setTurns(
         history.map((m) => ({
           key: `h${m.id}`,
@@ -149,7 +153,7 @@ export function ChatPanel({ character }: Props) {
     abort.current = ctrl;
     let started = false;
     try {
-      for await (const event of streamChat(message, character.id, ctrl.signal)) {
+      for await (const event of streamChat(message, character.id, sessionIdRef.current, ctrl.signal)) {
         if (event.type === "delta") {
           if (!started) {
             started = true;
@@ -163,8 +167,6 @@ export function ChatPanel({ character }: Props) {
           );
         } else if (event.type === "video" || event.type === "web") {
           setProgress({ kind: event.type, stage: event.stage, message: event.message, title: event.title });
-        } else if (event.type === "recall") {
-          setTurns((prev) => prev.map((t) => (t.key === herKey ? { ...t, recalled: event.memories } : t)));
         } else if (event.type === "emotion") {
           setEmotion(event.emotion);
         } else if (event.type === "done") {
