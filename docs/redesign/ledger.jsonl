@@ -1,3 +1,5 @@
 {"at":"2026-11-07T01:52:00+11:00","phase":"plan","round":0,"verdict":"init","gates":{},"score":null,"note":"执行计划 / 任务书 / 三层记忆契约落地；跟踪 Issue #42，阶段 Issue #43-#49","pr":null}
 {"at":"2026-11-07T02:20:00+11:00","phase":"P0","round":1,"verdict":"pass","gates":{"typecheck":true,"build":true,"contrast":"90/90","gradient":0},"score":null,"note":"tokens/characters/theme/a11y/theme-boot/base/grain + 对比度闸门；兼容别名保证 4 页不破版","pr":51}
 {"at":"2026-11-07T02:22:00+11:00","phase":"P0","round":2,"verdict":"doing","gates":{},"score":null,"note":"§5.2-5.7 手绘基元（ink/InkLine/InkFrame/Tape/Stamp/Tide/Icon/WhaleSticker/CompanionCorner）交给子代理，任务卡限定行区间与写入路径","pr":51}
+{"at":"2026-11-07T02:30:00+11:00","phase":"PB","round":1,"verdict":"pass","gates":{"api_typecheck":true,"api_test":"104/104","client_typecheck":true,"scope":"no-out-of-write"},"score":null,"note":"B1-B6 全做；纯 Node zip；旧库自动迁移；docs/API.md 已补","pr":52}
+{"at":"2026-11-07T02:31:00+11:00","phase":"P0","round":3,"verdict":"doing","gates":{},"score":null,"note":"截图暴露四处缺陷已退回子代理修（InkFrame/Stamp/WhaleSticker 形/ Tide 层级）","pr":51}
