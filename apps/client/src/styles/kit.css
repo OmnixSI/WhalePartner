@@ -1,0 +1,17 @@
+/* 样品页 /__kit 自己的样式；只用于验收截图，不参与主页面。 */
+.kit { padding: var(--sp-6) var(--sp-8) var(--sp-16); display: flex; flex-direction: column; gap: var(--sp-8); overflow: auto; height: 100%; }
+.kit__bar { display: flex; gap: var(--sp-4); align-items: center; flex-wrap: wrap; position: sticky; top: 0; background: var(--paper); padding-block: var(--sp-2); z-index: 1; }
+.kit__group { display: flex; gap: var(--sp-2); }
+.kit__chip { min-height: var(--hit); padding: 0 var(--sp-3); border-radius: var(--r-sm); border: var(--stroke-1) solid var(--line-strong); background: transparent; color: var(--ink); }
+.kit__chip[data-active] { background: var(--accent-wash); border-color: var(--accent); color: var(--ink); font-weight: 600; }
+.kit__section { display: flex; flex-direction: column; gap: var(--sp-3); }
+.kit__section > h2 { font-family: var(--font-voice); font-size: var(--fs-h2); }
+.kit__swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--sp-3); }
+.kit__swatch { margin: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--fs-micro); color: var(--ink-mute); }
+.kit__chipColor { height: 44px; border-radius: var(--r-sm); border: var(--stroke-1) solid var(--line); }
+.kit__row { display: flex; gap: var(--sp-4); flex-wrap: wrap; align-items: center; }
+.kit__icons { gap: var(--sp-3); }
+.kit__icon { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: var(--fs-micro); color: var(--ink-mute); min-width: 56px; }
+.kit__icon em { font-style: normal; }
+.kit__moods { gap: var(--sp-4); }
+.kit__mood { margin: 0; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); font-size: var(--fs-micro); color: var(--ink-mute); }

@@ -9,6 +9,7 @@ import "./styles/base.css";
 import "./styles/characters.css";
 import "./styles/ocean.css";
 import "./styles/layout.css";
+import "./styles/kit.css";
 
 applyTheme(readTheme());
 applyA11y(readA11y());
