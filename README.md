@@ -10,18 +10,18 @@
 
 **AI Agent 开始工作前，先读仓库根目录的 [`AGENTS.md`](AGENTS.md)。** 新开会话或更换 Agent 时，按 [`docs/SESSION_HANDOFF.md`](docs/SESSION_HANDOFF.md) 恢复任务。工程约定和进度以仓库及 GitHub Issue/PR 为准，产品方向在 [Notion 开发台](https://app.notion.com/p/8f52071e8c09833ea8250151f4808cc5)。
 
-## 现在能做什么（2026-11-05）
+## 现在能做什么（2026-11-06）
 
-- **聊天**：Tauri 2 + React 应用壳，手机和桌面共用一套界面；流式回复，角色会根据情绪切换表情、说话时张嘴，刷新后聊天记录还在。
-- **角色**：大肥鱼（DeepSeek 鲸鱼娘，首页默认）、小克（Claude 娘）、小智（ChatGPT 娘）、鲸汐（原创）。每个角色有自己的口吻、主题色、形象和聊天记录，记忆共用。设置里还能换 24 个现成 VRM 形象。
-- **记忆**：mem0 + 本地中文向量模型。聊完几轮，她会记住“你叫什么、养了什么”；记忆页可以查看，也可以让她忘掉。
+- **聊天**：Tauri 2 + React 应用壳，手机和桌面共用一套界面；流式回复，可新建、切换、重命名和删除整段会话，已发送消息只读。Enter 换行，macOS Command+Enter 或其他桌面平台 Ctrl+Enter 发送；macOS 系统听写把文字写入草稿，不会自动发送。未启用时可在“系统设置 → 键盘 → 听写”开启并查看快捷键。
+- **角色**：大肥鱼（DeepSeek 鲸鱼娘，首页默认）、小克（Claude 娘）、小智（ChatGPT 娘）、鲸汐（原创）。每个角色有自己的口吻、主题色、形象和聊天记录，记忆共用。大肥鱼使用 Live2D；设置里还能换 24 个 VRM 演示形象。
+- **记忆**：本地 SQLite 保存聊天原文、独立会话、带来源和有效时间的事实版本、滚动观察及可恢复的处理队列；FTS5 中文词项/时间检索与 Mem0 + 本地中文向量召回一起找回旧事实和经历。普通聊天只装入相关的学习记录；用户问近期共同经历时，从按角色范围索引的 SQLite 归档读取，不再每轮扫描并排序 500 条向量记录。记忆中心用分类选择器和筛选浮层浏览“关于你、共同经历、她学到的、角色近况”，支持角色/日期/发言人/事实状态筛选、全档中文搜索、分页、原话证据与来源回看。设计与基准见 [`docs/MEMORY_ARCHITECTURE.md`](docs/MEMORY_ARCHITECTURE.md) 和 [`docs/MEMORY_RESEARCH.md`](docs/MEMORY_RESEARCH.md)。
 - **看视频**：在聊天里发 B 站链接或 BV 号，她读字幕、抽关键帧、看完再用自己的口吻讲给你听，并把这段经历记下来，之后在别的聊天里也能提起。
 - **像真人一样说话**：说人话、不爆客服腔；会吐槽、生气、撒娇、说“我靠”。看完视频、读完网页（聊天里直接发链接）会学新梗和新知识，隔一阵写一版“近况小记”，之后聊天自然带出来。设计见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md)。
 - **账号**：设置里的“账号”可以扫码登录哔哩哔哩，登录后她能读到需要登录才看得到的字幕。登录状态只保存在本机，不会上传，也不会替你发评论或点赞；其它平台（小红书、抖音、微博）还没有接入。
-- **日记**：在日记页添加 B 站链接，进入本机待看队列；后台按本地时间每日 20:00 处理一条，生成摘要和鲸汐日记，并写入共享记忆。页面展示待处理项、日记和处理失败状态。
-- **还没做**：除 B 站外的平台账号、正式登录与计费、语音、Live2D、角色主动找用户（需要推送通道）。
+- **日记**：按角色和本机日期，把聊天、已处理视频、网页阅读、学习记录与角色观察整理成一篇第一人称日记；按周、月、年定位并分页查看，支持来源回看、历史版本和手动更新。SQLite 持久化生成阶段，API 重启后继续未完成的工作；正文已保存时不会重复调用模型。原有视频日记队列和记录仍可在附属区域查看和重试。
+- **还没做**：除 B 站外的平台账号、正式登录与计费、实时语音对话、角色主动找用户（需要推送通道）。
 
-> 角色和形象目前是**内部演示**：三个同人角色和 VRM 模型都是别人做好的现成素材，授权没有核对，只作内部展示；鲸汐是我们自己的原创设定。对外发布前要换成原创或授权明确的角色，详见 [`apps/client/public/models/README.md`](apps/client/public/models/README.md)。
+> 大肥鱼、Claude 娘和 ChatGPT 娘是社区二创角色，不代表对应公司官方角色。Live2D 模型由固定版本脚本下载，画面不叠加水印；设置中保留完整署名与来源。当前模型素材为 CC BY-NC-SA 4.0，仅限非商业用途。Cubism Core 需从 Live2D 官方 SDK 单独获取，不提交到仓库。鲸汐是原创角色。
 
 ## 快速开始
 
@@ -33,15 +33,18 @@ cp apps/api/.env.example apps/api/.env
 pnpm --dir apps/api install
 pnpm --dir apps/api run serve            # http://127.0.0.1:8787
 
-# 2. 客户端：下载演示形象（约 390 MB，只需一次），然后启动
+# 2. 客户端：下载本机使用的 Live2D 和 VRM 形象，然后启动
 pnpm --dir apps/client install
+pnpm --dir apps/client run fetch-live2d
 pnpm --dir apps/client run fetch-model
 pnpm --dir apps/client run dev           # http://127.0.0.1:1420
 ```
 
+大肥鱼 Live2D 需要 Cubism Core。它不是开源组件，需从 [Live2D 官方 SDK 页面](https://www.live2d.com/en/sdk/download/web/)自行查看许可并获取；将 `live2dcubismcore.min.js` 放入 `apps/client/public/live2d/libs/`。未安装时应用显示默认鲸鱼形象。仓库不从第三方镜像下载或分发 Cubism Core。
+
 - 桌面窗口：`pnpm --dir apps/client run tauri dev`（首次编译 Rust 需要几分钟）。
 - 手机浏览器联调：`WP_LAN=1 pnpm --dir apps/client run dev`，服务端用 `pnpm --dir apps/api run serve -- --lan`。局域网模式没有登录保护，只在可信网络里用。
-- 第一次用记忆会从 Hugging Face 下载约 25 MB 的向量模型到 `apps/api/.local/memory/models`；`MEMORY=off` 可关闭记忆。
+- 首次启用本地语义搜索会从 Hugging Face 下载约 25 MB 的向量模型到 `apps/api/.local/memory/models`；`MEMORY=off` 关闭语义索引，SQLite 记忆档案和关键词检索仍可用。
 - Codex 必须在 `PATH` 上（用 nvm 时注意它装在哪个 Node 版本下）。
 
 常用检查：
@@ -51,6 +54,7 @@ pnpm --dir apps/api run typecheck && pnpm --dir apps/api test
 pnpm --dir apps/client run build
 pnpm --dir apps/api run persona:eval -- --character deepseek   # 人格回归问卷，换模型或改提示词前后都跑
 pnpm --dir apps/api run memory:smoke                           # 记忆：写入 → 重启 → 召回
+pnpm --dir apps/api run memory:profile                         # 隔离的本地记忆召回基准，不调用模型
 pnpm --dir apps/api run llm:ping                               # 发一次真实模型请求，看用的是哪家
 ```
 
@@ -61,13 +65,16 @@ flowchart LR
   UI["客户端<br/>Tauri 2 + React + three-vrm"] -- "HTTP / SSE" --> API["apps/api<br/>Node 服务"]
   API --> Chat["聊天编排<br/>人格 · 记忆召回 · 情绪标签"]
   Chat --> LLM["模型链<br/>DeepSeek → 备用 → 本机 Codex"]
-  Chat --> Mem["记忆 mem0<br/>本地向量模型"]
+  Chat --> Context["上下文管理<br/>Token 预算 · 会话观察 · 原文回查"]
+  Context --> Mem["SQLite + FTS5<br/>事实版本 · 聊天档案"]
+  Context --> Vec["Mem0<br/>本地中文向量"]
   Chat --> Video["视频流水线<br/>字幕/ASR · 关键帧 · 摘要"]
   Video --> LLM
   Diary["日记队列与计划任务"] --> Video
   Diary --> LLM
+  Diary --> DB
   Diary --> Mem
-  Chat --> DB[("SQLite<br/>聊天记录与待看/日记")]
+  Chat --> DB[("本机 SQLite<br/>消息 · 会话 · 观察 · 任务队列 · 日记")]
 ```
 
 - 模型密钥只在服务端读取，客户端不持有；DeepSeek 失败会自动换备用接口，再换本机 Codex。
@@ -82,7 +89,8 @@ flowchart LR
 | A2 DeepSeek 后端 | 完成（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）；真实 DeepSeek 已验证：`deepseek-flash` 流式回复、记忆提炼约 2.5 秒 |
 | B1 聊天与形象 | 完成（PR #19、#22、#23）；选型结论见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) |
 | B2 人格提示词 | 完成（[PR #20](https://github.com/OmnixSI/WhalePartner/pull/20)、[#28](https://github.com/OmnixSI/WhalePartner/pull/28)）：说人话、有脾气，四个角色的 13 项问卷在 DeepSeek 上都是 13/13 |
-| B3 mem0 记忆 | 完成（[PR #21](https://github.com/OmnixSI/WhalePartner/pull/21)） |
+| B3 mem0 记忆 | 完成（[PR #21](https://github.com/OmnixSI/WhalePartner/pull/21)）：本地中文向量、对话事实和视频/日记经历 |
+| B4 本地长期记忆与长会话上下文 | 已实现（[PR #32](https://github.com/OmnixSI/WhalePartner/pull/32)，[Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)）：SQLite 来源档案、事实时间版本、会话观察、全文/向量混合召回和预算上下文 |
 | C1/C2 视频链路 | 完成（Spdor，PR #15、#16）；已接入聊天（[PR #24](https://github.com/OmnixSI/WhalePartner/pull/24)） |
 | D1 定时日记、D2 日记页 | 完成（Spdor，[PR #26](https://github.com/OmnixSI/WhalePartner/pull/26)）；日记、队列持久化到 SQLite，Mem0 保存日记经历 |
 | 成长（人格延伸） | 完成（[PR #28](https://github.com/OmnixSI/WhalePartner/pull/28)）：从视频、网页和用户的话里学新梗和新知识，近况小记，记忆衰减，读网页；设计见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md) |
@@ -106,20 +114,20 @@ C1/C2 的实现状态、实测样例和未完成事项见 [本地视频流水线
 
 ## 已知限制
 
-- **没验证过**：`tauri dev` 桌面窗口里的 3D 形象、手机真机、iOS/Android 构建；登录态下的 B 站字幕和 Bcut 语音识别回退（匿名跑时没有字幕，ASR 也失败了，只靠关键帧出摘要）；日记定时任务只测过手动触发，没等到点自动触发。
+- **没验证过**：手机真机、iOS/Android 构建；登录态下的 B 站字幕和 Bcut 语音识别回退（匿名跑时没有字幕，ASR 也失败了，只靠关键帧出摘要）；日记定时任务只测过手动触发，没等到点自动触发。
 - **视频摘要仍走本机 Codex**：DeepSeek 官方 API 没有视频输入；摘要和抽帧需要本机装好 FFmpeg 和已登录的 Codex。`codex exec` 的推理强度默认 `none`（`gpt-6-luna` 不再接受 `minimal`）。
 - **日记定时只在 API 进程运行时生效**。
-- **演示角色和 VRM 模型授权没有核对，只作内部展示**，对外发布前必须换成原创或授权明确的角色（见上面的提示和 [`apps/client/public/models/README.md`](apps/client/public/models/README.md)）。
+- **Live2D 素材来源**：大肥鱼模型由固定版本 `fetch-live2d` 下载到本机，来源为 `A8Chann/dsh-pet-live2d`，许可为 CC BY-NC-SA 4.0，仅限非商业使用；设置中保留上善无形、ZipZipPipe、氵六青及上游仓库署名。Cubism Core 是 Live2D 专有组件，需开发者从官方 SDK 单独获取。设置中的 VRM 形象只作内部展示。
 - 学到的新梗和知识自动入库，用户可以在记忆页删除；如果发现被网页带偏，再改成先确认（[`docs/PERSONALITY.md`](docs/PERSONALITY.md)）。
 
 ## 第三方与许可
 
-代码里直接放进来的第三方内容：`apps/api/vendor/dsh-bilibili/`（B 站提取器，MIT）和 `apps/api/vendor/shuorenhua/`（说人话改稿规则，MIT），都带许可证和来源说明。主要依赖：Tauri、React、three.js 与 three-vrm、mem0（Apache-2.0）、transformers.js（Apache-2.0）。VRM 模型和字体不进仓库，来源与授权记在 `apps/client/models.manifest.json`。借鉴过设计但没有复制代码的项目见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md) 的“参考过但没有采用的”。
+代码里直接放进来的第三方内容：`apps/api/vendor/dsh-bilibili/`（B 站提取器，MIT）和 `apps/api/vendor/shuorenhua/`（说人话改稿规则，MIT），都保留许可证和来源说明。主要依赖：Tauri、React、PixiJS 与 pixi-live2d-display（MIT）、three.js 与 three-vrm、mem0（Apache-2.0）、transformers.js（Apache-2.0）。VRM 模型与 Live2D 模型不进仓库；Cubism Core 由开发者按官方条款单独获取。Live2D 来源、署名、运行方式和许可限制见 [`docs/LIVE2D_ASSESSMENT.md`](docs/LIVE2D_ASSESSMENT.md)，VRM 来源见 `apps/client/models.manifest.json`。借鉴过设计但没有复制代码的项目见 [`docs/PERSONALITY.md`](docs/PERSONALITY.md) 的“参考过但没有采用的”。
 
 ## 协作方式
 
 产品范围见 [`docs/PRODUCT_SCOPE.md`](docs/PRODUCT_SCOPE.md)；分支命名、Issue 和 Pull Request 约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-第一周计划中，Homing 负责壳、后端、聊天/形象、人格和记忆；Spdor 负责视频处理、定时日记和日记页；双方一起完成端到端联调。日记定时由 API 服务进程承载，进程停止时不会触发；可在 `apps/api/.env` 用 `DIARY_CRON` 调整计划，默认本地时间每日 20:00。
+第一周计划中，Homing 负责壳、后端、聊天/形象、人格和记忆；Spdor 负责视频处理、定时日记和日记页；双方一起完成端到端联调。旧版视频队列由 `DIARY_CRON` 定时；综合日记由 `JOURNAL_CRON` 定时（默认本地时间每日 20:30）。两个计划都由 API 服务进程承载，进程停止时不会触发。详细行为见 [`docs/DAILY_JOURNAL.md`](docs/DAILY_JOURNAL.md)。
 
 Notion 保留产品调研与范围决策；GitHub 管代码、Issue、Pull Request 和执行进度。

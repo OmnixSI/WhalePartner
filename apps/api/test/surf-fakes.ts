@@ -23,12 +23,13 @@ export function baseConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
     memoryDir: join(dir, "memory"),
     port: 0,
     diaryCron: "0 20 * * *",
+    journalCron: "0 22 * * *",
     codexFallback: false,
     llmTimeoutMs: 10_000,
     surfEnabled: true,
     surfDir: join(dir, "surf"),
     ...overrides,
-  };
+  } as ApiConfig;
 }
 
 /** 按提示词内容回不同的 JSON，模拟一次完整会话里的几次模型调用。 */

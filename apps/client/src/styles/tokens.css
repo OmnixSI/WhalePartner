@@ -1,6 +1,6 @@
 /* 潮汐手帐 2.0 · design tokens
    纸 / 墨 / 一种强调色（随角色）/ 珊瑚只做装饰与危险底色。
-   禁止：任何 gradient、backdrop-filter、发光阴影。 */
+   禁止：任何渐变、毛玻璃、发光阴影。 */
 @layer tokens {
 :root {
   /* ---- 字体 ---- */
@@ -37,6 +37,8 @@
   --accent-wash: color-mix(in oklab, var(--accent) 14%, var(--sheet)); /* 名字牌/选中底；其上用 --ink 或 --accent */
   --coral: #E8765E;      /* 仅：胶带/邮戳大图形/插画；严禁文字 */
   --coral-soft: #F4B9A8; /* 其上可放 --ink（6.77:1） */
+  --blush: var(--coral-soft);   /* 贴纸腮红：亮色用柔珊瑚 */
+  --sticker-halo: var(--sheet); /* 贴纸纸边：与「抬起的纸」同色，靠 --ink 描边收口 */
   --alert: #A8372B;      /* 危险/错误：文字、实心按钮、点 */
   --alert-ink: #FBF7EE;
   --alert-wash: #F3E4DB; /* 错误纸条底，其上 --alert 5.2:1、--ink 9.3:1 */
@@ -68,35 +70,51 @@
 
   /* ---- 布局与触控 ---- */
   --hit: 44px;               /* 触控最小目标；老人模式 56px */
+  --field-h: 52px;           /* 输入框/选择器的常规高度；不得低于 --hit */
   --nav-w: 112px; --backlog-w: 360px; --tabbar-h: 64px; --scene-min: 480px;
   --page-max: 760px; --memory-max: 960px;
 
   /* ---- 层级 ---- */
   --z-bg: 0; --z-stage: 1; --z-ui: 10; --z-nav: 20; --z-sheet: 30; --z-dialog: 40; --z-toast: 50;
 
-  /* ---- 动效 ---- */
+  /* ---- 动效（规范 §8；弹簧参数在 src/motion/tokens.ts，时长/曲线只在这里） ---- */
   --dur-press: 120ms; --dur-hover: 160ms; --dur-fade: 200ms; --dur-panel: 280ms; --dur-ink: 240ms; --dur-page: 520ms;
+  --dur-inkline: 1800ms;   /* 思考墨线：1800ms 里画到 66.7%，剩下的停住（§8.2） */
+  --dur-fold: 480ms;       /* 「忘掉」折进瓶子（§8.2：480ms --ease-inout，唯一超过 300ms 的组件动效） */
   --ease-out: cubic-bezier(.23, 1, .32, 1);
   --ease-inout: cubic-bezier(.65, 0, .35, 1);
-  --breath: 4.5s; /* 呼吸周期，4–5s */
+  /* §8.1「不用线性」的唯一例外是浪漂移；给它一个名字，源码里就不再手写 linear */
+  --ease-linear: linear;
+  --breath: 4.5s;          /* 角色呼吸，4–5s */
+  --drift-far: 90s; --drift-mid: 60s; --drift-near: 40s; /* §8.2 浪漂移 far/mid/near */
+  --blink: 4.6s;           /* 眨眼：3–6s 一次，睁眼 120ms（97.4%→100%） */
+  --lit: 1.2s;             /* 手机屏三道线依次点亮（§8.2 循环 1200ms） */
+  --pen: 1.6s;             /* 笔尖在小报纸上移动（§8.2 循环 1600ms） */
 }
 
 /* ---- 深海夜（暗）：唯一一份 ---- */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #0F1C2A; --paper-2: #17283A; --sheet: #13222F;
+  --paper: #0F1C2A; --paper-2: #17283A; --sheet: #1B2E41; /* 抬起的纸要比纸面高出一档（1.29:1），否则纸卡在夜里看不出边界 */
   --ink: #EDE6D6; --ink-soft: #CBD2D7; --ink-mute: #A0ACB6;
   --line: rgb(237 230 214 / .18); --line-strong: #6B7A88;
   --accent-ink: #0F1C2A;
-  --accent-wash: color-mix(in oklab, var(--accent) 16%, var(--sheet));
+  --accent-wash: color-mix(in oklab, var(--accent) 22%, var(--sheet)); /* 16% 被深蓝吃掉色相；22% 是「色相回来」与「accent 文字仍 ≥4.5」的交点 */
   --coral: #F08A72; --coral-soft: #5C3A34;
+  /* 暗色腮红：浅珊瑚在深色体色上只有 1.26:1，换成整档珊瑚（暖粉，肉眼可见） */
+  --blush: var(--coral);
+  /* 贴纸纸边：比 --sheet 再亮一档，暗色下贴纸/纸卡才有「另一张纸」的边 */
+  --sticker-halo: color-mix(in oklab, var(--accent) 14%, var(--sheet)); /* 跟随角色色，别用中性灰：暖体色配蓝灰会发脏 */
   --alert: #FF9C86; --alert-ink: #0F1C2A; --alert-wash: #3A2A2A;
   --ok: #8FD3A0; --lamp: #F2C14E; --lamp-text: #F2C14E;
   --slip: #3A3420;
   --tape-a: #8A5A52; --tape-b: #3F6B6B; --tape-c: #8A7440; --tape-d: #5E4F78;
-  --sea-1: color-mix(in oklab, var(--accent) 14%, var(--paper));
-  --sea-2: color-mix(in oklab, var(--accent) 22%, var(--paper));
-  --sea-3: color-mix(in oklab, var(--accent) 34%, var(--paper));
+  /* 浪：直接和深蓝纸混会把色相洗成灰褐，先做一个「暖锚」（纸 × 便签的暖暗色），
+     再和 accent 混，陶土/暖色相留在浪上（仍是 color-mix，不写死颜色）。 */
+  --sea-anchor: color-mix(in oklab, var(--paper) 70%, var(--slip));
+  --sea-1: color-mix(in oklab, var(--accent) 26%, var(--sea-anchor));
+  --sea-2: color-mix(in oklab, var(--accent) 34%, var(--sea-anchor));
+  --sea-3: color-mix(in oklab, var(--accent) 40%, var(--sea-anchor)); /* 其上 --ink ≥4.6:1 */
   --shadow-1: 0 1px 0 rgb(0 0 0 / .35), 0 2px 4px -1px rgb(0 0 0 / .45);
   --shadow-2: 0 1px 0 rgb(0 0 0 / .35), 0 8px 12px -6px rgb(0 0 0 / .6);
 }
@@ -121,28 +139,13 @@ html { font-size: calc(16px * var(--scale, 1)); }
 }
 }
 
-/* ---- 兼容别名（P0 过渡用；P4 清理，见规范 §12.3「淘汰 token」） ----
-   旧组件仍引用旧名字；这里把旧名指到新 token，保证四个页面在新 tokens 下不破版。 */
-:root {
-  --font-serif: var(--font-voice);
-  --ground: var(--paper);
-  --ground-2: var(--paper-2);
-  --ink-faint: var(--ink-mute);
-  --rule: var(--line);
-  --radius: var(--r-sm);
-  --radius-lg: var(--r-md);
-  --sea: var(--sea-1);
-  --chat-w: 420px;
-  --ease: var(--ease-out);
-}
-
 /* ---- 背景图层（规范 §5.1）：纸纹是背景，不是盖在所有东西上的叠层 ----
    亮：墨色颗粒；暗：暖纸色颗粒。纤维层 P0 先不做（规范允许「只做颗粒」）。 */
 :root {
-  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='g' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='7' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .184  0 0 0 0 .227  0 0 0 0 .29  0 0 0 .6 -.22'/></filter><rect width='200' height='200' filter='url(%23g)'/></svg>");
+  --grain: url("/textures/paper-light.png");
   --fiber: none;
 }
 :root[data-theme="dark"] {
-  --grain: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='g' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='11' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .93  0 0 0 0 .9  0 0 0 0 .84  0 0 0 .5 -.2'/></filter><rect width='200' height='200' filter='url(%23g)'/></svg>");
+  --grain: url("/textures/paper-dark.png");
   --fiber: none;
 }

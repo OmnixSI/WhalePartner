@@ -1,7 +1,7 @@
 /* ============================================================================
    聊天页（重设计规范 §6.8 / §7.1）：绘本字幕 + 手写小纸条 + 往回翻。
    规矩：颜色 / 字号 / 间距 / 圆角 / 时长一律走 tokens.css 的 var()，不写死色值与 px 圆角；
-   不出现 gradient、backdrop-filter、三点 typing、骨架屏、打字机光标。
+   不出现渐变、毛玻璃、三点 typing、骨架屏、打字机光标。
    动效只改 transform / opacity（墨线用 clip-path）；calm 与 prefers-reduced-motion 给完成态。
    ============================================================================ */
 
@@ -308,7 +308,7 @@
 .composer__input {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 52px;
+  min-height: max(var(--field-h), var(--hit));
   max-height: 160px;
   padding: var(--sp-2);
   border: 0;
@@ -700,7 +700,7 @@
   .dlg__float { right: var(--sp-2); bottom: calc(100% + var(--sp-2)); max-width: 88%; }
   .composer__hint { display: none; }
   .composer__send { min-width: 88px; height: 52px; }
-  .composer__input { min-height: 52px; }
+  .composer__input { min-height: max(var(--field-h), var(--hit)); }
   .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .chips::-webkit-scrollbar { display: none; }
   .chip { flex: none; }

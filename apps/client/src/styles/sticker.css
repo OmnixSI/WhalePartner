@@ -9,7 +9,7 @@
 
 /* idle 呼吸：scale 1 → 1.015，--breath，transform-origin 50% 90% */
 .whale-sticker--breath {
-  animation: whale-breath var(--breath) ease-in-out infinite;
+  animation: whale-breath var(--breath) var(--ease-inout) infinite;
   transform-origin: 50% 90%;
 }
 @keyframes whale-breath {
@@ -20,7 +20,7 @@
 .whale-sticker__eyes {
   transform-box: fill-box;
   transform-origin: center;
-  animation: whale-blink 4.6s ease-in-out infinite;
+  animation: whale-blink var(--blink) var(--ease-inout) infinite;
 }
 @keyframes whale-blink {
   0%, 96%, 100% { transform: scaleY(1); }
@@ -28,16 +28,16 @@
 }
 
 /* phone：屏幕三道横线依次点亮 */
-.whale-sticker__ph path { animation: whale-lit 2.4s linear infinite; opacity: 0.3; }
-.whale-sticker__ph path:nth-child(2) { animation-delay: 0.3s; }
-.whale-sticker__ph path:nth-child(3) { animation-delay: 0.6s; }
+.whale-sticker__ph path { animation: whale-lit var(--lit) var(--ease-linear) infinite; opacity: 0.3; }
+.whale-sticker__ph path:nth-child(2) { animation-delay: calc(var(--lit) * .25); }
+.whale-sticker__ph path:nth-child(3) { animation-delay: calc(var(--lit) * .5); }
 @keyframes whale-lit {
   0%, 40%, 100% { opacity: 0.3; }
   12% { opacity: 1; }
 }
 
 /* paper：笔尖在小报纸上移动 */
-.whale-sticker__pen { animation: whale-pen 2.6s ease-in-out infinite alternate; }
+.whale-sticker__pen { animation: whale-pen var(--pen) var(--ease-inout) infinite alternate; }
 @keyframes whale-pen {
   from { transform: translate(0, 0); }
   to { transform: translate(-26px, 8px); }

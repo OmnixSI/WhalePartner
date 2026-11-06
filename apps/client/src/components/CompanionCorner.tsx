@@ -11,6 +11,7 @@
 import { motion } from "motion/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCharacter } from "../characters";
+import { spring } from "../motion/tokens";
 import { WhaleSticker, type StickerMood } from "./WhaleSticker";
 import "../styles/sticker.css";
 
@@ -121,7 +122,7 @@ export function CompanionCorner({ mood: moodProp, className = "" }: Props) {
         aria-label={`和${character.name}打个招呼`}
         onClick={onClick}
         animate={{ y: lifted ? -10 : 0 }}
-        transition={{ type: "spring", stiffness: 400, damping: 17 }}
+        transition={spring.cute}
       >
         <WhaleSticker mood={current} className="companion__sticker" />
       </motion.button>

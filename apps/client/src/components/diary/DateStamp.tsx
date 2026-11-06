@@ -21,7 +21,10 @@ export function DateStamp({ at, id }: Props) {
 
   return (
     <div className="dts">
-      <time className="dts__time" dateTime={iso} aria-label={`${at.getMonth() + 1}月${at.getDate()}日 ${weekday}`}>
+      <time className="dts__time" dateTime={iso}>
+        {/* <time> 的可访问角色是 generic，aria-label 被 ARIA 禁止（axe aria-prohibited-attr）；
+            改用 sr-only 文本给出整段读法，视觉子元素仍然 aria-hidden。 */}
+        <span className="sr-only">{`${at.getMonth() + 1}月${at.getDate()}日 ${weekday}`}</span>
         <span className="dts__day" aria-hidden>
           {day}
         </span>
