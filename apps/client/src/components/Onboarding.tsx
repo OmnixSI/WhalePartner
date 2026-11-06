@@ -1,14 +1,20 @@
 /**
  * 首次引导（规范 §7.5）：`wp.onboarded` 未设时全屏盖住，三步走完或随时跳过。
  *
- * 通用约定：顶部三颗贝壳 + 「第 N 步，共 3 步」；底部固定位置的主动作；
- * 每步左下都有 quiet「跳过，以后再说」；
- * 全程键盘可达。第 3 步可以直接打开老人模式，也给一个「模型接入」的入口
- * （只跳设置页，不在引导里塞表单）。
+ * 第 1 步是「真实形象舞台」：不复用贴纸，直接挂聊天页同一套舞台（Live2D / VRM 按
+ * model.renderer 分流），让她本人站在那儿；一句招呼落在她脚下，点她有反应。
+ * 顶部固定「第 N 步，共 3 步」+ 进度点。
+ * 引导打开时把后面的应用整块收起，右栏历史 / 导航 / 旧聊天都不露；
+ * 首屏只有：她 + 一句话 + 两个按钮（继续 / 跳过）。
+ * 第 2、3 步沿用原来的昵称 / 角色卡与约定 / 字号。
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
-import { CHARACTERS, setCharacter, useCharacter } from "../characters";
+import { useAvatarStatus } from "../avatar/avatar-state";
+import { Live2DStage } from "../avatar/Live2DStage";
+import type { AvatarEmotion } from "../avatar/model.config";
+import { VrmStage } from "../avatar/VrmStage";
+import { CHARACTERS, setCharacter, useCharacter, useModel } from "../characters";
 import { putNickname } from "../lib/profile";
 import { readA11y } from "../lib/a11y";
 import { WhaleSticker } from "./WhaleSticker";
@@ -40,6 +46,9 @@ function hasOnboarded(): boolean {
 
 const isOpen = () => forcedOpen || !hasOnboarded();
 
+/** 引导是不是正盖在最上面；App 用它决定后场景要不要挂（Live2D 的着色器是全局单例，同页两个舞台会互相打断）。 */
+export const useOnboardingOpen = () => useSyncExternalStore(subscribe, isOpen);
+
 /** 设置页底部「重新看一遍引导」。 */
 export function reopenOnboarding() {
   forcedOpen = true;
@@ -70,28 +79,48 @@ const FONT_CHOICES = [
 
 type FontChoice = (typeof FONT_CHOICES)[number]["id"];
 
+const POKE_EMOTION: AvatarEmotion = "relaxed";
+const POKE_MS = 1800;
+
 export function Onboarding() {
-  const open = useSyncExternalStore(subscribe, isOpen);
+  const open = useOnboardingOpen();
   const navigate = useNavigate();
   const character = useCharacter();
+  const model = useModel();
+  const avatar = useAvatarStatus();
   const [step, setStep] = useState(0);
   const [nickname, setNickname] = useState("");
   const [a11y, setA11y] = useState(readA11y);
   const [picked, setPicked] = useState<string>(character.id);
+  const [emotion, setEmotion] = useState<AvatarEmotion>("neutral");
+  const [poked, setPoked] = useState(false);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const pokeTimer = useRef<number | undefined>(undefined);
 
-  // 盖住时别让人 Tab 到后面的页面上去。
+  // 盖住时别让人 Tab 到后面的页面上去；同时告诉样式层「现在在引导里」，把右栏历史等整块收起。
   useEffect(() => {
     if (!open) return;
     const app = document.querySelector(".app");
+    const root = document.documentElement;
     app?.setAttribute("inert", "");
-    return () => app?.removeAttribute("inert");
+    root.setAttribute("data-onboarding", "on");
+    return () => {
+      app?.removeAttribute("inert");
+      root.removeAttribute("data-onboarding");
+    };
   }, [open]);
 
   // 焦点落在对话框本身（不落在按钮上，免得一进来就顶着焦点环）；Tab 再进控件。
   useEffect(() => {
     if (open) frameRef.current?.focus();
   }, [open, step]);
+
+  useEffect(
+    () => () => {
+      if (pokeTimer.current !== undefined) window.clearTimeout(pokeTimer.current);
+    },
+    [],
+  );
 
   if (!open) return null;
 
@@ -117,11 +146,19 @@ export function Onboarding() {
     else finish(false);
   };
 
-  /** 第 3 步的「模型接入」入口：收掉引导，直接去设置页那一组；表单留在设置里。 */
-  const openModelSetup = () => {
-    finish(false);
-    navigate("/settings#model");
+  // 点她：表情先给一下反应，嘴上回一句，1.8s 后回到原来的招呼。
+  const pokeHer = () => {
+    setPoked(true);
+    setEmotion(POKE_EMOTION);
+    if (pokeTimer.current !== undefined) window.clearTimeout(pokeTimer.current);
+    pokeTimer.current = window.setTimeout(() => {
+      setPoked(false);
+      setEmotion("neutral");
+      pokeTimer.current = undefined;
+    }, POKE_MS);
   };
+
+  const hello = `你好呀，我是${character.name}——一个会陪你聊天、替你看看视频的 AI 角色。`;
 
   return (
     <div className="onb" role="dialog" aria-modal="true" aria-label="第一次见面，三步就好" tabIndex={-1} ref={frameRef}>
@@ -131,107 +168,140 @@ export function Onboarding() {
 
       <div className="onb__inner">
         <header className="onb__head">
-          <p className="onb__beads" aria-hidden="true">
+          <p className="onb__progress">第 {step + 1} 步，共 3 步</p>
+          <ol className="onb__beads" aria-hidden="true">
             {[0, 1, 2].map((index) => (
-              <span key={index} className="onb__bead" data-on={index === step ? "on" : "off"} />
+              <li
+                key={index}
+                className="onb__bead"
+                data-state={index === step ? "on" : index < step ? "done" : "off"}
+              />
             ))}
-          </p>
-          <p className="onb__progress">
-            第 {step + 1} 步，共 3 步
-          </p>
+          </ol>
         </header>
 
-        <div className="onb__stage">
-          <div className="onb__her" aria-hidden="true">
-            <WhaleSticker mood={step === 0 ? "wave" : step === 1 ? "happy" : "calm"} />
-          </div>
-
-          {step === 0 && (
-            <div className="onb__block">
-              <p className="onb__say">
-                你好呀，我是{character.name}。
-                <br />
-                我是一个 AI 角色，不是真人。我会陪你聊天，也会替你看看视频、写写日记。
-              </p>
-            </div>
-          )}
-
-          {step === 1 && (
-            <div className="onb__block">
-              <p className="onb__say">
-                你想让我怎么叫你？
-                <br />
-                不想说也没关系。
-              </p>
-              <input
-                className="field onb__field"
-                type="text"
-                maxLength={12}
-                placeholder="不想说也没关系"
-                aria-label="你想让我怎么称呼你"
-                value={nickname}
-                onChange={(event) => setNickname(event.target.value)}
-              />
-              <p className="onb__sub">选一位陪你</p>
-              <ul className="onb__chars">
-                {CHARACTERS.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      className="onb__char"
-                      aria-pressed={picked === item.id}
-                      data-selected={picked === item.id ? "on" : "off"}
-                      onClick={() => {
-                        setPicked(item.id);
-                        setCharacter(item.id);
-                      }}
-                    >
-                      <span className="onb__char-name">{item.name}</span>
-                      <span className="onb__char-tag">{item.tagline}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="onb__block">
-              <p className="onb__say">最后说三件小事。</p>
-              <ol className="onb__pact">
-                {AGREEMENTS.map((line, index) => (
-                  <li key={line}>
-                    <span className="onb__num" aria-hidden="true">
-                      {index + 1}
-                    </span>
-                    <span>{line}</span>
-                  </li>
-                ))}
-              </ol>
-              <p className="onb__sub">字看得清吗？</p>
-              <div className="onb__fonts" role="group" aria-label="字号">
-                {FONT_CHOICES.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="btn btn--secondary onb__font"
-                    aria-pressed={fontChoice === item.id}
-                    data-selected={fontChoice === item.id ? "on" : "off"}
-                    onClick={() => chooseFont(item.id)}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+        <div className="onb__stage" data-step={step}>
+          {step === 0 ? (
+            <div className="onb__scene">
+              <div
+                className="onb__figure"
+                role="button"
+                tabIndex={0}
+                aria-label={`点一点${character.name}`}
+                onClick={pokeHer}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    pokeHer();
+                  }
+                }}
+              >
+                {/* 真形象加载不出来时才退回贴纸，别让首屏空白 */}
+                {avatar === "failed" && (
+                  <div className="onb__sticker" aria-hidden="true">
+                    <WhaleSticker mood="wave" />
+                  </div>
+                )}
+                {/* 大肥鱼是 Live2D，其余是 VRM；按清单里的 renderer 分流，别拿 .model3.json 去喂 VRM 加载器 */}
+                {model.renderer === "live2d" ? (
+                  <Live2DStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={false} />
+                ) : (
+                  <VrmStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={false} />
+                )}
               </div>
-              {fontChoice === "huge" && <p className="onb__note">大字、大按钮、只留三个入口。以后在设置里还能改。</p>}
-              <p className="onb__sub">模型接入</p>
-              <p className="onb__note">
-                想换成自己的模型（聊天用哪家、推理用多大强度），在「设置 › 模型接入」里填一下就好。
-              </p>
-              <button type="button" className="btn btn--quiet onb__model" onClick={openModelSetup}>
-                去设置里填
-              </button>
+
+              <p className="onb__hint">点一点她，她会看你哦。</p>
+
+              <p className="onb__line">{poked ? "嗯？我在呢。" : hello}</p>
             </div>
+          ) : (
+            <>
+              <div className="onb__her" aria-hidden="true">
+                <WhaleSticker mood={step === 1 ? "happy" : "calm"} />
+              </div>
+
+              {step === 1 && (
+                <div className="onb__block">
+                  <p className="onb__say">
+                    你想让我怎么叫你？
+                    <br />
+                    不想说也没关系。
+                  </p>
+                  <input
+                    className="field onb__field"
+                    type="text"
+                    maxLength={12}
+                    placeholder="不想说也没关系"
+                    aria-label="你想让我怎么称呼你"
+                    value={nickname}
+                    onChange={(event) => setNickname(event.target.value)}
+                  />
+                  <p className="onb__sub">选一位陪你</p>
+                  <ul className="onb__chars">
+                    {CHARACTERS.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className="onb__char"
+                          aria-pressed={picked === item.id}
+                          data-selected={picked === item.id ? "on" : "off"}
+                          onClick={() => {
+                            setPicked(item.id);
+                            setCharacter(item.id);
+                          }}
+                        >
+                          <span className="onb__char-name">{item.name}</span>
+                          <span className="onb__char-tag">{item.tagline}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {step === 2 && (
+                <div className="onb__block">
+                  <p className="onb__say">最后说三件小事。</p>
+                  <ol className="onb__pact">
+                    {AGREEMENTS.map((line, index) => (
+                      <li key={line}>
+                        <span className="onb__num" aria-hidden="true">
+                          {index + 1}
+                        </span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <p className="onb__sub">字看得清吗？</p>
+                  <div className="onb__fonts" role="group" aria-label="字号">
+                    {FONT_CHOICES.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="btn btn--secondary onb__font"
+                        aria-pressed={fontChoice === item.id}
+                        data-selected={fontChoice === item.id ? "on" : "off"}
+                        onClick={() => chooseFont(item.id)}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  {fontChoice === "huge" && <p className="onb__note">大字、大按钮、只留三个入口。以后在设置里还能改。</p>}
+                  <p className="onb__sub">用的是哪家模型？</p>
+                  <button
+                    type="button"
+                    className="btn btn--secondary onb__model"
+                    onClick={() => {
+                      finish(false);
+                      navigate("/settings#model");
+                    }}
+                  >
+                    去设置里填 DeepSeek key、改 Codex
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -240,7 +310,7 @@ export function Onboarding() {
             跳过，以后再说
           </button>
           <button type="button" className="btn btn--primary onb__next" onClick={next}>
-            {step === 0 ? "你好呀" : step === 1 ? "就这样" : "开始吧"}
+            {step === 0 ? "继续" : step === 1 ? "就这样" : "开始吧"}
           </button>
         </footer>
       </div>

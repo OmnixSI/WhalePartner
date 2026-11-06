@@ -458,32 +458,109 @@
   overflow-y: auto;
   background: var(--grain), var(--paper);
 }
+/* 引导打开时把后面的应用整块收起：右栏历史、导航、旧聊天记录都不露出来。
+   标记挂在 <html data-onboarding="on"> 上，引导关掉时由 Onboarding 自己摘掉。 */
+:root[data-onboarding="on"] .app { visibility: hidden; }
 .onb__tide { position: absolute; inset: auto 0 0 0; height: 30%; pointer-events: none; }
 .onb__inner {
   position: relative;
   z-index: 1;
-  display: flex;
-  flex: 1 0 auto;
-  flex-direction: column;
-  gap: var(--sp-6);
-  width: min(760px, 100%);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--sp-4);
+  width: min(1040px, 100%);
+  height: 100%;
   min-height: 100%;
-  padding: var(--sp-8) var(--sp-6) var(--sp-8);
+  padding: var(--sp-5) var(--sp-6) var(--sp-4);
 }
-.onb__head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); }
-.onb__beads { display: flex; gap: var(--sp-2); }
+.onb__head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); min-height: var(--hit); }
+.onb__progress {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: var(--ls-label);
+  color: var(--ink);
+}
+.onb__beads { display: flex; align-items: center; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
 .onb__bead {
   display: block;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border: var(--stroke-1) solid var(--line-strong);
   border-radius: var(--r-round);
   background: var(--paper-2);
+  transition: background var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out),
+    transform var(--dur-hover) var(--ease-out);
 }
-.onb__bead[data-on="on"] { border-color: var(--accent); background: var(--accent); }
-.onb__progress { font-size: var(--fs-body); color: var(--ink-soft); }
-.onb__stage { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: var(--sp-4); }
-.onb__her { width: min(220px, 60%); margin: 0 auto; }
+.onb__bead[data-state="done"] { border-color: var(--accent); background: var(--accent-wash); }
+.onb__bead[data-state="on"] { border-color: var(--accent); background: var(--accent); transform: scale(1.4); }
+
+/* 舞台：第 1 步是整块真实形象；第 2、3 步还是原来那点内容，放不下就在这一层里滚 */
+.onb__stage { display: flex; flex-direction: column; gap: var(--sp-4); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.onb__stage[data-step="0"] { overflow: hidden; }
+
+/* 第 1 步：她 + 一句招呼（她脚下的提示锚在角色身上，点她有反应） */
+.onb__scene {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: var(--sp-2);
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+.onb__figure {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  place-items: end center;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  cursor: pointer;
+}
+.onb__figure:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+/* 画布铺满她那一块：absolute 才不会在网格里多占一行、也不会按画布原尺寸溢出 */
+.onb__figure .live2d,
+.onb__figure .vrm { position: absolute; inset: 0; width: 100%; height: 100%; }
+.onb__figure .live2d { transform: scale(.92) translateY(4%); transform-origin: 50% 100%; }
+/* 桌面舞台够高：让她站满一点，别缩在中间一小块 */
+@media (min-width: 1100px) { .onb__figure .live2d { transform: scale(1.16) translateY(5%); } }
+.onb__sticker { width: min(64%, 380px); max-height: 100%; margin-bottom: var(--sp-4); }
+.onb__sticker .whale-sticker { width: 100%; height: auto; }
+.onb__hint {
+  justify-self: center;
+  margin: 0;
+  padding: var(--sp-1) var(--sp-3);
+  border: var(--stroke-1) solid var(--line);
+  border-radius: var(--r-round);
+  background: var(--slip);
+  box-shadow: var(--shadow-1);
+  color: var(--ink);
+  font-family: var(--font-voice);
+  font-size: var(--fs-small);
+  line-height: var(--lh-ui);
+  transform: rotate(-1deg);
+}
+.onb__line {
+  justify-self: center;
+  width: min(34em, 100%);
+  margin: 0;
+  padding: var(--sp-3) var(--sp-5);
+  border: var(--stroke-1) solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--sheet);
+  box-shadow: var(--shadow-1);
+  color: var(--ink);
+  font-family: var(--font-voice);
+  font-size: var(--fs-h3);
+  line-height: var(--lh-body);
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* 第 2、3 步沿用原来的版式 */
+.onb__her { width: min(200px, 52%); margin: 0 auto; }
 .onb__say { max-width: 24em; font-family: var(--font-voice); font-size: var(--fs-h2); line-height: var(--lh-body); color: var(--ink); }
 .onb__block { display: flex; flex-direction: column; gap: var(--sp-3); }
 .onb__field { width: 100%; }
@@ -535,16 +612,13 @@
 .onb__model { align-self: flex-start; margin-top: var(--sp-1); }
 /* 主动作永远在视野底部：内容再长，也只滚内容，不滚按钮（规范 §7.5「底部固定位置」）。 */
 .onb__foot {
-  position: sticky;
-  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
   margin-top: auto;
-  padding: var(--sp-3) 0 var(--sp-4);
+  padding: var(--sp-3) 0 var(--sp-1);
   border-top: var(--stroke-1) solid var(--line);
-  background: color-mix(in srgb, var(--paper) 94%, transparent);
 }
 .onb__next { min-width: 160px; }
 
@@ -570,11 +644,12 @@
   .set-dialog { width: calc(100vw - 24px); padding: var(--sp-5) var(--sp-4); }
   .set-dialog__actions .btn { flex: 1 1 100%; }
   .set-toast { bottom: calc(var(--tabbar-h) + var(--sp-4)); }
-  .onb__inner { padding: var(--sp-5) var(--sp-4) var(--sp-4); gap: var(--sp-4); }
+  .onb__inner { padding: var(--sp-3) var(--sp-4) var(--sp-4); gap: var(--sp-3); }
   .onb__say { font-size: var(--fs-h3); }
-  .onb__her { width: 220px; }
+  .onb__her { width: min(168px, 44%); }
+  .onb__line { font-size: var(--fs-body); padding: var(--sp-2) var(--sp-3); }
   .onb__chars { grid-template-columns: minmax(0, 1fr); }
-  .onb__foot { flex-direction: column-reverse; align-items: stretch; }
+  .onb__foot { flex-direction: column-reverse; align-items: stretch; gap: var(--sp-2); }
   .onb__next { width: 100%; }
 }
 
@@ -593,6 +668,8 @@
 :root[data-elder="on"] .set-choice { min-height: 128px; }
 :root[data-elder="on"] .set-row__desc { font-size: var(--fs-body); }
 :root[data-elder="on"] .set-group__note { font-size: var(--fs-body); }
+:root[data-elder="on"] .onb__bead { width: 16px; height: 16px; }
+:root[data-elder="on"] .onb__hint { font-size: var(--fs-body); }
 
 /* ---------------------------------------------------------------- 小角不挡点击
    她那一块只有贴纸本身收点击，空白处一律点透（规范 §7.4「不与内容重叠、不挡点击」）。 */
