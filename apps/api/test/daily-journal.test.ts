@@ -293,6 +293,8 @@ test("journal routes generate, list, and expose prior revisions", async () => {
     assert.equal(refreshed.sources.some((source) => source.id.startsWith("message:") && source.id !== `message:${retainedMessage.id}`), false);
     const invalid = await fetch(`${base}/api/journals/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ character: "unknown" }) });
     assert.equal(invalid.status, 400);
+    const invalidGenerationDate = await fetch(`${base}/api/journals/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ character: "whale", date: "2026-02-30" }) });
+    assert.equal(invalidGenerationDate.status, 400);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     journals.close();

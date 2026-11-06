@@ -24,7 +24,7 @@ export async function handleJournalsRoute(deps: Pick<ServerDeps, "journal">, req
       const character = body.character ?? "whale";
       if (!isCharacterId(character)) throw new ChatInputError("未知的角色。");
       const localDate = body.date === undefined ? undefined : text(body.date, 10, "date");
-      if (localDate && !/^\d{4}-\d{2}-\d{2}$/u.test(localDate)) throw new ChatInputError("日期格式需要是 YYYY-MM-DD。");
+      if (localDate) readDate(localDate, "date");
       if (body.force !== undefined && typeof body.force !== "boolean") throw new ChatInputError("force 必须是布尔值。");
       const current = await journal.generate(character, localDate, body.force === true);
       return sendJson(response, 200, current ? { journal: current } : { journal: null, reason: "no_sources" });
