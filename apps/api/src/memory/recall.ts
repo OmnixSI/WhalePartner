@@ -1,7 +1,7 @@
 import type { MemoryEntry, MemoryStore } from "./types.ts";
-import { decayForPrompt } from "./decay.ts";
+import { clarityOf, decayForPrompt } from "./decay.ts";
 import { matchesTimeWindow, overlapsFactTimeWindow, type ChatStore } from "../store.ts";
-import type { ArchiveHit, StoredFact } from "../store/types.ts";
+import type { ArchiveHit, StoredExperience, StoredFact } from "../store/types.ts";
 import type { CharacterId } from "../persona/persona.ts";
 
 const RECALL_TIMEOUT_MS = 8_000;
@@ -52,7 +52,7 @@ function memoryLine(entry: MemoryEntry, store: ChatStore, query: string, charact
   }
   const archived = entry.sourceId ? store.experienceBySourceId(entry.sourceId) : undefined;
   if (archived) {
-    if (archived.kind === "chat" && (!archived.sourceSessionId || !store.getSession(archived.sourceSessionId, character))) return undefined;
+    if (!store.experienceVisibleToCharacter(archived.sourceId, character)) return undefined;
     if (!matchesTimeWindow(archived.createdAt, query)) return undefined;
     return {
       kind: "experience",
@@ -69,6 +69,30 @@ function memoryLine(entry: MemoryEntry, store: ChatStore, query: string, charact
   const title = entry.title ? `《${entry.title}》` : "";
   const sourceId = entry.sourceId ? `；来源标识 ${entry.sourceId}` : "";
   return { kind: "experience", text: `${source}经历（${created}）${title}${sourceId}：${entry.text.slice(0, 700)}` };
+}
+
+function archivedLearnedLine(archived: StoredExperience) {
+  return {
+    text: archived.text.slice(0, 700),
+    createdAt: archived.createdAt,
+    provenance: `外部内容提炼（${archived.createdAt.slice(0, 10)}；本机来源 ${archived.sourceId}）《${archived.title}》`,
+  };
+}
+
+function learnedLine(entry: MemoryEntry, store: ChatStore, query: string, character: CharacterId): { text: string; createdAt?: string; provenance: string } | undefined {
+  if (entry.sourceId?.startsWith("learned:chat:") && entry.sourceId.split(":")[2] !== character) return undefined;
+  const archived = entry.sourceId ? store.experienceBySourceId(entry.sourceId) : undefined;
+  if (archived) {
+    if (archived.kind !== "learned" || !store.experienceVisibleToCharacter(archived.sourceId, character) || !matchesTimeWindow(archived.createdAt, query)) return undefined;
+    return archivedLearnedLine(archived);
+  }
+  if (!matchesTimeWindow(entry.createdAt, query)) return undefined;
+  const date = entry.createdAt?.slice(0, 10) ?? "日期不详";
+  return {
+    text: entry.text.slice(0, 700),
+    createdAt: entry.createdAt,
+    provenance: `外部内容提炼（${date}${entry.sourceId ? `；来源标识 ${entry.sourceId}` : ""}）`,
+  };
 }
 
 function experienceLine(entry: ReturnType<ChatStore["searchExperiences"]>[number]): string {
@@ -91,6 +115,7 @@ export async function recallChatMemory(input: {
   const facts: string[] = [];
   const experiences: string[] = [];
   let learned: string[] = [];
+  const learnedCandidates: Array<{ text: string; createdAt?: string; provenance: string }> = [];
   const recallStarted = performance.now();
 
   const localFacts = store.searchFacts(query, 6);
@@ -99,13 +124,26 @@ export async function recallChatMemory(input: {
   }
   const seenSources = new Set<string>();
   for (const experience of store.searchExperiences(query, 6, character)) {
-    experiences.push(experienceLine(experience));
+    if (experience.kind === "learned") {
+      const candidate = archivedLearnedLine(experience);
+      if (!learnedCandidates.some((item) => item.provenance === candidate.provenance)) learnedCandidates.push(candidate);
+    } else {
+      experiences.push(experienceLine(experience));
+    }
     seenSources.add(experience.sourceId);
   }
+  const localRecent = asksAboutRecentExperiences(query)
+    ? store.recentExperiences(8, false, character).filter((experience) => experience.kind !== "learned").slice(0, 2)
+    : [];
   if (asksAboutRecentExperiences(query)) {
-    for (const experience of store.recentExperiences(2, false, character)) {
+    for (const experience of localRecent) {
       if (experience.kind !== "chat" && matchesTimeWindow(experience.createdAt, query) && !seenSources.has(experience.sourceId)) {
-        experiences.push(`${experience.kind}经历（${experience.createdAt.slice(0, 10)}；本机来源 ${experience.sourceId}）《${experience.title}》：${experience.text.slice(0, 500)}`);
+        if (experience.kind === "learned") {
+          const candidate = archivedLearnedLine(experience);
+          if (!learnedCandidates.some((item) => item.provenance === candidate.provenance)) learnedCandidates.push(candidate);
+        } else {
+          experiences.push(`${experience.kind}经历（${experience.createdAt.slice(0, 10)}；本机来源 ${experience.sourceId}）《${experience.title}》：${experience.text.slice(0, 500)}`);
+        }
         seenSources.add(experience.sourceId);
       }
     }
@@ -113,11 +151,19 @@ export async function recallChatMemory(input: {
   if (memory) {
     try {
       const search = memory.search ? memory.search(query, 12) : memory.recall(query, 5);
-      const recent = asksAboutRecentExperiences(query) ? memory.recentExperiences(2) : Promise.resolve([]);
-      const [recalled, recentEntries, recentLearned] = await withTimeout(Promise.all([search, recent, memory.recentLearnings(4, character)]), RECALL_TIMEOUT_MS);
+      const recent = asksAboutRecentExperiences(query) && localRecent.length === 0
+        ? memory.recentExperiences(2)
+        : Promise.resolve([]);
+      const [recalled, recentEntries] = await withTimeout(Promise.all([search, recent]), RECALL_TIMEOUT_MS);
       for (const entry of recalled) {
         const key = entry.sourceId ?? entry.id;
         if (seenSources.has(key)) continue;
+        if (entry.source === "learned" || entry.sourceId?.startsWith("learned:")) {
+          const formatted = learnedLine(entry, store, query, character);
+          if (formatted && !learnedCandidates.some((candidate) => candidate.provenance === formatted.provenance)) learnedCandidates.push(formatted);
+          seenSources.add(key);
+          continue;
+        }
         const formatted = memoryLine(entry, store, query, character);
         if (!formatted) continue;
         if (formatted.kind === "fact" && localFacts.some((fact) => fact.value.length > 2 && entry.text.includes(fact.value))) continue;
@@ -128,11 +174,16 @@ export async function recallChatMemory(input: {
       for (const entry of recentEntries) {
         const key = entry.sourceId ?? entry.id;
         if (seenSources.has(key)) continue;
+        if (entry.source === "learned" || entry.sourceId?.startsWith("learned:")) {
+          const candidate = learnedLine(entry, store, query, character);
+          if (candidate && !learnedCandidates.some((item) => item.provenance === candidate.provenance)) learnedCandidates.push(candidate);
+          seenSources.add(key);
+          continue;
+        }
         const formatted = memoryLine(entry, store, query, character);
         if (formatted?.kind === "experience" && !experiences.includes(formatted.text)) experiences.push(formatted.text);
         seenSources.add(key);
       }
-      learned = decayForPrompt(recentLearned.filter((entry) => matchesTimeWindow(entry.createdAt, query)));
     } catch (error) {
       console.warn("召回记忆失败，这一轮不带记忆：", error instanceof Error ? error.message : error);
     }
@@ -147,6 +198,8 @@ export async function recallChatMemory(input: {
   const observation = observationRow
     ? `${store.getSession(sessionId)?.title ?? "当前会话"}（原文消息 ${observationRow.fromMessageId} 至 ${observationRow.throughMessageId}，更新于 ${observationRow.updatedAt.slice(0, 10)}）\n${observationRow.summary}`
     : undefined;
+  const retainedLearnings = learnedCandidates.filter((entry) => clarityOf(entry) !== "trace");
+  learned = decayForPrompt(retainedLearnings).map((text, index) => `${retainedLearnings[index].provenance}：${text}`);
   if (process.env.WP_DEBUG) {
     console.log(`[记忆] 混合召回 ${Math.round(performance.now() - recallStarted)}ms；事实 ${facts.length} 条，经历 ${experiences.length} 条，原文 ${archive.length} 条。`);
   }

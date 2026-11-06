@@ -75,9 +75,11 @@ export class ChatStore {
   listExperiences(limit?: number, includeChat?: boolean) { return this.#experiences.listExperiences(limit, includeChat); }
   searchExperiences(query: string, limit?: number, character?: string) { return this.#experiences.searchExperiences(query, limit, character); }
   recentExperiences(limit?: number, includeChat?: boolean, character?: string) { return this.#experiences.recentExperiences(limit, includeChat, character); }
+  recentLearnings(limit?: number, character?: string) { return this.#experiences.recentLearnings(limit, character); }
   pendingExperienceIndexes(limit?: number) { return this.#experiences.pendingExperienceIndexes(limit); }
   markExperienceIndexed(id: number, vectorEntryId?: string) { return this.#experiences.markExperienceIndexed(id, vectorEntryId); }
   experienceBySourceId(sourceId: string) { return this.#experiences.experienceBySourceId(sourceId); }
+  experienceVisibleToCharacter(sourceId: string, character: string) { return this.#experiences.experienceVisibleToCharacter(sourceId, character); }
   experienceVectorIds(kind?: string) { return this.#experiences.experienceVectorIds(kind); }
   chatDerivedExperienceVectorIds() { return this.#experiences.chatDerivedExperienceVectorIds(); }
   setExperienceVectorId(id: number, vectorEntryId: string | null) { return this.#experiences.setExperienceVectorId(id, vectorEntryId); }

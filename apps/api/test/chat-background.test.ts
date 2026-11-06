@@ -5,8 +5,48 @@ import { loadConfig } from "../src/config.ts";
 import { pauseBackgroundJobs, queueLearning, queueReflection, waitForBackgroundJobs } from "../src/chat-background.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
+import type { MemoryStore } from "../src/memory/types.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
+
+test("reflection reads recent learned material from the character-scoped archive", async () => {
+  await waitForBackgroundJobs();
+  const store = new ChatStore(":memory:");
+  const session = store.createSession("whale", "学习记录");
+  store.add("user", "我们聊到了鲸鱼的声音。", null, "whale", session.id);
+  store.add("assistant", "我记下来了。", null, "whale", session.id);
+  store.upsertExperience({
+    kind: "learned", title: "新知识", text: "鲸鱼用声音进行远距离交流。",
+    sourceId: "learned:video:BV1REFLECT:0", sourceSessionIds: [session.id],
+  });
+  let recentLearningReads = 0;
+  const memory: MemoryStore = {
+    async remember() { return []; },
+    async recall() { return []; },
+    async recentExperiences() { return []; },
+    async recentLearnings() { recentLearningReads += 1; return []; },
+    async addExperience(input) { return { id: "e", kind: "experience", text: input.text }; },
+    async list() { return []; },
+    async remove() {},
+  };
+  let prompt = "";
+  const provider: ChatProvider = {
+    id: "fake", model: "reflection-archive-test",
+    async *stream(messages) {
+      prompt = messages.at(-1)?.content ?? "";
+      yield { text: "[emotion:neutral]我觉得这件事很有意思。" };
+    },
+  };
+
+  try {
+    queueReflection({ provider, store, memory }, "whale", true);
+    await waitForBackgroundJobs();
+    assert.match(prompt, /鲸鱼用声音进行远距离交流/);
+    assert.equal(recentLearningReads, 0);
+  } finally {
+    store.close();
+  }
+});
 
 test("session deletion waits for learning jobs that reference the session", async () => {
   await waitForBackgroundJobs();

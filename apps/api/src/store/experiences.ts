@@ -15,6 +15,20 @@ export interface ExperienceInput {
   sourceMessageId?: number;
 }
 
+function characterScope(character: string) {
+  return {
+    sql: `(
+      (e.source_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM memory_experience_sessions es WHERE es.experience_id = e.id)
+        AND e.kind <> 'chat' AND e.source_id NOT LIKE 'learned:chat:%'
+        AND (e.kind <> 'journal' OR e.source_id LIKE ?))
+      OR s.character = ?
+      OR EXISTS (SELECT 1 FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ?)
+      OR (e.source_id LIKE 'learned:chat:%' AND e.source_id LIKE ?)
+    )`,
+    params: [`journal:${character}:%`, character, character, `learned:chat:${character}:%`],
+  };
+}
+
 export class ExperienceRepository {
   private readonly db: DatabaseSync;
 
@@ -95,15 +109,9 @@ export class ExperienceRepository {
       params.push(window.from, window.to);
     }
     if (character) {
-      filters.push(`(
-        (e.source_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM memory_experience_sessions es WHERE es.experience_id = e.id)
-          AND e.kind <> 'chat' AND e.source_id NOT LIKE 'learned:chat:%'
-          AND (e.kind <> 'journal' OR e.source_id LIKE ?))
-        OR s.character = ?
-        OR EXISTS (SELECT 1 FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ?)
-        OR (e.source_id LIKE 'learned:chat:%' AND e.source_id LIKE ?)
-      )`);
-      params.push(`journal:${character}:%`, character, character, `learned:chat:${character}:%`);
+      const scope = characterScope(character);
+      filters.push(scope.sql);
+      params.push(...scope.params);
     }
     const rows = this.db.prepare(`
       SELECT e.id, ${match ? "bm25(experience_search)" : "0"} AS rank FROM experience_search
@@ -118,21 +126,38 @@ export class ExperienceRepository {
     const filters = [includeChat ? "1 = 1" : "e.kind <> 'chat'"];
     const params: Array<string | number> = [];
     if (character) {
-      filters.push(`(
-        (e.source_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM memory_experience_sessions es WHERE es.experience_id = e.id)
-          AND e.kind <> 'chat' AND e.source_id NOT LIKE 'learned:chat:%'
-          AND (e.kind <> 'journal' OR e.source_id LIKE ?))
-        OR s.character = ?
-        OR EXISTS (SELECT 1 FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ?)
-        OR (e.source_id LIKE 'learned:chat:%' AND e.source_id LIKE ?)
-      )`);
-      params.push(`journal:${character}:%`, character, character, `learned:chat:${character}:%`);
+      const scope = characterScope(character);
+      filters.push(scope.sql);
+      params.push(...scope.params);
     }
     const filteredRows = this.db.prepare(`
       SELECT e.id FROM memory_experiences e LEFT JOIN chat_sessions s ON s.id = e.source_session_id
       WHERE ${filters.join(" AND ")} ORDER BY e.created_at DESC, e.id DESC LIMIT ?
     `).all(...params, limit) as unknown as Array<{ id: number }>;
     return filteredRows.map((row) => this.getExperience(row.id)).filter((row): row is StoredExperience => Boolean(row));
+  }
+
+  recentLearnings(limit = 4, character?: string): StoredExperience[] {
+    const filters = ["e.kind = 'learned'"];
+    const params: Array<string | number> = [];
+    if (character) {
+      const scope = characterScope(character);
+      filters.push(scope.sql);
+      params.push(...scope.params);
+    }
+    const rows = this.db.prepare(`
+      SELECT e.id, e.kind, e.title, e.text, e.url, e.source_id AS sourceId,
+        e.source_session_id AS sourceSessionId, e.source_message_id AS sourceMessageId,
+        e.source_missing AS sourceMissing, e.vector_indexed AS vectorIndexed, e.attempts,
+        e.vector_entry_id AS vectorEntryId, e.last_error AS lastError, e.created_at AS createdAt
+      FROM memory_experiences e LEFT JOIN chat_sessions s ON s.id = e.source_session_id
+      WHERE ${filters.join(" AND ")} ORDER BY e.created_at DESC, e.id DESC LIMIT ?
+    `).all(...params, limit) as unknown as Array<Omit<StoredExperience, "vectorIndexed" | "sourceMissing"> & { vectorIndexed: number; sourceMissing: number }>;
+    return rows.map((row) => ({
+      ...row,
+      vectorIndexed: Boolean(row.vectorIndexed),
+      sourceMissing: Boolean(row.sourceMissing),
+    } as StoredExperience));
   }
 
   pendingExperienceIndexes(limit = 50): StoredExperience[] {
@@ -151,6 +176,15 @@ export class ExperienceRepository {
   experienceBySourceId(sourceId: string): StoredExperience | undefined {
     const row = this.db.prepare("SELECT id FROM memory_experiences WHERE source_id = ?").get(sourceId) as unknown as { id: number } | undefined;
     return row ? this.getExperience(row.id) : undefined;
+  }
+
+  experienceVisibleToCharacter(sourceId: string, character: string): boolean {
+    const scope = characterScope(character);
+    const row = this.db.prepare(`
+      SELECT 1 FROM memory_experiences e LEFT JOIN chat_sessions s ON s.id = e.source_session_id
+      WHERE e.source_id = ? AND ${scope.sql} LIMIT 1
+    `).get(sourceId, ...scope.params);
+    return Boolean(row);
   }
 
   experienceVectorIds(kind?: string): string[] {

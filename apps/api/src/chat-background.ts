@@ -73,9 +73,10 @@ export function queueReflection(deps: ChatDeps, character: CharacterId, force: b
         );
       }
     }
-    const learned = memory
-      ? (await memory.recentLearnings(4, character).catch(() => [])).map((entry) => entry.text)
-      : store.recentExperiences(100, false, character).filter((entry) => entry.kind === "learned").slice(0, 4).map((entry) => entry.text);
+    let learned = store.recentLearnings(4, character).map((entry) => entry.text);
+    if (learned.length === 0 && memory) {
+      learned = (await memory.recentLearnings(4, character).catch(() => [])).map((entry) => entry.text);
+    }
     const chat = sourceMessages.map((message) => `${message.role === "user" ? "用户" : "她"}：${message.content.slice(0, 160)}`);
     const note = await reflect(provider, { name: CHARACTERS[character].name, previous: previous?.text, learned, chat });
     if (note && sourceMessages.every((message) => store.message(message.id))) store.setNote(character, note, count);

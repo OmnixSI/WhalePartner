@@ -6,17 +6,18 @@ import { loadConfig } from "../src/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider } from "../src/llm/types.ts";
 import { startLlmBridge } from "../src/memory/llm-bridge.ts";
+import { recallChatMemory } from "../src/memory/recall.ts";
 import type { ConversationTurn, ExperienceInput, MemoryEntry, MemoryStore } from "../src/memory/types.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
 
 function fakeMemory(overrides: Partial<MemoryStore> = {}) {
-  const calls = { remembered: [] as ConversationTurn[][], experiences: [] as ExperienceInput[], removed: [] as string[], queries: [] as string[] };
+  const calls = { remembered: [] as ConversationTurn[][], experiences: [] as ExperienceInput[], removed: [] as string[], queries: [] as string[], recentLearningReads: 0, recentExperienceReads: 0 };
   const store: MemoryStore = {
-    async recentLearnings() { return []; },
+    async recentLearnings() { calls.recentLearningReads += 1; return []; },
     async remember(turns) { calls.remembered.push(turns); },
     async recall(query) { calls.queries.push(query); return [{ id: "f1", kind: "fact", text: "用户养了一只叫团子的猫" }]; },
-    async recentExperiences() { return [{ id: "e1", kind: "experience", text: "深海纪录片\n讲了发光水母" }]; },
+    async recentExperiences() { calls.recentExperienceReads += 1; return [{ id: "e1", kind: "experience", text: "深海纪录片\n讲了发光水母" }]; },
     async addExperience(input) { calls.experiences.push(input); return { id: "e2", kind: "experience", text: input.text, title: input.title, sourceId: input.sourceId }; },
     async list() { return [{ id: "f1", kind: "fact", text: "用户养了一只叫团子的猫" }] satisfies MemoryEntry[]; },
     async remove(id) { calls.removed.push(id); },
@@ -49,7 +50,97 @@ test("chat recalls facts into the prompt without exposing recall diagnostics and
   const system = seen[0].filter((message) => message.role === "system").map((message) => message.content).join("\n");
   assert.ok(system.includes("无原始消息来源") && system.includes("用户养了一只叫团子的猫"));
   assert.ok(system.includes("<experience_evidence>") && system.includes("发光水母"));
+  assert.equal(calls.recentLearningReads, 0);
   assert.deepEqual(calls.remembered, [[{ role: "user", content: query }, { role: "assistant", content: "团子呀" }]]);
+});
+
+test("semantic recall adds only relevant learned material with its archived source", async () => {
+  const store = new ChatStore(":memory:");
+  const session = store.createSession("whale", "分享的纪录片");
+  const archived = store.upsertExperience({
+    kind: "learned",
+    title: "新知识",
+    text: "鲸鱼会通过声音进行远距离交流。",
+    sourceId: "learned:video:BV1WHALE:0",
+    sourceSessionIds: [session.id],
+  });
+  const { store: memory, calls } = fakeMemory({
+    async search() {
+      return [{
+        id: "learned-vector",
+        kind: "experience",
+        source: "learned",
+        title: archived.title,
+        sourceId: archived.sourceId,
+        createdAt: archived.createdAt,
+        text: archived.text,
+      }];
+    },
+  });
+
+  try {
+    assert.equal(store.experienceVisibleToCharacter(archived.sourceId, "whale"), true);
+    const recall = await recallChatMemory({ store, memory, character: "whale", sessionId: session.id, query: "那次纪录片提到的知识是什么？" });
+    assert.equal(recall.learned.length, 1, JSON.stringify(recall));
+    assert.match(recall.learned[0], /鲸鱼会通过声音进行远距离交流/);
+    assert.match(recall.learned[0], /learned:video:BV1WHALE:0/);
+    assert.equal(recall.experiences.length, 0);
+    assert.equal(calls.recentLearningReads, 0);
+  } finally {
+    store.close();
+  }
+});
+
+test("semantic recall does not expose another character's session-scoped video", async () => {
+  const store = new ChatStore(":memory:");
+  const whaleSession = store.createSession("whale", "鲸鱼分享");
+  const otherSession = store.createSession("claude", "另一个角色");
+  const archived = store.upsertExperience({
+    kind: "video",
+    title: "鲸鱼纪录片",
+    text: "鲸鱼在海面跃出水面。",
+    sourceId: "BV1PRIVATEVIDEO",
+    sourceSessionIds: [whaleSession.id],
+  });
+  const memory = fakeMemory({
+    async search() {
+      return [{
+        id: "video-vector",
+        kind: "experience",
+        source: "video",
+        title: archived.title,
+        sourceId: archived.sourceId,
+        createdAt: archived.createdAt,
+        text: archived.text,
+      }];
+    },
+  }).store;
+
+  try {
+    const recall = await recallChatMemory({ store, memory, character: "claude", sessionId: otherSession.id, query: "鲸鱼纪录片讲了什么？" });
+    assert.equal(recall.experiences.length, 0);
+  } finally {
+    store.close();
+  }
+});
+
+test("recent chat questions use archived shared experiences without listing vector memory", async () => {
+  const store = new ChatStore(":memory:");
+  const session = store.createSession("whale", "视频分享");
+  store.upsertExperience({
+    kind: "video", title: "鲸鱼纪录片", text: "鲸鱼在海面跃出水面。",
+    sourceId: "BV1RECENTVIDEO", sourceSessionIds: [session.id],
+  });
+  const { store: memory, calls } = fakeMemory();
+
+  try {
+    const recall = await recallChatMemory({ store, memory, character: "whale", sessionId: session.id, query: "最近我们一起看过什么？" });
+    assert.equal(recall.experiences.length, 1);
+    assert.match(recall.experiences[0], /鲸鱼纪录片/);
+    assert.equal(calls.recentExperienceReads, 0);
+  } finally {
+    store.close();
+  }
 });
 
 test("a failing memory never breaks chat", async () => {
