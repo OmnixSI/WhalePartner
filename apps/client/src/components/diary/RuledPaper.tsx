@@ -1,7 +1,7 @@
 /**
  * 横线本（规范 §7.2.2）：正文区每 36px 一条淡线，线在 35px 处，色 `color-mix(ink 9%, transparent)`。
  *
- * 不用 CSS gradient（规范禁止 gradient），也不用 data-URI 背景（那里拿不到 token 的颜色）：
+ * 不用 CSS 渐变（规范禁止渐变），也不用 data-URI 背景（那里拿不到 token 的颜色）：
  * 这里量出容器高度，逐行画 `<path>`，线跟着 `currentColor` 走，所以亮/暗、平涂/高对比都对。
  * 行高取 `--fs-diary × --lh-diary`，字号缩放（老人模式 / --scale）时线与字一起变，永远对得齐。
  */

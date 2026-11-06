@@ -19,6 +19,7 @@
 import { motion } from "motion/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { fourPointStarPath, rng, waveCrestPath, wavePath } from "../../lib/ink";
+import { spring } from "../../motion/tokens";
 import { useInkEnv } from "./useCalm";
 import "../../styles/ink.css";
 
@@ -95,7 +96,7 @@ export function Tide({ variant = "stage", className = "", mode = "auto" }: Props
       aria-hidden="true"
       initial={calm ? false : { y: 14 }}
       animate={{ y: 0 }}
-      transition={{ type: "spring", stiffness: 170, damping: 18 }}
+      transition={spring.char}
     >
       {dark && variant === "stage" && <Sky uid={uid} />}
       {keys.map((key) => {

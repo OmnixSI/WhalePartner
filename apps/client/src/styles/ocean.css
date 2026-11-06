@@ -1,9 +1,15 @@
 /* 背景只画一条海平线：纸色的天，两层平涂的浪，慢慢地漂。没有光束，没有气泡。 */
-.ocean { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--ground); }
+.ocean { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; background: var(--paper); }
 .ocean__wave { position: absolute; left: 0; width: 200%; bottom: 0; height: 24vh; }
-.ocean__wave path { fill: var(--sea); }
-.ocean__wave--b { height: 30vh; animation: drift 90s linear infinite reverse; }
-.ocean__wave--b path { fill: var(--sea); opacity: .55; }
-.ocean__wave--a { animation: drift 60s linear infinite; }
+.ocean__wave path { fill: var(--sea-1); }
+.ocean__wave--b { height: 30vh; animation: drift var(--drift-far) var(--ease-linear) infinite reverse; }
+.ocean__wave--b path { fill: var(--sea-1); opacity: .55; }
+.ocean__wave--a { animation: drift var(--drift-mid) var(--ease-linear) infinite; }
 .ocean__wave--a path { fill: var(--sea-2); }
 @keyframes drift { to { transform: translateX(-50%); } }
+
+/* 背景浪的降级（§8.2「浪漂移」reduced-motion 列：静止）。少了这一条，截图与滚动会一直有亚像素差。 */
+:root[data-motion="calm"] .ocean__wave { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ocean__wave { animation: none; }
+}

@@ -13,6 +13,7 @@
 import { motion } from "motion/react";
 import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { hashSeed, inkCirclePath } from "../../lib/ink";
+import { spring } from "../../motion/tokens";
 import { InkFrame } from "./InkFrame";
 import { useInkEnv } from "./useCalm";
 import "../../styles/ink.css";
@@ -31,7 +32,6 @@ type Props = {
   id?: string;
 };
 
-const SPRING = { type: "spring", stiffness: 400, damping: 17 } as const;
 const NUMERIC = /^[\d\s.:：/·-]+$/;
 
 /** 圆形邮戳：外圈手绘、内圈细 1px、中间文字由 flex 居中。 */
@@ -105,7 +105,7 @@ export function Stamp({ kind, lines, size = 72, tone, animate = false, className
         className={cls}
         initial={{ scale: 1.3, rotate: round ? -14 : 0, opacity: 0 }}
         animate={{ scale: 1, rotate: tilt }}
-        transition={SPRING}
+        transition={spring.cute}
       >
         {inner}
       </motion.div>

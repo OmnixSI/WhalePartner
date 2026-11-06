@@ -21,6 +21,7 @@ import type { Character } from "../characters";
 import { useModel } from "../characters";
 import { fetchHealth, type Health } from "../lib/api";
 import { clearHistory, fetchHistory, streamChat } from "../lib/chat";
+import { spring, calmFade } from "../motion/tokens";
 import { Tide } from "./ink";
 import { useInkEnv } from "./ink/useCalm";
 import { WhaleSticker, type StickerMood } from "./WhaleSticker";
@@ -365,7 +366,7 @@ export function ChatPanel({ character }: Props) {
                     initial={calm ? { opacity: 0 } : { opacity: 0, y: 30, scale: 0.94 }}
                     animate={calm ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
                     exit={calm ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
-                    transition={calm ? { duration: 0.12 } : { type: "spring", stiffness: 300, damping: 30 }}
+                    transition={calm ? calmFade : spring.soft}
                   >
                     <Slip
                       id={pending.key}

@@ -1,5 +1,5 @@
 /**
- * 手绘水平线（规范 §5.2）。替代 `border-top: 1px solid var(--rule)`：
+ * 手绘水平线（规范 §5.2）。替代 `border-top: 1px solid var(--line)`：
  * 分隔线、导航当前项下划线、标题下划线、日记日期分隔、「她在想」指示线。
  *
  * 路径来自 `lib/ink.ts` 的模块级缓存：同一 (variant, seed, size) 永远是同一条抖动，

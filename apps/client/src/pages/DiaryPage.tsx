@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CompanionCorner, setCompanionMood } from "../components/CompanionCorner";
+import { spring } from "../motion/tokens";
 import { DiaryLeaf } from "../components/diary/DiaryLeaf";
 import { IndexTabs } from "../components/diary/IndexTabs";
 import { PageBar } from "../components/diary/PageBar";
@@ -264,7 +265,7 @@ export function DiaryPage() {
                 className="diary-page__leaves"
                 initial={env.calm ? false : { x: 40, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
-                transition={env.calm ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 28 }}
+                transition={env.calm ? { duration: 0 } : spring.page}
               >
                 {visible.map((item) => (
                   <DiaryLeaf
