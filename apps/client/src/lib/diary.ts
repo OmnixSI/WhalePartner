@@ -22,6 +22,11 @@ export interface DailyJournal {
   createdAt: string;
 }
 
+export interface DailyJournalPage {
+  items: DailyJournal[];
+  total: number;
+}
+
 export interface DiaryItem {
   id: number;
   inputUrl: string;
@@ -57,8 +62,13 @@ export async function fetchDiary(signal?: AbortSignal): Promise<DiaryItem[]> {
   return (await request<{ items: DiaryItem[] }>("/api/diary", { signal })).items;
 }
 
-export async function fetchJournals(character: string, signal?: AbortSignal): Promise<DailyJournal[]> {
-  return (await request<{ items: DailyJournal[] }>(`/api/journals?character=${encodeURIComponent(character)}`, { signal })).items;
+export async function fetchJournals(
+  character: string,
+  options: { from: string; to: string; limit: number; offset: number },
+  signal?: AbortSignal,
+): Promise<DailyJournalPage> {
+  const query = new URLSearchParams({ character, ...Object.fromEntries(Object.entries(options).map(([key, value]) => [key, String(value)])) });
+  return request<DailyJournalPage>(`/api/journals?${query}`, { signal });
 }
 
 export async function generateJournal(character: string, date?: string, force = false): Promise<DailyJournal | null> {

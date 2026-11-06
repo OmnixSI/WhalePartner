@@ -136,6 +136,7 @@ if (import.meta.main) {
     void scheduleMemoryJobs({ store, provider, memory });
     stopDiaryScheduler = startDiaryScheduler(config.diaryCron, diary);
     stopJournalScheduler = startDailyJournalScheduler(config.journalCron, journal);
+    void journal.resumeInterrupted();
     console.log(`WhalePartner API：http://${host}:${config.port}`);
     console.log(`旧视频日记计划：${config.diaryCron}（本机时区；API 运行时生效）`);
     console.log(`每日综合日记计划：${config.journalCron}（本机时区；API 运行时生效）`);
