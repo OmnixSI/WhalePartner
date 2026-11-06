@@ -19,6 +19,50 @@ function approach(current: number, target: number, rate: number, dt: number) {
   return current + (target - current) * Math.min(1, rate * dt);
 }
 
+/**
+ * 舞台构图：VRM 与 Live2D 共用同一条规则，比例只写在 tokens.css。
+ *   --stage-char-h    角色高度 / 舞台高度（desktop .6，手机 .9，见 chat.css）
+ *   --stage-char-gap  底边离安全线的间隙 / 舞台高度
+ *   --stage-char-max  角色最多占「对话框以上」的比例，空间不够就按这条缩
+ * 舞台高度取 .scene（整块舞台），所以对话框再长，人物也只是等比缩小，不会换构图。
+ */
+function stageMetrics(host: HTMLElement) {
+  const scene = host.closest<HTMLElement>(".scene") ?? host;
+  const css = getComputedStyle(scene);
+  const num = (name: string, fallback: number) => {
+    const value = parseFloat(css.getPropertyValue(name));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+  const stageH = scene.clientHeight || host.clientHeight;
+  return {
+    stageH,
+    ratio: num("--stage-char-h", 0.6),
+    gap: num("--stage-char-gap", 0.02),
+    maxFill: num("--stage-char-max", 0.94),
+  };
+}
+
+/**
+ * 对话框安全区：把 .scene__chrome 的真实高度写进 --scene-safe，
+ * .scene__figure 的 inset 用同一个变量，于是她的脚正好停在这条线上，
+ * 腰以上永远在对话框之上（chat.css 里那套裁剪规则也读它）。
+ */
+function watchSafeArea(host: HTMLElement, onChange: () => void) {
+  const scene = host.closest<HTMLElement>(".scene");
+  const chrome = host.closest<HTMLElement>(".room__main")?.querySelector<HTMLElement>(".scene__chrome");
+  if (!scene || !chrome) return () => {};
+  const apply = () => {
+    const px = Math.round(chrome.getBoundingClientRect().height);
+    if (px <= 0) return;
+    scene.style.setProperty("--scene-safe", `${px}px`);
+    onChange();
+  };
+  const observer = new ResizeObserver(apply);
+  observer.observe(chrome);
+  apply();
+  return () => observer.disconnect();
+}
+
 export function VrmStage({ modelUrl, emotion, speaking }: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const live = useRef({ emotion: "neutral" as AvatarEmotion, speaking: false });
@@ -42,15 +86,25 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // 之前不做色调映射，高光直接削平：肤色和浅金发一起变成「灰白 + 银白」。
+    // 换成 Neutral（Khronos PBR Neutral）而不是 ACES——它压高光但不抽色，皮肤和发色留得住；
+    // 曝光 0.9 把整体压回 0.8–0.9 这一档，白裙子不再顶到 255。
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 0.9;
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 20);
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
-    key.position.set(1.2, 2, 2.4);
+    const camera = new THREE.PerspectiveCamera(26, 1, 0.05, 40);
+    // 环境光 0.9 → 0.78：这一档抬高会把阴影面也顶到高光，脸和脖子就糊成一片；
+    // 但留够补光，皮肤才不会掉进 MToon 的 shade 色（那才是「发灰」的来源）。
+    scene.add(new THREE.AmbientLight(0xffffff, 0.78));
+    // 主光 1.6 → 1.3（−19%，按评审的「主光降 20%」），前移到 (1.0, 1.4, 3.0)：
+    // 脸原本落在 toon 的阴影带里，正面受光后皮肤才回到 lit 色，下颌和脖子留下层次。
+    const key = new THREE.DirectionalLight(0xfff4e8, 1.3);
+    key.position.set(1.0, 1.4, 3.0);
     scene.add(key);
-    const rim = new THREE.DirectionalLight(0x9be8ff, 0.9);
+    // 轮廓光 0.9 → 0.3（−67%）：浅金发原来被这盏冷光打成银白，现在只勾一圈边。
+    const rim = new THREE.DirectionalLight(0x9be8ff, 0.3);
     rim.position.set(-2, 1.4, -1.5);
     scene.add(rim);
 
@@ -64,17 +118,6 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
     };
     window.addEventListener("pointermove", onPointer);
 
-    const resize = () => {
-      const { clientWidth: w, clientHeight: h } = host;
-      if (!w || !h) return;
-      renderer.setSize(w, h, false);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(host);
-    resize();
-
     let vrm: VRM | undefined;
     let disposed = false;
     let frame = 0;
@@ -83,6 +126,53 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
     let nextBlink = 1.5;
     let blinkPhase = -1;
     let elapsed = 0;
+
+    /**
+     * 统一构图：整个人（头顶到脚底）约舞台高度的 --stage-char-h，
+     * 水平按「头/躯干中轴」对齐舞台中线，脚底停在对话框安全线之上。
+     */
+    const fit = () => {
+      if (!vrm) return;
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      if (!w || !h) return;
+      const { stageH, ratio, gap, maxFill } = stageMetrics(host);
+      const targetPx = Math.min(ratio * stageH, h * maxFill);
+      const gapPx = gap * stageH;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+
+      const box = new THREE.Box3().setFromObject(vrm.scene);
+      const size = box.getSize(new THREE.Vector3());
+      const worldH = Math.max(size.y, 1e-3);
+      const head = vrm.humanoid.getNormalizedBoneNode("head");
+      const headPos = head ? head.getWorldPosition(new THREE.Vector3()) : null;
+      // 中轴取头部骨骼的 x：马尾、裙摆偏一边也不会把身体推歪。
+      const centerX = headPos ? headPos.x : (box.min.x + box.max.x) / 2;
+
+      const visibleH = (worldH * h) / targetPx;
+      const dist = visibleH / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+      const perPx = visibleH / h;
+      const bottomPx = h - gapPx;
+      // 脚底落在 bottomPx 处 → 反推镜头中心的 y
+      const camY = box.min.y + (bottomPx - h / 2) * perPx;
+      camera.near = 0.05;
+      camera.far = dist + visibleH * 4;
+      camera.position.set(centerX, camY, dist);
+      camera.lookAt(centerX, camY, 0);
+      if (headPos) lookTarget.position.set(headPos.x, headPos.y, Math.max(0.4, dist - 0.8));
+    };
+
+    const resize = () => {
+      const { clientWidth: w, clientHeight: h } = host;
+      if (!w || !h) return;
+      renderer.setSize(w, h, false);
+      fit();
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(host);
+    resize();
+    const stopSafe = watchSafeArea(host, resize);
 
     setAvatarStatus("loading");
     const loader = new GLTFLoader();
@@ -98,30 +188,13 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
         vrm = loaded;
         scene.add(loaded.scene);
 
-        // 放下手臂（默认是 T 字站姿），并按头部高度对准镜头。
+        // 放下手臂（默认是 T 字站姿）；VRM 0.x 经 rotateVRM0 转过 180°，转动方向相反。
         const humanoid = loaded.humanoid;
-        // VRM 0.x 模型经 rotateVRM0 转了 180°，手臂的转动方向和 VRM 1.0 相反。
         const armSign = loaded.meta.metaVersion === "0" ? 1 : -1;
         humanoid.getNormalizedBoneNode("leftUpperArm")?.rotation.set(0, 0, 1.3 * armSign);
         humanoid.getNormalizedBoneNode("rightUpperArm")?.rotation.set(0, 0, -1.3 * armSign);
         loaded.scene.updateMatrixWorld(true);
-        const head = humanoid.getNormalizedBoneNode("head");
-        const headY = head ? head.getWorldPosition(new THREE.Vector3()).y : 1.4;
-        const box = new THREE.Box3().setFromObject(loaded.scene);
-        const height = box.getSize(new THREE.Vector3()).y;
-        if (height < 1.3) {
-          // Q 版（二头身）：整个人放进画面，镜头略低、正对身体中心。
-          const half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-          const centerY = (box.min.y + box.max.y) / 2;
-          camera.position.set(0, centerY, (height * 1.3) / (2 * half));
-          camera.lookAt(0, centerY, 0);
-        } else {
-          // 正常比例：半身，头部在画面上三分之一。
-          camera.position.set(0, headY - 0.12, 2.3);
-          camera.lookAt(0, headY - 0.2, 0);
-        }
-        lookTarget.position.set(0, headY, camera.position.z - 0.6);
-        if (loaded.lookAt) loaded.lookAt.target = lookTarget;
+        fit();
         setAvatarStatus("ready");
       },
       undefined,
@@ -171,7 +244,7 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
           neck.rotation.y = approach(neck.rotation.y, pointer.x * 0.28, 4, dt);
           neck.rotation.x = approach(neck.rotation.x, -pointer.y * 0.12, 4, dt);
         }
-        lookTarget.position.x = approach(lookTarget.position.x, pointer.x * 0.8, 6, dt);
+        lookTarget.position.x = approach(lookTarget.position.x, camera.position.x + pointer.x * 0.8, 6, dt);
         lookTarget.position.y = approach(lookTarget.position.y, camera.position.y + pointer.y * 0.4, 6, dt);
       }
 
@@ -183,6 +256,7 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
+      stopSafe();
       window.removeEventListener("pointermove", onPointer);
       observer.disconnect();
       if (vrm) VRMUtils.deepDispose(vrm.scene);
