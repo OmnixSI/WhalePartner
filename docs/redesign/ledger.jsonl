@@ -8,3 +8,5 @@
 {"at":"2026-11-07T03:40:00+11:00","phase":"P0","round":6,"verdict":"fail","gates":{"ai16_q13":false,"score_brand":3,"score_clarity":3,"score_elder":3,"score_polish":3,"score_warmth":4,"score_motion":"n/a"},"score":3.2,"note":"独立视觉评审不通过：邮戳第二行 4.42:1、暗色掉色相、图标 18+1、字阶无字体族、纸纹 stdev=0；已修纸纹（.app 铺 256px 瓦片，std 2.23）并派返修","pr":51}
 {"at":"2026-11-07T04:05:00+11:00","phase":"P2","round":1,"verdict":"pass","gates":{"typecheck":true,"build":true,"hscroll":"0px 四张","small_targets":0,"forget_undo":"5.2s 后才 DELETE"},"score":null,"note":"日记+记忆完成；后端缺字段时降级不伪造","pr":54}
 {"at":"2026-11-07T04:06:00+11:00","phase":"P3","round":1,"verdict":"doing","gates":{},"score":null,"note":"设置/引导/老人模式/CompanionCorner；从 PB 分支取 quota/profile/data 三个 lib","pr":null}
+{"at":"2026-11-07T04:35:00+11:00","phase":"P3","round":1,"verdict":"pass","gates":{"typecheck":true,"build":true,"axe":"0 violations","elder":"root20/hit56/nav3","hscroll":0},"score":null,"note":"设置/引导/老人模式完成；顺手修 quota lib 两处真 bug（日期解构、形状校验）","pr":55}
+{"at":"2026-11-07T04:36:00+11:00","phase":"P5","round":1,"verdict":"doing","gates":{},"score":null,"note":"P5 MVP 开工；分支无 PB 后端，要求自建 usage_ledger 且不 import 不存在的模块","pr":null}
