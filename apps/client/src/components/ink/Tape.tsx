@@ -5,7 +5,7 @@
  * 用法：放在卡片顶边，`top: -10px; left: 16–28px`；同屏 ≤4 条，胶带不遮挡文字。
  * 老人模式角度归零、只留 ≤2 条（由使用方裁剪数量，CSS 负责把角度压平）。
  */
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import "../../styles/ink.css";
 
 type Props = {
@@ -19,11 +19,20 @@ type Props = {
 
 export function Tape({ color = "a", angle = -3, w = 72, h = 22, className = "" }: Props) {
   const deg = Math.max(-6, Math.min(6, angle));
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [flow, setFlow] = useState(true);
+
+  // 胶带靠 absolute 贴在卡片上；如果父容器是普通静态容器（比如刚放进一个 flex 行里），
+  // 就退化成流内元素，否则它会按「静态位置」飘出来、压到旁边的东西上。
+  useEffect(() => {
+    const parent = ref.current?.parentElement;
+    setFlow(!parent || getComputedStyle(parent).position === "static");
+  }, []);
   const style = {
     "--w": `${w}px`,
     "--h": `${h}px`,
     "--angle": `${deg}deg`,
     "--tape": `var(--tape-${color})`,
   } as CSSProperties;
-  return <span className={`tape ${className}`.trim()} style={style} aria-hidden />;
+  return <span ref={ref} className={`tape ${className}`.trim()} style={style} data-mode={flow ? "flow" : "stuck"} aria-hidden />;
 }

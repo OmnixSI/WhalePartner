@@ -1,20 +1,50 @@
 /**
  * 角色贴纸（规范 §5.7）：一只**完全由代码绘制、纯平涂**的鲸。
  *
- * 取代 `WhaleFigure.tsx` 的渐变鲸：
- * - 身体 `color-mix(in oklab, var(--accent) 55%, var(--sheet))`，肚皮 `--sheet`，
- *   腮红 `--coral-soft`（装饰），描边 `--ink` 用 perfect-freehand（size 3.2，种子 17）；
- * - 外圈 3px「贴纸白边」用**同一轮廓**描边 6px 的 `--sheet` 放在最底层（不用 drop-shadow）；
- * - viewBox `0 0 240 200`，**不含任何 linearGradient / radialGradient**。
+ * 体形按鲸来画，不是鱼：前宽后收、尾柄细、**尾叶竖直成 V**（不是横向鱼尾），
+ * 背上有喷气孔（部分 mood 带水柱）、腹部留白、腮红是小圆。
+ * 身体 `color-mix(in oklab, var(--accent) 55%, var(--sheet))`，肚皮 `--sheet`，
+ * 描边 `--ink` 用 perfect-freehand（size 3.2，种子 17）；外圈 3px「贴纸白边」用同一轮廓
+ * 描边 6px 的 `--sheet` 垫在最底层（不用 drop-shadow）。viewBox 240×200，**无任何渐变**。
  *
- * 10 个 mood 是同一套状态，四个角色共用（颜色跟着当前角色 accent 走）：
- * idle / happy / think / write / sleep / sorry / wave / hold / phone / paper。
- * 动效只有 idle 的呼吸（scale 1 → 1.015，--breath）与眨眼；calm 下两者都停。
+ * mood 分两层：`StickerMood`（对外，规范 §5.7 的 10 个 + 样品页用的 10 个同义/独立状态）
+ * → `FaceKey`（真正决定五官的那 14 张脸）。10 个 mood 的差别只落在眼 / 嘴 / 眉 / 尾摆上，
+ * 整体轮廓同一套点列，尾摆只是把尾叶绕尾柄转 ±6°，所以仍是一条闭合路径、没有接缝。
  */
 import { flatPath, inkPath, rng, type Pt } from "../lib/ink";
 import "../styles/sticker.css";
 
-export type StickerMood = "idle" | "happy" | "think" | "write" | "sleep" | "sorry" | "wave" | "hold" | "phone" | "paper";
+/** 对外：§5.7 的 10 个 + 样品页 /__kit 用的 10 个。 */
+export type StickerMood =
+  | "idle" | "happy" | "think" | "write" | "sleep" | "sorry" | "wave" | "hold" | "phone" | "paper"
+  | "calm" | "sad" | "sleepy" | "curious" | "thinking" | "surprised" | "shy" | "proud" | "worried";
+
+/** 内部：真正画出来的 14 张脸。 */
+type FaceKey =
+  | "calm" | "happy" | "sad" | "sleepy" | "curious" | "thinking" | "surprised" | "shy" | "proud" | "worried"
+  | "write" | "hold" | "phone" | "paper";
+
+const FACE: Record<StickerMood, FaceKey> = {
+  idle: "calm",
+  calm: "calm",
+  happy: "happy",
+  think: "thinking",
+  thinking: "thinking",
+  sleep: "sleepy",
+  sleepy: "sleepy",
+  sorry: "worried",
+  worried: "worried",
+  sad: "sad",
+  curious: "curious",
+  surprised: "surprised",
+  shy: "shy",
+  proud: "proud",
+  write: "write",
+  hold: "hold",
+  phone: "phone",
+  paper: "paper",
+  wave: "happy", // 举手指的是「同一张笑脸 + 一只举起的鳍」
+};
 
 type Props = {
   mood?: StickerMood;
@@ -28,246 +58,330 @@ const SHEET = "var(--sheet)";
 const BODY = "color-mix(in oklab, var(--accent) 55%, var(--sheet))";
 const BLUSH = "var(--coral-soft)";
 
-/** 描边种子固定 17：先按种子给骨架 ±0.9 抖动，再交给 perfect-freehand。 */
+/* ------------------------------------------------------------------ *
+ * 轮廓：一条闭合路径 = 头背 + 尾叶（可摆） + 腹侧
+ * ------------------------------------------------------------------ */
+
+/** 描边种子固定 17（规范 §5.7）。 */
 const SEED = 17;
 function seeded(points: Pt[], amount = 0.9): Pt[] {
   const r = rng(SEED);
   return points.map(([x, y]) => [x + (r() - 0.5) * 2 * amount, y + (r() - 0.5) * 2 * amount]);
 }
 
-/** 身体剪影：头在左，尾叶在右，尾根处有个内凹的口。 */
-const BODY_PTS: Pt[] = [
-  [46, 92], [56, 72], [76, 60], [102, 53], [130, 52], [156, 57], [176, 68], [190, 84],
-  [200, 74], [216, 62], [230, 58], [226, 74], [214, 88], [206, 100],
-  [216, 112], [228, 126], [232, 144], [216, 138], [200, 124],
-  [196, 140], [184, 154], [162, 164], [132, 170], [100, 168], [72, 160], [50, 146], [38, 128], [34, 108],
+/** 头 → 背 → 尾柄上缘：前宽后收（长宽比 ≈1.5），这是「鲸」而不是「圆鱼」的第一条。 */
+const FRONT_TOP: Pt[] = [
+  [24, 102], [26, 86], [36, 72], [52, 62], [72, 55], [94, 52], [116, 52], [136, 55], [152, 63], [166, 76], [178, 90], [188, 100],
 ];
 
-/** 肚皮：只占下缘一条窄带，并且**不描边**——描边会把它画成一张笑嘴。 */
+/**
+ * 尾叶：竖直的 V（不是横向鱼尾）。上叶尖在上、下叶尖在下，中间从右往左凹一个缺；
+ * 两片是圆头的桨而不是尖刀，所以读作鲸尾而不是燕尾。
+ */
+const FLUKE: Pt[] = [
+  [188, 98], [200, 78], [210, 70], [216, 76],
+  [214, 90], [206, 100],
+  [200, 106],
+  [200, 110], [206, 116], [214, 126], [216, 140],
+  [210, 146], [200, 138], [188, 118],
+];
+
+/** 尾柄下缘 → 腹线 → 下颌。 */
+const BODY_BOTTOM: Pt[] = [
+  [188, 116], [184, 128], [174, 138], [158, 147], [138, 152], [112, 154], [90, 152], [70, 146], [54, 138], [40, 126], [28, 112],
+];
+
+/** 尾摆轴心（尾柄）。 */
+const PIVOT: Pt = [188, 108];
+
+function rotate([x, y]: Pt, deg: number): Pt {
+  if (!deg) return [x, y];
+  const a = (deg * Math.PI) / 180;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const dx = x - PIVOT[0];
+  const dy = y - PIVOT[1];
+  return [PIVOT[0] + dx * c - dy * s, PIVOT[1] + dx * s + dy * c];
+}
+
+/** 同一副轮廓，只有尾叶按 mood 摆一点。 */
+function silhouette(sway: number): Pt[] {
+  return [...FRONT_TOP, ...FLUKE.map((p) => rotate(p, sway)), ...BODY_BOTTOM];
+}
+
+/** 腹部留白：沿下缘的一条宽带（不是细线，否则会被读成一张嘴）。 */
 const BELLY_PTS: Pt[] = [
-  [48, 144], [64, 157], [92, 166], [128, 167], [154, 160], [170, 148], [148, 157], [118, 161], [86, 159], [62, 153],
+  [48, 128], [60, 140], [84, 149], [112, 151], [138, 146], [154, 137],
+  [140, 126], [116, 134], [88, 137], [66, 130], [56, 122],
 ];
-
-// 平涂色块与墨线轮廓在模块级算好并缓存：重渲染、切 mood 都不重算。
-const BODY_FLAT = flatPath("whale:body", BODY_PTS);
 const BELLY_FLAT = flatPath("whale:belly", BELLY_PTS);
-const BODY_INK = inkPath("whale:body", seeded(BODY_PTS), 3.2);
 
-/* ---------------- 小零件 ---------------- */
+/** 胸鳍：贴在腹侧的短桨（鲸的第二条识别特征）。 */
+const FLIPPER: Pt[] = [[66, 126], [88, 134], [96, 146], [78, 150], [64, 140]];
+const FLIPPER_FLAT = flatPath("whale:flipper", FLIPPER);
+const FLIPPER_INK = inkPath("whale:flipper", seeded(FLIPPER, 0.5), 2.4);
 
-const Dot = ({ cx, cy, r = 5.5 }: { cx: number; cy: number; r?: number }) => <circle cx={cx} cy={cy} r={r} fill={INK} />;
+/** 喷气孔：背上那一小道，永远画（鲸的第三条识别特征）。 */
+const BLOWHOLE = "M118,56 q6,5 12,0";
+
+/* ------------------------------------------------------------------ *
+ * 五官表：眼 / 嘴 / 眉 / 腮红 / 尾摆 / 头顶的记号
+ * ------------------------------------------------------------------ */
+
+type Eyes =
+  | { kind: "dot"; look?: Pt; r?: number }
+  | { kind: "happy" }
+  | { kind: "closed" }
+  | { kind: "wide"; look?: Pt }
+  | { kind: "line" };
+type Mouth = "arc" | "open" | "o" | "frown" | "flat" | "tiny";
+type Brows = "none" | "one-up" | "worried";
+type Mark = "none" | "sweat" | "z" | "squiggle" | "splash";
+
+type FaceSpec = {
+  eyes: Eyes;
+  mouth: Mouth;
+  brows: Brows;
+  blush: "small" | "big";
+  /** 尾摆角度：负=尾叶朝上翘，正=尾叶垂下来 */
+  sway: number;
+  spout?: boolean;
+  mark?: Mark;
+};
+
+const FACES: Record<FaceKey, FaceSpec> = {
+  // 默认：两个墨点 + 小弧嘴，尾巴平放
+  calm: { eyes: { kind: "dot" }, mouth: "arc", brows: "none", blush: "small", sway: 0 },
+  happy: { eyes: { kind: "happy" }, mouth: "open", brows: "none", blush: "small", sway: -5, mark: "splash" },
+  // 低头看本子：眼睛朝下
+  write: { eyes: { kind: "dot", look: [0, 2] }, mouth: "flat", brows: "none", blush: "small", sway: 2 },
+  sleepy: { eyes: { kind: "closed" }, mouth: "tiny", brows: "none", blush: "small", sway: 3, mark: "z" },
+  sad: { eyes: { kind: "dot", look: [0, 1.5] }, mouth: "frown", brows: "worried", blush: "small", sway: 5 },
+  worried: { eyes: { kind: "dot", look: [0, 1], }, mouth: "frown", brows: "worried", blush: "small", sway: 4, mark: "sweat" },
+  curious: { eyes: { kind: "dot", look: [1.6, -2] }, mouth: "o", brows: "one-up", blush: "small", sway: -3, spout: true },
+  thinking: { eyes: { kind: "dot", look: [-1.6, -2] }, mouth: "flat", brows: "one-up", blush: "small", sway: 0, mark: "squiggle" },
+  surprised: { eyes: { kind: "wide" }, mouth: "o", brows: "none", blush: "small", sway: -4 },
+  shy: { eyes: { kind: "dot", look: [-1.2, 2] }, mouth: "tiny", brows: "none", blush: "big", sway: 2 },
+  proud: { eyes: { kind: "happy" }, mouth: "arc", brows: "none", blush: "small", sway: -6, spout: true },
+  hold: { eyes: { kind: "dot", look: [-1.6, 0.6] }, mouth: "tiny", brows: "none", blush: "small", sway: 1 },
+  phone: { eyes: { kind: "dot", look: [0, 2] }, mouth: "tiny", brows: "none", blush: "small", sway: 1 },
+  paper: { eyes: { kind: "dot", look: [1.6, 1] }, mouth: "tiny", brows: "none", blush: "small", sway: -1 },
+};
+
+/* ------------------------------------------------------------------ *
+ * 小零件
+ * ------------------------------------------------------------------ */
+
+const Dot = ({ cx, cy, r = 5 }: { cx: number; cy: number; r?: number }) => <circle cx={cx} cy={cy} r={r} fill={INK} />;
 
 const Line = ({ d, width = 3.2 }: { d: string; width?: number }) => (
   <path d={d} fill="none" stroke={INK} strokeWidth={width} strokeLinecap="round" strokeLinejoin="round" />
 );
 
-/** 眼里的高光：朝哪看，高光就偏到那边。 */
-const Glint = ({ cx, cy, r = 1.9 }: { cx: number; cy: number; r?: number }) => <circle cx={cx} cy={cy} r={r} fill={SHEET} />;
+const Glint = ({ cx, cy, r = 1.8 }: { cx: number; cy: number; r?: number }) => <circle cx={cx} cy={cy} r={r} fill={SHEET} />;
 
-/** 鳍：一个平涂小色块 + 墨线，握东西的两只都用它。 */
+/** 小手/鳍：握东西的几只手都用它。 */
 const Fin = ({ x, y, flip = false }: { x: number; y: number; flip?: boolean }) => (
   <g transform={`translate(${x} ${y})${flip ? " scale(-1 1)" : ""}`}>
-    <path d="M0,0 C6,-6 16,-6 20,2 C15,10 5,10 0,4 Z" fill={BODY} />
-    <path d="M0,0 C6,-6 16,-6 20,2 C15,10 5,10 0,4" fill="none" stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />
+    <path d="M0,0 C6,-5 15,-5 19,2 C14,9 5,9 0,4 Z" fill={BODY} />
+    <path d="M0,0 C6,-5 15,-5 19,2 C14,9 5,9 0,4" fill="none" stroke={INK} strokeWidth={2.4} strokeLinejoin="round" />
   </g>
 );
 
-/* ---------------- 画在身体后面的道具 ---------------- */
+/* ------------------------------------------------------------------ *
+ * 表情
+ * ------------------------------------------------------------------ */
 
-/** 举手的鳍要从身体背后长出来：先画它，再画身体，最后身体墨线压住鳍根。 */
-function Behind({ mood }: { mood: StickerMood }) {
-  if (mood !== "wave") return null;
-  return <path d="M150,70 C156,46 170,32 181,36 C185,48 172,64 162,72 Z" fill={BODY} stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />;
-}
+const EYE_L = { x: 70, y: 96 };
+const EYE_R = { x: 100, y: 92 };
 
-/* ---------------- 表情 ---------------- */
-
-function Face({ mood }: { mood: StickerMood }) {
-  switch (mood) {
+function Eyes({ shape }: { shape: Eyes }) {
+  switch (shape.kind) {
     case "happy":
-    case "wave":
       return (
-        <>
-          <g className="whale-sticker__eyes">
-            <Line d="M80,102 q7,-9 14,0" />
-            <Line d="M110,100 q7,-9 14,0" />
-          </g>
-          {mood === "wave" ? <Line d="M100,120 q9,8 18,0" /> : <path d="M99,117 h20 a10,9 0 0 1 -20,0 Z" fill={INK} />}
-        </>
-      );
-    case "sleep":
-      return (
-        <>
-          <Line d="M80,102 q7,6 14,0" />
-          <Line d="M110,100 q7,6 14,0" />
-          <Line d="M101,122 q8,4 16,0" width={2.8} />
-        </>
-      );
-    case "sorry":
-      return (
-        <>
-          <g className="whale-sticker__eyes">
-            <Dot cx={88} cy={102} />
-            <Dot cx={118} cy={100} />
-          </g>
-          <Line d="M94,86 L80,93" width={2.8} />
-          <Line d="M120,84 L134,91" width={2.8} />
-          <Line d="M100,126 q9,-7 18,0" width={2.8} />
-          {/* 一滴汗 */}
-          <path d="M150,80 q7,10 0,14 q-7,-4 0,-14 Z" fill={SHEET} stroke={INK} strokeWidth={2} strokeLinejoin="round" />
-        </>
-      );
-    case "think":
-      return (
-        <>
-          <g className="whale-sticker__eyes">
-            <Dot cx={87} cy={98} r={6} />
-            <Glint cx={84.5} cy={95.5} />
-            <Dot cx={117} cy={96} r={6} />
-            <Glint cx={114.5} cy={93.5} />
-          </g>
-          <Line d="M79,84 q10,-7 20,-3" width={2.8} />
-          <Line d="M104,122 q8,4 15,-1" width={2.8} />
-        </>
-      );
-    case "write":
-      return (
-        <>
-          <g className="whale-sticker__eyes">
-            <Dot cx={88} cy={103} />
-            <Glint cx={86} cy={100.5} />
-            <Dot cx={118} cy={101} />
-            <Glint cx={116} cy={98.5} />
-          </g>
-          <Line d="M101,124 q9,4 17,0" width={2.8} />
-        </>
-      );
-    case "hold":
-      return (
-        <>
-          <g className="whale-sticker__eyes">
-            <Dot cx={85} cy={101} />
-            <Glint cx={83} cy={99} />
-            <Dot cx={115} cy={99} />
-            <Glint cx={113} cy={97} />
-          </g>
-          <Line d="M101,123 q8,6 15,0" width={2.8} />
-        </>
-      );
-    case "phone":
-    case "paper":
-      return (
-        <>
-          <g className="whale-sticker__eyes">
-            <Dot cx={88} cy={102} r={5} />
-            <Glint cx={88} cy={99.5} />
-            <Dot cx={116} cy={101} r={5} />
-            <Glint cx={116} cy={98.5} />
-          </g>
-          <Line d="M102,123 q8,5 15,0" width={2.8} />
-        </>
-      );
-    default: // idle
-      return (
-        <>
-          <g className="whale-sticker__eyes">
-            <Dot cx={88} cy={100} />
-            <Dot cx={118} cy={98} />
-          </g>
-          <Line d="M100,121 q9,7 18,0" />
-        </>
-      );
-  }
-}
-
-/* ---------------- 道具 / 举手 ---------------- */
-
-function Props({ mood }: { mood: StickerMood }) {
-  switch (mood) {
-    case "happy":
-      // 两颗小水花
-      return (
-        <g>
-          <Line d="M62,46 q7,-10 14,0" width={2.6} />
-          <Line d="M146,32 q6,-9 12,0" width={2.4} />
+        <g className="whale-sticker__eyes">
+          <Line d={`M${EYE_L.x - 8},${EYE_L.y + 4} q8,-11 16,0`} />
+          <Line d={`M${EYE_R.x - 8},${EYE_R.y + 4} q8,-11 16,0`} />
         </g>
       );
-    case "think":
-      // 头上一笔自画的墨线
-      return <Line d="M144,40 q8,-11 16,0 q8,11 16,0" width={2.6} />;
-    case "write":
-      // 鳍握笔 + 小本子
+    case "closed":
       return (
-        <g>
-          <path d="M140,148 L178,148 L178,176 L140,176 Z" fill={SHEET} stroke={INK} strokeWidth={2.4} strokeLinejoin="round" />
-          <Line d="M146,158 L166,158" width={2} />
-          <Line d="M146,166 L160,166" width={2} />
-          <path d="M156,142 L172,126 L180,132 L164,148 Z" fill={BLUSH} stroke={INK} strokeWidth={2.2} strokeLinejoin="round" />
-          <Fin x={120} y={150} />
+        <g className="whale-sticker__eyes">
+          <Line d={`M${EYE_L.x - 7},${EYE_L.y - 1} q7,7 14,0`} />
+          <Line d={`M${EYE_R.x - 7},${EYE_R.y - 1} q7,7 14,0`} />
         </g>
       );
-    case "sleep": {
-      // 头上两笔「Z」
+    case "line":
       return (
-        <g>
-          <Line d="M144,44 L158,44 L144,58 L158,58" width={2.6} />
-          <Line d="M166,26 L178,26 L166,38 L178,38" width={2.2} />
+        <g className="whale-sticker__eyes">
+          <Line d={`M${EYE_L.x - 7},${EYE_L.y} h14`} />
+          <Line d={`M${EYE_R.x - 7},${EYE_R.y} h14`} />
+        </g>
+      );
+    case "wide": {
+      const [dx, dy] = shape.look ?? [0, 0];
+      return (
+        <g className="whale-sticker__eyes">
+          <Dot cx={EYE_L.x + dx} cy={EYE_L.y + dy} r={7} />
+          <Glint cx={EYE_L.x + dx - 2} cy={EYE_L.y + dy - 2.5} r={2.4} />
+          <Dot cx={EYE_R.x + dx} cy={EYE_R.y + dy} r={7} />
+          <Glint cx={EYE_R.x + dx - 2} cy={EYE_R.y + dy - 2.5} r={2.4} />
         </g>
       );
     }
-    case "wave":
-      return null; // 举起的鳍画在身体后面，见 <Behind/>
-    case "hold":
-      // 抱着一个小玻璃瓶
+    default: {
+      const [dx, dy] = shape.look ?? [0, 0];
+      const r = shape.r ?? 5;
       return (
-        <g>
-          <path d="M114,132 L128,132 L128,138 C136,144 136,150 136,158 C136,172 128,178 121,178 C114,178 106,172 106,158 C106,150 106,144 114,138 Z" fill={SHEET} stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />
-          <Line d="M112,138 L130,138" width={2} />
-          <path d="M114,160 L122,152 L128,162 Z" fill={SHEET} stroke={INK} strokeWidth={1.8} strokeLinejoin="round" />
-          <Fin x={92} y={150} />
-          <Fin x={176} y={150} flip />
+        <g className="whale-sticker__eyes">
+          <Dot cx={EYE_L.x + dx} cy={EYE_L.y + dy} r={r} />
+          <Dot cx={EYE_R.x + dx} cy={EYE_R.y + dy} r={r} />
         </g>
       );
-    case "phone":
-      // 双鳍捧手机，屏幕三道横线依次点亮
+    }
+  }
+}
+
+function Mouth({ shape }: { shape: Mouth }) {
+  switch (shape) {
+    case "open":
+      return <path d="M52,116 h24 a12,9 0 0 1 -24,0 Z" fill={INK} />;
+    case "o":
+      return <ellipse cx={64} cy={121} rx={5} ry={6} fill={INK} />;
+    case "frown":
+      return <Line d={`M52,126 q12,-9 24,0`} width={2.8} />;
+    case "flat":
+      return <Line d="M52,122 h22" width={2.8} />;
+    case "tiny":
+      return <Line d="M56,122 q7,5 14,0" width={2.6} />;
+    default:
+      return <Line d="M52,120 q12,9 24,1" />;
+  }
+}
+
+function Brows({ shape }: { shape: Brows }) {
+  if (shape === "one-up") return <Line d="M60,80 q11,-8 21,-3" width={2.6} />;
+  if (shape === "worried")
+    return (
+      <>
+        <Line d="M78,80 L62,87" width={2.6} />
+        <Line d="M96,79 L110,86" width={2.6} />
+      </>
+    );
+  return null;
+}
+
+/** 头顶的记号：汗、Z、思考的墨线、水花。 */
+function Mark({ shape }: { shape: Mark }) {
+  switch (shape) {
+    case "sweat":
+      return <path d="M128,70 q7,10 0,14 q-7,-4 0,-14 Z" fill={SHEET} stroke={INK} strokeWidth={2} strokeLinejoin="round" />;
+    case "z":
       return (
         <g>
-          <path d="M118,140 L146,140 C149,140 150,142 150,145 L150,180 C150,183 148,185 145,185 L119,185 C116,185 114,183 114,180 L114,145 C114,142 115,140 118,140 Z" fill={SHEET} stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />
-          <g className="whale-sticker__ph">
-            <Line d="M122,154 L142,154" width={2.2} />
-            <Line d="M122,163 L142,163" width={2.2} />
-            <Line d="M122,172 L142,172" width={2.2} />
-          </g>
-          <Fin x={90} y={156} />
-          <Fin x={178} y={156} flip />
+          <Line d="M124,38 L138,38 L124,52 L138,52" width={2.6} />
+          <Line d="M146,22 L158,22 L146,34 L158,34" width={2.2} />
         </g>
       );
-    case "paper":
-      // 双鳍展开一张小报纸，笔尖在上面移动
+    case "squiggle":
+      return <Line d="M116,34 q8,-11 16,0 q8,11 16,0" width={2.6} />;
+    case "splash":
       return (
         <g>
-          <path d="M104,126 L170,126 L170,166 L104,166 Z" fill={SHEET} stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />
-          <Line d="M110,136 L140,136" width={2} />
-          <Line d="M110,146 L164,146" width={2} />
-          <Line d="M110,156 L150,156" width={2} />
-          <g className="whale-sticker__pen">
-            <circle cx={152} cy={152} r={2.4} fill={INK} />
-          </g>
-          <Fin x={92} y={150} />
-          <Fin x={176} y={150} flip />
+          <Line d="M42,40 q7,-10 14,0" width={2.6} />
+          <Line d="M150,26 q6,-9 12,0" width={2.4} />
         </g>
       );
-    case "sorry":
-      return null;
     default:
       return null;
   }
 }
 
-/* ---------------- 主体 ---------------- */
+/** 喷气孔的水柱（可选，规范 §5.7）。 */
+function Spout() {
+  return (
+    <g>
+      <Line d="M122,50 q4,-13 -2,-22" width={2.6} />
+      <Line d="M128,52 q10,-10 9,-20" width={2.4} />
+      <Line d="M116,52 q-9,-9 -8,-18" width={2.4} />
+    </g>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * 手里拿的东西
+ * ------------------------------------------------------------------ */
+
+function Props({ face }: { face: FaceKey }) {
+  return (
+    <>
+      {face === "write" && (
+        <g>
+          <path d="M144,140 L182,140 L182,170 L144,170 Z" fill={SHEET} stroke={INK} strokeWidth={2.4} strokeLinejoin="round" />
+          <Line d="M150,150 L170,150" width={2} />
+          <Line d="M150,159 L164,159" width={2} />
+          <path d="M156,134 L172,114 L180,120 L164,140 Z" fill={BLUSH} stroke={INK} strokeWidth={2.2} strokeLinejoin="round" />
+          <Fin x={126} y={146} />
+        </g>
+      )}
+      {face === "hold" && (
+        <g>
+          <path d="M112,126 L126,126 L126,132 C134,138 134,144 134,152 C134,166 126,172 119,172 C112,172 104,166 104,152 C104,144 104,138 112,132 Z" fill={SHEET} stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />
+          <Line d="M111,132 L127,132" width={2} />
+          <path d="M112,154 L119,146 L125,156 Z" fill={SHEET} stroke={INK} strokeWidth={1.8} strokeLinejoin="round" />
+          <Fin x={94} y={144} />
+          <Fin x={176} y={144} flip />
+        </g>
+      )}
+      {face === "phone" && (
+        <g>
+          <path d="M126,134 L154,134 C157,134 158,136 158,139 L158,174 C158,177 156,179 153,179 L127,179 C124,179 122,177 122,174 L122,139 C122,136 123,134 126,134 Z" fill={SHEET} stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />
+          <g className="whale-sticker__ph">
+            <Line d="M130,147 L150,147" width={2.2} />
+            <Line d="M130,156 L150,156" width={2.2} />
+            <Line d="M130,165 L150,165" width={2.2} />
+          </g>
+          <Fin x={100} y={148} />
+          <Fin x={184} y={148} flip />
+        </g>
+      )}
+      {face === "paper" && (
+        <g>
+          <path d="M106,120 L172,120 L172,160 L106,160 Z" fill={SHEET} stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />
+          <Line d="M112,130 L142,130" width={2} />
+          <Line d="M112,140 L166,140" width={2} />
+          <Line d="M112,150 L152,150" width={2} />
+          <g className="whale-sticker__pen">
+            <circle cx={156} cy={146} r={2.4} fill={INK} />
+          </g>
+          <Fin x={94} y={142} />
+          <Fin x={180} y={142} flip />
+        </g>
+      )}
+    </>
+  );
+}
+
+/** 举手：鳍要从身体背后长出来，所以单独一层，画在身体之前。 */
+function Behind({ wave }: { wave: boolean }) {
+  if (!wave) return null;
+  return <path d="M32,84 C16,60 18,42 30,38 C44,48 46,70 44,82 Z" fill={BODY} stroke={INK} strokeWidth={2.6} strokeLinejoin="round" />;
+}
+
+/* ------------------------------------------------------------------ *
+ * 主体
+ * ------------------------------------------------------------------ */
 
 export function WhaleSticker({ mood = "idle", className = "", label }: Props) {
-  const cls = `whale-sticker ${mood === "idle" ? "whale-sticker--breath" : ""} ${className}`.trim();
+  const face = FACES[FACE[mood] ?? "calm"];
+  const wave = mood === "wave";
+  const pts = silhouette(face.sway);
+  // 每个尾摆角度一条路径，模块级缓存；同一 (mood, 主题) 永远是同一条抖动。
+  const flat = flatPath(`whale:${face.sway}`, pts);
+  const ink = inkPath(`whale:${face.sway}`, seeded(pts), 3.2);
+  const cls = `whale-sticker ${mood === "idle" || mood === "calm" ? "whale-sticker--breath" : ""} ${className}`.trim();
+  const blushR = face.blush === "big" ? 7.5 : 5.5;
+
   return (
     <svg
       className={cls}
@@ -277,18 +391,29 @@ export function WhaleSticker({ mood = "idle", className = "", label }: Props) {
       aria-hidden={label ? undefined : true}
       focusable="false"
     >
-      {/* 贴纸白边：同一轮廓描边 6px 的 --sheet，放最底层 */}
-      <path d={BODY_INK} fill={SHEET} stroke={SHEET} strokeWidth={6} strokeLinejoin="round" />
-      <Behind mood={mood} />
-      {/* 平涂：身体 → 肚皮 → 鳍 → 腮红 */}
-      <path d={BODY_FLAT} fill={BODY} />
+      {/* 背后：举起的鳍 */}
+      <Behind wave={wave} />
+      {/* 贴纸白边：同一轮廓描边 6px 的 --sheet */}
+      <path d={ink} fill={SHEET} stroke={SHEET} strokeWidth={6} strokeLinejoin="round" />
+      {/* 平涂：身体 → 腹部留白 → 腮红小圆 */}
+      <path d={flat} fill={BODY} />
       <path d={BELLY_FLAT} fill={SHEET} />
-      <ellipse cx={66} cy={120} rx={10} ry={5.5} fill={BLUSH} />
-      <ellipse cx={140} cy={116} rx={9} ry={5} fill={BLUSH} />
-      {/* 墨线轮廓在最上层，盖住平涂色块的毛边 */}
-      <path d={BODY_INK} fill={INK} />
-      <Face mood={mood} />
-      <Props mood={mood} />
+      <path d={FLIPPER_FLAT} fill={BODY} />
+      <path d={FLIPPER_INK} fill={INK} />
+      <circle cx={54} cy={116} r={blushR} fill={BLUSH} />
+      <circle cx={114} cy={110} r={blushR - 0.8} fill={BLUSH} />
+      {/* 墨线轮廓压在最上层 */}
+      <path d={ink} fill={INK} />
+      <Line d={BLOWHOLE} width={2.4} />
+      {/* 喷气孔 + 水柱 */}
+      {face.spout && <Spout />}
+      <Mark shape={face.mark ?? "none"} />
+      {/* 五官 */}
+      <Brows shape={face.brows} />
+      <Eyes shape={face.eyes} />
+      <Mouth shape={face.mouth} />
+      {/* 手里的东西 */}
+      <Props face={FACE[mood] ?? "calm"} />
     </svg>
   );
 }

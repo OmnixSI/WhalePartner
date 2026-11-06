@@ -7,13 +7,17 @@
  * - `variant="stage"`：聊天页舞台底部，28%（手机 22%），涨上来（spring 170/18）；
  * - `variant="sill"`：其他页的「潮线」，72px，只画 mid + near 并且不动。
  *   页面同时要给内容 `padding-bottom: 96px`（手机 88px），潮线不得压住正文。
+ * - 定位：默认 `position:absolute; inset-inline:0; bottom:0; z-index:var(--z-bg)`，
+ *   所以它要放在**定位容器**里（聊天页的 `.stage` 就是）。如果调用方给的是普通静态容器，
+ *   组件会自己退化成文档流里的一块（`data-mode="flow"`），只占位、不盖内容。
+ *   `mode` 可以强制指定。整组 `aria-hidden="true"`、`pointer-events:none`。
  * - 水彩晕边：只给 near 层一个**静态**滤镜（feTurbulence + feDisplacementMap）；
  *   手机 / 老人 / calm 下不加滤镜，用平涂。
  * - 暗色（深海夜）再叠 5 颗平涂四角星与一弯平涂月，无光晕、不闪烁。
  * 整组 aria-hidden：浪是装饰。
  */
 import { motion } from "motion/react";
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { fourPointStarPath, rng, waveCrestPath, wavePath } from "../../lib/ink";
 import { useInkEnv } from "./useCalm";
 import "../../styles/ink.css";
@@ -21,6 +25,8 @@ import "../../styles/ink.css";
 type Props = {
   variant?: "stage" | "sill";
   className?: string;
+  /** auto（默认）：父容器有定位就覆盖、没有就退化成文档流；也可以强制 overlay / flow。 */
+  mode?: "auto" | "overlay" | "flow";
 };
 
 type LayerGeom = { seed: number; base: number; amp: [number, number]; len: [number, number] };
@@ -62,17 +68,31 @@ function Sky({ uid }: { uid: string }) {
   );
 }
 
-export function Tide({ variant = "stage", className = "" }: Props) {
+export function Tide({ variant = "stage", className = "", mode = "auto" }: Props) {
   const { calm, dark, narrow } = useInkEnv();
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [flow, setFlow] = useState(true);
   const uid = `tide${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   // 老人模式在 a11y.ts 里已经写成 data-motion="calm"，所以这里不用再判 elder。
   const wash = !calm && !narrow;
   const keys = variant === "sill" ? (["mid", "near"] as const) : (["far", "mid", "near"] as const);
 
+  // 父容器不是定位容器时退化成文档流，避免 absolute 整块盖住同段内容。
+  useEffect(() => {
+    if (mode !== "auto") {
+      setFlow(mode === "flow");
+      return;
+    }
+    const parent = ref.current?.parentElement;
+    setFlow(!parent || getComputedStyle(parent).position === "static");
+  }, [mode]);
+
   return (
     <motion.div
+      ref={ref}
       className={`tide tide--${variant} ${className}`.trim()}
-      aria-hidden
+      data-mode={flow ? "flow" : "overlay"}
+      aria-hidden="true"
       initial={calm ? false : { y: 14 }}
       animate={{ y: 0 }}
       transition={{ type: "spring", stiffness: 170, damping: 18 }}
