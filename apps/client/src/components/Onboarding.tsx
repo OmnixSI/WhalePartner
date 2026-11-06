@@ -2,10 +2,12 @@
  * 首次引导（规范 §7.5）：`wp.onboarded` 未设时全屏盖住，三步走完或随时跳过。
  *
  * 通用约定：顶部三颗贝壳 + 「第 N 步，共 3 步」；底部固定位置的主动作；
- * 每步左下都有 quiet「跳过，以后再说」；不出现 API Key / 模型 / 插件字样；
- * 全程键盘可达。第 3 步可以直接打开老人模式。
+ * 每步左下都有 quiet「跳过，以后再说」；
+ * 全程键盘可达。第 3 步可以直接打开老人模式，也给一个「模型接入」的入口
+ * （只跳设置页，不在引导里塞表单）。
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useNavigate } from "react-router-dom";
 import { CHARACTERS, setCharacter, useCharacter } from "../characters";
 import { putNickname } from "../lib/profile";
 import { readA11y } from "../lib/a11y";
@@ -70,6 +72,7 @@ type FontChoice = (typeof FONT_CHOICES)[number]["id"];
 
 export function Onboarding() {
   const open = useSyncExternalStore(subscribe, isOpen);
+  const navigate = useNavigate();
   const character = useCharacter();
   const [step, setStep] = useState(0);
   const [nickname, setNickname] = useState("");
@@ -112,6 +115,12 @@ export function Onboarding() {
   const next = () => {
     if (step < 2) setStep(step + 1);
     else finish(false);
+  };
+
+  /** 第 3 步的「模型接入」入口：收掉引导，直接去设置页那一组；表单留在设置里。 */
+  const openModelSetup = () => {
+    finish(false);
+    navigate("/settings#model");
   };
 
   return (
@@ -215,6 +224,13 @@ export function Onboarding() {
                 ))}
               </div>
               {fontChoice === "huge" && <p className="onb__note">大字、大按钮、只留三个入口。以后在设置里还能改。</p>}
+              <p className="onb__sub">模型接入</p>
+              <p className="onb__note">
+                想换成自己的模型（聊天用哪家、推理用多大强度），在「设置 › 模型接入」里填一下就好。
+              </p>
+              <button type="button" className="btn btn--quiet onb__model" onClick={openModelSetup}>
+                去设置里填
+              </button>
             </div>
           )}
         </div>

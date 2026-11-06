@@ -26,6 +26,7 @@ import { handleJournalsRoute } from "./routes/journals.ts";
 import { handleMemoriesRoute } from "./routes/memories.ts";
 import { handleQuotaRoute } from "./routes/quota.ts";
 import { handleProfileRoute } from "./routes/profile.ts";
+import { handleSetupRoute } from "./routes/setup.ts";
 import { handleExportRoute, dataMaintenanceBusy } from "./routes/export.ts";
 import { handleVideoSummaryRoute } from "./routes/video-summary.ts";
 import { handleSurf } from "./routes/surf.ts";
@@ -84,6 +85,7 @@ export function createApiServer(deps: ServerDeps): Server {
         sendJson(response, 200, url.searchParams.get("probe") === "1" ? { ...body, probe: await probe(deps) } : body);
         return;
       }
+      if (await handleSetupRoute(deps, request, response, url)) return;
       if (url.pathname === "/api/accounts" || url.pathname.startsWith("/api/accounts/")) {
         await handleAccountsRoute(deps, request, response, url);
         return;
