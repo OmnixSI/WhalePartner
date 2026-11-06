@@ -96,7 +96,7 @@ export function SettingsPage() {
     applyTheme(next);
   };
 
-  const setNick = (next: boolean) => {
+  const setElder = (next: boolean) => {
     setA11y(updateA11y({ elder: next }));
   };
   const setCalm = (next: boolean) => {
@@ -357,8 +357,9 @@ export function SettingsPage() {
             icon="settings"
             title="老人模式"
             desc="大字、大按钮，导航只留聊天、她的日记、设置三个入口，也不做会动的花样。"
+            onActivate={() => setElder(!a11y.elder)}
           >
-            <Switch label="老人模式" checked={a11y.elder} onChange={setNick} />
+            <Switch label="老人模式" checked={a11y.elder} onChange={setElder} />
           </SettingRow>
 
           <SettingRow
@@ -387,7 +388,7 @@ export function SettingsPage() {
             <p className="set-scale__preview">预览：今天天气很好</p>
           </SettingRow>
 
-          <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。">
+          <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。" onActivate={() => setCalm(!a11y.calm)}>
             <Switch label="减少动画" checked={a11y.calm} onChange={setCalm} />
           </SettingRow>
         </SettingGroup>
