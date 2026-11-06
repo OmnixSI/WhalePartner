@@ -52,3 +52,16 @@ P0 tokens/纹理 → P-B 后端 → P1 聊天 → P2 日记+记忆 → P3 设置
 
 见 `docs/redesign/ledger.jsonl`（一行一轮）与各阶段的 GitHub Issue。
 不要在本文件里记进度——进度只属于 ledger 和 Issue。
+
+## 收尾：合并与发版（开发者于 2026-11-07 明确授权）
+
+全部阶段收尾后按此执行，顺序不跳：
+
+1. 每个阶段 PR 的 G1–G5 全绿；未绿的写差距报告并在 PR 说明。
+2. 按阶段顺序合并 PR（P0 → P-B → P1 → P2 → P3 → P4 → P5），合并前确认 `pnpm --dir apps/client build` 与 `pnpm --dir apps/api test` 仍绿。
+3. 版本号：`apps/client/package.json` 与 `apps/client/src-tauri/tauri.conf.json` 同步 `0.1.0 → 0.2.0`。
+4. 更新 `docs/DESIGN.md`（与实现一致）与 `CHANGELOG`（若无则新建，按阶段列）。
+5. 打 tag `v0.2.0` 并 `gh release create v0.2.0 --generate-notes`，标题「潮汐手帐 2.0 · 海边绘本日记」。
+6. 关闭跟踪 Issue #42 与各阶段 Issue。
+
+> 仓库 `AGENTS.md` 默认禁止 Agent 自行合并与发布；本节是开发者对**本任务**的明确授权记录，仅对上述 7 个 PR 与一次 `v0.2.0` 发布有效。
