@@ -95,7 +95,7 @@
   /* 暗色腮红：浅珊瑚在深色体色上只有 1.26:1，换成整档珊瑚（暖粉，肉眼可见） */
   --blush: var(--coral);
   /* 贴纸纸边：比 --sheet 再亮一档，暗色下贴纸/纸卡才有「另一张纸」的边 */
-  --sticker-halo: color-mix(in oklab, var(--sheet) 86%, var(--ink));
+  --sticker-halo: color-mix(in oklab, var(--accent) 14%, var(--sheet)); /* 跟随角色色，别用中性灰：暖体色配蓝灰会发脏 */
   --alert: #FF9C86; --alert-ink: #0F1C2A; --alert-wash: #3A2A2A;
   --ok: #8FD3A0; --lamp: #F2C14E; --lamp-text: #F2C14E;
   --slip: #3A3420;
