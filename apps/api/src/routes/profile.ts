@@ -10,6 +10,20 @@ import type { ServerDeps } from "../server-types.ts";
  */
 const MAX_NAME = 12;
 
+/** 供别的路由读取当前昵称；表不存在就当没设。 */
+export function readUserName(dbPath: string): string | null {
+  let db: DatabaseSync | undefined;
+  try {
+    db = new DatabaseSync(dbPath);
+    const row = db.prepare("SELECT value FROM user_profile WHERE key = 'userName'").get() as { value?: string } | undefined;
+    return row?.value ?? null;
+  } catch {
+    return null;
+  } finally {
+    db?.close();
+  }
+}
+
 function openProfile(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec("CREATE TABLE IF NOT EXISTS user_profile (key TEXT PRIMARY KEY, value TEXT NOT NULL)");

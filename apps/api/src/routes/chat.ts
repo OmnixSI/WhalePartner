@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError, runChat, validateUserMessage } from "../chat.ts";
+import { readUserName } from "./profile.ts";
+import { quotaUsage } from "./quota.ts";
 import { readJsonBody, sendJson, sendSse, startSse } from "../http.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "../persona/persona.ts";
 import type { ServerDeps } from "../server-types.ts";
@@ -50,6 +52,13 @@ export async function handleChatRoute(
     if (!response.writableFinished) abort.abort();
   });
 
+  // B1：开启拦截后，额度用完直接 402，不开流也不写用户消息。
+  const quota = quotaUsage(deps.config.dbPath);
+  if (quota.enforced && quota.used >= quota.total) {
+    sendJson(response, 402, { error: "quota_exceeded", message: "这个月的贝壳用完了，下个月 1 号再来找我。" });
+    return;
+  }
+
   startSse(response);
   try {
     for await (const event of runChat({
@@ -61,6 +70,8 @@ export async function handleChatRoute(
       inputBudget: Math.max(8_000, deps.config.chatContextTokens - 8_000),
       video: deps.video,
       web: deps.web,
+      // B5：昵称注入人格提示。
+      nickname: readUserName(deps.config.dbPath),
     }, text, abort.signal)) {
       const { type, ...data } = event;
       sendSse(response, type, data);

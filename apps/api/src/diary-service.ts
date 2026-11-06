@@ -19,6 +19,42 @@ export interface DiaryServiceDeps {
 type DiarySource = Pick<VideoSummary, "bvid" | "title" | "url" | "summary">;
 
 /** 将已整理好的视频资料写成鲸汐的一段短日记，不重新读取视频。 */
+
+/** B3：心情与「心里的天气」——一次很短的第二调用；失败就留空，不编。 */
+export async function inferMoodWeather(
+  provider: ChatProvider,
+  text: string,
+): Promise<{ mood: string | null; weather: string | null }> {
+  const MOODS = ["happy", "calm", "tired", "excited", "sad", "cozy", "curious"];
+  const WEATHERS = ["sunny", "cloudy", "rain", "night", "wind", "snow"];
+  const prompt = [
+    "读下面这段第一人称日记，判断她当天的心情和心里的天气。",
+    `mood 只能是 ${MOODS.join("/")} 之一；weather 只能是 ${WEATHERS.join("/")} 之一。`,
+    '只输出一行 JSON：{"mood":"...","weather":"..."}，不要解释。',
+    "<diary>",
+    text.slice(0, 1200),
+    "</diary>",
+  ].join("\n\n");
+  let raw = "";
+  try {
+    for await (const delta of provider.stream([
+      { role: "system", content: "你只输出一行 JSON，不要别的字。" },
+      { role: "user", content: prompt },
+    ], { temperature: 0, maxTokens: 40 })) {
+      if (delta.text) raw += delta.text;
+    }
+    const match = /\{[^}]*\}/.exec(raw);
+    if (!match) return { mood: null, weather: null };
+    const parsed = JSON.parse(match[0]) as { mood?: string; weather?: string };
+    return {
+      mood: parsed.mood && MOODS.includes(parsed.mood) ? parsed.mood : null,
+      weather: parsed.weather && WEATHERS.includes(parsed.weather) ? parsed.weather : null,
+    };
+  } catch {
+    return { mood: null, weather: null };
+  }
+}
+
 export async function generateDiaryText(provider: ChatProvider, video: DiarySource): Promise<string> {
   const filter = new EmotionFilter();
   let text = "";
@@ -129,7 +165,12 @@ export class DiaryService {
 
       const current = this.#deps.store.get(item.id)!;
       const diaryText = current.diaryText ?? await generateDiaryText(this.#deps.provider, video);
-      const saved = current.diaryText ? current : this.#deps.store.saveDiary(item.id, diaryText);
+      const moodWeather = current.diaryText
+        ? { mood: current.mood ?? null, weather: current.weather ?? null }
+        : await inferMoodWeather(this.#deps.provider, diaryText);
+      const saved = current.diaryText
+        ? current
+        : this.#deps.store.saveDiary(item.id, diaryText, moodWeather.mood, moodWeather.weather);
       await this.#writeMemory(saved);
       return this.#deps.store.get(item.id) ?? null;
     } catch (error) {

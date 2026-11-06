@@ -15,6 +15,9 @@ export interface DiaryItem {
   sourceUrl: string | null;
   summary: string | null;
   diaryText: string | null;
+  /** B3：她当天的心情与心里的天气；旧数据为 null。 */
+  mood: string | null;
+  weather: string | null;
   status: DiaryItemStatus;
   errorStage: "video" | "diary" | null;
   error: string | null;
@@ -29,7 +32,7 @@ const SELECT_ITEM = `
   SELECT id, input_url AS inputUrl, bvid, title, source_url AS sourceUrl,
          summary, diary_text AS diaryText, status, error_stage AS errorStage,
          error, memory_status AS memoryStatus, memory_error AS memoryError,
-         created_at AS createdAt, processed_at AS processedAt,
+         mood, weather, created_at AS createdAt, processed_at AS processedAt,
          duplicate_of AS duplicateOf
   FROM diary_items
 `;
@@ -58,6 +61,8 @@ export class DiaryStore {
         memory_error TEXT,
         created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
         processed_at TEXT,
+        mood TEXT,
+        weather TEXT,
         duplicate_of INTEGER REFERENCES diary_items(id)
       );
       CREATE UNIQUE INDEX IF NOT EXISTS diary_items_bvid_entry
@@ -65,6 +70,10 @@ export class DiaryStore {
       UPDATE diary_items SET status = 'pending', error = NULL, error_stage = NULL
         WHERE status = 'processing';
     `);
+    // B3：旧库补两列（心情 / 她心里的天气）。
+    const columns = this.#db.prepare("PRAGMA table_info(diary_items)").all() as unknown as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "mood")) this.#db.exec("ALTER TABLE diary_items ADD COLUMN mood TEXT");
+    if (!columns.some((column) => column.name === "weather")) this.#db.exec("ALTER TABLE diary_items ADD COLUMN weather TEXT");
   }
 
   enqueue(input: string): { item: DiaryItem; created: boolean } {
@@ -114,14 +123,15 @@ export class DiaryStore {
     `).run(video.bvid, video.title, video.url, video.summary, id);
   }
 
-  saveDiary(id: number, text: string): DiaryItem {
+  saveDiary(id: number, text: string, mood?: string | null, weather?: string | null): DiaryItem {
     this.#db.prepare(`
       UPDATE diary_items
-      SET diary_text = ?, status = 'done', error = NULL, error_stage = NULL,
+      SET diary_text = ?, mood = COALESCE(?, mood), weather = COALESCE(?, weather),
+          status = 'done', error = NULL, error_stage = NULL,
           memory_status = 'pending', memory_error = NULL,
           processed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
       WHERE id = ?
-    `).run(text, id);
+    `).run(text, mood ?? null, weather ?? null, id);
     return this.get(id)!;
   }
 
