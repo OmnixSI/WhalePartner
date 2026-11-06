@@ -74,6 +74,16 @@
   --nav-w: 112px; --backlog-w: 360px; --tabbar-h: 64px; --scene-min: 480px;
   --page-max: 760px; --memory-max: 960px;
 
+  /* ---- 舞台构图（§7.1）：VRM 与 Live2D 共用一条规则，改这里两个渲染器一起变 ----
+     角色高度 = 舞台高 × --stage-char-h；底边停在 --scene-safe（对话框上沿）上方
+     --stage-char-gap 处；空间不够时按 --stage-char-max 等比缩小，不换构图。 */
+  --stage-char-h: .6;
+  --stage-char-gap: .02;
+  --stage-char-max: .94;
+  /* 对话框/回信条压住舞台的高度：舞台组件按 .scene__chrome 的真实高度写回这个变量，
+     缺省值只是 JS 到之前的兜底。 */
+  --scene-safe: 150px;
+
   /* ---- 层级 ---- */
   --z-bg: 0; --z-stage: 1; --z-ui: 10; --z-nav: 20; --z-sheet: 30; --z-dialog: 40; --z-toast: 50;
 
