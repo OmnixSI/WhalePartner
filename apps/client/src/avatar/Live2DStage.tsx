@@ -21,6 +21,15 @@ const EMOTION_EXPRESSIONS: Partial<Record<AvatarEmotion, string>> = {
   surprised: "问号",
   relaxed: "脸红",
 };
+const TAP_ACTIONS = [
+  { motion: "Hammer", expression: "感叹号", durationMs: 4767 },
+  { motion: "BubbleGum", expression: "吐舌", durationMs: 5000 },
+  { motion: "SprayWater", expression: "流汗", durationMs: 1500 },
+  { motion: "OpenCase", expression: "问号", durationMs: 2000 },
+  { motion: "Selfie", expression: "爱心眼", durationMs: 3300 },
+  { motion: "SelfieQuick", expression: "双手比耶", durationMs: 1600 },
+  { motion: "Ketchup", expression: "调皮", durationMs: 5000 },
+] as const;
 
 type Live2DWindow = Window & {
   Live2DCubismCore?: unknown;
@@ -67,16 +76,20 @@ export function Live2DStage({ modelUrl, emotion, speaking }: Props) {
     let model: Live2DModel | undefined;
     let observer: ResizeObserver | undefined;
     let expressionTimer: number | undefined;
+    let actionTimer: number | undefined;
     let onPointerMove: ((event: PointerEvent) => void) | undefined;
     let removePointerListener: (() => void) | undefined;
     let mouthId: string | undefined;
     let tapped = 0;
+    let wasSpeaking = false;
     const coreUpdate = () => {
       if (!model || !mouthId) return;
+      if (!speakingRef.current && !wasSpeaking) return;
       const core = (model.internalModel as Cubism4InternalModel).coreModel;
       const now = performance.now();
       const open = speakingRef.current ? 0.18 + 0.48 * Math.abs(Math.sin(now / 105)) : 0;
-      core.addParameterValueById(mouthId, open);
+      core.setParameterValueById(mouthId, open);
+      wasSpeaking = speakingRef.current;
     };
 
     setAvatarStatus("loading");
@@ -113,7 +126,7 @@ export function Live2DStage({ modelUrl, emotion, speaking }: Props) {
         const internal = model.internalModel as Cubism4InternalModel;
         const hasParameter = (id: string) => internal.coreModel.getParameterIndex(id) >= 0;
         mouthId = hasParameter("ParamMouthOpenY") ? "ParamMouthOpenY" : undefined;
-        internal.on("beforeModelUpdate", coreUpdate);
+        internal.on("afterMotionUpdate", coreUpdate);
 
         const placeModel = () => {
           if (!app || !model || !host.clientWidth || !host.clientHeight) return;
@@ -150,19 +163,25 @@ export function Live2DStage({ modelUrl, emotion, speaking }: Props) {
         model.interactive = true;
         model.buttonMode = true;
         model.on("pointertap", () => {
-          express(tapped % 2 === 0 ? "调皮" : "爱心眼", 1600);
+          const action = TAP_ACTIONS[tapped % TAP_ACTIONS.length];
           tapped += 1;
+          if (actionTimer !== undefined) window.clearTimeout(actionTimer);
+          void model?.motion(action.motion, 0, MotionPriority.FORCE);
+          express(action.expression, action.durationMs);
+          actionTimer = window.setTimeout(() => {
+            if (!model) return;
+            internal.motionManager.stopAllMotions();
+            playIdle();
+            actionTimer = undefined;
+          }, action.durationMs);
         });
 
         onPointerMove = (event: PointerEvent) => {
           const rect = host.getBoundingClientRect();
-          model?.focus(
-            ((event.clientX - rect.left) / rect.width) * 2 - 1,
-            1 - ((event.clientY - rect.top) / rect.height) * 2,
-          );
+          model?.focus(event.clientX - rect.left, event.clientY - rect.top);
         };
-        host.addEventListener("pointermove", onPointerMove);
-        removePointerListener = () => host.removeEventListener("pointermove", onPointerMove!);
+        window.addEventListener("pointermove", onPointerMove);
+        removePointerListener = () => window.removeEventListener("pointermove", onPointerMove!);
 
         observer = new ResizeObserver(placeModel);
         observer.observe(host);
@@ -180,11 +199,12 @@ export function Live2DStage({ modelUrl, emotion, speaking }: Props) {
     return () => {
       disposed = true;
       if (expressionTimer !== undefined) window.clearTimeout(expressionTimer);
+      if (actionTimer !== undefined) window.clearTimeout(actionTimer);
       reactRef.current = null;
       modelRef.current = null;
       observer?.disconnect();
       if (model) {
-        model.internalModel.off("beforeModelUpdate", coreUpdate);
+        model.internalModel.off("afterMotionUpdate", coreUpdate);
       }
       app?.destroy(true, { children: true, texture: false, baseTexture: false });
       removePointerListener?.();
