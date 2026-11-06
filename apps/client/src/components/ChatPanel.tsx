@@ -16,6 +16,7 @@ import { Dialog } from "radix-ui";
 import { useEffect, useRef, useState } from "react";
 import { setAvatarStatus, useAvatarStatus } from "../avatar/avatar-state";
 import type { AvatarEmotion } from "../avatar/model.config";
+import { Live2DStage } from "../avatar/Live2DStage";
 import { VrmStage } from "../avatar/VrmStage";
 import type { Character } from "../characters";
 import { useModel } from "../characters";
@@ -328,7 +329,12 @@ export function ChatPanel({ character }: Props) {
                   <WhaleSticker mood={mood} />
                 </div>
               )}
-              <VrmStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
+              {/* 大肥鱼是 Live2D，其余是 VRM；按清单里的 renderer 分流，别拿 .model3.json 去喂 VRM 加载器 */}
+              {model.renderer === "live2d" ? (
+                <Live2DStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
+              ) : (
+                <VrmStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
+              )}
             </div>
             <Tide variant="stage" />
 
@@ -336,7 +342,11 @@ export function ChatPanel({ character }: Props) {
               <div className="scene__aside">
                 {avatar === "failed" && (
                   <div className="scene__asideRow">
-                    <p className="scene__note">我的样子暂时没画出来，不影响聊天。</p>
+                    <p className="scene__note">
+                      {model.renderer === "live2d"
+                        ? "我的样子要 Live2D 才能画出来：把 live2dcubismcore.min.js 放进 apps/client/public/live2d/libs/ 就好，不影响聊天。"
+                        : "我的样子暂时没画出来，不影响聊天。"}
+                    </p>
                     <button
                       type="button"
                       className="btn btn--quiet"
