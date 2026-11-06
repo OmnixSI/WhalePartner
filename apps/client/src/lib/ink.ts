@@ -205,7 +205,7 @@ export type InkFrameGeom = {
 
 /**
  * 手绘圆角矩形的一笔轮廓。openCorner 时缺口落在左上角弧线的中点上，
- * 长度固定 6（viewBox 单位），与画笔粗细无关，所以同一 seed 的缺口位置稳定。
+ * 长度固定 18（viewBox 单位，肉眼可见的断口），与画笔粗细无关，所以同一 seed 的缺口位置稳定。
  */
 export function inkFramePath({ w, h, radius, stroke, seed, openCorner = false }: InkFrameGeom): string {
   const open = openCorner ? "open" : "closed";
@@ -214,7 +214,7 @@ export function inkFramePath({ w, h, radius, stroke, seed, openCorner = false }:
     let loop = rectLoop(w, h, r, seed);
     if (openCorner) {
       const tl = r - r * 0.7071; // 左上角弧线中点
-      loop = trimLoop(rotateTo(loop, nearestIndex(loop, [tl, tl])), 6);
+      loop = trimLoop(rotateTo(loop, nearestIndex(loop, [tl, tl])), 18);
     }
     return outlineToPath(
       getStroke(loop, {

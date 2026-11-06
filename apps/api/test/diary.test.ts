@@ -11,6 +11,7 @@ import { startDiaryScheduler } from "../src/diary-scheduler.ts";
 import { acquireVideoLock, type CollectedVideo, type VideoService, type VideoSummary } from "../src/video-service.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider, LlmDelta } from "../src/llm/types.ts";
+import { waitForMemoryJobs } from "../src/memory/jobs.ts";
 import type { ExperienceInput, MemoryEntry, MemoryStore } from "../src/memory/types.ts";
 import { loadConfig } from "../src/config.ts";
 import { createApiServer } from "../src/server.ts";
@@ -158,10 +159,13 @@ test("a later chat with another character receives the diary as a recent experie
     character: "claude",
   }, "你最近看过什么视频？说一个细节")) { /* consume the reply */ }
 
-  assert.ok(seen[0][0].content.startsWith("# 角色设定：小克"));
-  assert.ok(seen[0][0].content.includes("鲸鱼的歌声"));
-  assert.ok(seen[0][0].content.includes("声音也能把远处的生命连在一起"));
+  const chat = seen.find((messages) => messages[0]?.content.startsWith("# 角色设定：小克"));
+  assert.ok(chat);
+  const prompt = chat.filter((message) => message.role === "system").map((message) => message.content).join("\n");
+  assert.ok(prompt.includes("鲸鱼的歌声"));
+  assert.ok(prompt.includes("声音也能把远处的生命连在一起"));
   assert.equal(video.calls.summarize, 1);
+  await waitForMemoryJobs(chatStore);
   chatStore.close();
   store.close();
 });
