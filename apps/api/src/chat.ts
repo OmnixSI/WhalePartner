@@ -60,6 +60,12 @@ export class ChatFailure extends Error {
 
 export const FIRST_TOKEN_TIMEOUT_MS = 25_000;
 
+/** 广播给各端的消息形状：去掉裸列名 attachment_json。 */
+function wire(message: object, attachment: unknown = null) {
+  const { attachment_json: _raw, ...rest } = message as Record<string, unknown>;
+  return { ...rest, attachment };
+}
+
 export function validateUserMessage(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) throw new ChatInputError("消息不能为空。");
   const text = value.trim();
@@ -79,7 +85,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   const userMessage = store.add("user", userText, null, character, session.id);
   const streamId = `s${userMessage.id}`;
   const scope = { character, sessionId: session.id, clientId: deps.clientId };
-  bus.publish("message.created", { ...scope, message: { ...userMessage, attachment: undefined } });
+  bus.publish("message.created", { ...scope, message: wire(userMessage) });
   bus.publish("typing", { ...scope, on: true });
 
   // 召回与后面的视频/网页阅读并行；向量检索最多等 1.5 秒，超时就不带召回结果。
@@ -166,7 +172,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
     store.enqueueMemoryJob({ sessionId: session.id, character, userMessageId: userMessage.id, assistantMessageId: saved.id });
     void scheduleMemoryJobs({ store, provider, memory });
     queueReflection(deps, character, false);
-    bus.publish("message.created", { ...scope, streamId, message: { ...saved, attachment: undefined } });
+    bus.publish("message.created", { ...scope, streamId, message: wire(saved) });
     bus.publish("message.done", { ...scope, streamId, messageId: saved.id, emotion, provider: usedProvider });
     yield { type: "done", messageId: saved.id, sessionId: session.id, emotion, provider: usedProvider, usage, userMessageId: userMessage.id };
   } catch (error) {
@@ -175,7 +181,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
         // 说到一半被打断 / 中途出错：已经生成的部分照常入库，并标记 interrupted。
         const saved = store.add("assistant", reply.trimEnd(), first ?? "neutral", character, session.id);
         store.markInterrupted(saved.id);
-        bus.publish("message.created", { ...scope, streamId, message: { ...saved, attachment: { type: "interrupted" } } });
+        bus.publish("message.created", { ...scope, streamId, message: wire(saved, { type: "interrupted" }) });
         bus.publish("message.interrupted", { ...scope, streamId, messageId: saved.id, reason: signal?.aborted ? "aborted" : "error" });
       } else {
         // 一个字都没回出来：撤掉这条用户消息，重试时不会在历史里重复。

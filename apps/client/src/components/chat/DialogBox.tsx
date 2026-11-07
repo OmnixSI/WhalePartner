@@ -29,6 +29,10 @@ type Props = {
   /** 只进「详情」折叠的技术原文。 */
   detail?: string;
   onRetry?: () => void;
+  /** 失败态的「再试一次」。 */
+  onRetryFailed?: () => void;
+  /** 按句分条出现时，下一条还在「打字」。 */
+  typing?: boolean;
   onGiveUp?: () => void;
   children?: ReactNode;
 };
@@ -44,6 +48,8 @@ export function DialogBox({
   progress,
   detail,
   onRetry,
+  onRetryFailed,
+  typing = false,
   onGiveUp,
   children,
 }: Props) {
@@ -55,10 +61,10 @@ export function DialogBox({
 
   const body = (() => {
     if (state === "thinking") return <Thinking progress={progress} onGiveUp={onGiveUp} />;
-    if (live) return <p className="dlg__text"><InkText chunks={chunks} merged={merged} /></p>;
+    if (live) return <p className="dlg__text"><InkText chunks={chunks} merged={merged} />{typing && <span className="dlg__typing" aria-hidden> …</span>}</p>;
     return (
-      <p className="dlg__text" role={state === "loading" ? "status" : undefined}>
-        {text}
+      <p className="dlg__text" role={state === "loading" ? "status" : state === "failed" || state === "offline" ? "alert" : undefined}>
+        {text}{typing && <span className="dlg__typing" aria-hidden> …</span>}
       </p>
     );
   })();
@@ -89,6 +95,11 @@ export function DialogBox({
         {state === "offline" && showDetail && <p className="dlg__detail">{detail ?? "本机服务没有回应。"}</p>}
         {state === "failed" && (
           <div className="dlg__actions">
+            {onRetryFailed && (
+              <button type="button" className="btn btn--primary" onClick={onRetryFailed}>
+                再试一次
+              </button>
+            )}
             <button
               type="button"
               className="btn btn--quiet"
@@ -102,7 +113,7 @@ export function DialogBox({
         {state === "failed" && showDetail && <p className="dlg__detail">{detail ?? "这句话没有发出去。"}</p>}
       </InkFrame>
       {state === "done" && (
-        <span className="sr-only" role="status">
+        <span className="sr-only" role="status" aria-live="polite">
           {text || chunks.join("")}
         </span>
       )}

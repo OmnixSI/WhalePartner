@@ -163,8 +163,10 @@ function deviceFile(dbPath: string): string | undefined {
 
 if (import.meta.main) {
   const config = loadConfig();
-  const lan = process.argv.includes("--lan");
-  const host = lan ? "0.0.0.0" : config.host;
+  const lanFlag = process.argv.includes("--lan");
+  const host = lanFlag ? "0.0.0.0" : config.host;
+  // 只要不是只听回环地址（--lan 或 API_HOST=0.0.0.0，如 Docker），就必须带令牌。
+  const lan = lanFlag || !["127.0.0.1", "localhost", "::1"].includes(host);
   const provider = createChatProvider(config);
   const store = new ChatStore(config.dbPath);
   if (config.memoryEnabled && !existsSync(join(config.memoryDir, "vectors.db"))) store.resetMemoryVectorIndexes();

@@ -26,6 +26,9 @@ import { DataSection } from "../components/settings/DataSection";
 import { ModelSetup } from "../components/settings/ModelSetup";
 import { CharacterDialog } from "../components/settings/CharacterDialog";
 import { Toast } from "../components/settings/Toast";
+import { SendKeySetting } from "../components/settings/SendKeySetting";
+import { DevicesSetting } from "../components/settings/DevicesSetting";
+import { ConnectServerSetting } from "../components/settings/ConnectServerSetting";
 import { updateA11y, ELDER_MIN_SCALE } from "../components/settings/prefs";
 import { TagField } from "../components/surf/TagField";
 import {
@@ -385,6 +388,15 @@ export function SettingsPage() {
           <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。" onActivate={() => setCalm(!a11y.calm)}>
             <Switch label="减少动画" checked={a11y.calm} onChange={setCalm} />
           </SettingRow>
+        </SettingGroup>
+
+        <SettingGroup title="聊天">
+          <SendKeySetting />
+        </SettingGroup>
+
+        <SettingGroup title="我的设备" id="devices" note="数据只放在一台「家」里，其他设备都连过来，所以到哪都是同步的。">
+          <DevicesSetting offline={offline} />
+          <ConnectServerSetting onToast={setToast} />
         </SettingGroup>
 
         <SettingGroup title="模型接入" id="model" note="接哪家模型、用多大强度，都在这儿改；以前只能翻 .env 和本机配置。">

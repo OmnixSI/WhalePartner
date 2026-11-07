@@ -7,12 +7,12 @@
  * 分工：
  * - 舞台：VRM 在就画 VRM，不在就贴纸；她在想 / 说话 / 睡着 / 抱歉都由 mood 决定。
  * - 对话框：最后一句「她的话」+ 当前这一轮；idle 时保留上一句，不闪空。
- * - 回信条：Enter 换行、Cmd/Ctrl+Enter 发送；离线仍可打字。
+ * - 回信条：Enter 发送、Shift+Enter 换行（设置里可切回 Cmd/Ctrl+Enter）；生成中发送键变「停」；离线仍可打字。
  * - 往回翻：桌面 360 的右栏，手机底部抽屉。
  * 页面里不出现模型名、服务名、技术状态点。
  */
 import { Dialog } from "radix-ui";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useAvatarStatus } from "../avatar/avatar-state";
 import type { Character } from "../characters";
 import { useModel } from "../characters";
@@ -22,6 +22,9 @@ import { useInkEnv } from "./ink/useCalm";
 import { useSpeechAnimation } from "../avatar/live2d/useSpeechAnimation";
 import { useTapHint } from "./chat/useTapHint";
 import { useSharedChat } from "./chat/useSharedChat";
+import { usePacedReply } from "./chat/usePacedReply";
+import { PREFS_EVENT, readPace } from "../lib/chat-prefs";
+import { sliceChunks } from "../lib/reply";
 import type { StickerMood } from "./WhaleSticker";
 import { Backlog } from "./chat/Backlog";
 import { ConfirmDialog } from "./chat/ConfirmDialog";
@@ -45,6 +48,10 @@ export function ChatPanel({ character }: Props) {
   const chat = useSharedChat(character.id, speech);
   const {
     showOffline,
+    starting,
+    needsPair,
+    failure,
+    stop,
     online,
     busy,
     turns,
@@ -73,13 +80,24 @@ export function ChatPanel({ character }: Props) {
   const [modelTry, setModelTry] = useState(0);
   const speaking = speech.speaking;
   /* ------------------------------------------------------------ 状态推导 */
-  const lastHer = [...turns].reverse().find((t) => t.role === "her");
+  const lastHer = [...turns].reverse().find((t) => t.role === "her" && (t.text || t.status !== "failed" || phase === "failed"));
   const pending = [...turns].reverse().find((t) => t.role === "me");
+  const paceOn = useSyncExternalStore(
+    (cb) => { window.addEventListener(PREFS_EVENT, cb); return () => window.removeEventListener(PREFS_EVENT, cb); },
+    readPace,
+    () => true,
+  );
+  const liveHere = Boolean(live && lastHer && live.key === lastHer.key);
+  const paced = usePacedReply({ key: lastHer?.key, text: stripEmotionTags(lastHer?.text ?? ""), fresh: liveHere, enabled: paceOn });
 
   const state: DialogState = !historyLoaded
     ? "blank"
-    : showOffline
+    : needsPair
       ? "offline"
+      : starting
+        ? "loading"
+        : showOffline
+          ? "offline"
       : phase === "failed"
         ? "failed"
         : phase === "thinking"
@@ -92,17 +110,33 @@ export function ChatPanel({ character }: Props) {
                 ? "done"
                 : "idle";
 
+  const shown = paced.parts.length > 0 ? paced.parts.slice(0, paced.revealed).join("\n\n") : "";
   const text =
     state === "offline"
-      ? "网络好像断了，我在这儿等你。"
+      ? needsPair
+        ? "还没连上你的鲸汐。到「设置 › 连接到我的鲸汐」输入配对码就好。"
+        : "网络好像断了，我在这儿等你。"
       : state === "failed"
-        ? "这句话没送出去。"
+        ? failure?.message ?? "这句话没送出去。"
         : state === "loading"
-          ? `${character.name}正在赶过来…`
-          : stripEmotionTags(lastHer?.text || character.greeting);
+          ? starting
+            ? `${character.name}马上就来…`
+            : `${character.name}正在赶过来…`
+          : lastHer?.text ? (shown || stripEmotionTags(lastHer.text)) : character.greeting;
 
-  // 流式分片也过一遍：标签绝不能漏进字幕（前端不赌后端版本）。
-  const chunks = live && lastHer && live.key === lastHer.key ? live.chunks.map(stripEmotionTags) : [];
+  // 流式分片也过一遍：标签绝不能漏进字幕（前端不赌后端版本）。按句分条时只亮出已「发出」的那几条。
+  const allChunks = liveHere && live ? live.chunks.map(stripEmotionTags) : [];
+  const chunks = (() => {
+    if (!paceOn || paced.parts.length <= 1) return allChunks;
+    const out: string[] = [];
+    let offset = 0;
+    paced.parts.slice(0, paced.revealed).forEach((part, index) => {
+      if (index > 0) out.push("\n\n");
+      out.push(...sliceChunks(allChunks, offset, offset + part.length));
+      offset += part.length;
+    });
+    return out;
+  })();
   const showFloat =
     pending?.status === "failed" || (phase === "thinking" && pending?.status === "sending");
   const firstEntry = historyLoaded && turns.length === 0 && !showOffline;
@@ -164,7 +198,11 @@ export function ChatPanel({ character }: Props) {
             emotion={busy ? emotion : lastHer?.emotion ?? emotion}
             text={text}
             chunks={chunks}
-            merged={lastHer?.status === "done"}
+            merged={lastHer?.status === "done" && !paced.typing}
+            typing={paced.typing}
+            detail={failure?.message}
+            onRetryFailed={retrySend}
+            onStop={stop}
             firstEntry={firstEntry}
             progress={progress}
             pending={pending}
