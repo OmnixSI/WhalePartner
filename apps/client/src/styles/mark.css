@@ -6,7 +6,8 @@
 .mark { display: block; width: 100%; height: auto; overflow: visible; }
 .mark__disc { fill: var(--accent-wash); }
 .mark__sea { fill: color-mix(in oklab, var(--accent) 24%, var(--sheet)); }
-.mark__ring { fill: none; stroke: var(--ink); stroke-width: 1.3; opacity: .55; }
+.mark__ring, .mark__horizon, .mark__ripple { vector-effect: non-scaling-stroke; }
+.mark__ring { fill: none; stroke: var(--ink); stroke-width: 1.2px; opacity: .55; }
 .mark__horizon { fill: none; stroke: var(--ink); stroke-width: 1.4; opacity: .7; }
 .mark__figure { transform: translateY(var(--mark-dip, 0)); transition: transform var(--dur-panel) var(--ease-out); }
 .mark__fill { fill: var(--accent); }

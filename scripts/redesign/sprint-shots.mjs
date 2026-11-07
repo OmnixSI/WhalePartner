@@ -20,7 +20,7 @@ const SIZES = arg("sizes", "380x560,960x700,1180x780,1920x1080,2560x1440").split
 const PAGES = arg("pages", "chat,diary,memory,settings").split(",");
 const THEMES = arg("themes", "light,dark").split(",");
 const ELDER = process.argv.includes("--elder");
-const PATH = { chat: "/", diary: "/diary", memory: "/memory", settings: "/settings", surf: "/surf" };
+const PATH = { onboard1: "/", onboard2: "/", onboard3: "/", chat: "/", diary: "/diary", memory: "/memory", settings: "/settings", surf: "/surf" };
 
 const NOW = "2026-11-06T10:00:00+11:00";
 const FIXTURES = {
@@ -92,7 +92,7 @@ for (const theme of THEMES) {
   for (const [width, height] of SIZES) {
     const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: "reduce" });
     await context.addInitScript(({ theme, elder }) => {
-      localStorage.setItem("wp.onboarded", "1");
+      if (!sessionStorage.getItem("noonb")) localStorage.setItem("wp.onboarded", "1");
       localStorage.setItem("wp.theme", theme);
       if (elder) localStorage.setItem("wp.elder", "on");
     }, { theme, elder: ELDER });
@@ -100,9 +100,23 @@ for (const theme of THEMES) {
     await stubApi(page);
     page.on("pageerror", (e) => overflow.push(`pageerror ${width}x${height}: ${String(e).slice(0, 160)}`));
     for (const name of PAGES) {
+      const onb = /^onboard(\d)$/.exec(name);
       await page.goto(BASE + PATH[name], { waitUntil: "load" });
       await page.evaluate(() => document.fonts.ready);
-      await page.waitForTimeout(900);
+      if (onb) {
+        await page.evaluate(() => { sessionStorage.setItem("noonb", "1"); localStorage.removeItem("wp.onboarded"); });
+        await page.reload({ waitUntil: "load" });
+        await page.waitForTimeout(Number(arg("wait", "900")));
+      } else {
+        await page.evaluate(() => sessionStorage.removeItem("noonb"));
+        await page.waitForTimeout(Number(arg("wait", "900")));
+      }
+      if (onb) {
+        for (let i = 1; i < Number(onb[1]); i++) {
+          await page.locator(".onb__next").click();
+          await page.waitForTimeout(500);
+        }
+      }
       const sw = await page.evaluate(() => [document.documentElement.scrollWidth, innerWidth]);
       if (sw[0] > sw[1]) overflow.push(`${name} ${width}x${height} ${theme}: ${sw[0]}>${sw[1]}`);
       const file = join(OUT, `${name}-${width}x${height}-${theme}${ELDER ? "-elder" : ""}.png`);

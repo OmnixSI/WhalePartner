@@ -81,7 +81,7 @@
   --hit: 44px;               /* 触控最小目标；老人模式 56px */
   --field-h: 52px;           /* 输入框/选择器的常规高度；不得低于 --hit */
   /* 流式：1180 宽时落在规范的 112 / 360 / 760 / 960，更大的窗口按比例长大，不再留白 */
-  --nav-w: clamp(112px, 6.5vw, 148px);
+  --nav-w: clamp(128px, 7vw, 168px);
   --backlog-w: clamp(340px, 28vw, 520px);
   --tabbar-h: 64px; --scene-min: 480px;
   --page-max: clamp(760px, 62vw, 1100px);

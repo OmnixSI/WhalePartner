@@ -179,7 +179,7 @@ export function SettingsPage() {
             </span>
             <div className="set-her__text">
               <p className="set-her__name">{character.name}</p>
-              <p className="set-her__tagline">AI 角色 · {character.tagline}</p>
+              <p className="set-her__tagline">{character.intro}</p>
             </div>
             <button type="button" className="btn btn--secondary" onClick={() => setCharOpen(true)}>
               换一位

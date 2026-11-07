@@ -290,7 +290,7 @@ export function Onboarding() {
                     ))}
                   </div>
                   {fontChoice === "huge" && <p className="onb__note">大字、大按钮、只留三个入口。以后在设置里还能改。</p>}
-                  <p className="onb__sub">用的是哪家模型？</p>
+                  <p className="onb__sub">她要接上账号才能说话。</p>
                   <button
                     type="button"
                     className="btn btn--secondary onb__model"
@@ -299,7 +299,7 @@ export function Onboarding() {
                       navigate("/settings#model");
                     }}
                   >
-                    去设置里填 DeepSeek key、改 Codex
+                    去设置里接上她的账号
                   </button>
                 </div>
               )}

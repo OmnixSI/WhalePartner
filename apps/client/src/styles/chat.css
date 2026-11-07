@@ -11,8 +11,13 @@
   grid-template-columns: minmax(var(--scene-min), 1fr) var(--backlog-w);
   height: 100%;
   min-height: 0;
-  background: var(--paper);
+  padding: var(--sp-3) var(--sp-3) var(--sp-3) 0;
+  gap: var(--sp-3);
 }
+/* 舞台是一幅贴在纸上的插画：圆角裁切，浪不再在导航边和右边被生硬截断 */
+.room__main { border-radius: var(--r-lg); background: var(--paper); isolation: isolate; }
+.room__main::after { content: ""; position: absolute; inset: 0; z-index: var(--z-dialog); border-radius: var(--r-lg); box-shadow: inset 0 0 0 var(--stroke-1) var(--line); pointer-events: none; }
+.room[data-backlog="closed"] { gap: 0; }
 .room[data-backlog="closed"] { grid-template-columns: minmax(0, 1fr) 0; }
 .room[data-backlog="closed"] .room__aside { display: none; }
 
@@ -72,6 +77,17 @@
   overflow: hidden;
 }
 .scene__sea--back { z-index: var(--z-bg); }
+/* 浪一直铺到舞台底：对话框和回信条后面是同一片近浪色，不再有一条生硬的横边 */
+.scene::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--scene-safe) + 2px);
+  background: var(--sea-3);
+  z-index: 1;
+}
 .scene__sea--front { z-index: 2; }
 /* 水里的一层反光：平涂的亮带，靠在水线下面一点，给「有光」一个落点（不用渐变） */
 .scene__sheen {
@@ -99,16 +115,12 @@
   cursor: pointer;
   z-index: var(--z-stage);
 }
-/* 形象还没出来：纸面上一条呼吸的海平线 + 名字；加载失败才换成徽记。 */
-.scene__sticker {
-  width: min(40%, 240px);
-  max-height: 100%;
+/* 形象还没出来：只留一条呼吸的海平线和很淡的名字，不画任何图形。 */
+.scene__wait {
   align-self: center;
-  margin-bottom: 14dvh;
-  display: grid;
-  place-items: center;
+  margin-bottom: 18dvh;
+  opacity: .6;
 }
-.scene__sticker .mark { width: 100%; height: auto; }
 /* 画布铺满舞台：absolute 才不会在网格里多占一行（默认 canvas 是 300×150） */
 .vrm { position: absolute; inset: 0; z-index: var(--z-stage); }
 .vrm canvas { display: block; width: 100%; height: 100%; }
@@ -119,20 +131,46 @@
 }
 .live2d canvas { display: block; width: 100% !important; height: 100% !important; pointer-events: auto; }
 
-/* 「她在逛」/ 形象提示：贴在舞台左上，一条小纸条 */
-.scene__aside {
+/* 形象没画出来：舞台底部居中的一行小字 + 文字按钮（纸底小条，浪上也读得清） */
+.scene__status {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--scene-safe) + var(--sp-4));
+  z-index: var(--z-ui);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  justify-content: center;
+  width: max-content;
+  max-width: calc(100% - var(--sp-6));
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  transform: translateX(-50%);
+  border-radius: var(--r-sm);
+  background: var(--sheet);
+  box-shadow: var(--shadow-1);
+  color: var(--ink-soft);
+  font-family: var(--font-voice);
+  font-size: var(--fs-small);
+  letter-spacing: var(--ls-voice);
+}
+.scene__retry {
+  min-height: var(--hit);
+  padding: 0 var(--sp-3);
+  white-space: nowrap;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-small);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* 第一次的提示：只在形象就绪后出现，贴在她身侧 */
+.scene__tip {
   position: absolute;
   z-index: var(--z-ui);
-  top: var(--sp-4);
-  left: var(--sp-5);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--sp-2);
-  max-width: min(320px, 60%);
-}
-.scene__asideRow { display: flex; align-items: flex-start; gap: var(--sp-2); }
-.scene__note {
+  top: 24%;
+  left: calc(50% + clamp(72px, 9vw, 170px));
+  max-width: 220px;
   margin: 0;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-sm);
@@ -140,11 +178,12 @@
   box-shadow: var(--shadow-1);
   color: var(--ink);
   font-family: var(--font-voice);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-small);
   line-height: var(--lh-ui);
   letter-spacing: var(--ls-voice);
+  transform: rotate(-1deg);
+  pointer-events: none;
 }
-.scene__note--tip { transform: rotate(-1deg); }
 
 /* 收起往回翻后的「展开」入口留在舞台右上 */
 .scene__corner {
@@ -186,11 +225,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  min-height: 132px;
+  min-height: 88px;
   max-height: min(320px, 38dvh);
-  padding: 20px 28px 24px;
+  padding: var(--sp-5) var(--sp-6) var(--sp-5);
   box-shadow: var(--shadow-1);
-  margin-top: -2px;
 }
 .dlg__body {
   min-height: 0;
@@ -231,38 +269,23 @@
 .dlg[data-state="failed"] .dlg__text,
 .dlg[data-state="offline"] .dlg__text { color: var(--ink); }
 
-/* 名字牌 */
+/* 名字牌：平的小纸签，底边压在对话框上沿，没有手绘缺口 */
 .nametab {
   position: relative;
+  z-index: 1;
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
   min-height: 36px;
   max-width: 100%;
-  margin-left: var(--sp-4);
+  margin: 0 0 -2px var(--sp-6);
   padding: 0 var(--sp-4);
   background: var(--accent-wash);
   border-radius: var(--r-sm) var(--r-sm) 0 0;
   color: var(--ink);
 }
-.nametab__ink {
-  position: absolute;
-  inset: 0;
-  padding: 0;
-  border-radius: var(--r-sm) var(--r-sm) 0 0;
-}
-.nametab__hole { display: block; height: 100%; }
-/* 下边与对话框相连：把名字牌底边那一笔擦掉，交给对话框自己的上沿 */
-.nametab::after {
-  content: "";
-  position: absolute;
-  left: var(--sp-1);
-  right: var(--sp-1);
-  bottom: -1px;
-  height: 2px;
-  background: var(--sheet);
-}
+.nametab__ink { display: none; }
 .nametab__dot {
   flex: none;
   width: 8px;
@@ -430,29 +453,31 @@
   color: var(--ink-mute);
 }
 .composer__keys {
-  padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--r-sm);
-  background: var(--paper);
-  box-shadow: var(--shadow-1);
+  padding: 0 var(--sp-2);
+  color: var(--ink-mute);
   letter-spacing: 0.02em;
 }
 
-/* 空态的三个建议芯片 */
-.chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.chip {
+/* 空态的三个建议：统一的纸签按钮，与对话框左缘对齐，悬停轻轻抬起 */
+.suggests { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding-left: var(--sp-1); }
+.suggest {
   display: inline-flex;
   align-items: center;
   min-height: var(--hit);
-  padding: 0 var(--sp-4);
+  padding: 0 14px;
+  white-space: nowrap;
   border-radius: var(--r-sm);
-  background: var(--paper-2);
+  background: var(--sheet);
+  box-shadow: var(--shadow-1), inset 0 0 0 var(--stroke-1) var(--line);
   color: var(--ink);
   font-family: var(--font-ui);
   font-size: var(--fs-small);
+  line-height: 1;
   text-decoration: none;
-  transition: background var(--dur-hover) var(--ease-out);
+  transition: transform var(--dur-hover) var(--ease-out), background var(--dur-hover) var(--ease-out);
 }
-.chip:hover { background: var(--accent-wash); }
+.suggest:hover { background: var(--accent-wash); transform: translateY(-2px); }
+.suggest:active { transform: none; }
 
 /* ---------------------------------------------------------------- 按钮 */
 .btn {
@@ -513,7 +538,9 @@
   height: 100%;
   min-height: 0;
   background: var(--sheet);
-  border-left: var(--stroke-1) solid var(--line);
+  border: var(--stroke-1) solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
 }
 .bl--sheet { border-left: 0; height: auto; flex: 1; min-height: 0; }
 .bl__head {
@@ -733,7 +760,9 @@
 
 /* ---------------------------------------------------------------- 手机 / 窄屏 */
 @media (max-width: 959px) {
-  .room { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .room { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: 0; gap: 0; }
+  .room__main { border-radius: 0; }
+  .room__main::after { display: none; }
   .room__aside { display: none; }
 
   .mbar {
@@ -757,9 +786,10 @@
   .scene { flex: 1 1 auto; min-height: 34dvh; max-height: 42dvh; --stage-char-h: .9; --stage-sea-h: .26; }
   .scene__safe { bottom: 0; }
   .scene__figure { inset: 0; }
-  .scene__sticker { width: min(30%, 112px); margin-bottom: var(--sp-8); align-self: end; }
+  .scene__wait { align-self: end; margin-bottom: var(--sp-4); }
+  .scene__status { top: var(--sp-3); bottom: auto; flex-wrap: nowrap; font-size: var(--fs-micro); }
+  .scene__tip { top: var(--sp-3); left: auto; right: var(--sp-3); }
   .scene__corner { display: none; }
-  .scene__aside { top: var(--sp-3); left: var(--sp-3); max-width: 80%; }
 
   .scene__chrome {
     position: static;
@@ -769,7 +799,7 @@
   }
   .dlg { width: 100%; }
   .dlg__sheet {
-    min-height: 132px;
+    min-height: 88px;
     max-height: min(260px, 34vh);
     padding: 16px 20px 20px;
   }
@@ -778,10 +808,10 @@
   .composer__hint { display: none; }
   .composer__send { min-width: 88px; height: 52px; }
   .composer__input { min-height: max(var(--field-h), var(--hit)); }
-  .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .chips::-webkit-scrollbar { display: none; }
-  .chip { flex: none; }
-  .bl { border-left: 0; }
+  .suggests { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: var(--sp-1); }
+  .suggests::-webkit-scrollbar { display: none; }
+  .suggest { flex: none; }
+  .bl { border: 0; border-radius: 0; }
 }
 
 /* 名字牌放不下时邮戳换到下一行 */
@@ -797,10 +827,10 @@ html[data-kb="on"] .nav { display: none; }
 html[data-kb="on"] .room { height: var(--vvh, 100dvh); }
 html[data-kb="on"] .scene { height: 56px; transition: height var(--dur-panel) var(--ease-out); }
 html[data-kb="on"] .scene__figure { inset: 0; }
-html[data-kb="on"] .scene__sticker { width: 56px; margin: 0 auto; }
-html[data-kb="on"] .scene__sticker .horizon__name { display: none; }
+html[data-kb="on"] .scene__wait,
+html[data-kb="on"] .scene__status,
+html[data-kb="on"] .scene__tip { display: none; }
 html[data-kb="on"] .tide,
-html[data-kb="on"] .scene__aside,
 html[data-kb="on"] .mbar { display: none; }
 html[data-kb="on"] .dlg__sheet { max-height: 40dvh; }
 html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
@@ -809,7 +839,7 @@ html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
 :root[data-elder="on"] .slip { --slip-rot: 0deg; }
 :root[data-elder="on"] .bl__time { opacity: 1; }
 :root[data-elder="on"] .nametab { min-height: 44px; }
-:root[data-elder="on"] .scene__note--tip { transform: none; }
+:root[data-elder="on"] .scene__tip { transform: none; }
 
 /* ---------------------------------------------------------------- 安静 / 减少动态 */
 :root[data-motion="calm"] .ink-in,
