@@ -222,6 +222,8 @@
 .set-slider:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--r-xs); }
 .set-scale__end { font-family: var(--font-voice); font-size: var(--fs-small); color: var(--ink-soft); white-space: nowrap; }
 .set-scale__preview { margin-top: var(--sp-2); font-family: var(--font-voice); font-size: var(--fs-diary); color: var(--ink); }
+.set-scale__confirm { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.set-scale__confirm .set-scale__preview { min-height: 1.5em; }
 
 /* ---------------------------------------------------------------- 额度 */
 .set-quota { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2) 0; }
@@ -286,6 +288,15 @@
   align-items: end;
   gap: var(--sp-2) var(--sp-3);
 }
+.mset__form--codex .mset__field,
+.mset__form--codex .mset__select {
+  box-sizing: border-box;
+  height: var(--field-h);
+  min-height: var(--field-h);
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-body);
+}
+.mset__form--codex .mset__save { align-self: end; min-height: var(--field-h); }
 .mset__item { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
 .mset__label { font-size: var(--fs-small); color: var(--ink-soft); }
 .mset__now { margin-bottom: var(--sp-2); font-size: var(--fs-body); color: var(--ink); overflow-wrap: anywhere; }

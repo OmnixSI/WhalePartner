@@ -91,7 +91,7 @@ test("semantic recall adds only relevant learned material with its archived sour
   }
 });
 
-test("semantic recall does not expose another character's session-scoped video", async () => {
+test("semantic recall includes experiences from every persona", async () => {
   const store = new ChatStore(":memory:");
   const whaleSession = store.createSession("whale", "鲸鱼分享");
   const otherSession = store.createSession("claude", "另一个角色");
@@ -118,7 +118,8 @@ test("semantic recall does not expose another character's session-scoped video",
 
   try {
     const recall = await recallChatMemory({ store, memory, character: "claude", sessionId: otherSession.id, query: "鲸鱼纪录片讲了什么？" });
-    assert.equal(recall.experiences.length, 0);
+    assert.equal(recall.experiences.length, 1);
+    assert.match(recall.experiences[0], /鲸鱼纪录片/);
   } finally {
     store.close();
   }

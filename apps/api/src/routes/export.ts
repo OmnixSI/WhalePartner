@@ -43,7 +43,7 @@ function collect(deps: ServerDeps): ZipEntry[] {
     data: Buffer.from("这是 WhalePartner 导出的数据：聊天记录、记忆、日记与用量。用任何支持 zip 的工具打开即可。\n", "utf8"),
   });
   entries.push({ name: "chat/sessions.json", data: json(sessions) });
-  const messages = sessions.flatMap((session) => store.recent(500, "whale", session.id).map((message) => ({ ...message, sessionId: session.id })));
+  const messages = sessions.flatMap((session) => store.recent(500, undefined, session.id).map((message) => ({ ...message, sessionId: session.id })));
   entries.push({ name: "chat/messages.json", data: json(messages) });
   entries.push({ name: "memories/experiences.json", data: json(store.listExperiences(1000, false)) });
   entries.push({ name: "memories/facts.json", data: json(store.listFacts()) });

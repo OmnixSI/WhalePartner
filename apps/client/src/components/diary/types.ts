@@ -79,6 +79,14 @@ export function isoDay(date: Date): string {
   return `${date.getFullYear()}-${m}-${d}`;
 }
 
+/** A journal's YYYY-MM-DD is a local calendar date, not a UTC timestamp. */
+export function journalDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return isoDay(date) === value ? date : null;
+}
+
 export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }

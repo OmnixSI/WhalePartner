@@ -1,7 +1,9 @@
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isPrivateAddress } from "../web-service.ts";
 import { lookup } from "node:dns/promises";
+import type { SurfRepository } from "./store.ts";
 
 /** 缩略图（§10.6.8 A.5 / B.5）：Node 侧直接下载，限 2 MB、只收 image/*，不引图像库。 */
 
@@ -54,6 +56,44 @@ export function thumbFetcher(dir: string): ThumbFetcher {
       }
     },
   };
+}
+
+export async function repairMissingThumbnails(
+  store: SurfRepository,
+  fetcher: ThumbFetcher,
+  dir: string,
+  coverUrlForBvid = bilibiliCoverUrl,
+) {
+  for (const item of store.thumbnails()) {
+    if (item.thumbPath && existsSync(join(dir, item.thumbPath))) continue;
+    let source = item.thumbSourceUrl;
+    if (!source && item.kind === "video") {
+      const bvid = /^bv:(BV[0-9A-Za-z]{10})$/u.exec(item.dedupeKey)?.[1]
+        ?? /\/video\/(BV[0-9A-Za-z]{10})/u.exec(item.url)?.[1];
+      if (bvid) source = await coverUrlForBvid(bvid).catch(() => null);
+      if (source) store.setThumbSource(item.id, source);
+    }
+    if (!source) {
+      store.setThumbError(item.id, "封面地址缺失");
+      continue;
+    }
+    const path = await fetcher.fetch(source, item.id, {
+      referer: item.sourceSite === "bilibili" ? "https://www.bilibili.com" : undefined,
+    }).catch(() => null);
+    if (path) store.setThumb(item.id, path);
+    else store.setThumbError(item.id, "封面下载失败");
+  }
+}
+
+async function bilibiliCoverUrl(bvid: string): Promise<string | null> {
+  const response = await fetch(`https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`, {
+    headers: { "user-agent": UA, referer: "https://www.bilibili.com" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) return null;
+  const payload = await response.json() as { code?: number; data?: { pic?: string } };
+  if (payload.code !== 0 || typeof payload.data?.pic !== "string") return null;
+  return payload.data.pic.startsWith("//") ? `https:${payload.data.pic}` : payload.data.pic;
 }
 
 /** 缩略图接口用的 MIME：按扩展名反推。 */

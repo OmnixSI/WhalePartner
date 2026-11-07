@@ -175,6 +175,7 @@
 
 /* 照片：白边 + 略微歪，16:9 */
 .pcard__photo {
+  position: relative;
   display: grid;
   place-items: center;
   aspect-ratio: 16 / 9;
@@ -196,6 +197,17 @@
   font-family: var(--font-num);
   font-size: var(--fs-h1);
   color: var(--ink-mute);
+}
+.pcard__photoError {
+  position: absolute;
+  inset-inline: 6px;
+  bottom: 6px;
+  padding: 3px 6px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  color: var(--ink-mute);
+  font-size: var(--fs-xs);
+  text-align: center;
 }
 :root[data-elder="on"] .pcard__photo { transform: none; }
 
@@ -282,7 +294,7 @@
 .pdlg__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 .pdlg__badge { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-small); color: var(--ink-mute); }
 .pdlg__title { font-family: var(--font-voice); font-size: var(--fs-h3); line-height: var(--lh-ui); }
-.pdlg__photo { display: block; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--r-sm); background: var(--paper-2); }
+.pdlg__photo { display: grid; place-items: center; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink-mute); }
 .pdlg__photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pdlg__body { font-family: var(--font-voice); font-size: var(--fs-chat); line-height: var(--lh-voice); color: var(--ink-soft); }
 .pdlg__say {

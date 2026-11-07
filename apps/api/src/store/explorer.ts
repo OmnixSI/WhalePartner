@@ -127,7 +127,7 @@ function buildRecords(filters: MemoryExplorerFilters, category: MemoryCategory) 
   };
 
   if (category === "all" || category === "fact") {
-    const values: Array<string | number> = [filters.character];
+    const values: Array<string | number> = [];
     const where = ["1 = 1", ...dates("f.valid_from", values)];
     if (filters.status === "current") where.push("f.status = 'active'");
     if (filters.status === "historical") where.push("f.status = 'superseded'");
@@ -135,7 +135,7 @@ function buildRecords(filters: MemoryExplorerFilters, category: MemoryCategory) 
     append(`
       SELECT 'fact:' || f.id AS id, 'fact' AS type, 'fact' AS category,
         f.subject || ' · ' || f.predicate AS title,
-        f.value AS text, f.valid_from AS createdAt, ? AS character,
+        f.value AS text, f.valid_from AS createdAt, 'shared' AS character,
         NULL AS role, NULL AS sessionId, NULL AS sessionTitle, NULL AS messageId, f.status AS status,
         f.valid_from AS validFrom, f.valid_to AS validTo, NULL AS sourceId, NULL AS url, NULL AS sourceMissing
       FROM memory_facts f WHERE ${where.join(" AND ")}
@@ -143,8 +143,8 @@ function buildRecords(filters: MemoryExplorerFilters, category: MemoryCategory) 
   }
 
   if (category === "all" || category === "conversation") {
-    const values: Array<string | number> = [filters.character];
-    const where = ["m.character = ?", ...dates("m.created_at", values)];
+    const values: Array<string | number> = [];
+    const where = ["1 = 1", ...dates("m.created_at", values)];
     if (filters.role && filters.role !== "all") { where.push("m.role = ?"); values.push(filters.role); }
     if (query) { where.push("m.id IN (SELECT rowid FROM message_search WHERE message_search MATCH ?)"); values.push(query); }
     append(`
@@ -158,18 +158,21 @@ function buildRecords(filters: MemoryExplorerFilters, category: MemoryCategory) 
       WHERE ${where.join(" AND ")}
     `, values);
 
-    const valuesForExperiences: Array<string | number> = [filters.character, filters.character, filters.character, filters.character, filters.character];
-    const expWhere = ["e.kind = 'chat'", "(s.character = ? OR EXISTS (SELECT 1 FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ?))", ...dates("e.created_at", valuesForExperiences)];
+    const valuesForExperiences: Array<string | number> = [];
+    const expWhere = ["e.kind = 'chat'", ...dates("e.created_at", valuesForExperiences)];
     if (query) { expWhere.push("e.id IN (SELECT rowid FROM experience_search WHERE experience_search MATCH ?)"); valuesForExperiences.push(query); }
     append(`
         SELECT 'experience:' || e.id AS id, 'experience' AS type, 'conversation' AS category,
-          e.title AS title, e.text AS text, e.created_at AS createdAt, ? AS character,
-          NULL AS role, COALESCE(e.source_session_id, (SELECT es.session_id FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ? LIMIT 1)) AS sessionId,
-          (SELECT title FROM chat_sessions WHERE id = COALESCE(e.source_session_id, (SELECT es.session_id FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ? LIMIT 1))) AS sessionTitle,
+          e.title AS title, e.text AS text, e.created_at AS createdAt, COALESCE(s.character, display_session.character, 'shared') AS character,
+          NULL AS role, display_session.id AS sessionId, display_session.title AS sessionTitle,
           e.source_message_id AS messageId,
           NULL AS status, NULL AS validFrom, NULL AS validTo, e.source_id AS sourceId, e.url AS url, e.source_missing AS sourceMissing
         FROM experience_search JOIN memory_experiences e ON e.id = experience_search.rowid
         LEFT JOIN chat_sessions s ON s.id = e.source_session_id
+        LEFT JOIN chat_sessions display_session ON display_session.id = COALESCE(
+          e.source_session_id,
+          (SELECT es.session_id FROM memory_experience_sessions es WHERE es.experience_id = e.id LIMIT 1)
+        )
         WHERE ${expWhere.join(" AND ")}
       `, valuesForExperiences);
   }
@@ -177,56 +180,38 @@ function buildRecords(filters: MemoryExplorerFilters, category: MemoryCategory) 
   const experienceCategories: Array<Exclude<MemoryCategory, "all" | "fact" | "conversation" | "reflection">> = ["video", "web", "diary", "learned"];
   for (const experienceCategory of experienceCategories) {
     if (category !== "all" && category !== experienceCategory) continue;
-    const values: Array<string | number> = [
-      filters.character,
-      filters.character,
-      filters.character,
-      filters.character,
-      filters.character,
-      filters.character,
-    ];
+    const values: Array<string | number> = [];
     const kindClause = experienceCategory === "diary" ? "e.kind IN ('diary','journal')" : "e.kind = ?";
     if (experienceCategory !== "diary") values.push(experienceCategory);
     const where = [kindClause, ...dates("e.created_at", values)];
     if (query) { where.push("e.id IN (SELECT rowid FROM experience_search WHERE experience_search MATCH ?)"); values.push(query); }
-    where.push(`(
-      (e.source_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM memory_experience_sessions es WHERE es.experience_id = e.id)
-        AND e.source_id NOT LIKE 'learned:chat:%' AND (e.kind <> 'journal' OR e.source_id LIKE ?))
-      OR EXISTS (SELECT 1 FROM chat_sessions cs WHERE cs.id = e.source_session_id AND cs.character = ?)
-      OR EXISTS (SELECT 1 FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ?)
-      OR (e.source_id LIKE 'learned:chat:%' AND e.source_id LIKE ?)
-    )`);
-    values.push(`journal:${filters.character}:%`, filters.character, filters.character, `learned:chat:${filters.character}:%`);
     append(`
       SELECT 'experience:' || e.id AS id, 'experience' AS type, '${experienceCategory}' AS category,
-        e.title AS title, e.text AS text, e.created_at AS createdAt, ? AS character,
+        e.title AS title, e.text AS text, e.created_at AS createdAt, COALESCE(s.character, display_session.character, 'shared') AS character,
         NULL AS role, display_session.id AS sessionId, display_session.title AS sessionTitle,
-        CASE WHEN s.character = ? THEN e.source_message_id ELSE (
+        CASE WHEN s.id IS NOT NULL THEN e.source_message_id ELSE (
           SELECT o.message_id FROM memory_experience_occurrences o
-          JOIN chat_sessions occurrence_session ON occurrence_session.id = o.session_id
-          WHERE o.experience_id = e.id AND occurrence_session.character = ?
+          WHERE o.experience_id = e.id
           ORDER BY o.occurred_at DESC, o.id DESC LIMIT 1
         ) END AS messageId,
         NULL AS status, NULL AS validFrom, NULL AS validTo, e.source_id AS sourceId, e.url AS url, e.source_missing AS sourceMissing
       FROM experience_search JOIN memory_experiences e ON e.id = experience_search.rowid
       LEFT JOIN chat_sessions s ON s.id = e.source_session_id
       LEFT JOIN chat_sessions display_session ON display_session.id = COALESCE(
-        CASE WHEN s.character = ? THEN e.source_session_id END,
+        e.source_session_id,
         (SELECT o.session_id FROM memory_experience_occurrences o
-          JOIN chat_sessions occurrence_session ON occurrence_session.id = o.session_id
-          WHERE o.experience_id = e.id AND occurrence_session.character = ?
+          WHERE o.experience_id = e.id
           ORDER BY o.occurred_at DESC, o.id DESC LIMIT 1),
         (SELECT es.session_id FROM memory_experience_sessions es
-          JOIN chat_sessions linked_session ON linked_session.id = es.session_id
-          WHERE es.experience_id = e.id AND linked_session.character = ? LIMIT 1)
+          WHERE es.experience_id = e.id LIMIT 1)
       )
       WHERE ${where.join(" AND ")}
     `, values);
   }
 
   if (category === "all" || category === "reflection") {
-    const values: Array<string | number> = [filters.character];
-    const where = ["s.character = ?", ...dates("o.updated_at", values)];
+    const values: Array<string | number> = [];
+    const where = ["1 = 1", ...dates("o.updated_at", values)];
     if (query) { where.push("o.summary LIKE ?"); values.push(`%${filters.query!.trim()}%`); }
     append(`
       SELECT 'observation:' || o.session_id AS id, 'reflection' AS type, 'reflection' AS category,
@@ -237,8 +222,8 @@ function buildRecords(filters: MemoryExplorerFilters, category: MemoryCategory) 
       WHERE ${where.join(" AND ")}
     `, values);
 
-    const noteValues: Array<string | number> = [filters.character];
-    const noteWhere = ["character = ?", ...dates("updated_at", noteValues)];
+    const noteValues: Array<string | number> = [];
+    const noteWhere = ["1 = 1", ...dates("updated_at", noteValues)];
     if (query) { noteWhere.push("text LIKE ?"); noteValues.push(`%${filters.query!.trim()}%`); }
     append(`
       SELECT 'note:' || character AS id, 'reflection' AS type, 'reflection' AS category,

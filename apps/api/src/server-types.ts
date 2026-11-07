@@ -26,7 +26,7 @@ export interface ServerDeps {
   video?: VideoService;
   /** 日记和待看队列；定时器只在服务进程入口启动。 */
   diary?: DiaryService;
-  /** 按角色和本地日期生成的综合日记。 */
+  /** 按共享日期生成、由当前人格执笔的综合日记。 */
   journal?: DailyJournalService;
   /** 提供后聊天里的普通网页链接会被读完再聊。 */
   web?: WebService;

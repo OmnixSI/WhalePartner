@@ -18,6 +18,7 @@ import { WhaleSticker } from "../components/WhaleSticker";
 import { Accounts } from "../components/Accounts";
 import { reopenOnboarding } from "../components/Onboarding";
 import { SettingGroup, SettingRow } from "../components/settings/Row";
+import { ScaleSetting } from "../components/settings/ScaleSetting";
 import { Switch } from "../components/settings/Switch";
 import { ChoiceCard } from "../components/settings/ChoiceCard";
 import { QuotaMeter } from "../components/settings/QuotaMeter";
@@ -25,7 +26,7 @@ import { DataSection } from "../components/settings/DataSection";
 import { ModelSetup } from "../components/settings/ModelSetup";
 import { CharacterDialog } from "../components/settings/CharacterDialog";
 import { Toast } from "../components/settings/Toast";
-import { updateA11y, ELDER_MIN_SCALE, SCALE_MAX } from "../components/settings/prefs";
+import { updateA11y, ELDER_MIN_SCALE } from "../components/settings/prefs";
 import { TagField } from "../components/surf/TagField";
 import {
   FREQUENCY_HINT,
@@ -107,9 +108,7 @@ export function SettingsPage() {
   const setCalm = (next: boolean) => {
     setA11y(updateA11y({ calm: next }));
   };
-  const setScale = (next: number) => {
-    setA11y(updateA11y({ scale: next }));
-  };
+  const confirmScale = (next: number) => setA11y(updateA11y({ scale: next }));
 
   const saveNickname = async () => {
     if (offline || savingNick) return;
@@ -155,15 +154,13 @@ export function SettingsPage() {
   };
 
   const scaleMin = a11y.elder ? ELDER_MIN_SCALE : 1;
-  const scaleShown = Math.round(a11y.scale * 100);
-  const bodyPx = Math.round(16 * a11y.scale);
 
   return (
     <div className="page page--settings">
       <div className="page__inner">
         <header className="set-head">
           <h1 className="page__title">设置</h1>
-          <p className="set-head__lead">改完就生效，不用点保存。</p>
+        <p className="set-head__lead">大多数设置改完就生效；字号调整后点“确认”应用。</p>
         </header>
 
         {offline && (
@@ -383,31 +380,7 @@ export function SettingsPage() {
             <Switch label="老人模式" checked={a11y.elder} onChange={setElder} />
           </SettingRow>
 
-          <SettingRow
-            title="字号"
-            desc={`现在 ${scaleShown}%，正文大约 ${bodyPx}px。`}
-            stacked
-          >
-            <div className="set-scale">
-              <span className="set-scale__end" aria-hidden="true">
-                小Aa
-              </span>
-              <input
-                type="range"
-                className="set-slider"
-                aria-label="字号"
-                min={scaleMin}
-                max={SCALE_MAX}
-                step={0.05}
-                value={a11y.scale}
-                onChange={(event) => setScale(Number(event.target.value))}
-              />
-              <span className="set-scale__end" aria-hidden="true">
-                大Aa
-              </span>
-            </div>
-            <p className="set-scale__preview">预览：今天天气很好</p>
-          </SettingRow>
+          <ScaleSetting scale={a11y.scale} min={scaleMin} onConfirm={confirmScale} />
 
           <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。" onActivate={() => setCalm(!a11y.calm)}>
             <Switch label="减少动画" checked={a11y.calm} onChange={setCalm} />

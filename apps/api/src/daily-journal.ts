@@ -2,7 +2,7 @@ import { EmotionFilter } from "./emotion.ts";
 import type { ChatProvider } from "./llm/types.ts";
 import { archiveExperience } from "./memory/archive.ts";
 import type { MemoryStore } from "./memory/types.ts";
-import { buildPersonaCore, CHARACTERS, type CharacterId } from "./persona/persona.ts";
+import { buildPersonaCore, CHARACTERS, DEFAULT_CHARACTER, type CharacterId } from "./persona/persona.ts";
 import type { ChatStore } from "./store.ts";
 import { JournalStore, type DailyJournal, type JournalSource } from "./journal-store.ts";
 
@@ -24,8 +24,8 @@ export class DailyJournalService {
     this.#deps = deps;
   }
 
-  list(character: CharacterId, options: { from?: string; to?: string; limit?: number; offset?: number } = {}) {
-    return this.#deps.store.listCurrent(character, options);
+  list(_character: CharacterId, options: { from?: string; to?: string; limit?: number; offset?: number } = {}) {
+    return this.#deps.store.listCurrent(undefined, options);
   }
 
   revisions(id: string) {
@@ -35,7 +35,7 @@ export class DailyJournalService {
   generate(character: CharacterId, localDate = currentLocalDate(), force = false): Promise<DailyJournal | null> {
     validateLocalDate(localDate);
     if (this.#resumeAfterDeletion) return this.#resumeAfterDeletion.then(() => this.generate(character, localDate, force));
-    const key = `${character}:${localDate}`;
+    const key = localDate;
     const existing = this.#inFlight.get(key);
     if (existing) return existing;
     const task = this.#generate(character, localDate, force).finally(() => {
@@ -47,12 +47,10 @@ export class DailyJournalService {
 
   async generateTodayForAll() {
     const date = currentLocalDate();
-    for (const character of Object.keys(CHARACTERS) as CharacterId[]) {
-      try {
-        await this.generate(character, date);
-      } catch (error) {
-        console.warn(`${CHARACTERS[character].name}的日记生成失败：`, error instanceof Error ? error.message : error);
-      }
+    try {
+      await this.generate(DEFAULT_CHARACTER, date);
+    } catch (error) {
+      console.warn(`${CHARACTERS[DEFAULT_CHARACTER].name}的日记生成失败：`, error instanceof Error ? error.message : error);
     }
   }
 
@@ -104,41 +102,52 @@ export class DailyJournalService {
 
   async #generate(character: CharacterId, localDate: string, force: boolean): Promise<DailyJournal | null> {
     const { from, to } = localDayBounds(localDate);
-    const sources = this.#deps.archive.journalSources(character, from, to);
+    const sources = this.#deps.archive.journalSources(undefined, from, to);
     const task = this.#deps.store.task(character, localDate);
     const effectiveForce = force || task?.force === true;
     if (sources.length === 0) {
       if (task) this.#deps.store.completeTask(character, localDate);
       return null;
     }
-    const id = `journal:${character}:${localDate}`;
-    const current = this.#deps.store.current(character, localDate);
+    const journalCharacter = "shared";
+    const id = `journal:${journalCharacter}:${localDate}`;
+    const current = this.#deps.store.currentForDate(localDate);
     const sourceIds = sources.map((source) => source.id).sort();
     const previousIds = current?.sources.map((source) => source.id).sort() ?? [];
-    if (current && !effectiveForce && sameIds(sourceIds, previousIds) && task?.status === "complete") return current;
+    if (current && !effectiveForce && sameIds(sourceIds, previousIds)) {
+      const shared = current.character === journalCharacter
+        ? current
+        : this.#deps.store.save({ ...current, id, character: journalCharacter }, false);
+      await archiveExperience(this.#deps.archive, this.#deps.memory, {
+        kind: "journal",
+        title: `${CHARACTERS[character].name}的日记 · ${localDate}`,
+        text: shared.text,
+        sourceId: shared.id,
+        sourceSessionIds: [...new Set(sources.flatMap((source) => source.sessionId ? [source.sessionId] : []))],
+      }, "日记经历");
+      if (task && task.status !== "complete") this.#deps.store.completeTask(character, localDate);
+      return shared;
+    }
 
     this.#deps.store.enqueueTask(character, localDate, effectiveForce);
-    if (!this.#deps.store.claimTask(character, localDate)) return this.#deps.store.current(character, localDate) ?? null;
+    if (!this.#deps.store.claimTask(character, localDate)) return this.#deps.store.currentForDate(localDate) ?? null;
 
     try {
       const activeTask = this.#deps.store.task(character, localDate);
-      let journal = activeTask?.bodySaved ? this.#deps.store.current(character, localDate) : undefined;
+      let journal = activeTask?.bodySaved ? this.#deps.store.currentForDate(localDate) : undefined;
       const bodyMatchesSources = journal && sameIds(sourceIds, journal.sources.map((source) => source.id).sort());
       if (!journal || !bodyMatchesSources) {
-        if (current && !effectiveForce && sameIds(sourceIds, previousIds)) {
-          journal = current;
-          this.#deps.store.markBodySaved(character, localDate);
-        } else {
-          const text = await writeJournal(this.#deps.provider, character, localDate, sources);
-          journal = this.#deps.store.save({
-            id,
-            character,
-            localDate,
-            text,
-            sources,
-            modelId: `${this.#deps.provider.id}/${this.#deps.provider.model}`,
-          }, effectiveForce);
-        }
+        const text = await writeJournal(this.#deps.provider, character, localDate, sources);
+        journal = this.#deps.store.save({
+          id,
+          character: journalCharacter,
+          localDate,
+          text,
+          sources,
+          modelId: `${this.#deps.provider.id}/${this.#deps.provider.model}`,
+        }, effectiveForce);
+      } else if (journal.character !== journalCharacter) {
+        journal = this.#deps.store.save({ ...journal, id, character: journalCharacter }, false);
       }
       await archiveExperience(this.#deps.archive, this.#deps.memory, {
         kind: "journal",

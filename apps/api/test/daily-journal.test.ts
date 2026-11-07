@@ -34,12 +34,15 @@ test("daily journal combines local-day chat and shared media, keeps revisions, a
   const session = archive.createSession("whale", "今天的聊天");
   archive.add("user", "我今天总算把记忆页面做完了", null, "whale", session.id);
   archive.add("assistant", "你为这件事花了不少心思，我替你开心。", null, "whale", session.id);
+  const otherPersona = archive.createSession("claude", "切换人格后的聊天");
+  archive.add("user", "后来我们又聊了蓝鲸", null, "claude", otherPersona.id);
   let calls = 0;
   const provider: ChatProvider = {
     id: "fake", model: "diary-test",
     async *stream(messages) {
       calls++;
       assert.ok(messages[1].content.includes("我今天总算把记忆页面做完了"));
+      assert.ok(messages[1].content.includes("后来我们又聊了蓝鲸"));
       yield { text: "今天陪着用户把记忆页面的事情一点点理顺，能看到他终于完成了，心里也跟着亮堂起来。" };
     },
   };
@@ -48,12 +51,13 @@ test("daily journal combines local-day chat and shared media, keeps revisions, a
   try {
     const first = await service.generate("whale", today);
     assert.ok(first);
-    assert.equal(first.id, `journal:whale:${today}`);
-    assert.equal(first.sources.filter((source) => source.type === "chat").length, 2);
+    assert.equal(first.id, `journal:shared:${today}`);
+    assert.equal(first.sources.filter((source) => source.type === "chat").length, 3);
     assert.equal(first.revision, 1);
 
-    const same = await service.generate("whale", today);
+    const same = await service.generate("claude", today);
     assert.equal(same?.revision, 1);
+    assert.equal(same?.id, `journal:shared:${today}`);
     assert.equal(calls, 1);
 
     archive.upsertExperience({ kind: "video", title: "蓝鲸的一天", text: "观察到蓝鲸在海面换气。", sourceId: "video:journal-test", sourceSessionId: session.id });
@@ -67,7 +71,7 @@ test("daily journal combines local-day chat and shared media, keeps revisions, a
     assert.equal(journals.revisions(first!.id).length, 3);
 
     archive.deleteSession(session.id, "whale");
-    assert.equal(journals.current("whale", today), undefined);
+    assert.equal(journals.current("shared", today), undefined);
     assert.equal(archive.experienceBySourceId(first!.id), undefined);
   } finally {
     journals.close();
@@ -139,7 +143,7 @@ test("startup resumes an interrupted journal generation and indexes a saved body
 
     assert.equal(calls, 0);
     assert.equal(journals.task("whale", today)?.status, "complete");
-    assert.equal(archive.experienceBySourceId(`journal:whale:${today}`)?.text, "已经保存的日记正文。");
+    assert.equal(archive.experienceBySourceId(`journal:shared:${today}`)?.text, "已经保存的日记正文。");
   } finally {
     journals.close();
     archive.close();
@@ -168,7 +172,7 @@ test("startup does not restore a pending journal after its source session was de
     await new DailyJournalService({ store: journals, archive, provider }).resumeInterrupted();
 
     assert.equal(calls, 0);
-    assert.equal(journals.current("whale", today), undefined);
+    assert.equal(journals.current("shared", today), undefined);
     assert.equal(journals.task("whale", today)?.status, "complete");
   } finally {
     journals.close();
@@ -273,7 +277,7 @@ test("journal routes generate, list, and expose prior revisions", async () => {
     const generated = await fetch(`${base}/api/journals/generate`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ character: "whale", date: today }) });
     assert.equal(generated.status, 200);
     const body = await generated.json() as { journal: { id: string; revision: number } };
-    assert.equal(body.journal.id, `journal:whale:${today}`);
+    assert.equal(body.journal.id, `journal:shared:${today}`);
     assert.equal(body.journal.revision, 1);
     const listed = await fetch(`${base}/api/journals?character=whale`);
     assert.equal((await listed.json() as { items: unknown[]; total: number }).total, 3);

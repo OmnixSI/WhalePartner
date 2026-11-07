@@ -3,11 +3,12 @@ import { NavLink } from "react-router-dom";
 import { Icon, type IconName } from "../icons";
 import { TailMark } from "./Icons";
 
-/** 导航（规范 §7.1.2）：鲸尾 + 四个手绘图标；图标是装饰，认路靠旁边的字。 */
+/** 主导航：鲸尾 + 手绘图标；图标是装饰，认路靠旁边的字。 */
 const ITEMS: { to: string; label: string; icon: IconName; end?: boolean }[] = [
   { to: "/", label: "聊天", icon: "chat", end: true },
   { to: "/diary", label: "日记", icon: "diary" },
   { to: "/memory", label: "记忆", icon: "memory" },
+  { to: "/surf", label: "见闻", icon: "bottle" },
   { to: "/settings", label: "设置", icon: "settings" },
 ];
 
@@ -23,7 +24,7 @@ function useElderMode() {
 }
 
 export function Nav() {
-  // 规范 §9：老人模式导航只留 3 项（记忆改从「设置 › 她记得的事」进）。
+  // 老人模式把记忆收在设置里；见闻保留主导航入口。
   const elder = useElderMode();
   const items = elder ? ITEMS.filter((item) => item.to !== "/memory") : ITEMS;
   return (

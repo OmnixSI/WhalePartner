@@ -131,6 +131,7 @@ export async function handleSurf(
         url: item.url,
         sourceSite: item.sourceSite,
         thumb: item.thumbPath ? `/api/surf/thumb/${item.id}` : null,
+        thumbError: item.thumbError,
         summary: item.summary,
         comment: item.comment,
         tags: item.tags,

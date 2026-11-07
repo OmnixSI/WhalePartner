@@ -84,14 +84,14 @@ test("memory explorer searches paginated chat archive and returns source-backed 
     });
     const whaleVideo = store.listMemoryExplorer({ character: "whale", category: "video" }).items[0];
     const claudeVideo = store.listMemoryExplorer({ character: "claude", category: "video" }).items[0];
-    assert.deepEqual([whaleVideo.sessionId, whaleVideo.messageId], [session.id, firstMessage]);
-    assert.deepEqual([claudeVideo.sessionId, claudeVideo.messageId], [otherSession.id, otherMessage.id]);
+    assert.deepEqual(whaleVideo, claudeVideo);
+    assert.deepEqual([whaleVideo.sessionId, whaleVideo.messageId], [otherSession.id, otherMessage.id]);
   } finally {
     store.close();
   }
 });
 
-test("recent learned material uses archived rows with character scope", () => {
+test("recent learned material is shared across characters", () => {
   const store = new ChatStore(":memory:");
   try {
     const whale = store.createSession("whale", "鲸鱼分享");
@@ -118,10 +118,11 @@ test("recent learned material uses archived rows with character scope", () => {
     assert.ok(whaleSources.includes("learned:chat:whale:12:0"));
     assert.ok(whaleSources.includes("learned:video:BV1WHALE:0"));
     assert.ok(whaleSources.includes("learned:video:global:0"));
-    assert.equal(whaleSources.includes("learned:chat:claude:9:0"), false);
+    assert.ok(whaleSources.includes("learned:chat:claude:9:0"));
     assert.ok(claudeSources.includes("learned:chat:claude:9:0"));
     assert.ok(claudeSources.includes("learned:video:global:0"));
-    assert.equal(claudeSources.includes("learned:video:BV1WHALE:0"), false);
+    assert.ok(claudeSources.includes("learned:video:BV1WHALE:0"));
+    assert.deepEqual(whaleSources, claudeSources);
   } finally {
     store.close();
   }

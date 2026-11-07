@@ -39,6 +39,8 @@ export function PageBar({ mode, cursor, marks, onCursor, onToday }: Props) {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => new Date(cursor.getFullYear(), cursor.getMonth(), 1));
   const step = STEP[mode];
+  const dateLabel = `${cursor.getMonth() + 1}月${cursor.getDate()}日`;
+  const weekday = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][cursor.getDay()];
 
   return (
     <div className="pagebar">
@@ -53,8 +55,8 @@ export function PageBar({ mode, cursor, marks, onCursor, onToday }: Props) {
           if (next) setMonth(new Date(cursor.getFullYear(), cursor.getMonth(), 1));
         }}
       >
-        <Popover.Trigger className="pagebar__cal" aria-label={`选日期，当前是 ${cursor.getMonth() + 1} 月`}>
-          {cursor.getMonth() + 1} 月 <span aria-hidden>▾</span>
+        <Popover.Trigger className="pagebar__cal" aria-label={`选日期，当前是 ${dateLabel} ${weekday}`}>
+          {dateLabel} {weekday} <span aria-hidden>▾</span>
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content className="pop pagebar__pop" sideOffset={10} align="center" aria-label="选日期">

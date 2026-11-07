@@ -21,6 +21,7 @@ export interface SurfItemEvent {
   title: string;
   sourceSite: string;
   thumb: string | null;
+  thumbError: string | null;
   comment: string;
   createdAt: string;
 }

@@ -20,10 +20,10 @@ export function useChatSessions(characterId: string, showHistory: (messages: His
     void (async () => {
       const available = await fetchSessions(characterId, ctrl.signal);
       if (!isCurrent()) return;
-      const key = `whalepartner:session:${characterId}`;
-      const targetMessageId = Number(localStorage.getItem(`whalepartner:open-message:${characterId}`)) || undefined;
+      const key = "whalepartner:session:shared";
+      const targetMessageId = Number(localStorage.getItem("whalepartner:open-message:shared")) || undefined;
       const remembered = targetMessageId
-        ? localStorage.getItem(`whalepartner:open-session:${characterId}`)
+        ? localStorage.getItem("whalepartner:open-session:shared")
         : localStorage.getItem(key);
       let active = available.find((session) => session.id === remembered) ?? available[0];
       let nextSessions = available;
@@ -39,7 +39,7 @@ export function useChatSessions(characterId: string, showHistory: (messages: His
       if (isCurrent()) {
         showHistory(history);
         if (targetMessageId) {
-          localStorage.removeItem(`whalepartner:open-session:${characterId}`);
+          localStorage.removeItem("whalepartner:open-session:shared");
         }
       }
     })().catch((error: unknown) => {
@@ -54,7 +54,7 @@ export function useChatSessions(characterId: string, showHistory: (messages: His
   const selectSession = useCallback(async (id: string) => {
     const requestId = ++historyRequestId.current;
     setSessionId(id);
-    localStorage.setItem(`whalepartner:session:${characterId}`, id);
+    localStorage.setItem("whalepartner:session:shared", id);
     const history = await fetchHistory(characterId, 200, undefined, id);
     if (historyRequestId.current === requestId && currentCharacterId.current === characterId) showHistory(history);
   }, [characterId, showHistory]);
@@ -67,7 +67,7 @@ export function useChatSessions(characterId: string, showHistory: (messages: His
       setSessions((previous) => [session, ...previous]);
       if (historyRequestId.current !== requestId) return;
       setSessionId(session.id);
-      localStorage.setItem(`whalepartner:session:${characterId}`, session.id);
+      localStorage.setItem("whalepartner:session:shared", session.id);
       showHistory([]);
     } catch (error) {
       console.warn("新建聊天失败：", error instanceof Error ? error.message : error);
@@ -91,11 +91,11 @@ export function useChatSessions(characterId: string, showHistory: (messages: His
     const next = remaining[0];
     if (!next) {
       setSessionId(undefined);
-      localStorage.removeItem(`whalepartner:session:${characterId}`);
+      localStorage.removeItem("whalepartner:session:shared");
       return;
     }
     setSessionId(next.id);
-    localStorage.setItem(`whalepartner:session:${characterId}`, next.id);
+    localStorage.setItem("whalepartner:session:shared", next.id);
     const history = await fetchHistory(characterId, 200, undefined, next.id);
     if (historyRequestId.current === requestId && currentCharacterId.current === characterId) showHistory(history);
   }, [characterId, sessionId, sessions, showHistory]);

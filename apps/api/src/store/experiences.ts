@@ -15,20 +15,6 @@ export interface ExperienceInput {
   sourceMessageId?: number;
 }
 
-function characterScope(character: string) {
-  return {
-    sql: `(
-      (e.source_session_id IS NULL AND NOT EXISTS (SELECT 1 FROM memory_experience_sessions es WHERE es.experience_id = e.id)
-        AND e.kind <> 'chat' AND e.source_id NOT LIKE 'learned:chat:%'
-        AND (e.kind <> 'journal' OR e.source_id LIKE ?))
-      OR s.character = ?
-      OR EXISTS (SELECT 1 FROM memory_experience_sessions es JOIN chat_sessions cs ON cs.id = es.session_id WHERE es.experience_id = e.id AND cs.character = ?)
-      OR (e.source_id LIKE 'learned:chat:%' AND e.source_id LIKE ?)
-    )`,
-    params: [`journal:${character}:%`, character, character, `learned:chat:${character}:%`],
-  };
-}
-
 export class ExperienceRepository {
   private readonly db: DatabaseSync;
 
@@ -94,7 +80,7 @@ export class ExperienceRepository {
     return rows.map((row) => this.getExperience(row.id)).filter((row): row is StoredExperience => Boolean(row));
   }
 
-  searchExperiences(query: string, limit = 8, character?: string): Array<StoredExperience & { rank: number }> {
+  searchExperiences(query: string, limit = 8, _character?: string): Array<StoredExperience & { rank: number }> {
     const match = matchExpression(query);
     const window = timeWindow(query);
     if (!match && !window) return [];
@@ -108,51 +94,33 @@ export class ExperienceRepository {
       filters.push("e.created_at >= ? AND e.created_at < ?");
       params.push(window.from, window.to);
     }
-    if (character) {
-      const scope = characterScope(character);
-      filters.push(scope.sql);
-      params.push(...scope.params);
-    }
     const rows = this.db.prepare(`
       SELECT e.id, ${match ? "bm25(experience_search)" : "0"} AS rank FROM experience_search
       JOIN memory_experiences e ON e.id = experience_search.rowid
-      LEFT JOIN chat_sessions s ON s.id = e.source_session_id
       WHERE ${filters.join(" AND ")} ORDER BY ${match ? "rank" : "e.created_at DESC"} LIMIT ?
     `).all(...params, limit) as unknown as Array<{ id: number; rank: number }>;
     return rows.map(({ id, rank }) => ({ ...this.getExperience(id)!, rank: Number(rank) }));
   }
 
-  recentExperiences(limit = 3, includeChat = false, character?: string): StoredExperience[] {
+  recentExperiences(limit = 3, includeChat = false, _character?: string): StoredExperience[] {
     const filters = [includeChat ? "1 = 1" : "e.kind <> 'chat'"];
-    const params: Array<string | number> = [];
-    if (character) {
-      const scope = characterScope(character);
-      filters.push(scope.sql);
-      params.push(...scope.params);
-    }
     const filteredRows = this.db.prepare(`
-      SELECT e.id FROM memory_experiences e LEFT JOIN chat_sessions s ON s.id = e.source_session_id
+      SELECT e.id FROM memory_experiences e
       WHERE ${filters.join(" AND ")} ORDER BY e.created_at DESC, e.id DESC LIMIT ?
-    `).all(...params, limit) as unknown as Array<{ id: number }>;
+    `).all(limit) as unknown as Array<{ id: number }>;
     return filteredRows.map((row) => this.getExperience(row.id)).filter((row): row is StoredExperience => Boolean(row));
   }
 
-  recentLearnings(limit = 4, character?: string): StoredExperience[] {
+  recentLearnings(limit = 4, _character?: string): StoredExperience[] {
     const filters = ["e.kind = 'learned'"];
-    const params: Array<string | number> = [];
-    if (character) {
-      const scope = characterScope(character);
-      filters.push(scope.sql);
-      params.push(...scope.params);
-    }
     const rows = this.db.prepare(`
       SELECT e.id, e.kind, e.title, e.text, e.url, e.source_id AS sourceId,
         e.source_session_id AS sourceSessionId, e.source_message_id AS sourceMessageId,
         e.source_missing AS sourceMissing, e.vector_indexed AS vectorIndexed, e.attempts,
         e.vector_entry_id AS vectorEntryId, e.last_error AS lastError, e.created_at AS createdAt
-      FROM memory_experiences e LEFT JOIN chat_sessions s ON s.id = e.source_session_id
+      FROM memory_experiences e
       WHERE ${filters.join(" AND ")} ORDER BY e.created_at DESC, e.id DESC LIMIT ?
-    `).all(...params, limit) as unknown as Array<Omit<StoredExperience, "vectorIndexed" | "sourceMissing"> & { vectorIndexed: number; sourceMissing: number }>;
+    `).all(limit) as unknown as Array<Omit<StoredExperience, "vectorIndexed" | "sourceMissing"> & { vectorIndexed: number; sourceMissing: number }>;
     return rows.map((row) => ({
       ...row,
       vectorIndexed: Boolean(row.vectorIndexed),
@@ -178,12 +146,8 @@ export class ExperienceRepository {
     return row ? this.getExperience(row.id) : undefined;
   }
 
-  experienceVisibleToCharacter(sourceId: string, character: string): boolean {
-    const scope = characterScope(character);
-    const row = this.db.prepare(`
-      SELECT 1 FROM memory_experiences e LEFT JOIN chat_sessions s ON s.id = e.source_session_id
-      WHERE e.source_id = ? AND ${scope.sql} LIMIT 1
-    `).get(sourceId, ...scope.params);
+  experienceVisibleToCharacter(sourceId: string, _character: string): boolean {
+    const row = this.db.prepare("SELECT 1 FROM memory_experiences WHERE source_id = ? LIMIT 1").get(sourceId);
     return Boolean(row);
   }
 

@@ -150,7 +150,7 @@ test("POST /api/chat reports provider failure as an SSE error event", async () =
   }
 });
 
-test("each character keeps its own history and gets its own persona", async () => {
+test("chat history is shared while each reply uses the selected persona", async () => {
   const store = new ChatStore(":memory:");
   const seen: ChatMessage[][] = [];
   const provider = new FallbackChatProvider([scripted(["[emotion:happy]好"], seen)]);
@@ -161,14 +161,17 @@ test("each character keeps its own history and gets its own persona", async () =
   assert.equal(chats.length, 2);
   assert.ok(chats[0][0].content.startsWith("# 角色设定：大肥鱼"));
   assert.ok(chats[1][0].content.startsWith("# 角色设定：小克"));
-  // 小克的上下文里看不到大肥鱼的对话。
-  assert.deepEqual(chats[1].filter((message) => message.role !== "system").map((message) => message.content), ["早"]);
-  assert.deepEqual(store.recent(10, "deepseek").map((m) => m.content), ["你好呀", "好"]);
-  assert.deepEqual(store.recent(10, "claude").map((m) => m.content), ["早", "好"]);
-  assert.deepEqual(store.recent(10, "whale"), []);
+  // 小克获得共同聊天上下文，但回复仍使用小克的人格设定。
+  const sharedContext = chats[1].filter((message) => message.role !== "system").map((message) => message.content);
+  assert.ok(sharedContext.includes("你好呀"));
+  assert.ok(sharedContext.includes("早"));
+  assert.deepEqual(store.recent(10, "deepseek").map((m) => m.content), ["你好呀", "好", "早", "好"]);
+  assert.deepEqual(store.recent(10, "claude").map((m) => m.content), ["你好呀", "好", "早", "好"]);
+  assert.deepEqual(store.recent(10, "whale").map((m) => m.content), ["你好呀", "好", "早", "好"]);
+  assert.equal(store.listSessions("claude").length, 1);
 });
 
-test("the chat routes validate the character and scope history by it", async () => {
+test("chat routes validate the persona and return shared history", async () => {
   const store = new ChatStore(":memory:");
   const server = createApiServer({ config: loadConfig({}), provider: new FallbackChatProvider([scripted(["好"])]), store });
   const base = await new Promise<string>((resolve) => server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
@@ -178,10 +181,13 @@ test("the chat routes validate the character and scope history by it", async () 
     const ok = await post({ message: "嗨", character: "chatgpt" });
     assert.equal(ok.status, 200);
     await ok.text(); // 等回复流结束再查历史
+    const next = await post({ message: "早呀", character: "claude" });
+    assert.equal(next.status, 200);
+    await next.text();
     const mine = (await (await fetch(`${base}/api/chat/history?character=chatgpt`)).json()) as { messages: unknown[] };
     const other = (await (await fetch(`${base}/api/chat/history?character=claude`)).json()) as { messages: unknown[] };
-    assert.equal(mine.messages.length, 2);
-    assert.equal(other.messages.length, 0);
+    assert.equal(mine.messages.length, 4);
+    assert.deepEqual(other.messages, mine.messages);
     assert.equal((await fetch(`${base}/api/chat/history?character=nope`)).status, 400);
   } finally {
     server.close();

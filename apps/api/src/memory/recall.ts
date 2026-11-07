@@ -42,8 +42,7 @@ function localFactLine(fact: StoredFact): string {
   return `${period}，${fact.subject}的${fact.predicate}：${fact.value}${evidence}`;
 }
 
-function memoryLine(entry: MemoryEntry, store: ChatStore, query: string, character: CharacterId): { kind: "fact" | "experience"; text: string } | undefined {
-  if (entry.sourceId?.startsWith("learned:chat:") && entry.sourceId.split(":")[2] !== character) return undefined;
+function memoryLine(entry: MemoryEntry, store: ChatStore, query: string): { kind: "fact" | "experience"; text: string } | undefined {
   if (entry.sourceId?.startsWith("fact:")) {
     const factId = Number(entry.sourceId.slice("fact:".length));
     const fact = Number.isInteger(factId) ? store.getFact(factId) : undefined;
@@ -52,7 +51,6 @@ function memoryLine(entry: MemoryEntry, store: ChatStore, query: string, charact
   }
   const archived = entry.sourceId ? store.experienceBySourceId(entry.sourceId) : undefined;
   if (archived) {
-    if (!store.experienceVisibleToCharacter(archived.sourceId, character)) return undefined;
     if (!matchesTimeWindow(archived.createdAt, query)) return undefined;
     return {
       kind: "experience",
@@ -79,11 +77,10 @@ function archivedLearnedLine(archived: StoredExperience) {
   };
 }
 
-function learnedLine(entry: MemoryEntry, store: ChatStore, query: string, character: CharacterId): { text: string; createdAt?: string; provenance: string } | undefined {
-  if (entry.sourceId?.startsWith("learned:chat:") && entry.sourceId.split(":")[2] !== character) return undefined;
+function learnedLine(entry: MemoryEntry, store: ChatStore, query: string): { text: string; createdAt?: string; provenance: string } | undefined {
   const archived = entry.sourceId ? store.experienceBySourceId(entry.sourceId) : undefined;
   if (archived) {
-    if (archived.kind !== "learned" || !store.experienceVisibleToCharacter(archived.sourceId, character) || !matchesTimeWindow(archived.createdAt, query)) return undefined;
+    if (archived.kind !== "learned" || !matchesTimeWindow(archived.createdAt, query)) return undefined;
     return archivedLearnedLine(archived);
   }
   if (!matchesTimeWindow(entry.createdAt, query)) return undefined;
@@ -123,7 +120,7 @@ export async function recallChatMemory(input: {
     if (fact.status === "active" || asksAboutHistory(query)) facts.push(localFactLine(fact));
   }
   const seenSources = new Set<string>();
-  for (const experience of store.searchExperiences(query, 6, character)) {
+  for (const experience of store.searchExperiences(query, 6)) {
     if (experience.kind === "learned") {
       const candidate = archivedLearnedLine(experience);
       if (!learnedCandidates.some((item) => item.provenance === candidate.provenance)) learnedCandidates.push(candidate);
@@ -133,7 +130,7 @@ export async function recallChatMemory(input: {
     seenSources.add(experience.sourceId);
   }
   const localRecent = asksAboutRecentExperiences(query)
-    ? store.recentExperiences(8, false, character).filter((experience) => experience.kind !== "learned").slice(0, 2)
+    ? store.recentExperiences(8, false).filter((experience) => experience.kind !== "learned").slice(0, 2)
     : [];
   if (asksAboutRecentExperiences(query)) {
     for (const experience of localRecent) {
@@ -159,12 +156,12 @@ export async function recallChatMemory(input: {
         const key = entry.sourceId ?? entry.id;
         if (seenSources.has(key)) continue;
         if (entry.source === "learned" || entry.sourceId?.startsWith("learned:")) {
-          const formatted = learnedLine(entry, store, query, character);
+          const formatted = learnedLine(entry, store, query);
           if (formatted && !learnedCandidates.some((candidate) => candidate.provenance === formatted.provenance)) learnedCandidates.push(formatted);
           seenSources.add(key);
           continue;
         }
-        const formatted = memoryLine(entry, store, query, character);
+        const formatted = memoryLine(entry, store, query);
         if (!formatted) continue;
         if (formatted.kind === "fact" && localFacts.some((fact) => fact.value.length > 2 && entry.text.includes(fact.value))) continue;
         const target = formatted.kind === "fact" ? facts : experiences;
@@ -175,12 +172,12 @@ export async function recallChatMemory(input: {
         const key = entry.sourceId ?? entry.id;
         if (seenSources.has(key)) continue;
         if (entry.source === "learned" || entry.sourceId?.startsWith("learned:")) {
-          const candidate = learnedLine(entry, store, query, character);
+          const candidate = learnedLine(entry, store, query);
           if (candidate && !learnedCandidates.some((item) => item.provenance === candidate.provenance)) learnedCandidates.push(candidate);
           seenSources.add(key);
           continue;
         }
-        const formatted = memoryLine(entry, store, query, character);
+        const formatted = memoryLine(entry, store, query);
         if (formatted?.kind === "experience" && !experiences.includes(formatted.text)) experiences.push(formatted.text);
         seenSources.add(key);
       }
@@ -191,7 +188,7 @@ export async function recallChatMemory(input: {
 
   const messages = store.recent(200, character, sessionId);
   const recentIds = new Set(messages.map((message) => message.id));
-  const archive = store.searchArchive(query, 12, undefined, character)
+  const archive = store.searchArchive(query, 12)
     .filter((hit) => !recentIds.has(hit.message.id))
     .map(archiveLine);
   const observationRow = store.observation(sessionId);

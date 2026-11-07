@@ -8,12 +8,10 @@
  * 首屏只有：她 + 一句话 + 两个按钮（继续 / 跳过）。
  * 第 2、3 步沿用原来的昵称 / 角色卡与约定 / 字号。
  */
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAvatarStatus } from "../avatar/avatar-state";
-import { Live2DStage } from "../avatar/Live2DStage";
 import type { AvatarEmotion } from "../avatar/model.config";
-import { VrmStage } from "../avatar/VrmStage";
 import { CHARACTERS, setCharacter, useCharacter, useModel } from "../characters";
 import { putNickname } from "../lib/profile";
 import { readA11y } from "../lib/a11y";
@@ -23,6 +21,8 @@ import { ELDER_MIN_SCALE, updateA11y } from "./settings/prefs";
 import "../styles/settings.css";
 
 const ONBOARDED_KEY = "wp.onboarded";
+const Live2DStage = lazy(() => import("../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
+const VrmStage = lazy(() => import("../avatar/VrmStage").then((module) => ({ default: module.VrmStage })));
 
 /* ---------------- 「重新看一遍引导」用的小开关（设置页调 reopenOnboarding） ---------------- */
 
@@ -203,11 +203,13 @@ export function Onboarding() {
                   </div>
                 )}
                 {/* 大肥鱼是 Live2D，其余是 VRM；按清单里的 renderer 分流，别拿 .model3.json 去喂 VRM 加载器 */}
-                {model.renderer === "live2d" ? (
-                  <Live2DStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={false} />
-                ) : (
-                  <VrmStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={false} />
-                )}
+                <Suspense fallback={null}>
+                  {model.renderer === "live2d" ? (
+                    <Live2DStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={false} />
+                  ) : (
+                    <VrmStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={false} />
+                  )}
+                </Suspense>
               </div>
 
               <p className="onb__hint">点一点她，她会看你哦。</p>

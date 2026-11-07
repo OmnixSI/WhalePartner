@@ -7,7 +7,7 @@ import { SurfEventBus } from "./events.ts";
 import { SurfScheduler } from "./scheduler.ts";
 import { SurfService, type MessageSink } from "./service.ts";
 import { SurfRepository } from "./store.ts";
-import { thumbFetcher, type ThumbFetcher } from "./thumbs.ts";
+import { repairMissingThumbnails, thumbFetcher, type ThumbFetcher } from "./thumbs.ts";
 import type { SurfQuotaProbe, VideoSource, WebSource } from "./types.ts";
 import { createWebSource } from "./web-search.ts";
 
@@ -41,6 +41,7 @@ export interface SurfWiring {
   store: SurfRepository;
   service: SurfService;
   scheduler: SurfScheduler;
+  repairMissingThumbnails(): Promise<void>;
   /** 服务入口调用：挂上调度器，返回停止函数。 */
   start(expression?: string): () => void;
 }
@@ -53,6 +54,7 @@ export function createSurf(options: SurfOptions): SurfWiring {
   const dir = options.dir ?? options.config.surfDir;
   const store = new SurfRepository(options.dbPath);
   const events = options.events ?? new SurfEventBus();
+  const thumbs = options.thumbs ?? thumbFetcher(dir);
 
   const video =
     options.video ?? (options.config.surfEnabled ? createBilibiliVideoSource() : undefined);
@@ -68,7 +70,7 @@ export function createSurf(options: SurfOptions): SurfWiring {
     memory: options.memory,
     video,
     web,
-    thumbs: options.thumbs ?? thumbFetcher(dir),
+    thumbs,
     messages: options.messages,
     journal: options.journal,
     quota: options.quota,
@@ -92,6 +94,7 @@ export function createSurf(options: SurfOptions): SurfWiring {
     store,
     service,
     scheduler,
+    repairMissingThumbnails: () => repairMissingThumbnails(store, thumbs, dir),
     start(expression?: string) {
       return scheduler.start(expression);
     },

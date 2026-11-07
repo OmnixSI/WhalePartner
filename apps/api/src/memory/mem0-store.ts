@@ -77,12 +77,10 @@ class Mem0Store implements MemoryStore {
     return (await this.list()).filter((entry) => entry.kind === "experience" && entry.source !== "learned").slice(0, limit);
   }
 
-  async recentLearnings(limit = 4, character?: string) {
-    return (await this.list()).filter((entry) => {
-      if (entry.kind !== "experience" || entry.source !== "learned") return false;
-      if (!character || !entry.sourceId?.startsWith("learned:chat:")) return true;
-      return entry.sourceId.split(":")[2] === character;
-    }).slice(0, limit);
+  async recentLearnings(limit = 4, _character?: string) {
+    return (await this.list())
+      .filter((entry) => entry.kind === "experience" && entry.source === "learned")
+      .slice(0, limit);
   }
 
   async addExperience(input: ExperienceInput) {

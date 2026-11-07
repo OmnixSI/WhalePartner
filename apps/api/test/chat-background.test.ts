@@ -9,7 +9,7 @@ import type { MemoryStore } from "../src/memory/types.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
 
-test("reflection reads recent learned material from the character-scoped archive", async () => {
+test("reflection reads recent learned material from the shared archive", async () => {
   await waitForBackgroundJobs();
   const store = new ChatStore(":memory:");
   const session = store.createSession("whale", "学习记录");

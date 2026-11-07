@@ -37,13 +37,17 @@ export function PostcardCard({ item, fresh = false, onOpen, onForget, onOpenUrl 
             type="button"
             className="pcard__photo-btn"
             onClick={() => onOpen(item)}
-            aria-label={`看这张剪报：${item.title}`}
+            aria-label={`看这张剪报：${item.title}${item.thumbError ? "，封面暂不可用" : ""}`}
+            title={item.thumbError ?? undefined}
           >
             <span className="pcard__photo" data-empty={hasPhoto ? "off" : "on"} aria-hidden>
               {hasPhoto ? (
                 <img className="pcard__img" src={thumbUrl(item.id)} alt="" loading="lazy" onError={() => setBroken(true)} />
               ) : (
-                <span className="pcard__letter">{site.slice(0, 1).toUpperCase()}</span>
+                <>
+                  <span className="pcard__letter">{site.slice(0, 1).toUpperCase()}</span>
+                  {item.thumbError && <span className="pcard__photoError">封面暂不可用</span>}
+                </>
               )}
             </span>
           </button>
@@ -89,10 +93,17 @@ export function PostcardCard({ item, fresh = false, onOpen, onForget, onOpenUrl 
             </span>
           </span>
           <span className="pcard__actions">
-            <button type="button" className="btn btn--secondary btn--sm" onClick={() => onOpenUrl(item.url)}>
-              打开
+            <button
+              type="button"
+              className="btn btn--secondary btn--sm"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenUrl(item.url);
+              }}
+            >
+              {item.kind === "video" ? "打开原视频" : "打开网页"}
             </button>
-            <button type="button" className="btn btn--quiet btn--sm pcard__forget" onClick={() => onForget(item)}>
+            <button type="button" className="btn btn--quiet btn--sm pcard__forget" onClick={(event) => { event.stopPropagation(); onForget(item); }}>
               忘掉
             </button>
           </span>
