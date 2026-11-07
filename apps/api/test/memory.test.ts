@@ -190,7 +190,7 @@ test("memory routes list, delete and add experiences with validation", async () 
     for (const bad of [{ kind: "video", title: "", text: "x" }, { kind: "video", title: "t", text: "x", url: "javascript:alert(1)" }, { title: "t", text: "x" }]) {
       assert.equal((await fetch(`${base}/api/memories/experience`, { method: "POST", headers: json, body: JSON.stringify(bad) })).status, 400);
     }
-    assert.equal((await fetch(`${base}/api/memories/experience`, { method: "POST", body: "{oops" })).status, 400);
+    assert.equal((await fetch(`${base}/api/memories/experience`, { method: "POST", headers: json, body: "{oops" })).status, 400);
     assert.equal(calls.experiences.length, 1);
   });
 });

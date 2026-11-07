@@ -14,6 +14,14 @@ export interface Turn {
   recalled?: string[];
   /** 她这句话什么情绪：给脸和名字牌用，正文里不出现标签。 */
   emotion?: import("../../avatar/model.config").AvatarEmotion;
+  /** 后端消息 id：多端事件据此去重。 */
+  serverId?: number;
+  /** 客户端幂等 id（我发的话才有）。 */
+  clientId?: string;
+  /** 说到一半被打断（保留已生成的部分）。 */
+  interrupted?: boolean;
+  /** 别的设备上正在进行的这一轮（流 id）。 */
+  streamId?: string;
 }
 
 /** 视频 / 网页进度的口语版（§7.1.5）。原始 message 只放 title。 */
