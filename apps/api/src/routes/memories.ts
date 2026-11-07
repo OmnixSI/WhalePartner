@@ -20,7 +20,7 @@ export async function handleMemoriesRoute(
     if (request.method === "GET" && url.pathname === "/api/memories") {
       const who = url.searchParams.get("character") ?? "whale";
       if (!isCharacterId(who)) throw new ChatInputError("未知的角色。");
-      return await listMemories(deps.store, memory, response, who);
+      return await listMemories(deps.store, memory, response);
     }
     if (request.method === "GET" && url.pathname === "/api/memories/explorer") {
       const character = url.searchParams.get("character") ?? "whale";
@@ -92,7 +92,7 @@ function dateBoundary(value: string | null, afterDay: boolean): string | undefin
 }
 
 
-/** B4：图鉴编号。按 (角色, 条目) 惰性分配，删掉旧条目不回退，保证 No. 永不复用。 */
+/** B4：图鉴编号。按条目惰性分配，删掉旧条目不回退，保证 No. 永不复用。 */
 function assignSeq(dbPath: string, character: string, refs: string[]): Map<string, number> {
   const out = new Map<string, number>();
   let db: DatabaseSync | undefined;
@@ -121,7 +121,7 @@ function assignSeq(dbPath: string, character: string, refs: string[]): Map<strin
   return out;
 }
 
-async function listMemories(store: ServerDeps["store"], memory: MemoryStore | undefined, response: ServerResponse, character = "whale") {
+async function listMemories(store: ServerDeps["store"], memory: MemoryStore | undefined, response: ServerResponse) {
   let entries: Awaited<ReturnType<MemoryStore["list"]>> = [];
   let vectorError: string | undefined;
   if (memory) {
@@ -168,8 +168,8 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
     ...experiences,
     ...entries.filter((entry) => (!entry.sourceId || !indexedSources.has(entry.sourceId)) && !(entry.kind === "fact" && structuredValues.some((value) => entry.text.includes(value)))),
   ];
-  // B4：给每条分配 No. 编号（同一角色内单调、删了也不复用）。
-  const seqs = assignSeq(store.dbPath, character, all.map((entry) => entry.id));
+  // B4：给每条分配共享图鉴 No. 编号（单调、删了也不复用）。
+  const seqs = assignSeq(store.dbPath, "shared", all.map((entry) => entry.id));
   return sendJson(response, 200, {
     entries: all.map((entry) => ({ ...entry, seq: seqs.get(entry.id) ?? null })),
     ...(vectorError ? { vectorError } : {}),

@@ -65,9 +65,9 @@
 
 ## 布局
 
-- **桌面（≥960px）**：左侧导航 `--nav-w 112px`（鲸尾 + 手绘图标 + 文字），聊天页是 `.room` 网格 `minmax(--scene-min 480px, 1fr) + --backlog-w 360px`：左边舞台（她 + 对话框 + 回信条），右边「往回翻」。
+- **桌面（≥960px）**：左侧导航 `--nav-w 112px`（聊天、日记、记忆、见闻、设置），聊天页是 `.room` 网格 `minmax(--scene-min 480px, 1fr) + --backlog-w 360px`：左边舞台（她 + 对话框 + 回信条），右边「往回翻」默认收起，用户点击后展开。
 - **对话框**：`.dlg` 宽 `min(640px, 100%)` 居中于舞台，`min-height 132px`、`max-height min(320px, 38dvh)`。
-- **内容页（日记 / 记忆 / 设置）**：靠左单栏，`--page-max 760px`；记忆页 `--memory-max 960px`，卡片网格 `repeat(auto-fill, minmax(240px, 1fr))`（1180 宽 = 3 列，390 宽 = 1 列）。用细线分段，不装进卡片矩阵。
+- **内容页（日记 / 记忆 / 见闻 / 设置）**：靠左单栏，`--page-max 760px`；记忆页 `--memory-max 960px`，卡片网格 `repeat(auto-fill, minmax(240px, 1fr))`（1180 宽 = 3 列，390 宽 = 1 列）。用细线分段，不装进卡片矩阵。
 - **手机（<960px）**：导航变底部文字栏（`--tabbar-h 64px`，处理安全区）；聊天页舞台 34–42dvh，回信条永远在 tabbar 之上；聊天页的「往回翻」收进顶部 `.mbar`。
 - **设置行**：`min-height 72px`，老人模式 `88px`。
 - **触控**：`--hit 44px`（老人 56）；输入框 `--field-h 52px`，且 `min-height: max(--field-h, --hit)`。所有可见 `button/a/[role]/input/textarea` 都在闸门里量。
@@ -83,7 +83,7 @@
 
 ## 适老与无障碍
 
-- 老人模式：根字号 `16px × --scale`，且 `--scale ≥ 1.25`（=20px）；`--hit 56`；`--ink-mute = --ink-soft`（取消最浅灰）；`--line-strong = --ink-mute`；导航只留 3 项（记忆从「设置 › 她记得的事」进）；`--r-md 16`；动效进 calm。
+- 老人模式：根字号 `16px × --scale`，且 `--scale ≥ 1.25`（=20px）；`--hit 56`；`--ink-mute = --ink-soft`（取消最浅灰）；`--line-strong = --ink-mute`；记忆从「设置 › 她记得的事」进，聊天、日记、见闻和设置保留在导航；`--r-md 16`；动效进 calm。
 - 对比度：正文 ≥7:1，任何文字 ≥4.5:1，控件边界 ≥3:1。`scripts/redesign/check-contrast.mjs` 对 90 组（亮/暗 × 4 角色）逐对验算。
 - 焦点：`:focus-visible` 双环 `--focus-ring`（纸 + 强调色），任何底色上都可见。
 - 语义：图标一律 `aria-hidden`，认路靠文字；装饰（浪、纸纹）`aria-hidden` + `pointer-events:none`；`<time>` 不用 `aria-label`（ARIA 禁止），改用 `sr-only` 文本。
@@ -112,6 +112,10 @@
 | `styles/layout.css` | 外框、导航、内容页通用排版、账号接入 |
 | `styles/kit.css` | 隐藏样品页 `/__kit`（只看，不进导航） |
 | `motion/tokens.ts` | 弹簧与 motion 侧的时长常量 |
+| `components/diary/useDiaryPageData.ts` | 周/月/年范围内读取共享日记与旧视频队列 |
+| `components/diary/DailyJournalLeaf.tsx` | 综合日记正文、日期与可展开来源 |
+| `avatar/live2d/actions.ts` | 过滤当前模型短动作并随机选择一次播放 |
+| `lib/external-url.ts` | Tauri 桌面与 Web 共用的外链打开入口 |
 
 ## 机器检查（交付闸门）
 

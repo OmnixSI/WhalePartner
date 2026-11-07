@@ -29,44 +29,44 @@ export class SessionRepository {
     return { id, character, title, titleManual: false, createdAt: now, updatedAt: now, messageCount: 0 };
   }
 
-  renameSession(id: string, character: string, title: string): ChatSession | undefined {
+  renameSession(id: string, _character: string, title: string): ChatSession | undefined {
     const now = new Date().toISOString();
     const result = this.db.prepare(`
       UPDATE chat_sessions SET title = ?, title_manual = 1, updated_at = ?
-      WHERE id = ? AND character = ?
-    `).run(title, now, id, character);
-    return Number(result.changes) > 0 ? this.getSession(id, character) : undefined;
+      WHERE id = ?
+    `).run(title, now, id);
+    return Number(result.changes) > 0 ? this.getSession(id) : undefined;
   }
 
-  getSession(id: string, character?: string): ChatSession | undefined {
+  getSession(id: string, _character?: string): ChatSession | undefined {
     const row = this.db.prepare(`
       SELECT s.id, s.character, s.title, s.title_manual AS titleManual, s.created_at AS createdAt, s.updated_at AS updatedAt,
              COUNT(m.id) AS messageCount
       FROM chat_sessions s LEFT JOIN messages m ON m.session_id = s.id
-      WHERE s.id = ? ${character ? "AND s.character = ?" : ""}
+      WHERE s.id = ?
       GROUP BY s.id
-    `).get(...(character ? [id, character] : [id])) as unknown as (ChatSession & { messageCount: number }) | undefined;
+    `).get(id) as unknown as (ChatSession & { messageCount: number }) | undefined;
     return row ? { ...row, titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) } : undefined;
   }
 
   getOrCreateSession(character: string, id?: string): ChatSession {
     if (id) {
-      const session = this.getSession(id, character);
-      if (!session) throw new Error("没有找到这个角色的聊天会话。");
+      const session = this.getSession(id);
+      if (!session) throw new Error("没有找到这个聊天会话。");
       return session;
     }
-    const latest = this.db.prepare("SELECT id FROM chat_sessions WHERE character = ? ORDER BY updated_at DESC, created_at DESC LIMIT 1").get(character) as unknown as { id: string } | undefined;
-    return latest ? this.getSession(latest.id, character)! : this.createSession(character);
+    const latest = this.db.prepare("SELECT id FROM chat_sessions ORDER BY updated_at DESC, created_at DESC LIMIT 1").get() as unknown as { id: string } | undefined;
+    return latest ? this.getSession(latest.id)! : this.createSession(character);
   }
 
-  listSessions(character: string, limit = 100): ChatSession[] {
+  listSessions(_character: string, limit = 100): ChatSession[] {
     const rows = this.db.prepare(`
       SELECT s.id, s.character, s.title, s.title_manual AS titleManual, s.created_at AS createdAt, s.updated_at AS updatedAt,
              COUNT(m.id) AS messageCount
       FROM chat_sessions s LEFT JOIN messages m ON m.session_id = s.id
-      WHERE s.character = ? GROUP BY s.id
+      GROUP BY s.id
       ORDER BY s.updated_at DESC, s.created_at DESC LIMIT ?
-    `).all(character, limit) as unknown as Array<ChatSession & { messageCount: number }>;
+    `).all(limit) as unknown as Array<ChatSession & { messageCount: number }>;
     return rows.map((row) => ({ ...row, titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) }));
   }
 
@@ -90,12 +90,13 @@ export class SessionRepository {
     return { ...result };
   }
 
-  recent(limit: number, character = "whale", sessionId?: string): StoredMessage[] {
-    const where = sessionId ? "session_id = ?" : "character = ?";
+  recent(limit: number, _character?: string, sessionId?: string): StoredMessage[] {
+    const where = sessionId ? "session_id = ?" : "1 = 1";
+    const params = sessionId ? [sessionId, limit] : [limit];
     const rows = this.db.prepare(`
       SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
       FROM messages WHERE ${where} ORDER BY id DESC LIMIT ?
-    `).all(sessionId ?? character, limit) as unknown as StoredMessage[];
+    `).all(...params) as unknown as StoredMessage[];
     return rows.map(mapMessage).reverse();
   }
 
@@ -149,7 +150,7 @@ export class SessionRepository {
     }
   }
 
-  searchArchive(query: string, limit = 6, excludeSessionId?: string, character?: string): ArchiveHit[] {
+  searchArchive(query: string, limit = 6, excludeSessionId?: string, _character?: string): ArchiveHit[] {
     const match = matchExpression(query);
     const window = timeWindow(query);
     if (!match && !window) return [];
@@ -167,10 +168,6 @@ export class SessionRepository {
       filters.push("m.session_id <> ?");
       params.push(excludeSessionId);
     }
-    if (character) {
-      filters.push("m.character = ?");
-      params.push(character);
-    }
     const rows = this.db.prepare(`
       SELECT m.id, m.role, m.content, m.emotion, m.character, m.session_id AS sessionId,
              m.created_at AS createdAt, s.title AS sessionTitle, ${match ? "bm25(message_search)" : "0"} AS rank
@@ -182,21 +179,24 @@ export class SessionRepository {
     return rows.map((row) => ({ message: { ...row }, sessionTitle: row.sessionTitle, rank: Number(row.rank) }));
   }
 
-  getNote(character: string): { text: string; assistantCount: number; updatedAt: string } | undefined {
-    const row = this.db.prepare("SELECT text, assistant_count AS assistantCount, updated_at AS updatedAt FROM character_notes WHERE character = ?").get(character) as unknown as { text: string; assistantCount: number; updatedAt: string } | undefined;
+  getNote(_character: string): { text: string; assistantCount: number; updatedAt: string } | undefined {
+    const row = this.db.prepare(`
+      SELECT text, assistant_count AS assistantCount, updated_at AS updatedAt FROM character_notes
+      ORDER BY CASE WHEN character = 'shared' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
+    `).get() as unknown as { text: string; assistantCount: number; updatedAt: string } | undefined;
     return row ? { ...row } : undefined;
   }
 
-  setNote(character: string, text: string, assistantCount: number) {
+  setNote(_character: string, text: string, assistantCount: number) {
     this.db.prepare(`
       INSERT INTO character_notes (character, text, assistant_count) VALUES (?, ?, ?)
       ON CONFLICT(character) DO UPDATE SET text = excluded.text, assistant_count = excluded.assistant_count,
         updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-    `).run(character, text, assistantCount);
+    `).run("shared", text, assistantCount);
   }
 
-  countAssistant(character: string): number {
-    const row = this.db.prepare("SELECT COUNT(*) AS n FROM messages WHERE role = 'assistant' AND character = ?").get(character) as unknown as { n: number };
+  countAssistant(_character?: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM messages WHERE role = 'assistant'").get() as unknown as { n: number };
     return Number(row.n);
   }
 }

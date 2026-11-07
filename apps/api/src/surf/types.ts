@@ -42,6 +42,8 @@ export interface SurfItem {
   url: string;
   sourceSite: string;
   thumbPath: string | null;
+  thumbSourceUrl: string | null;
+  thumbError: string | null;
   summary: string;
   comment: string;
   tags: string[];
@@ -63,6 +65,7 @@ export interface SurfFeedItem {
   url: string;
   sourceSite: string;
   thumb: string | null;
+  thumbError: string | null;
   summary: string;
   comment: string;
   tags: string[];

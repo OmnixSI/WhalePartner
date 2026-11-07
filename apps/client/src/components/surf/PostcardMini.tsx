@@ -9,7 +9,7 @@ import { siteLabel, stampDate, thumbUrl, timeOf, type SurfFeedItem } from "../..
 
 type Props = {
   item: Pick<SurfFeedItem, "id" | "kind" | "title" | "sourceSite" | "thumb" | "url" | "createdAt">;
-  onOpenUrl?: (url: string) => void;
+  onOpenUrl: (url: string) => void;
 };
 
 export function PostcardMini({ item, onOpenUrl }: Props) {
@@ -32,9 +32,12 @@ export function PostcardMini({ item, onOpenUrl }: Props) {
         <button
           type="button"
           className="btn btn--quiet btn--sm"
-          onClick={() => (onOpenUrl ? onOpenUrl(item.url) : window.open(item.url, "_blank", "noopener"))}
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenUrl(item.url);
+          }}
         >
-          打开
+          打开原链接
         </button>
         <button type="button" className="btn btn--quiet btn--sm" onClick={() => navigate("/surf")}>
           看她的见闻 ›

@@ -52,13 +52,13 @@ const REFLECT_EVERY = 12;
 
 export function queueReflection(deps: ChatDeps, character: CharacterId, force: boolean) {
   const { provider, store, memory } = deps;
-  const countAtQueue = store.countAssistant(character);
+  const countAtQueue = store.countAssistant();
   const previousAtQueue = store.getNote(character);
   if (!force && countAtQueue - (previousAtQueue?.assistantCount ?? 0) < REFLECT_EVERY) return;
   queueBackground("写近况小记", async () => {
-    const sourceMessages = store.recent(14, character);
+    const sourceMessages = store.recent(14);
     if (sourceMessages.length === 0) return;
-    const count = store.countAssistant(character);
+    const count = store.countAssistant();
     const previous = store.getNote(character);
     if (!force && count - (previous?.assistantCount ?? 0) < REFLECT_EVERY) return;
     if (!force) {
@@ -73,9 +73,9 @@ export function queueReflection(deps: ChatDeps, character: CharacterId, force: b
         );
       }
     }
-    let learned = store.recentLearnings(4, character).map((entry) => entry.text);
+    let learned = store.recentLearnings(4).map((entry) => entry.text);
     if (learned.length === 0 && memory) {
-      learned = (await memory.recentLearnings(4, character).catch(() => [])).map((entry) => entry.text);
+      learned = (await memory.recentLearnings(4).catch(() => [])).map((entry) => entry.text);
     }
     const chat = sourceMessages.map((message) => `${message.role === "user" ? "用户" : "她"}：${message.content.slice(0, 160)}`);
     const note = await reflect(provider, { name: CHARACTERS[character].name, previous: previous?.text, learned, chat });
@@ -85,7 +85,7 @@ export function queueReflection(deps: ChatDeps, character: CharacterId, force: b
 
 export function queueLearning(deps: ChatDeps, character: CharacterId, material: { title: string; text: string }, key: string, sourceSessionIds: string[] = []) {
   queueBackground("整理学到的东西", async () => {
-    const survivingSessionIds = sourceSessionIds.filter((id) => deps.store.getSession(id, character));
+    const survivingSessionIds = sourceSessionIds.filter((id) => deps.store.getSession(id));
     if (sourceSessionIds.length > 0 && survivingSessionIds.length === 0) return;
     const learned = await learnFrom({ provider: deps.provider, memory: deps.memory, store: deps.store }, material, key, undefined, survivingSessionIds);
     if (learned.length > 0) queueReflection(deps, character, true);

@@ -58,10 +58,10 @@ export class ChatStore {
   remove(id: number) { return this.#sessions.remove(id); }
   searchArchive(query: string, limit?: number, excludeSessionId?: string, character?: string): ArchiveHit[] { return this.#sessions.searchArchive(query, limit, excludeSessionId, character); }
   listMemoryExplorer(filters: MemoryExplorerFilters) { return listMemoryExplorer(this.#db, filters); }
-  journalSources(character: string, from: string, to: string) { return journalSourcesForDay(this.#db, character, from, to); }
+  journalSources(_character: string | undefined, from: string, to: string) { return journalSourcesForDay(this.#db, undefined, from, to); }
   getNote(character: string) { return this.#sessions.getNote(character); }
   setNote(character: string, text: string, assistantCount: number) { return this.#sessions.setNote(character, text, assistantCount); }
-  countAssistant(character: string) { return this.#sessions.countAssistant(character); }
+  countAssistant(character?: string) { return this.#sessions.countAssistant(character); }
 
   saveFacts(sourceMessageId: number, candidates: FactCandidate[]) { return this.#facts.saveFacts(sourceMessageId, candidates); }
   getFact(id: number) { return this.#facts.getFact(id); }

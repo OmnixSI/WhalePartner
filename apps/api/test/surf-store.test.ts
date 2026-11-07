@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { defaultSettings } from "../src/surf/settings.ts";
 import { SurfRepository } from "../src/surf/store.ts";
 import { SurfService } from "../src/surf/service.ts";
+import { repairMissingThumbnails } from "../src/surf/thumbs.ts";
 import { fakeMemory, fakeProvider, makeStore, tempDb } from "./surf-fakes.ts";
 
 const at = (day: number) => `2026-11-${String(day).padStart(2, "0")}T08:00:00.000Z`;
@@ -50,8 +51,51 @@ test("条目：同角色同去重键只收一条", () => {
   };
   assert.ok(store.insertItem(input));
   assert.equal(store.insertItem(input), undefined, "第二次插同一个去重键应该被 UNIQUE 挡住");
-  assert.equal(store.feed({ character: "whale", page: 1, pageSize: 20 }).total, 1);
+  const otherSession = store.startSession("claude", "2026-11-07 09:30", at(7)).session;
+  store.insertItem({ ...input, character: "claude", sessionId: otherSession.id, dedupeKey: "bv:BV1yy411c7mD" });
+  assert.equal(store.feed({ character: "whale", page: 1, pageSize: 20 }).total, 2);
+  assert.equal(store.feed({ character: "claude", page: 1, pageSize: 20 }).total, 2, "见闻列表应包含不同人格下保存的条目");
   store.close();
+});
+
+test("缺失的视频封面从 BV 号恢复后保存到本地，并复用缓存", async () => {
+  const { store, dir } = makeStore();
+  const session = store.startSession("whale", "2026-11-07 09:30", at(7)).session;
+  const item = store.insertItem({
+    character: "whale", sessionId: session.id, kind: "video", title: "海里的声音",
+    url: "https://www.bilibili.com/video/BV1xx411c7mD", sourceSite: "bilibili",
+    summary: "视频摘要", comment: "想讲给你听", tags: [], score: 4,
+    dedupeKey: "bv:BV1xx411c7mD", createdAt: at(7),
+  })!;
+  let metadataReads = 0;
+  let downloads = 0;
+  const fetcher = {
+    async fetch(_url: string, id: number) {
+      downloads += 1;
+      mkdirSync(join(dir, "thumbs"), { recursive: true });
+      writeFileSync(join(dir, "thumbs", `${id}.jpg`), "image-bytes");
+      return `thumbs/${id}.jpg`;
+    },
+  };
+  const coverUrl = async (bvid: string) => {
+    metadataReads += 1;
+    assert.equal(bvid, "BV1xx411c7mD");
+    return "https://i.example.test/cover.jpg";
+  };
+  try {
+    await repairMissingThumbnails(store, fetcher, dir, coverUrl);
+    const repaired = store.item(item.id)!;
+    assert.equal(repaired.thumbPath, `thumbs/${item.id}.jpg`);
+    assert.equal(repaired.thumbSourceUrl, "https://i.example.test/cover.jpg");
+    assert.equal(repaired.thumbError, null);
+    assert.equal(existsSync(join(dir, repaired.thumbPath!)), true);
+
+    await repairMissingThumbnails(store, fetcher, dir, coverUrl);
+    assert.equal(metadataReads, 1);
+    assert.equal(downloads, 1);
+  } finally {
+    store.close();
+  }
 });
 
 test("feed：分页、按类型筛、按关键词搜、隐藏的不出现", () => {

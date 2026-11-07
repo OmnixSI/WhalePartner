@@ -9,5 +9,5 @@ import { useCharacter } from "../characters";
  */
 export function ChatPage() {
   const character = useCharacter();
-  return <ChatPanel key={character.id} character={character} />;
+  return <ChatPanel character={character} />;
 }

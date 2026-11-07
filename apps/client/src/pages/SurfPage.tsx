@@ -15,6 +15,7 @@ import { SurfStatus, type SurfPhase } from "../components/surf/SurfStatus";
 import { useSurfEvents, type SurfItemEvent, type SurfShareEvent } from "../components/surf/useSurfEvents";
 import { useCharacter } from "../characters";
 import { useInkEnv } from "../components/ink/useCalm";
+import { openExternalUrl } from "../lib/external-url";
 import {
   dayLabelOf,
   deleteSurfItem,
@@ -23,7 +24,6 @@ import {
   isFresh,
   markSeen,
   nextRunText,
-  openOriginal,
   putSurfSettings,
   readSeenId,
   runSurf,
@@ -58,6 +58,13 @@ export function SurfPage() {
   const [detail, setDetail] = useState<SurfFeedItem | null>(null);
   const [confirming, setConfirming] = useState<SurfFeedItem | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const openSourceUrl = (url: string) => {
+    void openExternalUrl(url).catch((cause: unknown) => {
+      console.warn("Could not open surf source URL", cause);
+      setToast(cause instanceof Error ? `没能打开原链接：${cause.message}` : "没能打开原链接，请检查系统默认浏览器。");
+    });
+  };
 
   // 进来之前的「已看」水位：用来判断哪张卡是新的，进入本页后推进水位。
   const seenAtMount = useRef(readSeenId());
@@ -115,6 +122,7 @@ export function SurfPage() {
       url: "",
       sourceSite: event.sourceSite,
       thumb: event.thumb,
+      thumbError: null,
       summary: "",
       comment: event.comment,
       tags: [],
@@ -337,7 +345,7 @@ export function SurfPage() {
                       fresh={isFresh(item, seenAtMount.current)}
                       onOpen={setDetail}
                       onForget={setConfirming}
-                      onOpenUrl={openOriginal}
+                      onOpenUrl={openSourceUrl}
                     />
                   ))}
                 </ul>
@@ -360,7 +368,7 @@ export function SurfPage() {
         )}
       </div>
 
-      <PostcardDetail item={detail} onClose={() => setDetail(null)} onForget={setConfirming} onOpenUrl={openOriginal} />
+      <PostcardDetail item={detail} onClose={() => setDetail(null)} onForget={setConfirming} onOpenUrl={openSourceUrl} />
       <ConfirmDialog
         open={Boolean(confirming)}
         onOpenChange={(open) => !open && setConfirming(null)}

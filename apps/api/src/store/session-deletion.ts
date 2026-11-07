@@ -22,10 +22,15 @@ interface ExperienceRow {
 const isChatMemory = (row: Pick<ExperienceRow, "kind" | "sourceId">) =>
   row.kind === "chat" || row.sourceId.startsWith("chat:") || row.sourceId.startsWith("learned:chat:") || row.sourceId.startsWith("journal:");
 
-export function deleteChatSession(db: DatabaseSync, sessionId: string, character: string): SessionDeletion | undefined {
-  const session = db.prepare("SELECT character FROM chat_sessions WHERE id = ? AND character = ?")
-    .get(sessionId, character) as unknown as SessionRow | undefined;
+export function deleteChatSession(db: DatabaseSync, sessionId: string, _character: string): SessionDeletion | undefined {
+  const session = db.prepare("SELECT character FROM chat_sessions WHERE id = ?")
+    .get(sessionId) as unknown as SessionRow | undefined;
   if (!session) return undefined;
+
+  const sessionFactIds = (db.prepare(`
+    SELECT DISTINCT fs.fact_id AS id FROM memory_fact_sources fs
+    JOIN messages m ON m.id = fs.message_id WHERE m.session_id = ?
+  `).all(sessionId) as unknown as Array<{ id: number }>).map((row) => row.id);
 
   const legacyVectorIds = (db.prepare("SELECT vector_entry_id AS vectorEntryId FROM memory_legacy_sources WHERE session_id = ?")
     .all(sessionId) as unknown as Array<{ vectorEntryId: string }>).map((row) => row.vectorEntryId);
@@ -88,17 +93,18 @@ export function deleteChatSession(db: DatabaseSync, sessionId: string, character
     db.prepare("DELETE FROM message_search WHERE rowid IN (SELECT id FROM messages WHERE session_id = ?)").run(sessionId);
     db.prepare("DELETE FROM messages WHERE session_id = ?").run(sessionId);
 
-    const orphanFacts = db.prepare(`
-      SELECT f.id, f.vector_entry_id AS vectorEntryId FROM memory_facts f
-      WHERE NOT EXISTS (SELECT 1 FROM memory_fact_sources fs WHERE fs.fact_id = f.id)
-    `).all() as unknown as Array<{ id: number; vectorEntryId: string | null }>;
-    for (const fact of orphanFacts) {
+    for (const factId of sessionFactIds) {
+      const fact = db.prepare(`
+        SELECT f.vector_entry_id AS vectorEntryId FROM memory_facts f
+        WHERE f.id = ? AND NOT EXISTS (SELECT 1 FROM memory_fact_sources fs WHERE fs.fact_id = f.id)
+      `).get(factId) as unknown as { vectorEntryId: string | null } | undefined;
+      if (!fact) continue;
       if (fact.vectorEntryId) experienceVectorIds.push(fact.vectorEntryId);
-      db.prepare("DELETE FROM fact_search WHERE rowid = ?").run(fact.id);
-      db.prepare("DELETE FROM memory_facts WHERE id = ?").run(fact.id);
+      db.prepare("DELETE FROM fact_search WHERE rowid = ?").run(factId);
+      db.prepare("DELETE FROM memory_facts WHERE id = ?").run(factId);
     }
 
-    db.prepare("DELETE FROM character_notes WHERE character = ?").run(character);
+    db.prepare("DELETE FROM character_notes WHERE character = 'shared'").run();
     if (hasJournalSources) {
       db.prepare(`
         DELETE FROM daily_journals WHERE id IN (
@@ -106,9 +112,9 @@ export function deleteChatSession(db: DatabaseSync, sessionId: string, character
         )
       `).run(sessionId);
     }
-    db.prepare("DELETE FROM chat_sessions WHERE id = ? AND character = ?").run(sessionId, character);
-    const remaining = db.prepare("SELECT COUNT(*) AS count FROM messages WHERE character = ? AND role = 'assistant'")
-      .get(character) as unknown as { count: number };
+    db.prepare("DELETE FROM chat_sessions WHERE id = ?").run(sessionId);
+    const remaining = db.prepare("SELECT COUNT(*) AS count FROM messages WHERE role = 'assistant'")
+      .get() as unknown as { count: number };
     db.exec("COMMIT");
     return {
       character: session.character,

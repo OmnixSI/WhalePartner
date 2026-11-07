@@ -107,7 +107,8 @@ export async function handleChatHistoryRoute(
       unlockJournals();
       for (const affected of deleted.affectedJournals) {
         try {
-          await deps.journal?.generate(affected.character as CharacterId, affected.localDate);
+          const author = affected.character === "shared" ? DEFAULT_CHARACTER : affected.character as CharacterId;
+          await deps.journal?.generate(author, affected.localDate);
         } catch (error) {
           console.warn("删除会话后重写日记失败：", error instanceof Error ? error.message : error);
         }
@@ -129,8 +130,8 @@ export async function handleChatHistoryRoute(
       return true;
     }
     const sessionId = url.searchParams.get("sessionId") ?? undefined;
-    if (sessionId && !deps.store.getSession(sessionId, character)) {
-      sendJson(response, 404, { error: "没有找到这个角色的聊天会话。" });
+    if (sessionId && !deps.store.getSession(sessionId)) {
+      sendJson(response, 404, { error: "没有找到这个聊天会话。" });
       return true;
     }
     const aroundId = Number(url.searchParams.get("aroundId")) || undefined;
@@ -143,7 +144,7 @@ export async function handleChatHistoryRoute(
       sendJson(response, 404, { error: "没有找到这条聊天原文。" });
       return true;
     }
-    sendJson(response, 200, { messages: around ?? deps.store.recent(limit, character, sessionId) });
+    sendJson(response, 200, { messages: around ?? deps.store.recent(limit, undefined, sessionId) });
     return true;
   }
 

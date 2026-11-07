@@ -30,6 +30,7 @@ export interface SurfFeedItem {
   url: string;
   sourceSite: string;
   thumb: string | null;
+  thumbError: string | null;
   summary: string;
   comment: string;
   tags: string[];
@@ -212,12 +213,6 @@ export function stampDate(iso: string): string {
 export function siteLabel(site: string): string {
   if (site === "bilibili") return "B站";
   return site.replace(/^www\./, "");
-}
-
-/** 打开原链接：Tauri 里走系统浏览器，浏览器里开新标签。 */
-export function openOriginal(url: string) {
-  if (!url) return;
-  window.open(url, "_blank", "noopener");
 }
 
 export function nextRunText(status: SurfStatus | null): string {

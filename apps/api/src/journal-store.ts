@@ -87,23 +87,32 @@ export class JournalStore {
     `);
   }
 
-  listCurrent(character: string, options: { from?: string; to?: string; limit?: number; offset?: number } = {}): { items: DailyJournal[]; total: number } {
+  listCurrent(character?: string, options: { from?: string; to?: string; limit?: number; offset?: number } = {}): { items: DailyJournal[]; total: number } {
     const from = options.from ?? "0000-01-01";
     const to = options.to ?? "9999-12-31";
     const limit = Math.max(1, Math.min(366, Math.trunc(options.limit ?? 100)));
     const offset = Math.max(0, Math.trunc(options.offset ?? 0));
+    const scope = character ? "j.character = ? AND" : "";
+    const params = character ? [character, from, to] : [from, to];
     const rows = this.#db.prepare(`
+      WITH selected AS (
+        SELECT j.*, ROW_NUMBER() OVER (
+          PARTITION BY j.local_date ORDER BY j.updated_at DESC, j.character = 'shared' DESC, j.id DESC
+        ) AS day_rank
+        FROM daily_journals j
+        WHERE ${scope} j.local_date >= ? AND j.local_date <= ?
+      )
       SELECT j.id, j.character, j.local_date AS localDate, r.revision, r.text,
         r.sources_json AS sourcesJson, r.model_id AS modelId, r.created_at AS createdAt
-      FROM daily_journals j JOIN daily_journal_revisions r
+      FROM selected j JOIN daily_journal_revisions r
         ON r.journal_id = j.id AND r.revision = j.current_revision
-      WHERE j.character = ? AND j.local_date >= ? AND j.local_date <= ?
+      WHERE j.day_rank = 1
       ORDER BY j.local_date DESC LIMIT ? OFFSET ?
-    `).all(character, from, to, limit, offset) as unknown as JournalRow[];
+    `).all(...params, limit, offset) as unknown as JournalRow[];
     const total = this.#db.prepare(`
-      SELECT COUNT(*) AS count FROM daily_journals
-      WHERE character = ? AND local_date >= ? AND local_date <= ?
-    `).get(character, from, to) as unknown as { count: number };
+      SELECT COUNT(DISTINCT local_date) AS count FROM daily_journals
+      WHERE ${character ? "character = ? AND" : ""} local_date >= ? AND local_date <= ?
+    `).get(...params) as unknown as { count: number };
     return { items: rows.map((row) => this.#asJournal(row)), total: Number(total.count) };
   }
 
@@ -181,6 +190,18 @@ export class JournalStore {
         ON r.journal_id = j.id AND r.revision = j.current_revision
       WHERE j.character = ? AND j.local_date = ?
     `).get(character, localDate) as unknown as JournalRow | undefined;
+    return row ? this.#asJournal(row) : undefined;
+  }
+
+  currentForDate(localDate: string): DailyJournal | undefined {
+    const row = this.#db.prepare(`
+      SELECT j.id, j.character, j.local_date AS localDate, r.revision, r.text,
+        r.sources_json AS sourcesJson, r.model_id AS modelId, r.created_at AS createdAt
+      FROM daily_journals j JOIN daily_journal_revisions r
+        ON r.journal_id = j.id AND r.revision = j.current_revision
+      WHERE j.local_date = ?
+      ORDER BY j.updated_at DESC, j.character = 'shared' DESC, j.id DESC LIMIT 1
+    `).get(localDate) as unknown as JournalRow | undefined;
     return row ? this.#asJournal(row) : undefined;
   }
 

@@ -15,7 +15,8 @@ import type {
 
 const SELECT_ITEM = `
   SELECT id, character, session_id AS sessionId, kind, title, url, source_site AS sourceSite,
-         thumb_path AS thumbPath, summary, comment, tags_json AS tagsJson, score, dedupe_key AS dedupeKey,
+         thumb_path AS thumbPath, thumb_source_url AS thumbSourceUrl, thumb_error AS thumbError,
+         summary, comment, tags_json AS tagsJson, score, dedupe_key AS dedupeKey,
          experience_id AS experienceId, created_at AS createdAt, shared_at AS sharedAt,
          shared_message_id AS sharedMessageId, hidden
   FROM surf_items
@@ -41,6 +42,7 @@ export interface InsertItemInput {
   dedupeKey: string;
   createdAt: string;
   thumbPath?: string | null;
+  thumbSourceUrl?: string | null;
 }
 
 type ItemRow = Omit<SurfItem, "tags" | "hidden"> & { tagsJson: string; hidden: number };
@@ -105,6 +107,8 @@ export class SurfRepository {
         url TEXT NOT NULL,
         source_site TEXT NOT NULL,
         thumb_path TEXT,
+        thumb_source_url TEXT,
+        thumb_error TEXT,
         summary TEXT NOT NULL,
         comment TEXT NOT NULL,
         tags_json TEXT NOT NULL DEFAULT '[]',
@@ -129,6 +133,9 @@ export class SurfRepository {
       UPDATE surf_sessions SET status = 'failed', error = 'interrupted', finished_at = started_at
         WHERE status = 'running';
     `);
+    const columns = this.#db.prepare("PRAGMA table_info(surf_items)").all() as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "thumb_source_url")) this.#db.exec("ALTER TABLE surf_items ADD COLUMN thumb_source_url TEXT");
+    if (!columns.some((column) => column.name === "thumb_error")) this.#db.exec("ALTER TABLE surf_items ADD COLUMN thumb_error TEXT");
   }
 
   // ---- 设置 ----
@@ -258,8 +265,8 @@ export class SurfRepository {
     const result = this.#db
       .prepare(
         `INSERT OR IGNORE INTO surf_items
-           (character, session_id, kind, title, url, source_site, summary, comment, tags_json, score, dedupe_key, created_at, thumb_path)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (character, session_id, kind, title, url, source_site, summary, comment, tags_json, score, dedupe_key, created_at, thumb_path, thumb_source_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.character,
@@ -275,6 +282,7 @@ export class SurfRepository {
         input.dedupeKey,
         input.createdAt,
         input.thumbPath ?? null,
+        input.thumbSourceUrl ?? null,
       );
     if (Number(result.changes) === 0) return undefined;
     const row = this.#db.prepare(`${SELECT_ITEM} WHERE id = ?`).get(Number(result.lastInsertRowid)) as ItemRow;
@@ -292,8 +300,8 @@ export class SurfRepository {
   }
 
   feed(query: SurfFeedQuery): { items: SurfFeedItem[]; total: number } {
-    const where = ["character = ?", "hidden = 0"];
-    const args: Array<string | number> = [query.character];
+    const where = ["hidden = 0"];
+    const args: Array<string | number> = [];
     if (query.kind) {
       where.push("kind = ?");
       args.push(query.kind);
@@ -321,6 +329,7 @@ export class SurfRepository {
       url: item.url,
       sourceSite: item.sourceSite,
       thumb: item.thumbPath ? `/api/surf/thumb/${item.id}` : null,
+      thumbError: item.thumbError,
       summary: item.summary,
       comment: item.comment,
       tags: item.tags,
@@ -342,7 +351,20 @@ export class SurfRepository {
   }
 
   setThumb(itemId: number, thumbPath: string) {
-    this.#db.prepare("UPDATE surf_items SET thumb_path = ? WHERE id = ?").run(thumbPath, itemId);
+    this.#db.prepare("UPDATE surf_items SET thumb_path = ?, thumb_error = NULL WHERE id = ?").run(thumbPath, itemId);
+  }
+
+  setThumbSource(itemId: number, url: string) {
+    this.#db.prepare("UPDATE surf_items SET thumb_source_url = ?, thumb_error = NULL WHERE id = ?").run(url, itemId);
+  }
+
+  setThumbError(itemId: number, message: string) {
+    this.#db.prepare("UPDATE surf_items SET thumb_error = ? WHERE id = ?").run(message.slice(0, 200), itemId);
+  }
+
+  thumbnails(): SurfItem[] {
+    const rows = this.#db.prepare(`${SELECT_ITEM} WHERE hidden = 0 ORDER BY id`).all() as ItemRow[];
+    return rows.map(toItem);
   }
 
   markShared(itemId: number, at: string, messageId: number) {

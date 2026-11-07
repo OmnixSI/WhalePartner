@@ -271,6 +271,14 @@
 .leaf__summary { margin-top: var(--sp-2); font-size: var(--fs-small); color: var(--ink-soft); }
 .leaf__summary summary { min-height: var(--hit); display: flex; align-items: center; cursor: pointer; color: var(--accent); }
 .leaf__summary p { white-space: pre-wrap; line-height: var(--lh-body); overflow-wrap: anywhere; }
+.leaf__journal-sources { display: grid; gap: var(--sp-3); margin: 0; padding-left: var(--sp-5); }
+.leaf__journal-sources li { padding-top: var(--sp-2); border-top: var(--stroke-1) solid var(--line); }
+.leaf__journal-sources p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.leaf__journal-sources time { display: block; margin-top: var(--sp-1); font-size: var(--fs-micro); color: var(--ink-mute); }
+.leaf__journal-source-title { color: var(--ink); font-weight: 600; }
+.leaf__journal-source-title span { color: var(--accent); }
+.leaf__journal-source-url { margin-top: var(--sp-1) !important; color: var(--ink-mute); font-size: var(--fs-small); }
+.leaf__journal-badge { color: var(--accent); font-size: var(--fs-small); white-space: nowrap; }
 
 /* 月 / 年模式的分页 */
 .diary-page__pager {

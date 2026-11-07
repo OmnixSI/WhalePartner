@@ -528,6 +528,7 @@ export class SurfService {
       score: summary.worthSharing,
       dedupeKey: draft.dedupeKey,
       createdAt: iso(this.#now()),
+      thumbSourceUrl: draft.imageUrl ?? null,
     });
     if (!item) return null;
 
@@ -550,16 +551,14 @@ export class SurfService {
     // 记账：视频 20、网页 3（kind 用 surf，P-B 汇总时并进「她自己逛」）。
     this.store.addLedger(character, "surf", draft.kind === "video" ? SURF_COSTS.video : SURF_COSTS.web, iso(this.#now()));
 
-    if (this.#options.thumbs && draft.imageUrl) {
-      const path = await this.#options.thumbs
-        .fetch(draft.imageUrl, item.id, { referer: draft.referer })
-        .catch(() => null);
-      if (path) {
-        this.store.setThumb(item.id, path);
-        return this.store.item(item.id) ?? item;
-      }
+    if (draft.imageUrl && this.#options.thumbs) {
+      const path = await this.#options.thumbs.fetch(draft.imageUrl, item.id, { referer: draft.referer }).catch(() => null);
+      if (path) this.store.setThumb(item.id, path);
+      else this.store.setThumbError(item.id, "封面下载失败");
+    } else {
+      this.store.setThumbError(item.id, "封面地址缺失");
     }
-    return item;
+    return this.store.item(item.id) ?? item;
   }
 
   async #afterSession(character: CharacterId, settings: SurfSettings, session: SurfSessionRecord, signal: AbortSignal) {
@@ -621,6 +620,7 @@ export class SurfService {
       title: item.title,
       sourceSite: item.sourceSite,
       thumb: item.thumbPath ? `/api/surf/thumb/${item.id}` : null,
+      thumbError: item.thumbError,
       comment: item.comment,
       createdAt: item.createdAt,
     };
@@ -670,6 +670,7 @@ export class SurfService {
       title: item.title,
       url: item.url,
       thumb: item.thumbPath ? `/api/surf/thumb/${item.id}` : null,
+      thumbError: item.thumbError,
       comment: item.comment,
     };
   }

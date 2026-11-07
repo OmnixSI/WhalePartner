@@ -128,7 +128,7 @@ test("every few turns she writes a note about herself and it reaches the next pr
   for (let i = 0; i < 12; i++) await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, `第 ${i} 句`));
   await tick();
   assert.equal(store.getNote("claude")?.text, "最近老被问到猫的事，开始有点想养一只了。");
-  assert.equal(store.getNote("deepseek"), undefined);
+  assert.equal(store.getNote("deepseek")?.text, "最近老被问到猫的事，开始有点想养一只了。");
   await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "再聊一句"));
   const last = [...seen].reverse().find((m) => m[0].content.startsWith("# 角色设定"))!;
   const prompt = last.filter((message) => message.role === "system").map((message) => message.content).join("\n");

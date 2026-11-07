@@ -174,6 +174,7 @@ if (import.meta.main) {
   server.on("close", () => { stopSurfScheduler(); });
   server.listen(config.port, host, () => {
     if (config.surfEnabled) stopSurfScheduler = surf.start();
+    void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));
     void scheduleMemoryJobs({ store, provider, memory });
     stopDiaryScheduler = startDiaryScheduler(config.diaryCron, diary);
     stopJournalScheduler = startDailyJournalScheduler(config.journalCron, journal);

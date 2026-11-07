@@ -109,11 +109,11 @@
 .vrm { position: absolute; inset: 0; z-index: var(--z-stage); }
 .vrm canvas { display: block; width: 100%; height: 100%; }
 /* Live2D 画布同理：不铺满就会按模型的原始尺寸（1px 宽、几千像素高）溢出舞台。
-   摆位交给 Live2DStage（量墨迹后按同一条构图规则对齐），这里不再额外缩放。 */
+   摆位交给 Live2DStage 按模型边界和舞台构图规则对齐。 */
 .live2d {
   width: 100%; height: 100%; display: block;
 }
-.live2d canvas { display: block; width: 100% !important; height: 100% !important; }
+.live2d canvas { display: block; width: 100% !important; height: 100% !important; pointer-events: auto; }
 
 /* 「她在逛」/ 形象提示：贴在舞台左上，一条小纸条 */
 .scene__aside {
