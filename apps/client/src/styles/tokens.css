@@ -111,7 +111,7 @@
   --z-bg: 0; --z-stage: 1; --z-ui: 10; --z-nav: 20; --z-sheet: 30; --z-dialog: 40; --z-toast: 50;
 
   /* ---- 动效（规范 §8；弹簧参数在 src/motion/tokens.ts，时长/曲线只在这里） ---- */
-  --dur-press: 120ms; --dur-hover: 160ms; --dur-fade: 200ms; --dur-panel: 280ms; --dur-ink: 240ms; --dur-page: 520ms;
+  --dur-press: 120ms; --dur-hover: 160ms; --dur-fade: 200ms; --dur-panel: 280ms; --dur-ink: 240ms; --dur-page: 520ms; --dur-card-shine: 3.2s;
   --dur-inkline: 1800ms;   /* 思考墨线：1800ms 里画到 66.7%，剩下的停住（§8.2） */
   --dur-fold: 480ms;       /* 「忘掉」折进瓶子（§8.2：480ms --ease-inout，唯一超过 300ms 的组件动效） */
   --ease-out: cubic-bezier(.23, 1, .32, 1);

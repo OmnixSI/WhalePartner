@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
     "preview": "vite preview",
+    "card-preview:check": "node scripts/card-preview-check.mjs",
     "tauri": "tauri",
     "fonts": "node scripts/build-fonts.mjs",
     "fetch-live2d": "node scripts/fetch-live2d.mjs"
