@@ -1,8 +1,8 @@
 /**
  * 首次引导（规范 §7.5）：`wp.onboarded` 未设时全屏盖住，三步走完或随时跳过。
  *
- * 第 1 步是「真实形象舞台」：不复用贴纸，直接挂聊天页同一套舞台（Live2D / VRM 按
- * model.renderer 分流），让她本人站在那儿；一句招呼落在她脚下，点她有反应。
+ * 第 1 步是「真实形象舞台」：大肥鱼加载 Live2D，其他人格使用贴纸默认形象；
+ * 一句招呼落在她脚下，点她有反应。
  * 顶部固定「第 N 步，共 3 步」+ 进度点。
  * 引导打开时把后面的应用整块收起，右栏历史 / 导航 / 旧聊天都不露；
  * 首屏只有：她 + 一句话 + 两个按钮（继续 / 跳过）。
@@ -22,7 +22,6 @@ import "../styles/settings.css";
 
 const ONBOARDED_KEY = "wp.onboarded";
 const Live2DStage = lazy(() => import("../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
-const VrmStage = lazy(() => import("../avatar/VrmStage").then((module) => ({ default: module.VrmStage })));
 
 /* ---------------- 「重新看一遍引导」用的小开关（设置页调 reopenOnboarding） ---------------- */
 
@@ -196,20 +195,17 @@ export function Onboarding() {
                   }
                 }}
               >
-                {/* 真形象加载不出来时才退回贴纸，别让首屏空白 */}
-                {avatar === "failed" && (
+                {/* 没有可用模型或加载失败时使用角色贴纸，首屏保持完整。 */}
+                {(!model || avatar === "failed") && (
                   <div className="onb__sticker" aria-hidden="true">
                     <CharacterMark mood="wave" />
                   </div>
                 )}
-                {/* 大肥鱼是 Live2D，其余是 VRM；按清单里的 renderer 分流，别拿 .model3.json 去喂 VRM 加载器 */}
-                <Suspense fallback={null}>
-                  {model.renderer === "live2d" ? (
+                {model && (
+                  <Suspense fallback={null}>
                     <Live2DStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={false} />
-                  ) : (
-                    <VrmStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={false} />
-                  )}
-                </Suspense>
+                  </Suspense>
+                )}
               </div>
 
               <p className="onb__hint">点一点她，她会看你哦。</p>

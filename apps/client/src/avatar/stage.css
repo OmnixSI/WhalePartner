@@ -11,9 +11,9 @@
 }
 
 /* 画布：加载完成后 300ms 淡入 */
-.live2d[data-stage], .vrm[data-stage] { opacity: 0; transition: opacity 300ms var(--ease-out, ease-out); }
-.live2d[data-stage="ready"], .vrm[data-stage="ready"] { opacity: 1; }
+.live2d[data-stage] { opacity: 0; transition: opacity 300ms var(--ease-out, ease-out); }
+.live2d[data-stage="ready"] { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
-  .live2d[data-stage], .vrm[data-stage] { transition: none; }
+  .live2d[data-stage] { transition: none; }
 }

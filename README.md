@@ -55,7 +55,7 @@ pnpm --dir apps/client run dev              # 终端 2：界面
 
 ### Windows / Linux
 
-桌面构建在 Linux 上验证过（`deb`）；macOS 与 Windows 的托盘、后台运行只做过代码审查，没有实机验证。已知缺口：B 站扫码登录只支持 macOS、`fetch-model` 依赖系统 `unzip`。
+桌面构建在 Linux 上验证过（`deb`）；macOS 与 Windows 的托盘、后台运行只做过代码审查，没有实机验证。已知缺口：B 站扫码登录只支持 macOS。
 
 - Windows 需要 Node 26、pnpm、FFmpeg，以及 Rust 与 Visual Studio C++ 生成工具（WebView2 在 Win11 自带）。
 - Linux 需要先按 [Tauri 官方文档](https://v2.tauri.app/start/prerequisites/#linux) 装 WebKitGTK 等系统库。
@@ -68,7 +68,6 @@ pnpm --dir apps/client run dev              # 终端 2：界面
 
 ```sh
 pnpm --dir apps/client run fetch-live2d     # 大肥鱼 Live2D 模型（CC BY-NC-SA 4.0，仅非商业）
-pnpm --dir apps/client run fetch-model      # VRM 演示形象（需要系统有 unzip）
 ```
 
 Live2D 还需要专有的 Cubism Core，仓库不分发：从 [官方 SDK](https://www.live2d.com/en/sdk/download/web/) 取 `live2dcubismcore.min.js`，放到 `apps/client/public/live2d/libs/`。缺少时舞台使用兜底形象，聊天不受影响。
@@ -116,7 +115,7 @@ Live2D 还需要专有的 Cubism Core，仓库不分发：从 [官方 SDK](https
 - **聊天区显示「她马上就来」或「网络好像断了」**：桌面 App 里是后端还在启动或刚崩溃，等几秒会自动重试；持续出现请看应用日志目录里的 `api.log`（启动超时时窗口会弹出日志路径）。浏览器开发模式下是后端没开，执行 `pnpm --dir apps/api run serve`。验证：`curl http://127.0.0.1:8787/api/health`（桌面 App 的端口和令牌是随机的，用不到它）。
 - **端口被占用（1420 或 8787）**：桌面 App 会自动换端口，不用处理。浏览器开发模式下可用 `API_PORT` 换后端端口，同时改 `apps/client/vite.config.ts` 的代理。
 - **怎么退出**：关掉窗口即可，后端随之退出。如果打开了「后台继续逛」，用托盘菜单的「退出鲸汐」。
-- **没有形象 / 一直只有一条海平线**：没有 Live2D 或 VRM 文件，或缺 Cubism Core，见「可选素材」；加载失败时舞台底部会出现「再试一次」。
+- **没有形象 / 一直只有一条海平线**：没有 Live2D 模型文件，或缺 Cubism Core（只有大肥鱼有 Live2D 形象，其他角色固定显示自己的徽记），见「可选素材」；加载失败时舞台底部会出现「再试一次」。
 - **`pnpm install` 报引擎不符或 `onnxruntime-node` 下载失败**：确认 `node -v` 为 v26.x；`onnxruntime-node` 的安装脚本需要联网下载二进制，换网络或设置代理后重试。
 - **发视频链接失败**：确认 `ffmpeg -version` 可用（桌面包里自带）。B 站有限流，被限时后端会记录冷却时间，稍后再试；需登录的内容在非 macOS 上目前无法扫码登录。
 - **「见闻」没有内容**：她需要浏览器才能去逛；没有 Chromium 时后端会自动下载，设置里「翻网页」下能看到进度。也可设 `SURF_ENABLED=0` 关闭该功能。
@@ -188,5 +187,7 @@ implement-stage/     实施阶段的规格与假设记录
 | 会话交接 | [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) · [docs/handoffs/](docs/handoffs/) |
 
 ## 许可与第三方
+
+主要依赖：Tauri、React、Radix、motion、perfect-freehand、PixiJS 与 pixi-live2d-display、mem0（Apache-2.0）、transformers.js（Apache-2.0）、playwright-core（Apache-2.0）。模型素材不入库。
 
 `apps/api/vendor/dsh-bilibili/` 与 `apps/api/vendor/shuorenhua/` 为 MIT，保留原许可。Live2D 模型为 CC BY-NC-SA 4.0，仅限非商业。大肥鱼、Claude 娘、ChatGPT 娘是社区二创角色，不代表对应公司官方角色；鲸汐是原创角色。

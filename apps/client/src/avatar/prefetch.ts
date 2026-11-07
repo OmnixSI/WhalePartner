@@ -1,14 +1,16 @@
 import { useEffect } from "react";
 import { useModel } from "../characters";
 import { prewarmLive2D } from "./live2d/runtime";
-import { prefetchModelWhenIdle } from "./model-cache";
 
-/** 应用启动后空闲时预取当前角色的模型（VRM 写入 Cache Storage；Live2D 预热 Core 与库）。 */
+/** 应用启动后空闲时预热当前角色的 Live2D（Core 与库）；没有模型的角色什么也不做。 */
 export function usePrefetchAvatar() {
   const model = useModel();
+  const url = model?.url;
   useEffect(() => {
-    prefetchModelWhenIdle(model.url, model.renderer === "vrm", () => {
-      if (model.renderer === "live2d") prewarmLive2D(model.url);
-    });
-  }, [model.url, model.renderer]);
+    if (!url) return;
+    const run = () => prewarmLive2D(url);
+    const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+    if (idle) idle(run, { timeout: 4000 });
+    else window.setTimeout(run, 1500);
+  }, [url]);
 }

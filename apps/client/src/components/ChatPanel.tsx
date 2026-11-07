@@ -5,7 +5,7 @@
  * recall / video / web / emotion / delta / done / error），没有新增接口。
  *
  * 分工：
- * - 舞台：VRM 在就画 VRM，不在就贴纸；她在想 / 说话 / 睡着 / 抱歉都由 mood 决定。
+ * - 舞台：大肥鱼使用 Live2D；没有模型的人格使用贴纸。情绪由 mood 驱动。
  * - 对话框：最后一句「她的话」+ 当前这一轮；idle 时保留上一句，不闪空。
  * - 回信条：Enter 发送、Shift+Enter 换行（设置里可切回 Cmd/Ctrl+Enter）；生成中发送键变「停」；离线仍可打字。
  * - 往回翻：桌面 360 的右栏，手机底部抽屉。
@@ -115,7 +115,7 @@ export function ChatPanel({ character }: Props) {
           ? "thinking"
           : phase === "streaming"
             ? "streaming"
-            : avatar === "loading" && turns.length === 0
+              : model && avatar === "loading" && turns.length === 0
               ? "loading"
               : lastHer
                 ? "done"

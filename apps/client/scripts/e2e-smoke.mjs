@@ -36,7 +36,6 @@ if (packaged) {
     ".woff2": "font/woff2",
     ".wasm": "application/wasm",
     ".moc3": "application/octet-stream",
-    ".vrm": "application/octet-stream",
   };
   staticServer = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1:1420");

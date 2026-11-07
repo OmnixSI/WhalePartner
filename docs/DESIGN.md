@@ -130,4 +130,4 @@ node scripts/redesign/check-contrast.mjs   # 只跑 90 组对比度，逐对打�
 
 ## 角色形象
 
-形象是 three-vrm 渲染的 VRM 模型（`avatar/*`），模型清单在 `apps/client/models.manifest.json`，文件不进仓库，用 `pnpm fetch-model` 下载并校验。拿不到模型、或手机/老人/calm 下，只显示一条海平线和角色名（`Horizon`），不画任何手绘形象；角色徽记用矢量的 `CharacterMark`（平涂、无渐变）。目前都是别人做好的现成模型，授权没有核对，只作内部展示；对外发布前要换成原创或授权明确的形象。
+大肥鱼（DeepSeek）的聊天舞台使用唯一现有的 Live2D 模型；其余人格保留 AI 人格与聊天能力，默认形象是各自固定的矢量徽记 `CharacterMark`（平涂、无渐变），不会共用大肥鱼的 Live2D 模型。形象加载中只显示一条海平线和角色名（`Horizon`），失败时舞台底部给一张「再试一次」纸条；任何情况下都不画手绘形象。已不再有 VRM：示例清单、下载脚本和渲染器已移除。模型许可、来源和 Cubism Core 获取方式见 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。

@@ -215,6 +215,21 @@ try {
     await context.close();
   }
 
+  // ---- 没有模型的角色：默认形象是 CharacterMark ----
+  {
+    const size = SIZES[0];
+    const { context, page } = await newDevice(size);
+    await context.addInitScript(() => { try { localStorage.setItem("wp.character", "claude"); } catch { /* ignore */ } });
+    await page.goto(`${BASE}/`);
+    await page.waitForTimeout(1200);
+    await finishOnboarding(page);
+    await page.goto(`${BASE}/`);
+    await page.waitForSelector("textarea", { timeout: 15000 });
+    check((await page.locator(".scene__sticker .mark").count()) === 1, "无模型角色：舞台上是 CharacterMark 默认形象");
+    await shot(page, "chat-5-no-model-default", size);
+    await context.close();
+  }
+
   // ---- 两台设备：A 发，B 实时出现 ----
   const size = SIZES[0];
   const a = await newDevice(size);

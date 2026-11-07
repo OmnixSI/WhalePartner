@@ -70,7 +70,7 @@ Node.js 服务使用 Active LTS 或 Maintenance LTS 版本；项目启动时锁�
 
 | 层 | 选型 | 说明 |
 |---|---|---|
-| 形象 | three + `@pixiv/three-vrm`（MIT） | 自写的 `VrmStage`：呼吸、眨眼、视线、口型和情绪表情。VRM 模型文件不进仓库，清单在 `apps/client/models.manifest.json`，由 `fetch-model` 下载并校验。Live2D 不在第一周范围内。 |
+| 形象 | PixiJS + `pixi-live2d-display`（MIT） | 大肥鱼固定使用现有 Live2D 模型；其他人格默认使用矢量徽记 CharacterMark。无实际模型文件的 VRM 清单、下载器、渲染器及 three-vrm 依赖已移除。Cubism Core 和角色模型按各自许可由开发者在本机准备。 |
 | 聊天传输 | HTTPS + SSE | `POST /api/chat` 流式推送 `recall` / `video` / `emotion` / `delta` / `done` / `error`，接口见 [`API.md`](API.md)。 |
 | 聊天记录 | `node:sqlite` | 本地单文件，按角色分开；正式多端阶段再换存储。 |
 | 记忆 | mem0 OSS（Apache-2.0）+ transformers.js 跑 `bge-small-zh-v1.5` | 事实由模型提炼，经历原样保存；向量在本地算，首次使用下载约 25 MB。mem0 的 LLM 请求经本机回环桥转给我们自己的模型链，不单独持有密钥。 |
