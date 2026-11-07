@@ -5,7 +5,8 @@ import type { Character } from "../../characters";
 import { Tide } from "../ink";
 import { SurfStatus, type SurfPhase } from "../surf/SurfStatus";
 import { useSurfEvents } from "../surf/useSurfEvents";
-import { WhaleSticker, type StickerMood } from "../WhaleSticker";
+import { CharacterMark, type StickerMood } from "../CharacterMark";
+import { Horizon } from "../Horizon";
 
 const Live2DStage = lazy(() => import("../../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
 const VrmStage = lazy(() => import("../../avatar/VrmStage").then((module) => ({ default: module.VrmStage })));
@@ -73,7 +74,7 @@ export function ChatScene({
         >
           {avatar !== "ready" && (
             <div className="scene__sticker" aria-hidden>
-              <WhaleSticker mood={mood} />
+              {avatar === "failed" ? <CharacterMark mood={mood} /> : <Horizon />}
             </div>
           )}
           <Suspense fallback={null}>
@@ -95,9 +96,7 @@ export function ChatScene({
           {avatar === "failed" && (
             <div className="scene__asideRow">
               <p className="scene__note">
-                {model.renderer === "live2d"
-                  ? "我的样子要 Live2D 才能画出来：把 live2dcubismcore.min.js 放进 apps/client/public/live2d/libs/ 就好，不影响聊天。"
-                  : "我的样子暂时没画出来，不影响聊天。"}
+                我的样子暂时没画出来，不影响聊天。
               </p>
               <button
                 type="button"

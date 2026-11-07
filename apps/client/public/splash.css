@@ -1,0 +1,15 @@
+/* 首屏：纸 + 一条慢慢呼吸的海平线 + 角色名。没有任何图形，淡入 240ms。
+   颜色与 tokens.css 的 --paper / --ink 一致；亮暗由 theme-boot.js 在首帧前写好的 data-theme 决定。 */
+html { background: #F6EFE2; }
+html[data-theme="dark"] { background: #0F1C2A; }
+body { margin: 0; background: transparent; }
+.splash {
+  position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  color: #2F3A4A; animation: splash-in 240ms cubic-bezier(.23, 1, .32, 1) both;
+}
+html[data-theme="dark"] .splash { color: #EDE6D6; }
+.splash__name { margin: 0; font-family: "LXGW WenKai", "Songti SC", "Noto Serif CJK SC", serif; font-size: 22px; letter-spacing: .3em; text-indent: .3em; }
+.splash__line { display: block; width: 132px; height: 1.5px; background: currentColor; opacity: .55; transform-origin: 50% 50%; animation: splash-breath 4.5s cubic-bezier(.65, 0, .35, 1) infinite; }
+@keyframes splash-in { from { opacity: 0; } }
+@keyframes splash-breath { 50% { transform: scaleX(.55); opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .splash, .splash__line { animation: none; } }

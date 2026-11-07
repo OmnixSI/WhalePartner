@@ -14,7 +14,7 @@ import { getProfile, putNickname } from "../lib/profile";
 import { readA11y } from "../lib/a11y";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 import { useCharacter } from "../characters";
-import { WhaleSticker } from "../components/WhaleSticker";
+import { CharacterMark } from "../components/CharacterMark";
 import { Accounts } from "../components/Accounts";
 import { reopenOnboarding } from "../components/Onboarding";
 import { SettingGroup, SettingRow } from "../components/settings/Row";
@@ -175,7 +175,7 @@ export function SettingsPage() {
         <SettingGroup title="她">
           <div className="set-her">
             <span className="set-her__sticker" aria-hidden="true">
-              <WhaleSticker mood="idle" />
+              <CharacterMark />
             </span>
             <div className="set-her__text">
               <p className="set-her__name">{character.name}</p>

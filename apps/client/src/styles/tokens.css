@@ -58,7 +58,13 @@
 
   /* ---- 间距 4px 体系 ---- */
   --sp-1: .25rem; --sp-2: .5rem; --sp-3: .75rem; --sp-4: 1rem; --sp-5: 1.25rem; --sp-6: 1.5rem;
-  --sp-8: 2rem; --sp-10: 2.5rem; --sp-12: 3rem; --sp-16: 4rem; --sp-20: 5rem;
+  /* 大间距随视口流式伸缩（小窗口收紧、大屏放松）；小间距固定，保证控件内部不漂 */
+  --sp-8: clamp(1.75rem, .6vw + 1.4rem, 2.25rem);
+  --sp-10: clamp(2.25rem, .9vw + 1.8rem, 3rem);
+  --sp-12: clamp(2.5rem, 1.2vw + 2rem, 3.75rem);
+  --sp-16: clamp(3rem, 1.8vw + 2.4rem, 5rem);
+  --sp-20: clamp(3.5rem, 2.4vw + 2.7rem, 6.5rem);
+  --gutter: clamp(1.25rem, 2.6vw, 3.5rem);   /* 页面左右留白 */
 
   /* ---- 圆角：只有 4 档 + 1 个圆 ---- */
   --r-xs: 4px;    /* 胶带、kbd、焦点环 */
@@ -74,8 +80,14 @@
   /* ---- 布局与触控 ---- */
   --hit: 44px;               /* 触控最小目标；老人模式 56px */
   --field-h: 52px;           /* 输入框/选择器的常规高度；不得低于 --hit */
-  --nav-w: 112px; --backlog-w: 360px; --tabbar-h: 64px; --scene-min: 480px;
-  --page-max: 760px; --memory-max: 960px;
+  /* 流式：1180 宽时落在规范的 112 / 360 / 760 / 960，更大的窗口按比例长大，不再留白 */
+  --nav-w: clamp(112px, 6.5vw, 148px);
+  --backlog-w: clamp(340px, 28vw, 520px);
+  --tabbar-h: 64px; --scene-min: 480px;
+  --page-max: clamp(760px, 62vw, 1100px);
+  --memory-max: clamp(960px, 72vw, 1360px);
+  --dialog-w: clamp(640px, 46vw, 900px);
+  --sticker-corner: clamp(96px, 7vw, 150px);
 
   /* ---- 舞台构图（§7.1）：VRM 与 Live2D 共用一条规则，改这里两个渲染器一起变 ----
      参照系是「可画区」——对话框以上那块（.scene__safe 的高度），不是整块舞台。
@@ -153,12 +165,13 @@
   --line-strong: var(--ink-mute);        /* 控件边界升到 ≥5:1 */
   --stroke-1: 2px; --stroke-2: 3px;
   --r-md: 16px;
-  --page-max: 680px;
+  --page-max: clamp(680px, 56vw, 960px);
 }
 :root[data-contrast="high"] { --ink-mute: var(--ink-soft); --line-strong: var(--ink-mute); }
 :root[data-motion="calm"] { --dur-press: 1ms; --dur-hover: 1ms; --dur-panel: 120ms; --dur-page: 120ms; }
 
-html { font-size: calc(16px * var(--scale, 1)); }
+/* 流式根字号：窗口从 380 到 2560 在 16–18px 之间平滑变化，再乘用户字号 */
+html { font-size: calc(clamp(16px, .35vw + 12px, 18px) * var(--scale, 1)); }
 :root { -webkit-text-size-adjust: 100%; }
 
 @media (prefers-reduced-motion: reduce) {

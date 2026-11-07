@@ -15,9 +15,11 @@
 /* ---------- 首页的舞台与聊天已迁到 styles/chat.css（P1） ---------- */
 
 /* ---------- 内容页：日记 / 记忆 / 设置 ---------- */
-.page { height: 100%; overflow-y: auto; padding: 56px clamp(24px, 6vw, 96px) 88px 8px; }
-.page__inner { max-width: 760px; display: flex; flex-direction: column; gap: 8px; }
-.page__title { font-size: clamp(32px, 4.4vw, 44px); line-height: 1.15; letter-spacing: .04em; }
+/* 内容页：整页滚动，内容列按窗口流式放大（--page-max）并居中；
+   .page__inner 是容器（name: page），页内组件用 @container page 响应列宽，而不是看视口。 */
+.page { height: 100%; overflow-y: auto; padding: var(--sp-12) var(--gutter) var(--sp-20); }
+.page__inner { width: 100%; max-width: var(--page-max); margin-inline: auto; display: flex; flex-direction: column; gap: var(--sp-2); container: page / inline-size; }
+.page__title { font-size: clamp(var(--fs-h1), 2.6vw, var(--fs-display)); line-height: 1.15; letter-spacing: .04em; }
 .page__lead { margin-top: 10px; max-width: 46ch; color: var(--ink-soft); }
 .page__inner > header { margin-bottom: 20px; }
 
@@ -97,7 +99,7 @@
   .nav__brand { display: none; }
   .nav__link { flex: 1; flex-direction: column; justify-content: center; gap: 2px; padding: 0; font-size: var(--fs-micro); letter-spacing: .04em; }
   .nav__link[aria-current="page"]::after { left: 50%; bottom: auto; top: 0; width: 22px; margin-left: -11px; }
-  .page { padding: 32px 20px 36px; }
+  .page { padding: var(--sp-6) var(--sp-4) var(--sp-10); }
   .diary-form { grid-template-columns: minmax(0, 1fr); }
   .diary-add__actions { align-items: flex-start; flex-direction: column; }
   .diary-entry__meta { align-items: flex-start; flex-direction: column; gap: 4px; }

@@ -22,7 +22,7 @@ import { useInkEnv } from "./ink/useCalm";
 import { useSpeechAnimation } from "../avatar/live2d/useSpeechAnimation";
 import { useTapHint } from "./chat/useTapHint";
 import { useSharedChat } from "./chat/useSharedChat";
-import type { StickerMood } from "./WhaleSticker";
+import type { StickerMood } from "./CharacterMark";
 import { Backlog } from "./chat/Backlog";
 import { ConfirmDialog } from "./chat/ConfirmDialog";
 import { stripEmotionTags } from "../lib/emotion";

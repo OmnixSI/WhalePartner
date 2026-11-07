@@ -99,12 +99,16 @@
   cursor: pointer;
   z-index: var(--z-stage);
 }
+/* 形象还没出来：纸面上一条呼吸的海平线 + 名字；加载失败才换成徽记。 */
 .scene__sticker {
-  width: min(72%, 520px);
+  width: min(40%, 240px);
   max-height: 100%;
-  margin-bottom: var(--sp-2);
+  align-self: center;
+  margin-bottom: 14dvh;
+  display: grid;
+  place-items: center;
 }
-.scene__sticker .whale-sticker { width: 100%; height: auto; }
+.scene__sticker .mark { width: 100%; height: auto; }
 /* 画布铺满舞台：absolute 才不会在网格里多占一行（默认 canvas 是 300×150） */
 .vrm { position: absolute; inset: 0; z-index: var(--z-stage); }
 .vrm canvas { display: block; width: 100%; height: 100%; }
@@ -175,7 +179,7 @@
 /* ---------------------------------------------------------------- 对话框 */
 .dlg {
   position: relative;
-  width: min(640px, 100%);
+  width: min(var(--dialog-w), 100%);
   margin: 0 auto;
 }
 .dlg__sheet {
@@ -553,6 +557,7 @@
 .bl__capBody { grid-column: 2; }
 .bl__cap--first { padding-top: var(--sp-4); }
 .bl__avatar { width: 32px; height: 32px; }
+.bl__avatar .mark { width: 100%; height: 100%; }
 .bl__capBody { min-width: 0; }
 .bl__capName {
   display: block;
@@ -752,7 +757,7 @@
   .scene { flex: 1 1 auto; min-height: 34dvh; max-height: 42dvh; --stage-char-h: .9; --stage-sea-h: .26; }
   .scene__safe { bottom: 0; }
   .scene__figure { inset: 0; }
-  .scene__sticker { width: min(56%, 240px); margin-bottom: 0; }
+  .scene__sticker { width: min(30%, 112px); margin-bottom: var(--sp-8); align-self: end; }
   .scene__corner { display: none; }
   .scene__aside { top: var(--sp-3); left: var(--sp-3); max-width: 80%; }
 
@@ -793,6 +798,7 @@ html[data-kb="on"] .room { height: var(--vvh, 100dvh); }
 html[data-kb="on"] .scene { height: 56px; transition: height var(--dur-panel) var(--ease-out); }
 html[data-kb="on"] .scene__figure { inset: 0; }
 html[data-kb="on"] .scene__sticker { width: 56px; margin: 0 auto; }
+html[data-kb="on"] .scene__sticker .horizon__name { display: none; }
 html[data-kb="on"] .tide,
 html[data-kb="on"] .scene__aside,
 html[data-kb="on"] .mbar { display: none; }

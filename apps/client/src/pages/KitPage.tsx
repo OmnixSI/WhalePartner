@@ -5,7 +5,7 @@ import { Stamp } from "../components/ink/Stamp";
 import { Tape } from "../components/ink/Tape";
 import { Tide } from "../components/ink/Tide";
 import { Icon, ICON_NAMES, type IconName } from "../icons";
-import { WhaleSticker } from "../components/WhaleSticker";
+import { CharacterMark } from "../components/CharacterMark";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 import { flatPath, rng, type Pt } from "../lib/ink";
 
@@ -42,20 +42,6 @@ const TYPE_ROWS: TypeRow[] = [
   { token: "--fs-h2", spec: "24 / 1.35 / 文楷", sample: "小节标题", style: { fontSize: "var(--fs-h2)", lineHeight: 1.35, fontFamily: "var(--font-voice)" } },
   { token: "--fs-date", spec: "56 / 1 / Fraunces", sample: "28", style: { fontSize: "var(--fs-date)", lineHeight: 1, fontFamily: "var(--font-num)" }, note: "--fs-date · Fraunces" },
 ];
-
-/** 10 个状态：中文在前（m1），英文作为代码名保留。 */
-const MOODS = [
-  ["calm", "平静"],
-  ["happy", "开心"],
-  ["sad", "难过"],
-  ["sleepy", "睡着"],
-  ["curious", "好奇"],
-  ["thinking", "思考"],
-  ["surprised", "惊讶"],
-  ["shy", "害羞"],
-  ["proud", "骄傲"],
-  ["worried", "担心"],
-] as const;
 
 /**
  * m2：海星。图标源（`components/ink-icons/icons.src.json`）这一轮不在改动范围内，
@@ -241,12 +227,12 @@ export default function KitPage() {
       <section className="kit__section kit__section--her">
         <h2>她</h2>
         <div className="kit__moods">
-          {MOODS.map(([mood, zh]) => (
-            <figure key={mood} className="kit__mood">
-              <WhaleSticker mood={mood} />
+          {CHARACTERS.map((c) => (
+            <figure key={c.id} className="kit__mood">
+              <CharacterMark character={c.id} />
               <figcaption>
-                <b>{zh}</b>
-                <span>{mood}</span>
+                <b>{c.name}</b>
+                <span>{c.id}</span>
               </figcaption>
             </figure>
           ))}

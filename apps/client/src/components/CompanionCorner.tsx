@@ -1,7 +1,7 @@
 /**
- * 每页都有她的小角（规范 §5.7）：右下角一枚 112×112（手机 64×64）的角色贴纸按钮。
+ * 每页都有她的小角（规范 §5.7）：右下角一枚流式大小（96–150px，手机 64×64）的角色徽记按钮。
  *
- * - 永远用 `WhaleSticker`，**不初始化第二个 Live2D/VRM 实例**；各角色的 Live2D/VRM 形象只出现在聊天页主舞台。
+ * - 永远用 `CharacterMark`（角色徽记），**不初始化第二个 Live2D/VRM 实例**；各角色的 Live2D/VRM 形象只出现在聊天页主舞台。
  * - 是 `<button>`，`aria-label="和{名字}打个招呼"`，点击时弹簧 400/17 跳一下（y 0 → -10 → 0），
  *   旁边冒一张便签小字（3 秒消失，role="status"），台词按当前 mood 取；**10 秒内不重复触发**。
  * - mood 由页面推：`setCompanionMood("write")` / `setCompanionMood("happy", { ttl: 2400 })`，
@@ -12,8 +12,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCharacter } from "../characters";
 import { spring } from "../motion/tokens";
-import { WhaleSticker, type StickerMood } from "./WhaleSticker";
-import "../styles/sticker.css";
+import { CharacterMark, type StickerMood } from "./CharacterMark";
 
 /* ---------------- 状态：同 avatar-state.ts 的写法 ---------------- */
 
@@ -124,7 +123,7 @@ export function CompanionCorner({ mood: moodProp, className = "" }: Props) {
         animate={{ y: lifted ? -10 : 0 }}
         transition={spring.cute}
       >
-        <WhaleSticker mood={current} className="companion__sticker" />
+        <CharacterMark mood={current} className="companion__sticker" />
       </motion.button>
     </div>
   );

@@ -19,4 +19,15 @@
   if (!isFinite(s) || s <= 0) s = 1;
   root.style.setProperty("--scale", String(elderOn ? Math.max(s, 1.25) : s));
   root.setAttribute("data-motion", elderOn || motion === "calm" ? "calm" : "full");
+  // 首屏的角色名：DOM 还没解析到 #splash-name，等 DOMContentLoaded 再写（仍在首帧之前）
+  var NAMES = { deepseek: "大肥鱼", claude: "小克", chatgpt: "小智", whale: "鲸汐" };
+  var cid = null;
+  try { cid = localStorage.getItem("wp.character"); } catch (e) { /* 隐私模式 */ }
+  var name = NAMES[cid] || NAMES.deepseek;
+  document.addEventListener("DOMContentLoaded", function () {
+    var el = document.getElementById("splash-name");
+    if (el) el.textContent = name;
+  });
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && resolved === "dark") meta.setAttribute("content", "#0F1C2A");
 })();
