@@ -1,183 +1,189 @@
 # WhalePartner · 鲸汐
 
-> 住在手机里的鲸系 AI 角色。她记得你说过的话，替你看视频、读网页，把你的日常记成一本手帐。
-> 当前版本 **v0.2.6**（潮汐手帐 2.0 · 角色互动与共享记忆）。更新记录见 [CHANGELOG.md](CHANGELOG.md)。
-
-切换角色只更换人格；聊天、记忆、日记和见闻内容在本机共享。
+住在电脑里的鲸系 AI 角色：记得你说过的话，替你看 B 站视频、读网页，并把日常记成一本日记。当前版本 **v0.2.6**，更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 <p align="center">
-  <img src="docs/redesign/shots/P1/chat-desktop.png" width="860" alt="聊天页：舞台上的她 + 绘本字幕对话框">
+  <img src="docs/redesign/shots/P1/chat-desktop.png" width="860" alt="聊天页：舞台上的她 + 对话框">
 </p>
 
-<p align="center">
-  <img src="docs/redesign/shots/P2/diary-desktop.png" width="270" alt="日记页">
-  <img src="docs/redesign/shots/P2/memory-desktop.png" width="270" alt="记忆页">
-  <img src="docs/redesign/shots/P5/surf-desktop.png" width="270" alt="见闻页">
-</p>
+**结构**：桌面/网页界面（`apps/client`，Tauri 2 + React）+ 本机后端（`apps/api`，Node，默认 `http://127.0.0.1:8787`）。界面只管显示，模型调用与数据都在后端。**必须先启动后端，界面才有用。**
 
 ---
 
-## 现在能做什么
+## 快速开始
 
-| 页面 | 她能做什么 |
-|---|---|
-| **聊天** `/` | 她的回复是**绘本字幕**（文楷 17px + 名字牌），你的话是**手写便签**；流式是「墨水渗入」而不是打字机光标；「往回翻」默认收起，点击后看共享聊天历史。发 B 站链接她会看完再讲，发网页链接她会读完再聊；点击大肥鱼可触发动作 |
-| **日记** `/diary` | 按本机日期写成共享第一人称日记：日期戳、心情与「心里的天气」涂鸦、横线本正文；周/月/年定位、日历选日、来源回看 |
-| **记忆** `/memory` | 共享图鉴卡片（`No.0001` 永不重复）：关于你、共同经历、她学到的、她的近况；搜索、时间段筛选、原话证据；「忘掉」两步走，5 秒内可撤回 |
-| **见闻** `/surf` | 独立导航栏目：「她自己去逛」按计划刷 B 站、读网页，封面缓存在本机，回来把明信片贴在这里，也会在聊天里主动讲 |
-| **设置** `/settings` | 她 / 看起来 / 方便我用 / 额度 / 我的数据（导出、删除全部）/ 她记得的事；首次引导三步，可跳过 |
+当前没有发布安装包（仓库无 CI，Release 只有源码），所有平台都需要从源码运行。先完成下一节"需要准备什么"。
 
-**无障碍**：正文 ≥16px、聊天 17px、对比度 ≥7:1；触控 ≥44px；字号拖动后点击确认才应用；老人模式一键把根字号放大到 20px、触控升到 56px、记忆入口收进设置、动效转静。
-
----
-
-## 设计系统（潮汐手帐 2.0）
-
-```
-纸 #F6EFE2 / 墨 #2F3A4A / 暗色 深海夜 #0F1C2A
-四个角色各一种强调色：鲸汐 深青 · 大肥鱼 靛蓝 · 小克 陶土 · 小智 墨绿
-字号 7 档（13/14/16/17/18/20/24/32/44/56）· 间距 4px 体系 · 圆角只有 4 档
-阴影只有「纸张投影」两级；禁止渐变、毛玻璃、发光、彩色阴影
-```
-
-- **手绘**：分隔线、下划线、边框、图标都是 `perfect-freehand` 用固定种子生成的墨线，同一处永远同一条抖动（截图可复现）
-- **纸纹**：背景图层的 256px 瓦片，不盖内容（实测标准差 2.2+，均值偏移 ≤0.5/255）
-- **字体**：她的话 / 标题 / 日记 = 霞鹜文楷；界面 chrome = 霞鹜新晰黑；日期数字 = Fraunces；首屏字体子集化到 **195KB**（上限 220KB）
-- **每页都有她**：10 种心情的贴纸 + 右下角的 `CompanionCorner`
-
-完整规范见 [docs/redesign/spec/WhalePartner_UI重设计规范.md](docs/redesign/spec/WhalePartner_UI重设计规范.md)（2307 行），实现镜像见 [docs/DESIGN.md](docs/DESIGN.md)。
-
----
-
-## 装到本机（macOS）
-
-本地验收构建为 **鲸汐.app v0.2.6**。构建产物位于 `apps/client/src-tauri/target/release/bundle/`。
-
-**打开方式（二选一）**
-
-1. 双击仓库根目录的 [`启动鲸汐.command`](启动鲸汐.command)：它会先确认 `127.0.0.1:8787` 的后端在跑（没跑就后台拉起来），再打开 App
-2. 手动：先 `pnpm --dir apps/api run serve`，再从聚焦搜索 / 启动台打开「鲸汐」
-
-> App 只负责界面，模型调用都在后端。后端没启动时，聊天区会显示「网络好像断了，我在这儿等你」。
-> 关掉后端：`lsof -ti:8787 | xargs kill`。
-
-改完代码重新打包：`pnpm --dir apps/client run tauri build`（首次编译 Rust 约 3 分钟，产物在 `apps/client/src-tauri/target/release/bundle/`）。
-
-## 开发模式（热更新）
-
-需要 **Node 26**（`.node-version`）、**pnpm**、**FFmpeg**；本机装好并登录 **Codex CLI**（没有 DeepSeek key 时它是兜底模型）。
+通用的第一步（任何平台）：
 
 ```sh
-# 服务端
-cp apps/api/.env.example apps/api/.env      # 填 DEEPSEEK_API_KEY（可选）
+git clone https://github.com/OmnixSI/WhalePartner.git && cd WhalePartner
+cp apps/api/.env.example apps/api/.env      # Windows: copy apps\api\.env.example apps\api\.env
 pnpm --dir apps/api install
-pnpm --dir apps/api run serve               # http://127.0.0.1:8787
-
-# 客户端
 pnpm --dir apps/client install
-pnpm --dir apps/client run fetch-live2d     # 大肥鱼 Live2D 模型
-pnpm --dir apps/client run fetch-model      # VRM 演示形象
-pnpm --dir apps/client run dev              # http://127.0.0.1:1420
 ```
 
-- 桌面窗口（开发）：`pnpm --dir apps/client run tauri dev`
-- 手机联调：`WP_LAN=1 pnpm --dir apps/client run dev` + `pnpm --dir apps/api run serve -- --lan`（没有登录保护，只在可信网络里用）
-
-**Live2D 的 Cubism Core**（专有组件，仓库不分发）：从 [官方 SDK](https://www.live2d.com/en/sdk/download/web/) 或官方 CDN 取一份
-`https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js`，
-放到 `apps/client/public/live2d/libs/live2dcubismcore.min.js`。缺这个文件时舞台退回贴纸兜底，聊天不受影响。
-
----
-
-## 验收与质量闸
-
-一条命令跑完界面验收（自带起 vite，`--static` 跳过浏览器、`--shots` 顺便拍照）：
+### 浏览器开发模式（所有平台，最简单）
 
 ```sh
-node scripts/redesign/check.mjs
+pnpm --dir apps/api run serve               # 终端 1，保持运行
+pnpm --dir apps/client run dev              # 终端 2
 ```
 
-```
-✓ 对比度 90 组（亮/暗 × 4 角色）        ✓ 淘汰 token 0
-✓ gradient / backdrop-filter 0          ✓ 珊瑚色作文字 0
-✓ window.confirm / alert 0              ✓ 圆角只允许 var(--r-*)
-✓ 动效参数只在 tokens 0                 ✓ 触控 ≥44px（老人 ≥56）
-✓ 横向滚动 ≤ 视口 0                     ✓ axe wcag2a/2aa/21aa/22aa 0
-10 项检查，0 项失败
-```
+浏览器打开 `http://127.0.0.1:1420`。Vite 会把 `/api` 代理到 8787。
+
+### macOS
+
+1. 完成通用步骤，并执行 `pnpm --dir apps/client run tauri build`（首次编译 Rust 约 3 分钟）。
+2. 产物在 `apps/client/src-tauri/target/release/bundle/macos/鲸汐.app`，拖到"应用程序"。未做公证，首次打开请右键 → 打开。
+3. 双击仓库根目录的 `启动鲸汐.command`：它检查 `127.0.0.1:8787`，没有后端就在后台启动（日志 `/tmp/whalepartner-api.log`），然后打开"鲸汐"。
+4. 不想构建：用上面的浏览器开发模式，或 `pnpm --dir apps/client run tauri dev` 打开桌面窗口（需先在另一终端启动后端）。
+
+### Windows
+
+仓库没有 Windows 启动脚本，也没有在 Windows 上验证过完整流程。已知缺口：Codex 兜底硬编码了 `/private/tmp`、B 站扫码登录只支持 macOS、`fetch-model` 依赖系统 `unzip`。
+
+1. 安装 Node 26、pnpm、FFmpeg（见下表）；桌面窗口另需 Rust 与 Visual Studio C++ 生成工具（WebView2 在 Win11 自带）。
+2. 完成通用步骤。
+3. PowerShell 窗口 1：`pnpm --dir apps/api run serve`。
+4. 窗口 2：`pnpm --dir apps/client run dev`，浏览器打开 `http://127.0.0.1:1420`；或改用 `pnpm --dir apps/client run tauri dev` 打开桌面窗口。
+
+### Linux
+
+同样没有验证过桌面构建。推荐用浏览器开发模式。
+
+1. 安装 Node 26、pnpm、FFmpeg。
+2. 完成通用步骤。
+3. 终端 1：`pnpm --dir apps/api run serve`；终端 2：`pnpm --dir apps/client run dev`。
+4. 浏览器打开 `http://127.0.0.1:1420`。若要 `tauri dev`，先按 [Tauri 官方文档](https://v2.tauri.app/start/prerequisites/#linux) 装 WebKitGTK 等系统库。
+
+### 手机
+
+**暂不支持。** iOS/Android 构建没有验证过。仅有的联调方式：同一局域网内用手机浏览器访问电脑，见"常见问题"，无登录保护，只在可信网络使用。
+
+### 可选素材（不装也能聊天）
 
 ```sh
-pnpm --dir apps/api typecheck && pnpm --dir apps/api test    # 161 个用例
-pnpm --dir apps/client typecheck && pnpm --dir apps/client build
-pnpm --dir apps/api run persona:eval -- --character deepseek # 人格回归
-pnpm --dir apps/api run llm:ping                             # 实际用哪家模型
+pnpm --dir apps/client run fetch-live2d     # 大肥鱼 Live2D 模型（CC BY-NC-SA 4.0，仅非商业）
+pnpm --dir apps/client run fetch-model      # VRM 演示形象（需要系统有 unzip）
 ```
 
-设计阶段的验收记录在 [docs/redesign/ledger.jsonl](docs/redesign/ledger.jsonl)（一轮一行），每阶段的截图矩阵在 `docs/redesign/shots/P0…P5/`。P0 由**独立视觉评审**打过两轮分：第一轮不通过（邮戳 4.42:1、纸纹 stdev=0），修完第二轮 §12.5 十六问 **16/16 否**、六维**各 4 分**。
+Live2D 还需要专有的 Cubism Core，仓库不分发：从 [官方 SDK](https://www.live2d.com/en/sdk/download/web/) 取 `live2dcubismcore.min.js`，放到 `apps/client/public/live2d/libs/`。缺少时舞台使用兜底形象，聊天不受影响。
 
 ---
 
-## 架构
+## 需要准备什么
 
-```mermaid
-flowchart LR
-  UI["客户端<br/>Tauri 2 + React 19 + Vite"] -- "HTTP / SSE" --> API["apps/api<br/>Node 26 · node:http"]
-  API --> Chat["聊天编排<br/>人格 · 记忆召回 · 情绪标签"]
-  Chat --> LLM["模型链<br/>DeepSeek → 备用 → 本机 Codex"]
-  Chat --> Mem["SQLite + FTS5<br/>事实版本 · 聊天档案"]
-  Chat --> Vec["Mem0<br/>本地中文向量"]
-  API --> Diary["日记<br/>定时生成 · 心情天气"]
-  API --> Surf["她自己去逛<br/>选题 · 无头浏览器 · 总结"]
-  Surf --> Chromium["playwright-core<br/>本机 Chromium"]
-  Chat --> DB[("本机 SQLite<br/>消息 · 会话 · 记忆 · 剂量")]
-  Diary --> DB
-  Surf --> DB
-```
-
-- 模型密钥只在服务端读取；DeepSeek 失败自动换备用接口，再换本机 Codex
-- 人格核心固定在 `apps/api/src/persona/`（身份、口吻、规则）；记忆、视频、网页只作资料附在后面，里面的指令不会被执行
-- 接口见 [docs/API.md](docs/API.md)，人格与成长见 [docs/PERSONALITY.md](docs/PERSONALITY.md)，记忆设计见 [docs/MEMORY_ARCHITECTURE.md](docs/MEMORY_ARCHITECTURE.md)
-
-```
-apps/client/   React 19 + Vite + Tauri 2；styles/tokens.css 是唯一色彩与尺寸来源
-apps/api/      Node 原生 http + node:sqlite；routes/* 分发、store/* 仓储、surf/* 自主冲浪
-docs/redesign/ 规范冻结副本 · 执行计划 · 任务书 · 账本 · 各阶段截图
-scripts/redesign/check.mjs  十项界面验收
-```
+| 工具 | 版本 | 用途 | 安装 |
+|---|---|---|---|
+| Node.js | **26**（`.node-version`；api 的 `engines` 为 `>=26 <27`） | 后端、前端构建 | `fnm install 26 && fnm use 26`，或 nvm / 官网 |
+| pnpm | 10 | 包管理（各 app 自带 lockfile） | `npm i -g pnpm` |
+| FFmpeg | 任意较新版 | 视频抽帧/转写（发 B 站链接时用） | macOS `brew install ffmpeg`；Windows `winget install ffmpeg`；Linux `apt install ffmpeg` |
+| 模型来源 | 二选一 | 聊天用的大模型 | DeepSeek API Key（推荐，填 `.env`）；或本机已登录的 [Codex CLI](https://github.com/openai/codex)（兜底，目前仅 macOS 可靠） |
+| Rust | ≥ 1.90 | 仅构建/运行桌面窗口（`tauri build/dev`） | [rustup.rs](https://rustup.rs) |
+| Chromium | playwright 版本 | 仅"她自己去逛"（见闻）功能 | `pnpm --dir apps/api exec playwright-core install chromium` |
 
 ---
 
-## 文档地图
+## 配置
 
-| 想了解 | 看这里 |
+编辑 `apps/api/.env`（已被 git 忽略；密钥只由后端读取）。模板见 [`apps/api/.env.example`](apps/api/.env.example)。**不填任何键也能启动**，但没有模型可用时聊天会失败。
+
+| 键 | 默认 | 必填 | 说明 |
+|---|---|---|---|
+| `DEEPSEEK_API_KEY` | 空 | 推荐 | 主模型 |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | 否 | 模型名 |
+| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | 否 | OpenAI 兼容接口 |
+| `BACKUP_LLM_BASE_URL` / `_API_KEY` / `_MODEL` | 空 | 否 | 备用模型，三项都填才启用 |
+| `CODEX_FALLBACK` | 开 | 否 | 设 `0` 关闭本机 Codex 兜底 |
+| `API_HOST` / `API_PORT` | `127.0.0.1` / `8787` | 否 | 监听地址。桌面版界面写死 8787，改端口后桌面版连不上 |
+| `LLM_TIMEOUT_MS` | `30000` | 否 | 模型超时 |
+| `CHAT_CONTEXT_TOKENS` | `32000` | 否 | 聊天上下文预算 |
+| `DIARY_CRON` / `JOURNAL_CRON` | `0 20 * * *` / `30 20 * * *` | 否 | 日记计划（本机时区，仅后端运行时生效） |
+| `MEMORY` | 开 | 否 | 设 `off` 关闭语义索引；首次启用会下载约 25 MB 向量模型到 `apps/api/.local/memory/models` |
+| `SURF_ENABLED` | 开 | 否 | 设 `0` 关闭自主冲浪（代码支持，模板里未列出） |
+| `QUOTA_ENFORCE` | 关 | 否 | 设 `1` 才会在超额时返回 402（代码支持，模板里未列出） |
+
+数据（SQLite、记忆、封面）默认存放在 `apps/api/.local/`，删除它等于清空所有数据。检查实际使用哪家模型：`pnpm --dir apps/api run llm:ping`。
+
+---
+
+## 常见问题
+
+- **聊天区显示"网络好像断了，我在这儿等你"**：后端没在运行。执行 `pnpm --dir apps/api run serve`，或在 macOS 双击 `启动鲸汐.command`。验证：`curl http://127.0.0.1:8787/api/health`。
+- **端口被占用（8787 或 1420）**：Mac/Linux 用 `lsof -ti:8787`（或 `:1420`）查看占用进程。后端可用 `API_PORT` 换端口，但桌面版固定连 8787，浏览器模式还需改 `apps/client/vite.config.ts` 的代理。
+- **怎么彻底退出**：桌面 App 不托管后端，关窗口不会停止后端。后端在哪个终端启动就 `Ctrl-C`；用 `.command` 拉起的，执行 `lsof -ti:8787 | xargs kill`。Windows 用 `netstat -ano | findstr 8787` 找 PID 后 `taskkill /PID <PID> /F`。
+- **没有形象 / 只显示默认鲸鱼**：没有 Live2D 或 VRM 文件，或缺 Cubism Core，见"可选素材"。
+- **`pnpm install` 报引擎不符或 `onnxruntime-node` 下载失败**：确认 `node -v` 为 v26.x；`onnxruntime-node` 的安装脚本需要联网下载二进制，换网络或设置代理后重试。
+- **发视频链接失败**：确认 `ffmpeg -version` 可用。B 站有限流，被限时后端会记录冷却时间，稍后再试；需登录的内容在非 macOS 上目前无法扫码登录。
+- **"见闻"没有内容**：需安装 Chromium（上表）；或设 `SURF_ENABLED=0` 关闭该功能。
+- **手机访问电脑上的界面**：`WP_LAN=1 pnpm --dir apps/client run dev` 加 `pnpm --dir apps/api run serve -- --lan`，手机浏览器访问 `http://<电脑IP>:1420`。该模式对局域网内所有人开放且无登录。
+- **日记没按时生成**：定时任务只在后端运行时触发，电脑睡眠或后端未开会错过当天。
+
+---
+
+## 给 AI Agent
+
+阅读顺序：[AGENTS.md](AGENTS.md) → [CONTRIBUTING.md](CONTRIBUTING.md) → [docs/PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md) → 被指派的 GitHub Issue → Issue 引用的代码与文档。只实现当前 Issue 的范围。
+
+| 目的 | 命令（均从仓库根目录执行） |
 |---|---|
-| 界面规范（2307 行） | [docs/redesign/spec/](docs/redesign/spec/WhalePartner_UI重设计规范.md) |
-| 实现的镜像（色值/字号/动效/适老） | [docs/DESIGN.md](docs/DESIGN.md) |
-| 接口 | [docs/API.md](docs/API.md) |
-| 人格与成长 | [docs/PERSONALITY.md](docs/PERSONALITY.md) |
-| 记忆架构与研究 | [docs/MEMORY_ARCHITECTURE.md](docs/MEMORY_ARCHITECTURE.md) · [MEMORY_RESEARCH.md](docs/MEMORY_RESEARCH.md) |
-| 日记与定时 | [docs/DAILY_JOURNAL.md](docs/DAILY_JOURNAL.md) |
-| 产品边界 | [docs/PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md) |
-| 协作与分支 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) |
-| 换会话怎么接手 | [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) |
+| 安装 | `pnpm --dir apps/api install && pnpm --dir apps/client install` |
+| 后端 | `pnpm --dir apps/api run serve` |
+| 前端开发 | `pnpm --dir apps/client run dev` |
+| 桌面窗口开发 | `pnpm --dir apps/client run tauri dev` |
+| 类型检查 | `pnpm --dir apps/api run typecheck && pnpm --dir apps/client run typecheck` |
+| 测试 | `pnpm --dir apps/api test && pnpm --dir apps/client test` |
+| 界面验收 | `node scripts/redesign/check.mjs`（`--static` 跳过浏览器，`--shots` 拍照） |
+| 构建 | `pnpm --dir apps/client run build`（Web）；`pnpm --dir apps/client run tauri build`（桌面包） |
+| 发布 | 无自动化。需同时改 `apps/client/package.json`、`apps/client/src-tauri/tauri.conf.json`、`apps/client/src-tauri/Cargo.toml` 的版本并更新 `CHANGELOG.md`；发布本身需开发者授权 |
+| 模型连通 / 人格回归 | `pnpm --dir apps/api run llm:ping` / `pnpm --dir apps/api run persona:eval` |
+
+仓库地图：
+
+```
+apps/api/            Node 后端（node:http + node:sqlite）
+  src/routes/        HTTP 路由分发
+  src/store/         数据仓储
+  src/surf/          自主冲浪（Playwright）
+  src/persona/       人格核心（身份、口吻、规则）
+  test/              node:test 用例
+apps/client/         React 19 + Vite + Tauri 2
+  src/               界面；styles/tokens.css 是色彩与尺寸唯一来源
+  src-tauri/         桌面壳（tauri.conf.json、Cargo.toml）
+  scripts/           字体、模型下载、e2e 冒烟
+docs/                产品、接口、设计文档；docs/redesign 为界面规范与验收记录
+scripts/redesign/    界面验收脚本
+implement-stage/     实施阶段的规格与假设记录
+启动鲸汐.command      macOS 启动器（后端 + App）
+```
+
+规则：
+
+- 不直接推 `main`，不合并自己的 PR；从最新 `main` 建分支 `feat|fix|docs/<issue>-<topic>`，一个 PR 对应一个 Issue，正文写 `Closes #N`。
+- 提交前缀：`feat: fix: docs: refactor: test: chore:`。
+- 不提交 `.env`、密钥、`node_modules`、构建产物；密钥只在后端读取。
+- 规格位置：产品范围在 Notion 开发台和 `docs/PRODUCT_SCOPE.md`；界面规范在 `docs/redesign/spec/`；接口在 `docs/API.md`；执行进度以 GitHub Issue/PR 为准。
+- 结束会话前按 [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) 在 Issue/PR 留交接记录。
 
 ---
 
-## 已知限制
+## 文档索引
 
-- **未发布 macOS app 包**：仓库没有 CI/Tauri 安装包；v0.2.6 Release 附源码归档，没有 `.app`。本机验收构建使用开发者本机取得的 Cubism Core；该专有组件按项目许可约定不随仓库分发。
-- **自主冲浪**默认开启（`SURF_ENABLED=0` 关闭），需要本机 Chromium：`pnpm --dir apps/api exec playwright-core install chromium`；关闭后调度器不触发（有测试断言）
-- **额度**默认只记账不拦截，`QUOTA_ENFORCE=1` 才会在开流前返回 402
-- **Live2D**：Cubism Core 是专有组件，需从官方 SDK 自行获取，仓库不分发；`fetch-live2d` 下载的模型为 CC BY-NC-SA 4.0，仅限非商业使用
-- **日记定时**只在 API 进程运行时生效
-- 手机真机、iOS/Android 构建仍未验证
+> 最新体验审查与修复清单：[docs/review/2026-11-08-体验审查.md](docs/review/2026-11-08-体验审查.md)
 
-## 第三方与许可
+| 想了解 | 文档 |
+|---|---|
+| 协作流程、分支、PR | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) |
+| 产品边界 | [docs/PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md) |
+| 接口 | [docs/API.md](docs/API.md) |
+| 界面设计与规范 | [docs/DESIGN.md](docs/DESIGN.md) · [docs/redesign/spec/](docs/redesign/spec/WhalePartner_UI重设计规范.md) |
+| 人格与成长 | [docs/PERSONALITY.md](docs/PERSONALITY.md) |
+| 记忆 | [docs/MEMORY_ARCHITECTURE.md](docs/MEMORY_ARCHITECTURE.md) · [docs/MEMORY_RESEARCH.md](docs/MEMORY_RESEARCH.md) |
+| 日记与定时 | [docs/DAILY_JOURNAL.md](docs/DAILY_JOURNAL.md) |
+| 技术选型 / Live2D 评估 | [docs/TECH_STACK_PROPOSAL.md](docs/TECH_STACK_PROPOSAL.md) · [docs/LIVE2D_ASSESSMENT.md](docs/LIVE2D_ASSESSMENT.md) |
+| 会话交接 | [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) · [docs/handoffs/](docs/handoffs/) |
 
-`apps/api/vendor/dsh-bilibili/`（B 站提取器，MIT）与 `apps/api/vendor/shuorenhua/`（说人话规则，MIT）保留许可证与来源。主要依赖：Tauri、React、Radix、motion、perfect-freehand、PixiJS 与 pixi-live2d-display、three.js 与 three-vrm、mem0（Apache-2.0）、transformers.js（Apache-2.0）、playwright-core（Apache-2.0）。模型素材不入库。
+## 许可与第三方
 
-> 大肥鱼、Claude 娘、ChatGPT 娘是社区二创角色，不代表对应公司官方角色；鲸汐是原创角色。
-
-## 协作
-
-**AI Agent 开工前先读 [AGENTS.md](AGENTS.md)**；分支命名、Issue 与 PR 约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。产品方向在 Notion 开发台，执行进度以 GitHub Issue/PR 为准。
+`apps/api/vendor/dsh-bilibili/` 与 `apps/api/vendor/shuorenhua/` 为 MIT，保留原许可。Live2D 模型为 CC BY-NC-SA 4.0，仅限非商业。大肥鱼、Claude 娘、ChatGPT 娘是社区二创角色，不代表对应公司官方角色；鲸汐是原创角色。
