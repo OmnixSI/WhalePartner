@@ -13,6 +13,10 @@ export interface SurfStepEvent {
   sessionId: number;
   stage: "searching" | "watching" | "reading" | "writing";
   kind: "video" | "web" | null;
+  /** 这一步在做什么，例如「在读《鲸歌是什么》」。 */
+  detail?: string | null;
+  /** 你在聊天，她先停下等着。 */
+  paused?: boolean;
 }
 
 export interface SurfItemEvent {

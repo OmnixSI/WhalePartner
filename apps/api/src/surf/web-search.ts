@@ -1,7 +1,8 @@
 import { isPrivateAddress } from "../web-service.ts";
 import { lookup } from "node:dns/promises";
 import type { WebPageText, WebResult, WebSource } from "./types.ts";
-import { createBrowserReader, type PageReader } from "./browser.ts";
+import { withRetry } from "./errors.ts";
+import { createPageReader, type PageReader } from "./page-reader.ts";
 
 /**
  * 网上冲浪的搜索一侧（§10.6.8 B.1）：Bing 中文结果为主，被验证拦住时回退 DuckDuckGo。
@@ -135,36 +136,46 @@ export interface WebSourceDeps {
 }
 
 export interface SurfWebSource extends WebSource {
-  read(url: string): Promise<WebPageText>;
+  read(url: string, options?: { signal?: AbortSignal }): Promise<WebPageText>;
 }
 
 export function createWebSource(deps: WebSourceDeps = {}): SurfWebSource {
   const fetchText = deps.fetchText ?? defaultFetchText;
-  const reader = deps.reader ?? createBrowserReader();
+  const reader = deps.reader ?? createPageReader();
 
   return {
     async search(keyword) {
-      const bing = `${BING}?q=${encodeURIComponent(keyword)}&setlang=zh-hans`;
-      let results: WebResult[] = [];
-      try {
-        results = parseBingResults(await fetchText(bing));
-      } catch {
-        results = [];
-      }
-      if (results.length > 0) return results;
-      try {
-        return parseDuckDuckGoResults(await fetchText(`${DDG}?q=${encodeURIComponent(keyword)}`));
-      } catch {
-        return [];
-      }
+      // 网络抖动原地退避重试一次；两个搜索源都失败才把错误抛给上层，只是没结果则返回空。
+      let failure: unknown = null;
+      const attempt = async (url: string, parse: (html: string) => WebResult[]) => {
+        try {
+          return parse(await withRetry(() => fetchText(url), { attempts: 2, baseMs: 600 }));
+        } catch (error) {
+          failure = error;
+          return [];
+        }
+      };
+      const bing = await attempt(`${BING}?q=${encodeURIComponent(keyword)}&setlang=zh-hans`, parseBingResults);
+      if (bing.length > 0) return bing;
+      const ddg = await attempt(`${DDG}?q=${encodeURIComponent(keyword)}`, parseDuckDuckGoResults);
+      if (ddg.length === 0 && failure && bing.length === 0) throw failure;
+      return ddg;
     },
 
-    read(url) {
-      return reader.read(url);
+    read(url, options) {
+      return reader.read(url, options);
     },
 
     available() {
       return reader.available();
+    },
+
+    prepare() {
+      reader.prepare();
+    },
+
+    browserStatus() {
+      return reader.browserStatus();
     },
   };
 }

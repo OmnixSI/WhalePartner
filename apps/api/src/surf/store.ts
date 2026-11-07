@@ -43,6 +43,8 @@ export interface InsertItemInput {
   createdAt: string;
   thumbPath?: string | null;
   thumbSourceUrl?: string | null;
+  /** 正文内容指纹（跨天、跨链接去重）。 */
+  contentFp?: string | null;
 }
 
 type ItemRow = Omit<SurfItem, "tags" | "hidden"> & { tagsJson: string; hidden: number };
@@ -136,6 +138,8 @@ export class SurfRepository {
     const columns = this.#db.prepare("PRAGMA table_info(surf_items)").all() as Array<{ name: string }>;
     if (!columns.some((column) => column.name === "thumb_source_url")) this.#db.exec("ALTER TABLE surf_items ADD COLUMN thumb_source_url TEXT");
     if (!columns.some((column) => column.name === "thumb_error")) this.#db.exec("ALTER TABLE surf_items ADD COLUMN thumb_error TEXT");
+    if (!columns.some((column) => column.name === "content_fp")) this.#db.exec("ALTER TABLE surf_items ADD COLUMN content_fp TEXT");
+    this.#db.exec("CREATE INDEX IF NOT EXISTS idx_surf_items_fp ON surf_items(character, content_fp)");
   }
 
   // ---- 设置 ----
@@ -265,8 +269,8 @@ export class SurfRepository {
     const result = this.#db
       .prepare(
         `INSERT OR IGNORE INTO surf_items
-           (character, session_id, kind, title, url, source_site, summary, comment, tags_json, score, dedupe_key, created_at, thumb_path, thumb_source_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (character, session_id, kind, title, url, source_site, summary, comment, tags_json, score, dedupe_key, created_at, thumb_path, thumb_source_url, content_fp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.character,
@@ -283,6 +287,7 @@ export class SurfRepository {
         input.createdAt,
         input.thumbPath ?? null,
         input.thumbSourceUrl ?? null,
+        input.contentFp || null,
       );
     if (Number(result.changes) === 0) return undefined;
     const row = this.#db.prepare(`${SELECT_ITEM} WHERE id = ?`).get(Number(result.lastInsertRowid)) as ItemRow;
@@ -306,6 +311,18 @@ export class SurfRepository {
       where.push("kind = ?");
       args.push(query.kind);
     }
+    if (query.site) {
+      where.push("source_site = ?");
+      args.push(query.site);
+    }
+    if (query.from) {
+      where.push("created_at >= ?");
+      args.push(query.from);
+    }
+    if (query.to) {
+      where.push("created_at < ?");
+      args.push(query.to);
+    }
     if (query.q?.trim()) {
       where.push("(title LIKE ? OR summary LIKE ? OR comment LIKE ? OR tags_json LIKE ?)");
       const like = `%${query.q.trim()}%`;
@@ -318,10 +335,18 @@ export class SurfRepository {
     const rows = this.#db
       .prepare(`${SELECT_ITEM} WHERE ${clause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
       .all(...args, pageSize, (page - 1) * pageSize) as ItemRow[];
-    return { items: rows.map((row) => this.#feedItem(toItem(row))), total };
+    return { items: rows.map((row) => this.feedItem(toItem(row))), total };
   }
 
-  #feedItem(item: SurfItem): SurfFeedItem {
+  /** 见闻页「来源」筛选用：各来源带回过几条（不含被忘掉的）。 */
+  sources(): Array<{ site: string; count: number }> {
+    const rows = this.#db
+      .prepare("SELECT source_site AS site, COUNT(*) AS n FROM surf_items WHERE hidden = 0 GROUP BY source_site ORDER BY n DESC, site ASC LIMIT 30")
+      .all() as Array<{ site: string; n: number }>;
+    return rows.map((row) => ({ site: row.site, count: Number(row.n) }));
+  }
+
+  feedItem(item: SurfItem): SurfFeedItem {
     return {
       id: item.id,
       kind: item.kind,
@@ -376,6 +401,58 @@ export class SurfRepository {
     return (this.#db.prepare("SELECT dedupe_key AS key FROM surf_items WHERE character = ?").all(character) as Array<{ key: string }>).map(
       (row) => row.key,
     );
+  }
+
+  /** 这个正文指纹以前逛过吗（含被「忘掉」的、含更早的日子）。 */
+  hasFingerprint(character: string, fingerprint: string): boolean {
+    if (!fingerprint) return false;
+    return Boolean(this.#db.prepare("SELECT 1 FROM surf_items WHERE character = ? AND content_fp = ? LIMIT 1").get(character, fingerprint));
+  }
+
+  /** 最近几次会话用过的话题，新的在前（选题多样性用）。 */
+  recentSessionTopics(character: string, limit = 5): string[][] {
+    const rows = this.#db
+      .prepare(
+        `SELECT queries_json AS q FROM surf_sessions
+         WHERE character = ? AND status IN ('done','failed','running') AND queries_json IS NOT NULL AND queries_json != '[]'
+         ORDER BY id DESC LIMIT ?`,
+      )
+      .all(character, limit) as Array<{ q: string }>;
+    return rows.map((row) => parseTags(row.q));
+  }
+
+  /** 最近带回来的标题（新的在前），选片/选页时避免撞题材。 */
+  recentTitles(character: string, limit = 12): string[] {
+    return (
+      this.#db
+        .prepare("SELECT title FROM surf_items WHERE character = ? ORDER BY id DESC LIMIT ?")
+        .all(character, limit) as Array<{ title: string }>
+    ).map((row) => row.title);
+  }
+
+  /** 最近的一些用户事实（选题用）。聊天表不在就当没有。 */
+  recentFacts(limit = 10): string[] {
+    try {
+      const rows = this.#db
+        .prepare("SELECT subject, predicate, value FROM memory_facts WHERE status = 'active' ORDER BY updated_at DESC LIMIT ?")
+        .all(limit) as Array<{ subject: string; predicate: string; value: string }>;
+      return rows.map((row) => `${row.predicate}：${row.value}`);
+    } catch {
+      return [];
+    }
+  }
+
+  /** 同一个槽位已经失败重试了几次（槽位名带 `#retryN` 后缀）。 */
+  retriesForSlot(character: string, slot: string): number {
+    const row = this.#db
+      .prepare("SELECT COUNT(*) AS n FROM surf_sessions WHERE character = ? AND slot LIKE ?")
+      .get(character, `${slot.replace(/[%_]/g, "")}#retry%`) as { n: number };
+    return Number(row.n);
+  }
+
+  /** 失败的会话让出槽位：改名为 `槽位#retryN`，调度器下一轮就能重新认领这个槽位。 */
+  releaseSlot(sessionId: number, slot: string, retry: number) {
+    this.#db.prepare("UPDATE surf_sessions SET slot = ? WHERE id = ?").run(`${slot}#retry${retry}`, sessionId);
   }
 
   countSince(character: string, kind: SurfItemKind, sinceIso: string): number {

@@ -1,7 +1,7 @@
 import { CronJob } from "cron";
 import { CHARACTERS, type CharacterId } from "../persona/persona.ts";
 import { FREQUENCY_PLAN } from "./settings.ts";
-import { localDateKey, slotDate, type SurfService } from "./service.ts";
+import { localDateKey, slotDate, SLOT_RETRY_GAP_MS, type SurfService } from "./service.ts";
 
 /** 槽位宽限：电脑睡一觉醒来，60 分钟内还补得上一趟（§10.6.4）。 */
 export const SLOT_GRACE_MS = 60 * 60_000;
@@ -50,6 +50,13 @@ export class SurfScheduler {
       if (delta < 0 || delta > SLOT_GRACE_MS) continue;
       const key = `${localDateKey(now)} ${slot}`;
       if (this.#options.service.store.hasSession(character, key)) continue;
+      // 上一次因为网络失败让出了槽位：隔一会儿再来，最多再试两次。
+      const retries = this.#options.service.store.retriesForSlot(character, key);
+      if (retries > 0) {
+        const last = this.#options.service.store.sessionBySlot(character, `${key}#retry${retries}`);
+        const finished = Date.parse(last?.finishedAt ?? last?.startedAt ?? "");
+        if (Number.isFinite(finished) && now.getTime() - finished < SLOT_RETRY_GAP_MS) continue;
+      }
       return slot;
     }
     return null;
@@ -81,6 +88,7 @@ export class SurfScheduler {
 
   /** 服务启动时挂上；返回停止函数。 */
   start(expression = "*/5 * * * *"): () => void {
+    this.stop();
     this.#job = CronJob.from({
       cronTime: expression,
       onTick: () => {
@@ -95,6 +103,10 @@ export class SurfScheduler {
       void this.#job?.stop();
       this.#job = null;
     };
+  }
+
+  get running(): boolean {
+    return this.#job !== null;
   }
 
   stop() {

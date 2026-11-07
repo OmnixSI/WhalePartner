@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import { surfDataDir } from "./data-dir.ts";
 
 export interface OpenAiCompatibleConfig {
   baseUrl: string;
@@ -86,7 +87,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     llmTimeoutMs: positiveInt(env.LLM_TIMEOUT_MS, 30000, "LLM_TIMEOUT_MS"),
     surfEnabled: text(env.SURF_ENABLED) !== "0",
     surfChromiumPath: text(env.SURF_CHROMIUM_PATH),
-    surfDir: text(env.SURF_DIR) ?? dataPath("surf"),
+    surfDir: text(env.SURF_DIR) ?? surfDataDir(env),
     localToken: text(env.WP_LOCAL_TOKEN),
   };
 }

@@ -31,6 +31,7 @@ import { SendKeySetting } from "../components/settings/SendKeySetting";
 import { DevicesSetting } from "../components/settings/DevicesSetting";
 import { ConnectServerSetting } from "../components/settings/ConnectServerSetting";
 import { updateA11y, ELDER_MIN_SCALE } from "../components/settings/prefs";
+import { SurfBrowserNote } from "../components/surf/SurfBrowserNote";
 import { TagField } from "../components/surf/TagField";
 import {
   FREQUENCY_HINT,
@@ -268,6 +269,7 @@ export function SettingsPage() {
               <p className="set-surf-legend" aria-hidden="true">
                 左边是看视频（B 站），右边是翻网页。
               </p>
+              <SurfBrowserNote character={character.id} initial={surf.browser} enabled={surf.enabled && surf.web} />
 
               <SettingRow title="讲给我听" desc="逛到有意思的，她会在聊天里告诉我。" onActivate={() => void saveSurf({ shareToChat: !surf.shareToChat })}>
                 <Switch label="讲给我听" checked={surf.shareToChat} onChange={(next) => void saveSurf({ shareToChat: next })} />

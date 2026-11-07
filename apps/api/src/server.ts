@@ -36,7 +36,8 @@ import { handleSetupRoute } from "./routes/setup.ts";
 import { handleExportRoute, dataMaintenanceBusy } from "./routes/export.ts";
 import { handleVideoSummaryRoute } from "./routes/video-summary.ts";
 import { handleSurf } from "./routes/surf.ts";
-import { createSurf } from "./surf/index.ts";
+import { createSurf, stopSurf } from "./surf/index.ts";
+import { CHAT_RESUME_MS } from "./surf/service.ts";
 import type { ServerDeps } from "./server-types.ts";
 export type { ServerDeps } from "./server-types.ts";
 
@@ -188,7 +189,7 @@ if (import.meta.main) {
     memory,
     messages: store,
     journal: diary,
-    isUserChatting: () => Date.now() - chatActivity.last < 3 * 60_000,
+    isUserChatting: () => chatActivity.last !== 0 && Date.now() - chatActivity.last < CHAT_RESUME_MS,
     userIdleMinutes: () => (chatActivity.last === 0 ? Number.POSITIVE_INFINITY : (Date.now() - chatActivity.last) / 60_000),
   });
   let stopSurfScheduler = () => {};
@@ -213,7 +214,8 @@ if (import.meta.main) {
       store.close();
     });
   });
-  server.on("close", () => { stopSurfScheduler(); });
+  // 收尾幂等：stopSurfScheduler / stopSurf 重复调用无副作用，shutdown 与 server.close 可各走一次。
+  server.on("close", () => { stopSurfScheduler(); void stopSurf().catch(() => {}); });
   // 端口被占：打印明确原因，用固定退出码 98 退出（桌面外壳据此换端口重试）。
   server.on("error", (error: NodeJS.ErrnoException) => {
     if (error.code === "EADDRINUSE") {
@@ -233,13 +235,12 @@ if (import.meta.main) {
     const hardExit = setTimeout(() => process.exit(0), 2500);
     hardExit.unref();
     void (async () => {
-      try {
-        const surfModule = (await import("./surf/index.ts")) as Record<string, unknown>;
-        if (typeof surfModule.stopSurf === "function") await (surfModule.stopSurf as () => unknown)();
-      } catch {
-        // stopSurf 不存在或失败都不拦退出
-      }
       stopSurfScheduler();
+      try {
+        await stopSurf();
+      } catch {
+        // 浏览器关闭失败不拦退出
+      }
       stopDiaryScheduler();
       stopJournalScheduler();
       server.close(() => process.exit(0));
