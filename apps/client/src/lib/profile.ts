@@ -1,7 +1,19 @@
 import { API_BASE } from "./api";
+import { describeNetError } from "./net";
 
 export interface Profile {
   nickname: string | null;
+}
+
+/**
+ * 后端字段叫 `userName`（规范 §10.5 B5，`GET /api/profile` → `{ userName }`），
+ * 界面上叫「昵称」。翻译只在这个文件里做一次。
+ *
+ * 0.2.3 之前这里读写的是 `nickname`，跟后端对不上：读回来永远是空，点「记下」
+ * 服务端拿到的 `userName` 是 undefined → 400「这个名字用不了」。现在按线上字段走。
+ */
+interface WireProfile {
+  userName?: string | null;
 }
 
 async function readError(response: Response): Promise<never> {
@@ -18,7 +30,8 @@ export async function getProfile(signal?: AbortSignal): Promise<Profile> {
   try {
     const response = await fetch(`${API_BASE}/api/profile`, { signal });
     if (!response.ok) return { nickname: null };
-    return (await response.json()) as Profile;
+    const body = (await response.json()) as WireProfile;
+    return { nickname: body.userName ?? null };
   } catch {
     return { nickname: null };
   }
@@ -26,13 +39,19 @@ export async function getProfile(signal?: AbortSignal): Promise<Profile> {
 
 /** `null` 表示清除昵称；不合法时抛错，message 是中文提示。 */
 export async function putNickname(nickname: string | null): Promise<Profile> {
-  const response = await fetch(`${API_BASE}/api/profile`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nickname }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api/profile`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userName: nickname }),
+    });
+  } catch (error) {
+    throw new Error(describeNetError(error, "昵称没存上"));
+  }
   if (!response.ok) return readError(response);
-  return (await response.json()) as Profile;
+  const body = (await response.json()) as WireProfile;
+  return { nickname: body.userName ?? null };
 }
 
 /**

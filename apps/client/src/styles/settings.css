@@ -697,3 +697,12 @@
   border: var(--stroke-1) solid var(--line);
 }
 .set-receipt[data-ok="off"] { color: var(--alert); border-color: var(--alert); }
+
+/* 存失败那一行：原因 + 「再试一次」。别让人自己回想刚才点的是哪一项。 */
+.set-fail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+.set-fail .btn { min-height: var(--hit); }

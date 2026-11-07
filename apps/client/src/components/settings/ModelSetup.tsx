@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
+import { describeNetError } from "../../lib/net";
 import { SettingRow } from "./Row";
 
 const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
@@ -144,7 +145,7 @@ export function ModelSetup({ offline, onToast }: Props) {
       onToast("DeepSeek key 记下了。重启后端才会用上新的。");
       await load();
     } catch (error) {
-      setKeyError(error instanceof Error ? error.message : "没存上，现在拿不到。");
+      setKeyError(describeNetError(error, "key 没存上"));
     } finally {
       setSavingKey(false);
     }
@@ -173,7 +174,7 @@ export function ModelSetup({ offline, onToast }: Props) {
       onToast("写进 Codex 了。下一轮就会按新的模型来。");
       await load();
     } catch (error) {
-      setCodexError(error instanceof Error ? error.message : "没写进去，现在拿不到。");
+      setCodexError(describeNetError(error, "没写进 Codex"));
     } finally {
       setSavingCodex(false);
     }

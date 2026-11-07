@@ -1,6 +1,7 @@
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { checkLogin, fetchAccounts, logout, startLogin, type AccountStatus, type LoginState } from "../lib/accounts";
+import { describeNetError } from "../lib/net";
 
 const POLL_MS = 2500;
 
@@ -63,7 +64,7 @@ export function Accounts() {
         else if (state === "error") setFlow({ phase: "failed", message: "登录没有成功，请重新扫码。" });
         else setFlow((current) => (current.phase === "scanning" && current.key === scanKey ? { ...current, state } : current));
       } catch (error) {
-        if (!ctrl.signal.aborted) setFlow({ phase: "failed", message: error instanceof Error ? error.message : "查询扫码状态失败。" });
+        if (!ctrl.signal.aborted) setFlow({ phase: "failed", message: describeNetError(error, "查询扫码状态失败") });
       }
     }, POLL_MS);
     return () => { ctrl.abort(); window.clearInterval(timer); };
@@ -77,7 +78,7 @@ export function Accounts() {
       const image = await QRCode.toDataURL(start.url, { margin: 1, width: 220, color: { dark: "#17222d", light: "#ffffff" } });
       if (!cancelled.current) setFlow({ phase: "scanning", key: start.key, image, state: "waiting" });
     } catch (error) {
-      if (!cancelled.current) setFlow({ phase: "failed", message: error instanceof Error ? error.message : "获取二维码失败。" });
+      if (!cancelled.current) setFlow({ phase: "failed", message: describeNetError(error, "获取二维码失败") });
     }
   };
 

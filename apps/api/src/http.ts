@@ -11,14 +11,32 @@ const ALLOWED_ORIGINS = new Set([
   "http://127.0.0.1:1420",
 ]);
 
+/**
+ * 预检放行的方法，必须**覆盖前端实际发的每一个**。
+ *
+ * 0.2.3 的坑：这一行只写了 GET/POST/PATCH/DELETE，而昵称、模型接入、逛设置
+ * 三个接口是 PUT。开发时页面走 Vite 代理（同源、没有预检），全绿；装成桌面
+ * App 之后页面来自 `tauri://localhost`，跨源预检被这句话拦掉，fetch 直接抛
+ * `TypeError: Load failed`，开关点了又弹回去。
+ *
+ * 改这张表之前先跑 `test/cors.test.ts`：它会扫前端源码里所有 `method: "X"`，
+ * 漏一个就红。
+ */
+export const CORS_ALLOWED_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
+
+export const CORS_ALLOWED_ORIGINS: readonly string[] = [...ALLOWED_ORIGINS];
+
 export function applyCors(request: IncomingMessage, response: ServerResponse) {
   const origin = request.headers.origin;
-  if (typeof origin === "string" && ALLOWED_ORIGINS.has(origin)) {
-    response.setHeader("access-control-allow-origin", origin);
-    response.setHeader("vary", "origin");
-    response.setHeader("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
-    response.setHeader("access-control-allow-headers", "content-type");
-  }
+  if (typeof origin !== "string" || !ALLOWED_ORIGINS.has(origin)) return;
+  // 预检里浏览器会列出它想问的请求头；原样回显比写死一张表更不容易再漏。
+  const asked = request.headers["access-control-request-headers"];
+  response.setHeader("access-control-allow-origin", origin);
+  response.setHeader("vary", "origin");
+  response.setHeader("access-control-allow-methods", CORS_ALLOWED_METHODS.join(","));
+  response.setHeader("access-control-allow-headers", typeof asked === "string" && asked.trim() ? asked : "content-type");
+  // 预检结果缓存 10 分钟，省掉每次改设置都多一个来回。
+  response.setHeader("access-control-max-age", "600");
 }
 
 export function sendJson(response: ServerResponse, statusCode: number, body: unknown) {

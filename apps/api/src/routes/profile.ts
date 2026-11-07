@@ -55,7 +55,14 @@ export async function handleProfileRoute(
     }
     if (request.method === "PUT") {
       const body = await readJsonBody(request);
-      const checked = validate((body as { userName?: unknown } | null)?.userName);
+      const raw = (body as { userName?: unknown } | null)?.userName;
+      // 明确给 null 就是「清掉」：界面上把昵称删空后点「记下」走这条。
+      if (raw === null) {
+        db.prepare("DELETE FROM user_profile WHERE key = 'userName'").run();
+        sendJson(response, 200, { userName: null });
+        return true;
+      }
+      const checked = validate(raw);
       if (!checked.ok) {
         sendJson(response, 400, { error: checked.code, message: "这个名字用不了，换一个试试。" });
         return true;

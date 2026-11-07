@@ -1,4 +1,5 @@
 import { API_BASE } from "./api";
+import { describeNetError } from "./net";
 
 export interface ExportResult {
   ok: true;
@@ -28,10 +29,16 @@ async function readError(response: Response): Promise<never> {
  * 也不会出现浏览器直接 GET 到 404 JSON 的情况。
  */
 export async function exportAll(): Promise<{ download: true; filename: string }> {
-  const created = await fetch(`${API_BASE}/api/export`, { method: "POST" });
-  if (!created.ok) await readError(created);
-  const { id } = (await created.json()) as { id: string };
-  const file = await fetch(`${API_BASE}/api/export?id=${encodeURIComponent(id)}`);
+  let created: Response;
+  let file: Response;
+  try {
+    created = await fetch(`${API_BASE}/api/export`, { method: "POST" });
+    if (!created.ok) await readError(created);
+    const { id } = (await created.json()) as { id: string };
+    file = await fetch(`${API_BASE}/api/export?id=${encodeURIComponent(id)}`);
+  } catch (error) {
+    throw new Error(describeNetError(error, "导出没成"));
+  }
   if (!file.ok) await readError(file);
 
   const blob = await file.blob();
@@ -56,11 +63,16 @@ export interface DeleteAllResult {
 
 /** 删除全部数据（需要确认字符串）。成功后调用方清 localStorage 并 reload。 */
 export async function deleteAll(): Promise<DeleteAllResult> {
-  const response = await fetch(`${API_BASE}/api/data`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ confirm: "DELETE_ALL" }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api/data`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: "DELETE_ALL" }),
+    });
+  } catch (error) {
+    throw new Error(describeNetError(error, "删除没成"));
+  }
   if (!response.ok) return readError(response);
   return (await response.json()) as DeleteAllResult;
 }
