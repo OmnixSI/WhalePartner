@@ -37,7 +37,7 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 | B4 本地长期记忆与长会话上下文 | 已实现（[PR #32](https://github.com/OmnixSI/WhalePartner/pull/32)，[Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)）：本地 SQLite 原文档案、事实来源与时间版本、滚动会话观察、FTS5/向量/时间范围混合召回、上下文预算和可恢复任务队列。只做本机存储，不做云同步。 |
 | C1/C2 视频链路 | 完成（Spdor）；已接入聊天：发 B 站链接，角色看完再讲并记住。 |
 | 十条视频成本与质量基准 | 已记录 token 和阶段耗时（见 [构建记录](../implement-stage/BUILD_NOTE.md)）。人工评分和美元费用仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。 |
-| 主应用界面与日记管理 | Issue #39 / PR #40：聊天工具栏、记忆分类与设置页已收紧；日记支持周/月/年范围和分页。API 日记任务已持久化，支持启动恢复及当天漏触发补跑。大肥鱼 Live2D 已接入主聊天舞台，支持待机、聊天情绪表情、视线跟随、点击互动和聊天时嘴型。模型素材为 CC BY-NC-SA 4.0 非商业许可；Cubism Core 为 Live2D 专有组件，需开发者从官方 SDK 获取并遵循许可。PR 待审查。 |
+| 主应用界面与日记管理 | 基础界面与 Live2D 已随 [PR #40](https://github.com/OmnixSI/WhalePartner/pull/40) 合并；本轮验收修复随 [Issue #78](https://github.com/OmnixSI/WhalePartner/issues/78) / [PR #79](https://github.com/OmnixSI/WhalePartner/pull/79) 合并，并发布 [v0.2.6](https://github.com/OmnixSI/WhalePartner/releases/tag/v0.2.6)。切换角色只更换人格，聊天、记忆、日记和见闻共享；日记按周/月/年展示共享综合日记和旧视频日记；Live2D 点击动作结束后恢复待机；见闻来源链接打开系统默认浏览器。保留既有数据库和配置。Live2D 模型为 CC BY-NC-SA 4.0 非商业素材；Cubism Core 须由开发者从官方 SDK 获取，Release 不附包含本机 Core 的 `.app`。 |
 | D1 定时日记、D2 日记页与添加链接入口 | 已实现：B 站链接进入 SQLite 待看队列，计划任务每次处理一条，页面展示队列和生成的摘要/日记；日记经历写入共享 mem0。接口见 [`API.md`](API.md)。 |
 | E1 端到端联调 | 聊天 → 视频 → 记忆 → 再聊已跑通；日记链路的真实视频联调见本分支 PR 验证记录。 |
 
