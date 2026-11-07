@@ -162,7 +162,7 @@ test("POST /api/videos/summarize returns the summary, remembers it and validates
   const bare = createApiServer({ config: loadConfig({}), provider: new FallbackChatProvider([scripted([])]), store: new ChatStore(":memory:") });
   const bareBase = await new Promise<string>((resolve) => bare.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(bare.address() as AddressInfo).port}`)));
   try {
-    assert.equal((await fetch(`${bareBase}/api/videos/summarize`, { method: "POST", body: "{}" })).status, 503);
+    assert.equal((await fetch(`${bareBase}/api/videos/summarize`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).status, 503);
   } finally {
     bare.close();
   }

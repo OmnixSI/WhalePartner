@@ -26,9 +26,9 @@ export const CORS_ALLOWED_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DEL
 
 export const CORS_ALLOWED_ORIGINS: readonly string[] = [...ALLOWED_ORIGINS];
 
-export function applyCors(request: IncomingMessage, response: ServerResponse) {
+export function applyCors(request: IncomingMessage, response: ServerResponse, extraOrigins: readonly string[] = []) {
   const origin = request.headers.origin;
-  if (typeof origin !== "string" || !ALLOWED_ORIGINS.has(origin)) return;
+  if (typeof origin !== "string" || !(ALLOWED_ORIGINS.has(origin) || extraOrigins.includes(origin))) return;
   // 预检里浏览器会列出它想问的请求头；原样回显比写死一张表更不容易再漏。
   const asked = request.headers["access-control-request-headers"];
   response.setHeader("access-control-allow-origin", origin);

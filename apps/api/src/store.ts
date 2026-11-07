@@ -56,6 +56,7 @@ export class ChatStore {
   messagesAround(sessionId: string, messageId: number, radius?: number) { return this.#sessions.messagesAround(sessionId, messageId, radius); }
   message(id: number) { return this.#sessions.message(id); }
   remove(id: number) { return this.#sessions.remove(id); }
+  markInterrupted(id: number) { return this.#sessions.markInterrupted(id); }
   searchArchive(query: string, limit?: number, excludeSessionId?: string, character?: string): ArchiveHit[] { return this.#sessions.searchArchive(query, limit, excludeSessionId, character); }
   listMemoryExplorer(filters: MemoryExplorerFilters) { return listMemoryExplorer(this.#db, filters); }
   journalSources(_character: string | undefined, from: string, to: string) { return journalSourcesForDay(this.#db, undefined, from, to); }

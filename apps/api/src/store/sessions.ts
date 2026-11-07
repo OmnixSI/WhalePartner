@@ -130,6 +130,11 @@ export class SessionRepository {
     return row ? { ...row } : undefined;
   }
 
+  /** 被打断的回复：留下已生成的部分，并在附件里打个记号（历史接口会带出去）。 */
+  markInterrupted(id: number) {
+    this.db.prepare("UPDATE messages SET attachment_json = ? WHERE id = ? AND attachment_json IS NULL").run(JSON.stringify({ type: "interrupted" }), id);
+  }
+
   remove(id: number) {
     this.db.exec("BEGIN IMMEDIATE");
     try {

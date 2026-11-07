@@ -4,7 +4,8 @@ import { matchesTimeWindow, overlapsFactTimeWindow, type ChatStore } from "../st
 import type { ArchiveHit, StoredExperience, StoredFact } from "../store/types.ts";
 import type { CharacterId } from "../persona/persona.ts";
 
-const RECALL_TIMEOUT_MS = 8_000;
+/** 首字要快：记忆向量检索最多等 1.5 秒，超时这一轮就不带向量召回（本地事实/经历照常）。 */
+export const RECALL_TIMEOUT_MS = 1_500;
 
 export interface MemoryRecall {
   facts: string[];
@@ -107,6 +108,7 @@ export async function recallChatMemory(input: {
   character: CharacterId;
   sessionId: string;
   query: string;
+  timeoutMs?: number;
 }): Promise<MemoryRecall> {
   const { store, memory, character, sessionId, query } = input;
   const facts: string[] = [];
@@ -151,7 +153,7 @@ export async function recallChatMemory(input: {
       const recent = asksAboutRecentExperiences(query) && localRecent.length === 0
         ? memory.recentExperiences(2)
         : Promise.resolve([]);
-      const [recalled, recentEntries] = await withTimeout(Promise.all([search, recent]), RECALL_TIMEOUT_MS);
+      const [recalled, recentEntries] = await withTimeout(Promise.all([search, recent]), input.timeoutMs ?? RECALL_TIMEOUT_MS);
       for (const entry of recalled) {
         const key = entry.sourceId ?? entry.id;
         if (seenSources.has(key)) continue;
