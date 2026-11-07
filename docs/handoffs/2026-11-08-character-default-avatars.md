@@ -21,8 +21,9 @@
 
 ## 交接
 
-- 状态：待 GitHub PR 自查与合并。
+- 状态：实现、验证与 PR 自查已完成。
 - 分支：`fix/84-character-default-avatars`
+- PR：[ #88](https://github.com/OmnixSI/WhalePartner/pull/88)
 - Issue：[ #84](https://github.com/OmnixSI/WhalePartner/issues/84)
 - 人工验收：分别切换四个人格，确认大肥鱼加载 Live2D，其余三者显示固定贴纸形象，且没有可选或串用其他模型的入口。
 - Notion 任务：角色默认形象与 Live2D 绑定（#84）。
