@@ -38,7 +38,7 @@ export interface SetupTargets {
 
 export function setupTargets(deps: ServerDeps): SetupTargets {
   return {
-    envPath: deps.setup?.envPath ?? resolve(import.meta.dirname, "../../.env"),
+    envPath: deps.setup?.envPath ?? (process.env.WP_DATA_DIR?.trim() ? join(resolve(process.env.WP_DATA_DIR.trim()), ".env") : resolve(import.meta.dirname, "../../.env")),
     codexPath: deps.setup?.codexPath ?? join(homedir(), ".codex", "config.toml"),
   };
 }
