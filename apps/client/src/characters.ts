@@ -11,7 +11,7 @@ export interface Character {
   /** 一句话简介：设置页、选角色时用，平实口吻。 */
   intro: string;
   greeting: string;
-  /** 当前已有资源的默认形象；没有可用模型时使用 WhaleSticker。 */
+  /** 当前已有资源的默认形象；没有可用模型时使用 CharacterMark 默认形象。 */
   modelId: string | null;
   /** 粉丝二创的演示角色；鲸汐是我们自己的原创设定。 */
   fan: boolean;
