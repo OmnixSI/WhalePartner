@@ -6,8 +6,9 @@ import { extractAll, parseBvid } from "../vendor/dsh-bilibili/lib/extractor.js";
 const COMMENT_LIMIT = 20;
 const MAX_FRAMES = 8;
 const MAX_TRANSCRIPT_CHARS = 12000;
-const RATE_LIMIT_PATH = resolve(import.meta.dirname, "../../../.local/bilibili-rate-limit.json");
-const SUMMARY_ROOT = resolve(import.meta.dirname, "../../../.local/video-summaries");
+const LOCAL_ROOT = process.env.WP_DATA_DIR?.trim() ? resolve(process.env.WP_DATA_DIR.trim()) : resolve(import.meta.dirname, "../../../.local");
+const RATE_LIMIT_PATH = resolve(LOCAL_ROOT, "bilibili-rate-limit.json");
+const SUMMARY_ROOT = resolve(LOCAL_ROOT, "video-summaries");
 
 type VideoComment = {
   content: string;

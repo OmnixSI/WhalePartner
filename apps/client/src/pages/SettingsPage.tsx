@@ -20,6 +20,7 @@ import { reopenOnboarding } from "../components/Onboarding";
 import { SettingGroup, SettingRow } from "../components/settings/Row";
 import { ScaleSetting } from "../components/settings/ScaleSetting";
 import { Switch } from "../components/settings/Switch";
+import { BackgroundRunSetting } from "../components/settings/BackgroundRunSetting";
 import { ChoiceCard } from "../components/settings/ChoiceCard";
 import { QuotaMeter } from "../components/settings/QuotaMeter";
 import { DataSection } from "../components/settings/DataSection";
@@ -271,6 +272,8 @@ export function SettingsPage() {
             </>
           )}
         </SettingGroup>
+
+        <BackgroundRunSetting />
 
         <SettingGroup title="她逛什么">
           {surf === null ? (

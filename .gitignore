@@ -16,3 +16,7 @@ target/
 apps/client/public/models/*.vrm
 apps/client/public/live2d/whale-maid/
 apps/client/public/live2d/libs/live2dcubismcore.min.js
+
+# 打包用的后端 sidecar 暂存目录（由 build-sidecar 生成）
+apps/client/src-tauri/sidecar/
+apps/client/src-tauri/binaries/

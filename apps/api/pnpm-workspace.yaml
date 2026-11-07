@@ -1,4 +1,6 @@
 allowBuilds:
+  esbuild: true
+  ffmpeg-static: true
   better-sqlite3: true
   onnxruntime-node: true
   protobufjs: true

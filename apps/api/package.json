@@ -1,6 +1,7 @@
 {
   "name": "@whalepartner/api",
   "private": true,
+  "version": "0.3.0",
   "type": "module",
   "engines": {
     "node": ">=26 <27"
@@ -16,6 +17,7 @@
     "web": "node src/dev-server.ts",
     "benchmark:videos": "node scripts/video-benchmark.mjs",
     "memory:profile": "node scripts/memory-recall-profile.mjs",
+    "build:sidecar": "node scripts/build-sidecar.mjs",
     "serve": "node --env-file-if-exists=.env src/server.ts",
     "llm:ping": "node --env-file-if-exists=.env src/llm-ping.ts",
     "persona:eval": "node scripts/persona-eval.mjs",
@@ -23,6 +25,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
+    "esbuild": "^0.28.2",
+    "ffmpeg-static": "^5.3.0",
     "typescript": "^5.8.0"
   },
   "dependencies": {

@@ -133,6 +133,9 @@ export function createApiServer(deps: ServerDeps): Server {
   });
 }
 
+/** 端口被占用时的退出码，桌面外壳据此换端口重试。 */
+const EXIT_ADDR_IN_USE = 98;
+
 if (import.meta.main) {
   const config = loadConfig();
   const lan = process.argv.includes("--lan");
@@ -172,6 +175,47 @@ if (import.meta.main) {
     });
   });
   server.on("close", () => { stopSurfScheduler(); });
+  // 端口被占：打印明确原因，用固定退出码 98 退出（桌面外壳据此换端口重试）。
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(`端口 ${config.port} 已被占用（EADDRINUSE）。换一个 API_PORT，或关掉占用它的旧后端。`);
+      process.exit(EXIT_ADDR_IN_USE);
+    }
+    console.error("后端监听失败：", error);
+    process.exit(1);
+  });
+
+  // 优雅退出：SIGTERM/SIGINT，或 stdin 关闭（父进程 App 没了），都走这里，避免留下孤儿进程。
+  let shuttingDown = false;
+  const shutdown = (reason: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`后端正在退出（${reason}）…`);
+    const hardExit = setTimeout(() => process.exit(0), 2500);
+    hardExit.unref();
+    void (async () => {
+      try {
+        const surfModule = (await import("./surf/index.ts")) as Record<string, unknown>;
+        if (typeof surfModule.stopSurf === "function") await (surfModule.stopSurf as () => unknown)();
+      } catch {
+        // stopSurf 不存在或失败都不拦退出
+      }
+      stopSurfScheduler();
+      stopDiaryScheduler();
+      stopJournalScheduler();
+      server.close(() => process.exit(0));
+      server.closeAllConnections();
+    })();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  // 只有被桌面外壳拉起（stdin 是管道）时才监听 stdin 关闭；终端里手动跑不受影响。
+  if (process.env.WP_LOCAL_TOKEN && !process.stdin.isTTY) {
+    process.stdin.on("end", () => shutdown("stdin 已关闭"));
+    process.stdin.on("close", () => shutdown("stdin 已关闭"));
+    process.stdin.resume();
+  }
+
   server.listen(config.port, host, () => {
     if (config.surfEnabled) stopSurfScheduler = surf.start();
     void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));
