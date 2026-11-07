@@ -25,7 +25,7 @@ import { useSharedChat } from "./chat/useSharedChat";
 import { usePacedReply } from "./chat/usePacedReply";
 import { PREFS_EVENT, readPace } from "../lib/chat-prefs";
 import { sliceChunks } from "../lib/reply";
-import type { StickerMood } from "./WhaleSticker";
+import type { StickerMood } from "./CharacterMark";
 import { Backlog } from "./chat/Backlog";
 import { ConfirmDialog } from "./chat/ConfirmDialog";
 import { stripEmotionTags } from "../lib/emotion";

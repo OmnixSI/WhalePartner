@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { InkLine } from "../ink";
 import { Icon } from "../../icons";
-import { WhaleSticker } from "../WhaleSticker";
+import { CharacterMark } from "../CharacterMark";
 import { Slip } from "./Slip";
 import { splitReply } from "../../lib/reply";
 import type { Turn } from "./types";
@@ -125,7 +125,7 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
       <article className={`bl__cap${first ? " bl__cap--first" : ""}`}>
         {first && (
           <span className="bl__avatar" aria-hidden>
-            <WhaleSticker mood="idle" />
+            <CharacterMark />
           </span>
         )}
         <div className="bl__capBody">

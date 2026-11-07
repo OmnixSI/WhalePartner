@@ -357,7 +357,7 @@ if (STATIC_ONLY) {
     const loaded = await ensureServer();
     server = loaded.child;
     const { chromium, AxeBuilder } = await loadPlaywright();
-    const browser = await chromium.launch();
+    const browser = await chromium.launch(process.env.WP_CHROME ? { executablePath: process.env.WP_CHROME } : {});
     await checkTouch(browser);
     await checkHorizontalScroll(browser);
     await checkAxe(browser, AxeBuilder);

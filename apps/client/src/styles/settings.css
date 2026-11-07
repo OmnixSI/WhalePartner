@@ -101,7 +101,7 @@
   border-bottom: var(--stroke-1) solid var(--line);
 }
 .set-her__sticker { flex: none; width: 96px; height: 96px; }
-.set-her__sticker .whale-sticker { width: 100%; height: 100%; }
+.set-her__sticker .mark { width: 100%; height: 100%; }
 .set-her__text { flex: 1; min-width: 0; }
 .set-her__name { font-family: var(--font-voice); font-size: var(--fs-h2); font-weight: 700; color: var(--ink); }
 .set-her__tagline { margin-top: 2px; font-size: var(--fs-small); color: var(--ink-soft); }
@@ -358,7 +358,7 @@
   background: var(--sheet);
   box-shadow: var(--shadow-2);
 }
-.set-dialog--wide { width: min(760px, calc(100vw - 32px)); }
+.set-dialog--wide { width: min(clamp(760px, 56vw, 1000px), calc(100vw - 32px)); }
 .set-dialog__title { font-family: var(--font-voice); font-size: var(--fs-h2); font-weight: 700; color: var(--ink); }
 .set-dialog__body { font-size: var(--fs-body); line-height: var(--lh-body); color: var(--ink-soft); }
 .set-dialog__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--sp-3); margin-top: var(--sp-2); }
@@ -537,8 +537,8 @@
 .onb__figure .live2d { transform: scale(.92) translateY(4%); transform-origin: 50% 100%; }
 /* 桌面舞台够高：让她站满一点，别缩在中间一小块 */
 @media (min-width: 1100px) { .onb__figure .live2d { transform: scale(1.16) translateY(5%); } }
-.onb__sticker { width: min(64%, 380px); max-height: 100%; margin-bottom: var(--sp-4); }
-.onb__sticker .whale-sticker { width: 100%; height: auto; }
+.onb__sticker { width: min(40%, 200px); max-height: 100%; margin-bottom: var(--sp-4); }
+.onb__sticker .mark { width: 100%; height: auto; }
 .onb__hint {
   justify-self: center;
   margin: 0;

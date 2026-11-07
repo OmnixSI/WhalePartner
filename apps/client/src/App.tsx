@@ -21,7 +21,7 @@ export default function App() {
   // 也避免同一页跑两个 Live2D 舞台（运行库的着色器是全局单例，两个舞台会互相打断）。
   const onboarding = useOnboardingOpen();
   // 聊天页有自己的舞台，日记页与记忆页自己挂了小角（§5.7）；剩下的页面在这一层补上。
-  const cornerHere = pathname !== "/" && !pathname.startsWith("/diary") && !pathname.startsWith("/memory");
+  const cornerHere = pathname !== "/" && !pathname.startsWith("/diary") && !pathname.startsWith("/memory") && !pathname.startsWith("/settings");
 
   return (
     <>

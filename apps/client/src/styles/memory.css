@@ -4,15 +4,18 @@
    ============================================================================ */
 
 .memory-page {
-  padding: var(--sp-12) clamp(var(--sp-5), 5vw, var(--sp-10)) var(--sp-20) var(--sp-6);
+  padding: var(--sp-12) var(--gutter) var(--sp-20);
 }
 
 .memory-page__inner {
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
+  width: 100%;
   max-width: var(--memory-max);
+  margin-inline: auto;
   min-width: 0;
+  container: page / inline-size;
 }
 
 .memory-page__head {
@@ -25,7 +28,7 @@
 
 .memory-page__title {
   font-family: var(--font-voice);
-  font-size: clamp(var(--fs-h1), 3.2vw, var(--fs-display));
+  font-size: clamp(var(--fs-h1), 2.6vw, var(--fs-display));
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-voice);
 }
@@ -183,7 +186,7 @@
   margin: 0;
   padding: var(--sp-2) 0 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
   gap: var(--sp-5) var(--sp-4);
   align-items: start;
 }
