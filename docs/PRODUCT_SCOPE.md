@@ -30,7 +30,7 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 |---|---|
 | A1 应用壳 | 完成：Tauri 2 + React 单页应用，桌面和手机共用界面（[PR #17](https://github.com/OmnixSI/WhalePartner/pull/17)）。 |
 | A2 DeepSeek 后端 | 代码完成：流式聊天、DeepSeek → 备用 → 本机 Codex 回退链（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）。真实 DeepSeek 请求待验证，跟踪于 [Issue #2](https://github.com/OmnixSI/WhalePartner/issues/2)。 |
-| B1 聊天与形象 | 完成：自写 React 聊天、Live2D 舞台与 three-vrm 演示形象；选型依据见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) 和 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。 |
+| B1 聊天与形象 | 完成：自写 React 聊天，大肥鱼使用唯一实际可用的 Live2D 模型；其余人格以原创贴纸为默认形象。形象归属调整见 [Issue #84](https://github.com/OmnixSI/WhalePartner/issues/84)，Live2D 选型依据见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) 和 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。 |
 | B2 人格 | 完成：每个角色一份身份和脾气文件 + 共用的说话方式和底线规则，四个角色的 13 项回归问卷在 DeepSeek 上都是 13/13。 |
 | 成长（人格延伸） | 完成：从看过的视频、读过的网页和用户的话里学新梗和新知识（自动入库，用户可删），定期写“近况小记”，记忆按清晰度衰减，聊天里发网页链接会读。设计与参考见 [`PERSONALITY.md`](PERSONALITY.md)。 |
 | B3 记忆 | 完成：mem0 + 本地中文向量模型，写入、重启、召回已验证。 |
@@ -51,7 +51,7 @@ PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不
 
 ## 演示角色与形象（内部展示，不是产品定稿）
 
-首页提供大肥鱼（默认）、小克、小智和鲸汐四个陪伴角色。大肥鱼使用 A8Chann 发布的 Cubism 4 模型，角色形象源自上善无形，DeepSeek 女仆设计由 ZipZipPipe 完成，Live2D 绑定由氵六青完成；模型由固定版本脚本从 GitHub 下载，画面不叠加水印。模型素材许可为 CC BY-NC-SA 4.0，仅限非商业用途，改编素材须相同方式共享；商业使用前须取得各权利人授权。运行模型需要 Cubism Core；它是 Live2D 专有组件，开发者须从官方 SDK 单独获取并遵循适用许可，不随仓库分发。其余 VRM 形象只作内部展示。三个同人角色的人格设定明确写明其粉丝创作属性。VRM 来源与使用限制记在 `apps/client/models.manifest.json`；完整 Live2D 来源和运行方式见 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。
+首页保留大肥鱼（默认）、小克、小智和鲸汐四个人格；每个人格固定使用一个默认形象。当前只有大肥鱼具备实际 Live2D 模型资源，归属大肥鱼且只在该人格下加载；小克、小智和鲸汐使用原创贴纸。没有实际模型文件的 VRM 示例形象、清单、下载脚本和 three-vrm 渲染依赖已移除。大肥鱼模型由 A8Chann 发布，角色形象源自上善无形，DeepSeek 女仆设计由 ZipZipPipe 完成，Live2D 绑定由氵六青完成；模型素材许可为 CC BY-NC-SA 4.0，仅限非商业用途，改编素材须以相同许可共享；商业使用前须取得各权利人授权。运行模型需要 Cubism Core；它是 Live2D 专有组件，开发者须从官方 SDK 单独获取并遵循适用许可，不随仓库分发。三个同人角色的人格设定明确写明其粉丝创作属性。完整 Live2D 来源和运行方式见 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。
 
 ## 当前技术方向
 

@@ -3,7 +3,7 @@
  *
  * - 后端已经会在入库前剥掉标签（`apps/api/src/emotion.ts`），这里再兜一层：
  *   0.2.4 之前存进库的老消息还带着标签，渲染时必须干净。
- * - 情绪的去处是三处，都不是「把标签写在正文里」：角色的脸（Live2D 表情 / VRM blend shape）、
+ * - 情绪的去处是三处，都不是「把标签写在正文里」：角色的脸（Live2D 表情 / 贴纸表情）、
  *   名字牌上的小圆点、读屏时的一句话。
  */
 import type { AvatarEmotion } from "../avatar/model.config";

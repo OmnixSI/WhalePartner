@@ -1,15 +1,10 @@
 /**
  * 「换一位」对话框（规范 §7.4.3-1）：4 张角色卡，选中立即换（`setCharacter`），
- * 关闭后小角的她挥个手。形象默认只列这个角色的**推荐形象**，其余收进「更多形象」；
- * 列表里用角色名，原来的模型 label 只作副标。
+ * 关闭后小角的她挥个手。每个人格使用一个固定默认形象，不提供跨角色的模型选择。
  */
 import { Dialog } from "radix-ui";
-import { useEffect, useId, useRef, useState } from "react";
-import { AVATAR_MODELS } from "../../avatar/model.config";
-
-/** 有没有真正可渲染的形象文件（main 的 Live2D/VRM 清单里任何一条有 url 就不算占位）。 */
-const AVATAR_IS_PLACEHOLDER = AVATAR_MODELS.every((model) => !model.url);
-import { CHARACTERS, setCharacter, setModelOverride, useCharacter, useModel } from "../../characters";
+import { useEffect, useId, useRef } from "react";
+import { CHARACTERS, setCharacter, useCharacter, useModel } from "../../characters";
 import { setCompanionMood } from "../CompanionCorner";
 import { WhaleSticker } from "../WhaleSticker";
 
@@ -24,12 +19,10 @@ export function CharacterDialog({ open, onOpenChange }: Props) {
   const titleId = useId();
   const descId = useId();
   const changed = useRef(false);
-  const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
       changed.current = false;
-      setMoreOpen(false);
     }
   }, [open]);
 
@@ -47,7 +40,7 @@ export function CharacterDialog({ open, onOpenChange }: Props) {
             换一位
           </Dialog.Title>
           <Dialog.Description className="set-dialog__body" id={descId}>
-            每个角色有自己的口吻和聊天记录，你记得的事是共用的。选好就换，不用保存。
+            每个人格有自己的口吻；聊天、记忆、日记和见闻共用。每个人格使用固定的默认形象，选好就换，不用保存。
           </Dialog.Description>
 
           <ul className="set-chars">
@@ -79,39 +72,9 @@ export function CharacterDialog({ open, onOpenChange }: Props) {
           </ul>
 
           <div className="set-models">
-            <p className="set-models__title">{character.name}现在用的形象</p>
-            <p className="set-models__current">{model.label}</p>
-            {AVATAR_IS_PLACEHOLDER && (
-              <p className="set-models__note">现成的演示形象，授权还没核对，只作内部展示。</p>
-            )}
-            <button
-              type="button"
-              className="btn btn--quiet set-models__morebtn"
-              aria-expanded={moreOpen}
-              onClick={() => setMoreOpen((value) => !value)}
-            >
-              更多形象 {moreOpen ? "▴" : "▾"}
-            </button>
-            {moreOpen && (
-              <ul className="set-models__list">
-                {AVATAR_MODELS.filter((item) => item.id !== character.modelId && item.id !== model.id).map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      className="set-model"
-                      aria-pressed={model.id === item.id}
-                      onClick={() => {
-                        setModelOverride(item.id);
-                        changed.current = true;
-                      }}
-                    >
-                      <span className="set-model__name">{character.name}</span>
-                      <span className="set-model__label">{item.label}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <p className="set-models__title">{character.name}的默认形象</p>
+            <p className="set-models__current">{model?.label ?? "鲸鱼贴纸"}</p>
+            {!model && <p className="set-models__note">当前没有可用建模，聊天时使用贴纸形象。</p>}
           </div>
 
           <div className="set-dialog__actions">

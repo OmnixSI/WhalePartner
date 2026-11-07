@@ -105,9 +105,6 @@
   margin-bottom: var(--sp-2);
 }
 .scene__sticker .whale-sticker { width: 100%; height: auto; }
-/* 画布铺满舞台：absolute 才不会在网格里多占一行（默认 canvas 是 300×150） */
-.vrm { position: absolute; inset: 0; z-index: var(--z-stage); }
-.vrm canvas { display: block; width: 100%; height: 100%; }
 /* Live2D 画布同理：不铺满就会按模型的原始尺寸（1px 宽、几千像素高）溢出舞台。
    摆位交给 Live2DStage 按模型边界和舞台构图规则对齐。 */
 .live2d {
