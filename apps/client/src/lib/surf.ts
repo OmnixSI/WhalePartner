@@ -1,5 +1,6 @@
 /** 「她自己去逛」的前端调用（规范 §10.6.9 / §10.6.10）。接口不在就返回 null，页面自己说“没逛成”。 */
 import { API_BASE } from "./api";
+import { describeNetError } from "./net";
 
 export type SurfFrequency = "rare" | "normal" | "often";
 export type SurfKind = "video" | "web";
@@ -91,11 +92,17 @@ export async function getSurfSettings(character: string, signal?: AbortSignal): 
 
 /** 设置不合法的字段，服务端会回 400 invalid_settings，调用方把 message 摆到行下面。 */
 export async function putSurfSettings(character: string, patch: SurfSettingsPatch): Promise<SurfSettings> {
-  const response = await fetch(`${API_BASE}/api/surf/settings?character=${encodeURIComponent(character)}`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(patch),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api/surf/settings?character=${encodeURIComponent(character)}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+  } catch (error) {
+    // 0.2.3 桌面版在这里露出英文 `Load failed`：预检没放行 PUT。文案统一走 net.ts。
+    throw new Error(describeNetError(error, "逛设置没存上"));
+  }
   if (!response.ok) throw new Error(await readError(response, `存不上（HTTP ${response.status}）`));
   return (await response.json()) as SurfSettings;
 }

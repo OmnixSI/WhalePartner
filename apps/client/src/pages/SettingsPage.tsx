@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { version as clientVersion } from "../../package.json";
 import { fetchHealth } from "../lib/api";
+import { describeNetError, isNetworkFailure } from "../lib/net";
 import { getProfile, putNickname } from "../lib/profile";
 import { readA11y } from "../lib/a11y";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
@@ -55,11 +56,15 @@ export function SettingsPage() {
   const [nickname, setNickname] = useState("");
   const [savingNick, setSavingNick] = useState(false);
   const [nickFailed, setNickFailed] = useState(false);
+  /** 昵称没存上的原因（人话，不再是英文 Load failed） */
+  const [nickError, setNickError] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [surf, setSurf] = useState<SurfSettings | null>(null);
   const [surfError, setSurfError] = useState("");
   /** 最近一次保存的回执：让"点了没反应"变成看得见的一句话 */
   const [surfNote, setSurfNote] = useState<{ at: string; ok: boolean; text: string } | null>(null);
+  /** 存失败时记住那一次改动，好让「再试一次」直接把同一项重发，不用人重新点一遍 */
+  const [surfRetry, setSurfRetry] = useState<SurfSettingsPatch | null>(null);
 
   const offline = backend === "down";
 
@@ -114,11 +119,15 @@ export function SettingsPage() {
     try {
       const profile = await putNickname(trimmed === "" ? null : trimmed);
       setNickname(profile.nickname ?? "");
+      setNickFailed(false);
+      setNickError("");
       setToast(profile.nickname ? "记下啦。" : "已经清掉了。");
-    } catch {
+    } catch (error) {
+      const why = describeNetError(error, "昵称没存上");
       setNickFailed(true);
-      setBackend("down");
-      setToast("现在拿不到，昵称没存上。");
+      setNickError(why);
+      if (isNetworkFailure(error)) setBackend("down");
+      setToast("昵称没存上。");
     } finally {
       setSavingNick(false);
     }
@@ -134,11 +143,14 @@ export function SettingsPage() {
     try {
       setSurf(await putSurfSettings(character.id, patch));
       setSurfNote({ at: stamp, ok: true, text: "已保存" });
+      setSurfRetry(null);
     } catch (error) {
-      setSurf(before);
-      const why = error instanceof Error ? error.message : "现在存不上，待会儿再试。";
+      setSurf(before); // 没存上就退回原值，不装成存好了
+      const why = describeNetError(error, "逛设置没存上");
       setSurfError(why);
-      setSurfNote({ at: stamp, ok: false, text: why });
+      setSurfNote({ at: stamp, ok: false, text: "没存上，已退回原来的样子" });
+      setSurfRetry(patch);
+      if (isNetworkFailure(error)) setBackend("down");
     }
   };
 
@@ -209,7 +221,7 @@ export function SettingsPage() {
                 {savingNick ? "正在记…" : "记下"}
               </button>
             </div>
-            {(offline || nickFailed) && <p className="set-row__bad">现在拿不到，先记不了。</p>}
+            {(offline || nickFailed) && <p className="set-row__bad">{nickError || "现在拿不到，先记不了。"}</p>}
           </SettingRow>
         </SettingGroup>
 
@@ -326,7 +338,16 @@ export function SettingsPage() {
               </p>
             </>
           )}
-          {surfError && <p className="set-row__bad" role="alert">{surfError}</p>}
+          {surfError && (
+            <div className="set-row__bad set-fail" role="alert">
+              <span>{surfError}</span>
+              {surfRetry && (
+                <button type="button" className="btn btn--secondary" onClick={() => void saveSurf(surfRetry)}>
+                  再试一次
+                </button>
+              )}
+            </div>
+          )}
         </SettingGroup>
 
         <SettingGroup title="她的见闻" note="她自己逛回来的东西都收在这里。">

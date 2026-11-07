@@ -1,12 +1,57 @@
 // 端到端冒烟：四个页面 + 关键交互。对着 `vite preview` + 本机 API 跑。
-// 用法：node scripts/redesign/e2e-smoke.mjs [baseUrl] [--chat]
-//   --chat 会真的发一条消息（会花一次模型调用）
+// 用法：node scripts/e2e-smoke.mjs [baseUrl] [--chat] [--packaged]
+//   --chat      真的发一条消息（会花一次模型调用）
+//   --packaged  只用 dist 静态文件 + 在页面里假装 `__TAURI_INTERNALS__`，
+//               于是 fetch 直连 http://127.0.0.1:8787，**真的走跨源预检**。
+//               0.2.3 的 `Load failed` 只在桌面壳里出现，开发环境复现不了，所以要有这一档。
+import { createServer } from "node:http";
+import { existsSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
+import { extname, join, normalize } from "node:path";
 import { chromium } from "playwright";
 
-const base = process.argv.find((a) => a.startsWith("http")) ?? "http://127.0.0.1:4282";
+const packaged = process.argv.includes("--packaged");
 const withChat = process.argv.includes("--chat");
 const fails = [];
 const notes = [];
+
+/** 桌面档：把 dist 挂在 127.0.0.1:1420（本机 API 的放行来源之一），和 Tauri 壳同构。 */
+let staticServer = null;
+if (packaged) {
+  const root = new URL("../dist/", import.meta.url).pathname;
+  if (!existsSync(root)) {
+    console.error("没有 dist，先跑 pnpm build");
+    process.exit(1);
+  }
+  const MIME = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".mjs": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".webp": "image/webp",
+    ".woff2": "font/woff2",
+    ".wasm": "application/wasm",
+    ".moc3": "application/octet-stream",
+    ".vrm": "application/octet-stream",
+  };
+  staticServer = createServer(async (req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1:1420");
+    let file = normalize(join(root, decodeURIComponent(url.pathname)));
+    if (!file.startsWith(root)) return res.writeHead(403).end();
+    const info = await stat(file).catch(() => null);
+    if (!info || info.isDirectory()) file = join(root, "index.html");
+    const body = await readFile(file).catch(() => null);
+    if (!body) return res.writeHead(404).end();
+    res.writeHead(200, { "content-type": MIME[extname(file)] ?? "application/octet-stream" }).end(body);
+  });
+  await new Promise((resolve) => staticServer.listen(1420, "127.0.0.1", resolve));
+}
+
+const base = process.argv.find((a) => a.startsWith("http")) ?? (packaged ? "http://127.0.0.1:1420" : "http://127.0.0.1:4282");
 
 function ok(name, cond, detail = "") {
   if (cond) console.log(`✓ ${name}`);
@@ -20,7 +65,11 @@ async function open(path, viewport = { width: 1180, height: 752 }) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text().slice(0, 160)); });
-  await page.addInitScript(() => localStorage.setItem("wp.onboarded", "1"));
+  await page.addInitScript((isPackaged) => {
+    localStorage.setItem("wp.onboarded", "1");
+    // 桌面壳里页面来自 tauri://，`lib/api.ts` 靠这个标记切到绝对地址 → 跨源 → 真的走预检。
+    if (isPackaged) window.__TAURI_INTERNALS__ = {};
+  }, packaged);
   await page.goto(`${base}${path}`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(2500);
   return { page, errors };
@@ -99,7 +148,41 @@ for (const [path, name] of [["/", "聊天"], ["/settings", "设置"], ["/memory"
   await page.close();
 }
 
+/* 6. 桌面档：写操作必须真的写进去（PUT 走预检），页面上不许出现英文 Load failed */
+if (packaged) {
+  const { page, errors } = await open("/settings");
+  const text = await page.locator("body").innerText();
+  ok("桌面档：页面里没有英文 Load failed", !/load failed|failed to fetch/i.test(text), text.slice(0, 80).replace(/\n+/g, " "));
+
+  // 逛设置：点开关 → 等落盘 → 重载后还是新状态
+  const sw = page.getByRole("switch").first();
+  const before = await sw.getAttribute("aria-checked");
+  await sw.click();
+  await page.waitForTimeout(1500);
+  const after = await sw.getAttribute("aria-checked");
+  ok("桌面档：开关点了不弹回去", before !== after, `${before} -> ${after}`);
+  ok("桌面档：出现「已保存」回执", /已保存/.test(await page.locator(".set-receipt").first().innerText().catch(() => "")));
+  ok("桌面档：没有报错行", (await page.locator(".set-fail").count()) === 0, await page.locator(".set-fail").first().innerText().catch(() => ""));
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  ok("桌面档：重载后开关保持新状态", (await page.getByRole("switch").first().getAttribute("aria-checked")) === after);
+
+  // 昵称：存一个 → 重载后还在（字段名对不上就会在这里露馅）
+  const name = `小鲸${Date.now() % 1000}`;
+  const field = page.locator(".set-nick__field");
+  await field.fill(name);
+  await page.locator(".set-nick__save").click();
+  await page.waitForTimeout(1500);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForTimeout(2000);
+  ok("桌面档：昵称存得住（重载后回显）", (await page.locator(".set-nick__field").inputValue().catch(() => "")) === name, `期望 ${name}`);
+  ok("桌面档：无 JS 报错", errors.length === 0, errors.slice(0, 2).join(" | "));
+  await page.close();
+}
+
 await browser.close();
+if (staticServer) await new Promise((resolve) => staticServer.close(resolve));
 console.log(`\n${fails.length === 0 ? "全部通过" : `失败 ${fails.length} 项：${fails.join("、")}`}`);
 if (notes.length) console.log(notes.join("\n"));
 process.exit(fails.length === 0 ? 0 : 1);
