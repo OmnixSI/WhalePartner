@@ -1,15 +1,22 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { VRMLoaderPlugin, VRMUtils, type VRM } from "@pixiv/three-vrm";
-import { setAvatarStatus } from "./avatar-state";
+import { claimAvatar, setAvatarStatus } from "./avatar-state";
+import { fetchModelBuffer } from "./model-cache";
+import { StageStatus, type StagePhase } from "./StageStatus";
 import type { AvatarEmotion } from "./model.config";
 
 interface Props {
   modelUrl: string;
   emotion: AvatarEmotion;
   speaking: boolean;
+  onReady?: () => void;
+  onError?: (error: Error) => void;
 }
+
+/** 像素比上限 1.5：MToon 本身不吃超采样，2x 只是多花 78% 的填充率。 */
+const MAX_DPR = 1.5;
 
 const EXPRESSIONS = ["happy", "sad", "angry", "surprised", "relaxed"] as const;
 const EMOTION_HOLD_MS = 6000;
@@ -133,9 +140,21 @@ function softenMToon(root: THREE.Object3D) {
   });
 }
 
-export function VrmStage({ modelUrl, emotion, speaking }: Props) {
+export function VrmStage({ modelUrl, emotion, speaking, onReady, onError }: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const live = useRef({ emotion: "neutral" as AvatarEmotion, speaking: false });
+  const callbacks = useRef({ onReady, onError });
+  const [attempt, setAttempt] = useState(0);
+  const [phase, setPhase] = useState<StagePhase>("loading");
+
+  useEffect(() => {
+    callbacks.current = { onReady, onError };
+  }, [onReady, onError]);
+
+  const retry = useCallback(() => {
+    setAvatarStatus("loading");
+    setAttempt((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     live.current.speaking = speaking;
@@ -152,9 +171,12 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
     const host = mount.current;
     if (!host) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const token = claimAvatar();
+    setPhase("loading");
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // 关掉 MSAA：toon 描边/色块本来就是硬边，MSAA 在集成显卡上是最贵的一项。
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_DPR));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     // 之前不做色调映射，高光直接削平：肤色和浅金发一起变成「灰白 + 银白」。
     // 换成 Neutral（Khronos PBR Neutral）而不是 ACES——它压高光但不抽色，皮肤和发色留得住；
@@ -250,6 +272,8 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
     const resize = () => {
       const { clientWidth: w, clientHeight: h } = host;
       if (!w || !h) return;
+      // 窗口换屏（DPR 不同）后要重读，不能只在创建时读一次
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_DPR));
       renderer.setSize(w, h, false);
       fit();
     };
@@ -258,15 +282,40 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
     resize();
     const stopSafe = watchSafeArea(host, resize);
 
-    setAvatarStatus("loading");
+    const fail = (error: unknown) => {
+      if (disposed) return;
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("VRM model load failed", err);
+      stopLoop();
+      setPhase("failed");
+      setAvatarStatus("failed", token);
+      callbacks.current.onError?.(err);
+    };
+    const nextFrame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMLoaderPlugin(parser));
-    loader.load(
-      modelUrl,
-      (gltf) => {
+    void (async () => {
+      try {
+        // 二进制走 Cache Storage：第二次进入不再下载，直接解析
+        const buffer = await fetchModelBuffer(modelUrl);
+        if (disposed) return;
+        const gltf = await new Promise<{ scene: THREE.Group; userData: Record<string, unknown> }>((resolve, reject) =>
+          loader.parse(buffer, "", resolve as never, reject),
+        );
         const loaded = gltf.userData.vrm as VRM | undefined;
-        if (disposed || !loaded) return;
+        if (!loaded) throw new Error("not a VRM file");
+        if (disposed) {
+          VRMUtils.deepDispose(gltf.scene);
+          return;
+        }
+        // 后处理拆到不同帧里，避免一整段主线程阻塞
         VRMUtils.removeUnnecessaryVertices(gltf.scene);
+        await nextFrame();
+        if (disposed) {
+          VRMUtils.deepDispose(gltf.scene);
+          return;
+        }
         VRMUtils.combineSkeletons(gltf.scene);
         VRMUtils.rotateVRM0(loaded);
         vrm = loaded;
@@ -280,11 +329,18 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
         humanoid.getNormalizedBoneNode("rightUpperArm")?.rotation.set(0, 0, -1.3 * armSign);
         loaded.scene.updateMatrixWorld(true);
         fit();
-        setAvatarStatus("ready");
-      },
-      undefined,
-      () => setAvatarStatus("failed"),
-    );
+        // 先渲染一帧（着色器编译发生在这里，此时画布还是透明的），再淡入
+        vrm.update(0);
+        renderer.render(scene, camera);
+        await nextFrame();
+        if (disposed) return;
+        setPhase("ready");
+        setAvatarStatus("ready", token);
+        callbacks.current.onReady?.();
+      } catch (error) {
+        fail(error);
+      }
+    })();
 
     const tick = () => {
       frame = requestAnimationFrame(tick);
@@ -336,19 +392,46 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
       vrm.update(dt);
       renderer.render(scene, camera);
     };
-    frame = requestAnimationFrame(tick);
+
+    // 页面隐藏或舞台离开视口时暂停 rAF，回来再继续
+    let visible = true;
+    const startLoop = () => {
+      if (frame || disposed || document.hidden || !visible) return;
+      clock.getDelta();
+      frame = requestAnimationFrame(tick);
+    };
+    function stopLoop() {
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+    }
+    const syncLoop = () => (document.hidden || !visible ? stopLoop() : startLoop());
+    const io = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; syncLoop(); });
+    io.observe(host);
+    document.addEventListener("visibilitychange", syncLoop);
+    startLoop();
 
     return () => {
       disposed = true;
-      cancelAnimationFrame(frame);
+      stopLoop();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", syncLoop);
       stopSafe();
       window.removeEventListener("pointermove", onPointer);
       observer.disconnect();
-      if (vrm) VRMUtils.deepDispose(vrm.scene);
+      if (vrm) {
+        scene.remove(vrm.scene);
+        VRMUtils.deepDispose(vrm.scene);
+      }
       renderer.dispose();
+      renderer.forceContextLoss();
       renderer.domElement.remove();
     };
-  }, [modelUrl]);
+  }, [modelUrl, attempt]);
 
-  return <div className="vrm" ref={mount} aria-hidden />;
+  return (
+    <>
+      <div className="vrm" ref={mount} aria-hidden data-stage={phase} />
+      <StageStatus phase={phase} onRetry={retry} />
+    </>
+  );
 }
