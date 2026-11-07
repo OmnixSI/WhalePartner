@@ -8,11 +8,10 @@ import { useSurfEvents } from "../surf/useSurfEvents";
 import { WhaleSticker, type StickerMood } from "../WhaleSticker";
 
 const Live2DStage = lazy(() => import("../../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
-const VrmStage = lazy(() => import("../../avatar/VrmStage").then((module) => ({ default: module.VrmStage })));
 
 interface Props {
   character: Character;
-  model: AvatarModel;
+  model: AvatarModel | null;
   avatar: AvatarStatus;
   modelTry: number;
   emotion: AvatarEmotion;
@@ -71,18 +70,16 @@ export function ChatScene({
             }
           }}
         >
-          {avatar !== "ready" && (
+          {(!model || avatar !== "ready") && (
             <div className="scene__sticker" aria-hidden>
               <WhaleSticker mood={mood} />
             </div>
           )}
-          <Suspense fallback={null}>
-            {model.renderer === "live2d" ? (
+          {model && (
+            <Suspense fallback={null}>
               <Live2DStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
-            ) : (
-              <VrmStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
-            )}
-          </Suspense>
+            </Suspense>
+          )}
         </div>
         <div className="scene__sea scene__sea--front">
           <div className="scene__sheen" aria-hidden />
@@ -90,14 +87,12 @@ export function ChatScene({
         </div>
       </div>
 
-      {(avatar === "failed" || !hintSeen) && (
+      {((model && avatar === "failed") || !hintSeen) && (
         <div className="scene__aside">
-          {avatar === "failed" && (
+          {model && avatar === "failed" && (
             <div className="scene__asideRow">
               <p className="scene__note">
-                {model.renderer === "live2d"
-                  ? "我的样子要 Live2D 才能画出来：把 live2dcubismcore.min.js 放进 apps/client/public/live2d/libs/ 就好，不影响聊天。"
-                  : "我的样子暂时没画出来，不影响聊天。"}
+                我的样子要 Live2D 才能画出来：把 live2dcubismcore.min.js 放进 apps/client/public/live2d/libs/ 就好，不影响聊天。
               </p>
               <button
                 type="button"

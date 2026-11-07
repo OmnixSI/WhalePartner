@@ -76,7 +76,6 @@ pnpm --dir apps/api run serve               # http://127.0.0.1:8787
 # 客户端
 pnpm --dir apps/client install
 pnpm --dir apps/client run fetch-live2d     # 大肥鱼 Live2D 模型
-pnpm --dir apps/client run fetch-model      # VRM 演示形象
 pnpm --dir apps/client run dev              # http://127.0.0.1:1420
 ```
 
@@ -174,7 +173,7 @@ scripts/redesign/check.mjs  十项界面验收
 
 ## 第三方与许可
 
-`apps/api/vendor/dsh-bilibili/`（B 站提取器，MIT）与 `apps/api/vendor/shuorenhua/`（说人话规则，MIT）保留许可证与来源。主要依赖：Tauri、React、Radix、motion、perfect-freehand、PixiJS 与 pixi-live2d-display、three.js 与 three-vrm、mem0（Apache-2.0）、transformers.js（Apache-2.0）、playwright-core（Apache-2.0）。模型素材不入库。
+`apps/api/vendor/dsh-bilibili/`（B 站提取器，MIT）与 `apps/api/vendor/shuorenhua/`（说人话规则，MIT）保留许可证与来源。主要依赖：Tauri、React、Radix、motion、perfect-freehand、PixiJS 与 pixi-live2d-display、mem0（Apache-2.0）、transformers.js（Apache-2.0）、playwright-core（Apache-2.0）。模型素材不入库。
 
 > 大肥鱼、Claude 娘、ChatGPT 娘是社区二创角色，不代表对应公司官方角色；鲸汐是原创角色。
 
