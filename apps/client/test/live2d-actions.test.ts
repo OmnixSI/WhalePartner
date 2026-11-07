@@ -29,8 +29,7 @@ test("tap actions include only loaded short motions from the current model and d
     { group: "Short", index: 0 },
     { group: "Short", index: 1 },
   ]);
-  assert.deepEqual([...loopSettings.entries()], [["Short:0", false], ["Short:1", false]]);
-  assert.equal(loopSettings.has("Long:0"), false);
+  assert.deepEqual([...loopSettings.entries()], [["Short:0", false], ["Short:1", false], ["Long:0", false]]);
 });
 
 test("tap action selection is random within the supported set and handles no actions", () => {
@@ -38,4 +37,13 @@ test("tap action selection is random within the supported set and handles no act
   assert.equal(chooseTapAction(actions, () => 0)?.group, "A");
   assert.equal(chooseTapAction(actions, () => 0.99)?.group, "B");
   assert.equal(chooseTapAction([], () => 0), null);
+});
+
+test("when no short motion exists, long motions are kept (with duration) instead of leaving taps dead", async () => {
+  const manager = {
+    groups: { idle: "Idle" },
+    definitions: { Idle: [{}], Long: [{}] },
+    loadMotion: async () => ({ getDuration: () => 6, setIsLoop: () => {} }),
+  } as unknown as Cubism4MotionManager;
+  assert.deepEqual(await loadTapActions(manager), [{ group: "Long", index: 0, duration: 6 }]);
 });
