@@ -4,3 +4,15 @@ minimumReleaseAgeExclude:
   - motion@14.10.0
   - playwright-core@1.65.0
   - playwright@1.65.0
+
+# 这三个包带构建脚本，全部来自 cn-font-split（只服务 `pnpm run fonts`）。
+# 不声明时 pnpm 10 只警告、pnpm 12 直接失败（ERR_PNPM_IGNORED_BUILDS），
+# 第一次装依赖就会以为装坏了。两种写法并存以同时兼容两个版本线。
+onlyBuiltDependencies:
+  - cn-font-split
+  - koffi
+  - protobufjs
+allowBuilds:
+  cn-font-split: true
+  koffi: true
+  protobufjs: true
