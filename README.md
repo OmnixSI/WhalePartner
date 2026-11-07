@@ -165,7 +165,7 @@ scripts/redesign/check.mjs  十项界面验收
 
 ## 已知限制
 
-- **没打包**：仓库没有 CI，也没有 Tauri 安装包；v0.2.x 只发了 GitHub Release 说明
+- **未发布 macOS app 包**：仓库没有 CI/Tauri 安装包；v0.2.6 Release 附源码归档，没有 `.app`。本机验收构建使用开发者本机取得的 Cubism Core；该专有组件按项目许可约定不随仓库分发。
 - **自主冲浪**默认开启（`SURF_ENABLED=0` 关闭），需要本机 Chromium：`pnpm --dir apps/api exec playwright-core install chromium`；关闭后调度器不触发（有测试断言）
 - **额度**默认只记账不拦截，`QUOTA_ENFORCE=1` 才会在开流前返回 402
 - **Live2D**：Cubism Core 是专有组件，需从官方 SDK 自行获取，仓库不分发；`fetch-live2d` 下载的模型为 CC BY-NC-SA 4.0，仅限非商业使用
