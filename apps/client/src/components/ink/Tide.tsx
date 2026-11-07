@@ -28,6 +28,11 @@ type Props = {
   className?: string;
   /** auto（默认）：父容器有定位就覆盖、没有就退化成文档流；也可以强制 overlay / flow。 */
   mode?: "auto" | "overlay" | "flow";
+  /**
+   * 只画哪几层。规范 §7.1.2 要求「far/mid → 角色 → near」：
+   * `back` 给角色后面那一块，`front` 给角色前面那一块，两层合起来的 crest 完全对齐。
+   */
+  layers?: "all" | "back" | "front";
 };
 
 type LayerGeom = { seed: number; base: number; amp: [number, number]; len: [number, number] };
@@ -69,14 +74,15 @@ function Sky({ uid }: { uid: string }) {
   );
 }
 
-export function Tide({ variant = "stage", className = "", mode = "auto" }: Props) {
+export function Tide({ variant = "stage", className = "", mode = "auto", layers = "all" }: Props) {
   const { calm, dark, narrow } = useInkEnv();
   const ref = useRef<HTMLDivElement | null>(null);
   const [flow, setFlow] = useState(true);
   const uid = `tide${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   // 老人模式在 a11y.ts 里已经写成 data-motion="calm"，所以这里不用再判 elder。
   const wash = !calm && !narrow;
-  const keys = variant === "sill" ? (["mid", "near"] as const) : (["far", "mid", "near"] as const);
+  const all = variant === "sill" ? (["mid", "near"] as const) : (["far", "mid", "near"] as const);
+  const keys = layers === "back" ? all.filter((key) => key !== "near") : layers === "front" ? (["near"] as const) : all;
 
   // 父容器不是定位容器时退化成文档流，避免 absolute 整块盖住同段内容。
   useEffect(() => {
@@ -98,7 +104,7 @@ export function Tide({ variant = "stage", className = "", mode = "auto" }: Props
       animate={{ y: 0 }}
       transition={spring.char}
     >
-      {dark && variant === "stage" && <Sky uid={uid} />}
+      {dark && variant === "stage" && layers !== "front" && <Sky uid={uid} />}
       {keys.map((key) => {
         const g = WAVES[key];
         const geom = { base: g.base, amp: g.amp, len: g.len };

@@ -2,10 +2,33 @@ export const EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "relax
 export type Emotion = (typeof EMOTIONS)[number];
 
 const TAG = /^\[emotion:([a-z]+)\]/;
+/** 全局扫描用：标签不只在句首，模型有时候会插在中间或结尾。 */
+const TAG_ANY = /\[[\s]*emotion\s*:[\s]*([a-z]+)[\s]*\]/gi;
 const MAX_TAG_LENGTH = "[emotion:surprised]".length;
 
 function isEmotion(value: string): value is Emotion {
   return (EMOTIONS as readonly string[]).includes(value);
+}
+
+/**
+ * 一次性剥掉整段文本里的情绪标签，返回干净正文 + 出现过的情绪。
+ *
+ * 主动分享（`surf/service.ts`）和日记这类「不是流式」的路径必须走这里：
+ * 0.2.4 之前它们直接把模型原文塞进消息表，于是界面上出现
+ * `[emotion:relaxed] 今天翻到一个…`——标签成了正文。
+ */
+export function splitEmotionTags(text: string): { text: string; emotions: Emotion[] } {
+  const emotions: Emotion[] = [];
+  for (const match of text.matchAll(TAG_ANY)) {
+    if (isEmotion((match[1] ?? "").toLowerCase())) emotions.push((match[1] as string).toLowerCase() as Emotion);
+  }
+  const clean = text.replace(TAG_ANY, "").replace(/^\s+/, "");
+  return { text: clean, emotions };
+}
+
+/** 只要干净正文。 */
+export function stripEmotionTags(text: string): string {
+  return splitEmotionTags(text).text;
 }
 
 /**

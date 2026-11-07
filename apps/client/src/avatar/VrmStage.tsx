@@ -21,10 +21,10 @@ function approach(current: number, target: number, rate: number, dt: number) {
 
 /**
  * 舞台构图：VRM 与 Live2D 共用同一条规则，比例只写在 tokens.css。
- *   --stage-char-h    角色高度 / 舞台高度（desktop .6，手机 .9，见 chat.css）
- *   --stage-char-gap  底边离安全线的间隙 / 舞台高度
+ *   --stage-char-h    角色高度 / 可画区高度（见 tokens.css；手机在 chat.css 覆写）
+ *   --stage-char-gap  底边离可画区底边的间隙 / 可画区高度
  *   --stage-char-max  角色最多占「对话框以上」的比例，空间不够就按这条缩
- * 舞台高度取 .scene（整块舞台），所以对话框再长，人物也只是等比缩小，不会换构图。
+ * 分母取可画区（.scene__safe / 组件自己这块盒子），对话框再长也只是等比缩小，不换构图。
  */
 function stageMetrics(host: HTMLElement) {
   const scene = host.closest<HTMLElement>(".scene") ?? host;
@@ -33,12 +33,15 @@ function stageMetrics(host: HTMLElement) {
     const value = parseFloat(css.getPropertyValue(name));
     return Number.isFinite(value) && value > 0 ? value : fallback;
   };
-  const stageH = scene.clientHeight || host.clientHeight;
+  // 分母是「可画区」= 舞台组件自己这块盒子（对话框以上）；整块舞台当分母会把角色撑到天花板。
+  const stageH = host.clientHeight || scene.clientHeight;
   return {
     stageH,
-    ratio: num("--stage-char-h", 0.6),
-    gap: num("--stage-char-gap", 0.02),
-    maxFill: num("--stage-char-max", 0.94),
+    ratio: num("--stage-char-h", 0.9),
+    gap: num("--stage-char-gap", 0.05),
+    maxFill: num("--stage-char-max", 0.96),
+    top: num("--stage-char-top", 0.05),
+    vrmH: num("--stage-vrm-h", 1.3),
   };
 }
 
@@ -52,8 +55,9 @@ function watchSafeArea(host: HTMLElement, onChange: () => void) {
   const chrome = host.closest<HTMLElement>(".room__main")?.querySelector<HTMLElement>(".scene__chrome");
   if (!scene || !chrome) return () => {};
   const apply = () => {
-    const px = Math.round(chrome.getBoundingClientRect().height);
-    if (px <= 0) return;
+    // 手机把 .scene__chrome 放回文档流（舞台下面），那时它不遮舞台，可画区就是整块。
+    const overlays = getComputedStyle(chrome).position === "absolute";
+    const px = overlays ? Math.round(chrome.getBoundingClientRect().height) : 0;
     scene.style.setProperty("--scene-safe", `${px}px`);
     onChange();
   };
@@ -61,6 +65,72 @@ function watchSafeArea(host: HTMLElement, onChange: () => void) {
   observer.observe(chrome);
   apply();
   return () => observer.disconnect();
+}
+
+/**
+ * 灯组。参数放在这里而不是散在场景里：三盏灯各有一条职责，
+ * 调的时候一次只动一组，截图对比（`window.__vrmRig = { key: 2.2 }` 可在控制台临时覆盖）。
+ */
+interface Rig {
+  exposure: number;
+  /** 环境光：打底。超过 0.6 阴影面就会顶到高光，脸和脖子糊成一片。 */
+  ambient: number;
+  /** 主光：正面偏上偏右，暖。要够亮，皮肤才不会掉进 MToon 的 shade 色。 */
+  key: number;
+  keyColor: number;
+  keyPos: [number, number, number];
+  /** 补光：左前方，冷，压住暗面的灰。 */
+  fill: number;
+  fillColor: number;
+  fillPos: [number, number, number];
+  /** 轮廓光：背后，勾头发外缘。 */
+  rim: number;
+  rimColor: number;
+  rimPos: [number, number, number];
+}
+
+const DEFAULT_RIG: Rig = {
+  exposure: 1.0,
+  ambient: 0.42,
+  key: 2.6,
+  keyColor: 0xfff3e6,
+  keyPos: [1.6, 1.7, 2.8],
+  fill: 0.42,
+  fillColor: 0xcfe2ff,
+  fillPos: [-1.8, 0.8, 2.0],
+  rim: 0.55,
+  rimColor: 0x9be8ff,
+  rimPos: [-1.6, 1.9, -1.6],
+};
+
+/** 控制台可临时覆盖：`window.__vrmRig = { key: 2.4 }`，刷新即生效。 */
+function readRig(): Rig {
+  const override = (window as unknown as { __vrmRig?: Partial<Rig> }).__vrmRig;
+  return override ? { ...DEFAULT_RIG, ...override } : DEFAULT_RIG;
+}
+
+/**
+ * MToon 的阴影色是烤在模型里的：很多二创模型把 shadeColor 调成了灰蓝，
+ * 环境光一压低，脸和脖子就从「肤色」掉成「灰」。这里做两件小事：
+ *   1. 阴影色往底色拉 30% —— 阴影保留色相，不再发灰；
+ *   2. 硬边软一半 —— toon 的分界不明显，脸不会出现一条直愣愣的明暗线。
+ * 只动材质参数，不碰贴图，所以不会改模。
+ */
+function softenMToon(root: THREE.Object3D) {
+  const seen = new Set<unknown>();
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh & { material?: unknown };
+    const raw = mesh.material as
+      | { color?: THREE.Color; shadeColorFactor?: THREE.Color; shadingToonyFactor?: number }
+      | undefined;
+    // 这三个模型的材质是 VRM0/VRM1 两代 MToon，`isMToonMaterial` 标记不一定有；
+    // 按属性判定更稳（shadeColorFactor 是 MToon 才有的）。
+    if (!raw || seen.has(raw)) return;
+    if (typeof raw.shadingToonyFactor !== "number") return;
+    seen.add(raw);
+    if (raw.color && raw.shadeColorFactor) raw.shadeColorFactor.lerp(raw.color, 0.3);
+    if (typeof raw.shadingToonyFactor === "number") raw.shadingToonyFactor = Math.min(raw.shadingToonyFactor, 0.55);
+  });
 }
 
 export function VrmStage({ modelUrl, emotion, speaking }: Props) {
@@ -95,17 +165,22 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(26, 1, 0.05, 40);
-    // 环境光 0.9 → 0.78：这一档抬高会把阴影面也顶到高光，脸和脖子就糊成一片；
-    // 但留够补光，皮肤才不会掉进 MToon 的 shade 色（那才是「发灰」的来源）。
-    scene.add(new THREE.AmbientLight(0xffffff, 0.78));
-    // 主光 1.6 → 1.3（−19%，按评审的「主光降 20%」），前移到 (1.0, 1.4, 3.0)：
-    // 脸原本落在 toon 的阴影带里，正面受光后皮肤才回到 lit 色，下颌和脖子留下层次。
-    const key = new THREE.DirectionalLight(0xfff4e8, 1.3);
-    key.position.set(1.0, 1.4, 3.0);
+    const rig = readRig();
+    renderer.toneMappingExposure = rig.exposure;
+
+    // 三盏灯各管一件事：环境打底（不能高，高了阴影面糊成一片）、
+    // 主光塑造（正面偏上，脸才不落在 MToon 的 shade 带里）、
+    // 补光提亮暗面（冷色，别让暗面掉进灰色）、轮廓光勾边（背后，把头发从纸上分出来）。
+    // 半球光：上暖下冷，比纯环境光多一层「地上的反光」，脸不会整片糊平。
+    scene.add(new THREE.HemisphereLight(0xfff6ea, 0xcfe0f2, rig.ambient));
+    const key = new THREE.DirectionalLight(rig.keyColor, rig.key);
+    key.position.set(...rig.keyPos);
     scene.add(key);
-    // 轮廓光 0.9 → 0.3（−67%）：浅金发原来被这盏冷光打成银白，现在只勾一圈边。
-    const rim = new THREE.DirectionalLight(0x9be8ff, 0.3);
-    rim.position.set(-2, 1.4, -1.5);
+    const fill = new THREE.DirectionalLight(rig.fillColor, rig.fill);
+    fill.position.set(...rig.fillPos);
+    scene.add(fill);
+    const rim = new THREE.DirectionalLight(rig.rimColor, rig.rim);
+    rim.position.set(...rig.rimPos);
     scene.add(rim);
 
     const lookTarget = new THREE.Object3D();
@@ -136,15 +211,23 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
       const w = host.clientWidth;
       const h = host.clientHeight;
       if (!w || !h) return;
-      const { stageH, ratio, gap, maxFill } = stageMetrics(host);
-      const targetPx = Math.min(ratio * stageH, h * maxFill);
-      const gapPx = gap * stageH;
+      const { top, vrmH } = stageMetrics(host);
+      // 全身模型取景到膝上：头顶留 top，整人高 vrmH 倍可画区，多出来的部分落到框外被裁掉
+      // （框外正好是浪和对话框，看起来就是「站在水里」）。
+      const topPx = top * h;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
 
       const box = new THREE.Box3().setFromObject(vrm.scene);
       const size = box.getSize(new THREE.Vector3());
       const worldH = Math.max(size.y, 1e-3);
+      /*
+       * 放大倍数按模型自己的宽高比来：全身高瘦的（鲸汐、小智）取景到膝上，
+       * 人能占满舞台、脸看得清；Q 版的（小克）必须整体入画，按 1.3 倍会把脑袋裁掉一半。
+       */
+      const aspect = worldH / Math.max(size.x, 1e-3);
+      const zoom = THREE.MathUtils.clamp(0.88 + (aspect - 1.35) * 0.4, 0.88, vrmH);
+      const targetPx = zoom * h;
       const head = vrm.humanoid.getNormalizedBoneNode("head");
       const headPos = head ? head.getWorldPosition(new THREE.Vector3()) : null;
       // 中轴取头部骨骼的 x：马尾、裙摆偏一边也不会把身体推歪。
@@ -153,7 +236,8 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
       const visibleH = (worldH * h) / targetPx;
       const dist = visibleH / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
       const perPx = visibleH / h;
-      const bottomPx = h - gapPx;
+      // 再往下压 2%：脚尖要落进浪里，别停在浪线上「悬」着（模型包围盒比脚底略大）。
+      const bottomPx = topPx + targetPx + h * 0.02;
       // 脚底落在 bottomPx 处 → 反推镜头中心的 y
       const camY = box.min.y + (bottomPx - h / 2) * perPx;
       camera.near = 0.05;
@@ -186,6 +270,7 @@ export function VrmStage({ modelUrl, emotion, speaking }: Props) {
         VRMUtils.combineSkeletons(gltf.scene);
         VRMUtils.rotateVRM0(loaded);
         vrm = loaded;
+        softenMToon(loaded.scene);
         scene.add(loaded.scene);
 
         // 放下手臂（默认是 T 字站姿）；VRM 0.x 经 rotateVRM0 转过 180°，转动方向相反。

@@ -32,11 +32,63 @@
   min-height: 0;
   overflow: hidden;
 }
-/* 角色画在对话框上沿之上：--scene-safe 由舞台组件按 .scene__chrome 的真实高度写回，
-   构图规则（高度 / 底边间隙 / 缩放下限）见 tokens.css 的 --stage-char-*。 */
+/* 角色画在可画区里：高度 / 底边间隙 / 缩放下限见 tokens.css 的 --stage-char-*，
+   可画区高度由舞台组件按 .scene__chrome 的真实高度写回 --scene-safe。 */
+/* 可画区：对话框以上那一块。角色、浪都挂在它上面，改 --scene-safe 三样一起动。 */
+.scene__safe {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: var(--scene-safe);
+  overflow: hidden;
+  pointer-events: none;
+}
+/* 背光：她身后一块平的暖光斑。不用渐变、不用发光滤镜（规范 §4.7/§9 禁止），
+   就是一块比纸亮一点、暖一点的色块——人物的轮廓因此从纸上分出来。 */
+.scene__glow {
+  position: absolute;
+  left: 50%;
+  top: 6%;
+  width: 64%;
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--lamp) 18%, var(--paper));
+  opacity: .5;
+  z-index: var(--z-bg);
+}
+/* 夜里别打那么大一圈：深色纸上 0.5 的暖光会变成一块灰盘子 */
+:root[data-theme="dark"] .scene__glow { opacity: .3; }
+
+/* 海：锚在可画区底（= 对话框上沿），不是舞台底。
+   far/mid 在角色后面，near 在角色前面——规范 §7.1.2 的 z 层。 */
+.scene__sea {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(var(--stage-sea-h) * 100%);
+  overflow: hidden;
+}
+.scene__sea--back { z-index: var(--z-bg); }
+.scene__sea--front { z-index: 2; }
+/* 水里的一层反光：平涂的亮带，靠在水线下面一点，给「有光」一个落点（不用渐变） */
+.scene__sheen {
+  position: absolute;
+  left: 12%;
+  right: 12%;
+  bottom: 6%;
+  height: 10%;
+  border-radius: 50%;
+  background: var(--sheet);
+  opacity: .55;
+}
+
 .scene__figure {
   position: absolute;
-  inset: 0 0 var(--scene-safe) 0;
+  inset: 0;
+  z-index: var(--z-stage);
   /* 显式的一行一列：百分比宽度与 place-items:end 才有确定的参照 */
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -213,7 +265,14 @@
   height: 8px;
   border-radius: var(--r-round);
   background: var(--accent);
+  transition: background-color var(--dur-fade) var(--ease-out);
 }
+/* 她这句话什么情绪，点就是什么颜色：情绪靠脸和这一点表达，不写进字幕。 */
+.nametab[data-emotion="happy"] .nametab__dot { background: var(--mood-happy); }
+.nametab[data-emotion="sad"] .nametab__dot { background: var(--mood-sad); }
+.nametab[data-emotion="angry"] .nametab__dot { background: var(--mood-angry); }
+.nametab[data-emotion="surprised"] .nametab__dot { background: var(--mood-surprised); }
+.nametab[data-emotion="relaxed"] .nametab__dot { background: var(--mood-relaxed); }
 .nametab__name {
   font-family: var(--font-voice);
   font-size: var(--fs-diary);
@@ -690,7 +749,8 @@
   /* 舞台吃掉剩余高度：34–42dvh 之间伸缩，回信条永远在 tabbar 之上。
      手机舞台只是一条窄带，同一条构图规则把角色放到舞台的 90%（桌面 60%），
      否则 390×844 上只剩两百来像素，脸就看不清了。 */
-  .scene { flex: 1 1 auto; min-height: 34dvh; max-height: 42dvh; --stage-char-h: .9; }
+  .scene { flex: 1 1 auto; min-height: 34dvh; max-height: 42dvh; --stage-char-h: .9; --stage-sea-h: .26; }
+  .scene__safe { bottom: 0; }
   .scene__figure { inset: 0; }
   .scene__sticker { width: min(56%, 240px); margin-bottom: 0; }
   .scene__corner { display: none; }

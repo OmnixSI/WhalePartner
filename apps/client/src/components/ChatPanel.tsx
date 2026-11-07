@@ -30,6 +30,7 @@ import { Backlog } from "./chat/Backlog";
 import { ComposerBar } from "./chat/ComposerBar";
 import { ConfirmDialog } from "./chat/ConfirmDialog";
 import { DialogBox } from "./chat/DialogBox";
+import { isEmotion, readEmotion, stripEmotionTags } from "../lib/emotion";
 import { SurfStatus, type SurfPhase } from "./surf/SurfStatus";
 import { useSurfEvents } from "./surf/useSurfEvents";
 import { Slip } from "./chat/Slip";
@@ -106,14 +107,26 @@ export function ChatPanel({ character }: Props) {
       const sid = history.find((m) => m.sessionId)?.sessionId;
       if (sid) sessionIdRef.current = sid;
       setTurns(
-        history.map((m) => ({
-          key: `h${m.id}`,
-          role: m.role === "user" ? "me" : "her",
-          text: m.content,
-          at: m.createdAt,
-          status: "sent",
-        })),
+        history.map((m) => {
+          // 老库里可能还留着 `[emotion:xxx]`：渲染前统一洗净，情绪并到 Turn 上。
+          const clean = readEmotion(m.content);
+          return {
+            key: `h${m.id}`,
+            role: m.role === "user" ? "me" : "her",
+            text: clean.text,
+            at: m.createdAt,
+            status: "sent" as const,
+            emotion: isEmotion(m.emotion) ? m.emotion : clean.emotion ?? undefined,
+          };
+        }),
       );
+      // 她最后那句话还摆着：舞台先按那句话的情绪定妆，别一进来就面无表情。
+      const lastHerNow = [...history].reverse().find((m) => m.role === "assistant");
+      if (lastHerNow) {
+        const clean = readEmotion(lastHerNow.content);
+        const mood = isEmotion(lastHerNow.emotion) ? lastHerNow.emotion : clean.emotion;
+        if (mood && mood !== "neutral") setEmotion(mood);
+      }
       setHistoryLoaded(true);
     });
     return () => ctrl.abort();
@@ -173,8 +186,11 @@ export function ChatPanel({ character }: Props) {
           setProgress({ kind: event.type, stage: event.stage, message: event.message, title: event.title });
         } else if (event.type === "emotion") {
           setEmotion(event.emotion);
+          setTurns((prev) => prev.map((t) => (t.key === herKey ? { ...t, emotion: event.emotion } : t)));
         } else if (event.type === "done") {
-          setTurns((prev) => prev.map((t) => (t.key === herKey ? { ...t, status: "done" } : t)));
+          const mood = event.emotion;
+          setTurns((prev) => prev.map((t) => (t.key === herKey ? { ...t, status: "done", emotion: mood } : t)));
+          if (mood && mood !== "neutral") setEmotion(mood);
         } else if (event.type === "error") {
           throw new Error(event.message);
         }
@@ -248,9 +264,10 @@ export function ChatPanel({ character }: Props) {
         ? "这句话没送出去。"
         : state === "loading"
           ? `${character.name}正在赶过来…`
-          : lastHer?.text || character.greeting;
+          : stripEmotionTags(lastHer?.text || character.greeting);
 
-  const chunks = live && lastHer && live.key === lastHer.key ? live.chunks : [];
+  // 流式分片也过一遍：标签绝不能漏进字幕（前端不赌后端版本）。
+  const chunks = live && lastHer && live.key === lastHer.key ? live.chunks.map(stripEmotionTags) : [];
   const showFloat =
     pending?.status === "failed" || (phase === "thinking" && pending?.status === "sending");
   const firstEntry = historyLoaded && turns.length === 0 && !showOffline;
@@ -311,9 +328,15 @@ export function ChatPanel({ character }: Props) {
           <section className="scene" aria-label="角色舞台">
             {/* 规范 §7.7.3：她在逛的时候，舞台左上角挂一张小便签，字随阶段变 */}
             <SurfStatus phase={surfPhase} onDismiss={() => setSurfPhase(null)} />
-            <div
-              className="scene__figure"
-              role="button"
+            <div className="scene__safe">
+              <div className="scene__glow" aria-hidden />
+              {/* 规范 §7.1.2 的 z 层：far/mid → 角色 → near。两层海锚在同一处，crest 才对得齐 */}
+              <div className="scene__sea scene__sea--back">
+                <Tide variant="stage" layers="back" />
+              </div>
+              <div
+                className="scene__figure"
+                role="button"
               tabIndex={0}
               aria-label={`点一点${character.name}`}
               onClick={pokeHer}
@@ -335,8 +358,12 @@ export function ChatPanel({ character }: Props) {
               ) : (
                 <VrmStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
               )}
+              </div>
+              <div className="scene__sea scene__sea--front">
+                <div className="scene__sheen" aria-hidden />
+                <Tide variant="stage" layers="front" />
+              </div>
             </div>
-            <Tide variant="stage" />
 
             {(avatar === "failed" || !hintSeen) && (
               <div className="scene__aside">
@@ -373,6 +400,7 @@ export function ChatPanel({ character }: Props) {
             <DialogBox
               name={character.name}
               state={state}
+              emotion={busy ? emotion : lastHer?.emotion ?? emotion}
               text={text}
               chunks={chunks}
               merged={lastHer?.status === "done"}

@@ -1,4 +1,5 @@
 import { rm } from "node:fs/promises";
+import { splitEmotionTags } from "../emotion.ts";
 import { join } from "node:path";
 import type { ChatProvider } from "../llm/types.ts";
 import type { MemoryStore } from "../memory/types.ts";
@@ -605,7 +606,9 @@ export class SurfService {
       signal,
     );
     if (!line) return null;
-    const message = this.#options.messages.add("assistant", line, null, character);
+    // 主动分享也走一遍情绪剥离：标签不是正文，情绪要存进消息里给界面用。
+    const { text: clean, emotions } = splitEmotionTags(line);
+    const message = this.#options.messages.add("assistant", clean, emotions[0] ?? null, character);
     this.store.markShared(best.id, iso(now), message.id);
     this.bus.publish(character, "share", { itemId: best.id, messageId: message.id });
     return { itemId: best.id, messageId: message.id };

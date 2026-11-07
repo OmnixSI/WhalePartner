@@ -66,6 +66,8 @@ test("一次会话：1 个视频 + 2 个网页 → 3 条见闻、3 条记忆、2
   // 分享：一条带附件的助手消息，附件指向那条见闻
   assert.equal(messages.added.length, 1);
   const message = messages.added[0];
+  // 主动分享的正文里不能有 `[emotion:xxx]`：标签不是正文，情绪要单独存。
+  assert.ok(!/\[\s*emotion\s*:/i.test(message.content), `正文漏了情绪标签：${message.content}`);
   const attachment = service.attachmentOf(message.id);
   assert.equal(attachment?.type, "surf");
   const sharedId = Number((attachment as { itemId: number }).itemId);
