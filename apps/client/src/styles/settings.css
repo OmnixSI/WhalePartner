@@ -537,6 +537,8 @@
 .onb__figure .live2d { transform: scale(.92) translateY(4%); transform-origin: 50% 100%; }
 /* 桌面舞台够高：让她站满一点，别缩在中间一小块 */
 @media (min-width: 1100px) { .onb__figure .live2d { transform: scale(1.16) translateY(5%); } }
+/* 引导页没有对话框：失败纸条放到上沿，别压在徽记上 */
+.onb__figure .scene__status { top: var(--sp-3); bottom: auto; }
 .onb__sticker { width: min(40%, 200px); max-height: 100%; margin-bottom: var(--sp-4); }
 .onb__sticker .mark { width: 100%; height: auto; }
 .onb__hint {

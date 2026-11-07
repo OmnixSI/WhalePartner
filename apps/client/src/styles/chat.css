@@ -135,7 +135,7 @@
 .scene__status {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--scene-safe) + var(--sp-4));
+  bottom: calc(var(--scene-safe, 0px) + var(--sp-4));
   z-index: var(--z-ui);
   display: flex;
   align-items: center;
