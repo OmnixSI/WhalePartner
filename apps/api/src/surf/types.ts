@@ -108,6 +108,11 @@ export interface SurfFeedQuery {
   page: number;
   pageSize: number;
   q?: string;
+  /** 按来源筛：`bilibili` 或域名主体（`juejin.cn`）。 */
+  site?: string;
+  /** 只要这个时间（含）之后 / 之前（ISO）带回来的。 */
+  from?: string;
+  to?: string;
 }
 
 /** B 站搜索的一条候选（§10.6.8 A.1）。 */

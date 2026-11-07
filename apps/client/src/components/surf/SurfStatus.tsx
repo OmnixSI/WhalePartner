@@ -11,7 +11,7 @@ import { useInkEnv } from "../ink/useCalm";
 import type { SurfStage } from "./useSurfEvents";
 
 export type SurfPhase =
-  | { kind: "browsing"; stage: SurfStage }
+  | { kind: "browsing"; stage: SurfStage; detail?: string | null; paused?: boolean }
   | { kind: "done"; count: number }
   | { kind: "empty" };
 
@@ -34,6 +34,20 @@ type Props = {
   /** 结束语的停留时长（规范：带回东西 4s，没带回 3s）。 */
   onDismiss?: () => void;
 };
+
+const ORDER: SurfStage[] = ["searching", "watching", "reading", "writing"];
+
+/** 四个小点：找 → 看 → 翻 → 记，走到哪一步亮到哪一步。 */
+function StepDots({ stage }: { stage: SurfStage }) {
+  const at = ORDER.indexOf(stage);
+  return (
+    <span className="surf-slip__dots" aria-hidden>
+      {ORDER.map((entry, index) => (
+        <span key={entry} className="surf-slip__dot" data-state={index < at ? "done" : index === at ? "now" : "todo"} />
+      ))}
+    </span>
+  );
+}
 
 export function SurfStatus({ phase, onDismiss }: Props) {
   const navigate = useNavigate();
@@ -60,11 +74,14 @@ export function SurfStatus({ phase, onDismiss }: Props) {
   if (!phase || !visible) return null;
   const text =
     phase.kind === "browsing"
-      ? STAGE_TEXT[phase.stage]
+      ? phase.paused
+        ? "你在聊天，我先等一会儿…"
+        : STAGE_TEXT[phase.stage]
       : phase.kind === "done"
         ? `逛完啦，带回 ${phase.count} 样东西`
         : "这次没逛到什么，下次再去。";
   const icon: IconName = phase.kind === "browsing" ? STAGE_ICON[phase.stage] : "postcard";
+  const detail = phase.kind === "browsing" && !phase.paused ? phase.detail : null;
 
   return (
     <button
@@ -72,13 +89,17 @@ export function SurfStatus({ phase, onDismiss }: Props) {
       className="surf-slip"
       data-calm={env.calm ? "on" : "off"}
       onClick={() => navigate("/surf")}
-      aria-label={`${text}，点开看她的见闻`}
+      aria-label={`${text}${detail ? `，${detail}` : ""}，点开看她的见闻`}
     >
       <Tape color="c" w={24} h={10} angle={-2} className="surf-slip__tape" />
       <span className="surf-slip__icon" aria-hidden data-stage={phase.kind === "browsing" ? phase.stage : "done"}>
         <Icon name={icon} size={20} />
       </span>
-      <span className="surf-slip__text">{text}</span>
+      <span className="surf-slip__body">
+        <span className="surf-slip__text">{text}</span>
+        {detail && <span className="surf-slip__detail">{detail}</span>}
+      </span>
+      {phase.kind === "browsing" && <StepDots stage={phase.stage} />}
     </button>
   );
 }

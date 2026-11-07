@@ -311,6 +311,18 @@ export class SurfRepository {
       where.push("kind = ?");
       args.push(query.kind);
     }
+    if (query.site) {
+      where.push("source_site = ?");
+      args.push(query.site);
+    }
+    if (query.from) {
+      where.push("created_at >= ?");
+      args.push(query.from);
+    }
+    if (query.to) {
+      where.push("created_at < ?");
+      args.push(query.to);
+    }
     if (query.q?.trim()) {
       where.push("(title LIKE ? OR summary LIKE ? OR comment LIKE ? OR tags_json LIKE ?)");
       const like = `%${query.q.trim()}%`;
@@ -324,6 +336,14 @@ export class SurfRepository {
       .prepare(`${SELECT_ITEM} WHERE ${clause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
       .all(...args, pageSize, (page - 1) * pageSize) as ItemRow[];
     return { items: rows.map((row) => this.feedItem(toItem(row))), total };
+  }
+
+  /** 见闻页「来源」筛选用：各来源带回过几条（不含被忘掉的）。 */
+  sources(): Array<{ site: string; count: number }> {
+    const rows = this.#db
+      .prepare("SELECT source_site AS site, COUNT(*) AS n FROM surf_items WHERE hidden = 0 GROUP BY source_site ORDER BY n DESC, site ASC LIMIT 30")
+      .all() as Array<{ site: string; n: number }>;
+    return rows.map((row) => ({ site: row.site, count: Number(row.n) }));
   }
 
   feedItem(item: SurfItem): SurfFeedItem {

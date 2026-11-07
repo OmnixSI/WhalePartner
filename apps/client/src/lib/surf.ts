@@ -1,6 +1,7 @@
 /** 「她自己去逛」的前端调用（规范 §10.6.9 / §10.6.10）。接口不在就返回 null，页面自己说“没逛成”。 */
 import { API_BASE } from "./api";
 import { describeNetError } from "./net";
+import { timeOf } from "./surf-view";
 
 export type SurfFrequency = "rare" | "normal" | "often";
 export type SurfKind = "video" | "web";
@@ -15,8 +16,16 @@ export interface SurfSettings {
   video: boolean;
   web: boolean;
   shareToChat: boolean;
-  /** 本机能不能读网页（没装 Chromium 时 false）。 */
+  /** 本机能不能读网页。 */
   webAvailable?: boolean;
+  /** 渲染网页用的浏览器：第一次需要在后台下载一次，这里能看到进度。 */
+  browser?: SurfBrowser | null;
+}
+
+export interface SurfBrowser {
+  state: "idle" | "installing" | "ready" | "failed";
+  percent: number | null;
+  message: string;
 }
 
 export type SurfSettingsPatch = Partial<Omit<SurfSettings, "character" | "webAvailable" | "quiet">> & {
@@ -38,11 +47,18 @@ export interface SurfFeedItem {
   sharedAt: string | null;
 }
 
+export interface SurfSource {
+  site: string;
+  count: number;
+}
+
 export interface SurfFeed {
   items: SurfFeedItem[];
   total: number;
   page: number;
   pageSize: number;
+  /** 各来源带回过几条，给「来源」筛选用。 */
+  sources?: SurfSource[];
 }
 
 export interface SurfStatus {
@@ -54,6 +70,11 @@ export interface SurfStatus {
   nextRunAt: string | null;
   pausedReason: "quota" | "quiet" | "disabled" | null;
   webAvailable: boolean;
+  browser?: SurfBrowser | null;
+  /** 这一步在做什么，例如「在读《鲸歌是什么》」。 */
+  detail?: string | null;
+  /** 你正在聊天，她先等着。 */
+  waiting?: boolean;
 }
 
 export interface SurfRunAnswer {
@@ -119,12 +140,15 @@ export async function getSurfStatus(character: string, signal?: AbortSignal): Pr
 }
 
 export async function getSurfFeed(
-  query: { character: string; kind?: SurfKind; page?: number; pageSize?: number; q?: string },
+  query: { character: string; kind?: SurfKind; page?: number; pageSize?: number; q?: string; site?: string; from?: string; to?: string },
   signal?: AbortSignal,
 ): Promise<SurfFeed> {
   const params = new URLSearchParams({ character: query.character, page: String(query.page ?? 1), pageSize: String(query.pageSize ?? 20) });
   if (query.kind) params.set("kind", query.kind);
   if (query.q?.trim()) params.set("q", query.q.trim());
+  if (query.site) params.set("site", query.site);
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
   const response = await fetch(`${API_BASE}/api/surf/feed?${params.toString()}`, { signal });
   if (!response.ok) throw new Error(await readError(response, `见闻翻不开（HTTP ${response.status}）`));
   return (await response.json()) as SurfFeed;
@@ -197,12 +221,6 @@ export function dayLabelOf(iso: string): string {
   return `${date.getMonth() + 1}月${date.getDate()}日 ${week}`;
 }
 
-export function timeOf(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
-
 export function stampDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -221,3 +239,5 @@ export function nextRunText(status: SurfStatus | null): string {
   if (!status.nextRunAt) return "她今天逛完了";
   return `下一次 ${timeOf(status.nextRunAt)}`;
 }
+
+export { chatQuoteHref, dateRangeBounds, quoteText, timeOf, whenText, type DateRange } from "./surf-view";

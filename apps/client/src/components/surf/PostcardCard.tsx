@@ -8,7 +8,7 @@ import { Tape, Stamp } from "../ink";
 import { Icon } from "../ink-icons";
 import { useInkEnv } from "../ink/useCalm";
 import { hashSeed } from "../../lib/ink";
-import { siteLabel, stampDate, thumbUrl, timeOf, type SurfFeedItem } from "../../lib/surf";
+import { siteLabel, stampDate, thumbUrl, whenText, type SurfFeedItem } from "../../lib/surf";
 
 type Props = {
   item: SurfFeedItem;
@@ -67,6 +67,11 @@ export function PostcardCard({ item, fresh = false, onOpen, onForget, onOpenUrl 
           onClick={() => onOpen(item)}
           aria-label={`${item.title}，${kindText}，打开详情`}
         >
+          <span className="pcard__meta-row">
+            <span className="pcard__site">{site}</span>
+            <span className="pcard__dot" aria-hidden>·</span>
+            <time className="pcard__when" dateTime={item.createdAt}>{whenText(item.createdAt)}</time>
+          </span>
           <span className="pcard__title">{item.title}</span>
           {item.comment && (
             <span className="pcard__say">
@@ -88,9 +93,7 @@ export function PostcardCard({ item, fresh = false, onOpen, onForget, onOpenUrl 
         <div className="pcard__foot">
           <span className="pcard__kind">
             <Icon name={item.kind === "video" ? "video" : "newspaper"} size={20} />
-            <span className="pcard__meta">
-              {kindText}·{timeOf(item.createdAt)}
-            </span>
+            <span className="pcard__meta">{kindText}</span>
           </span>
           <span className="pcard__actions">
             <button

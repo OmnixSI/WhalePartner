@@ -66,8 +66,8 @@ export async function handleSurf(
   if (!character) return;
 
   if (request.method === "GET" && url.pathname === "/api/surf/settings") {
-    const webAvailable = await surf.webAvailable;
-    sendJson(response, 200, { ...surf.settings(character), webAvailable });
+    const status = await surf.status(character);
+    sendJson(response, 200, { ...surf.settings(character), webAvailable: status.webAvailable, browser: status.browser });
     return;
   }
 
@@ -76,7 +76,8 @@ export async function handleSurf(
       const body = await readJsonBody(request);
       const patch = validateSettingsPatch(body);
       const saved = surf.putSettings(character, patch);
-      sendJson(response, 200, { ...saved, webAvailable: await surf.webAvailable });
+      const status = await surf.status(character);
+      sendJson(response, 200, { ...saved, webAvailable: status.webAvailable, browser: status.browser });
     } catch (error) {
       sendJson(response, 400, {
         error: "invalid_settings",
@@ -113,8 +114,14 @@ export async function handleSurf(
     const page = intParam(url, "page", 1, 1, 1000);
     const pageSize = intParam(url, "pageSize", 20, 1, 50);
     const q = url.searchParams.get("q") ?? undefined;
-    const result = surf.feed({ character, kind, page, pageSize, q });
-    sendJson(response, 200, { ...result, page, pageSize });
+    const site = url.searchParams.get("site")?.trim().slice(0, 80) || undefined;
+    const time = (name: string) => {
+      const raw = url.searchParams.get(name);
+      const parsed = raw ? Date.parse(raw) : Number.NaN;
+      return Number.isFinite(parsed) ? new Date(parsed).toISOString() : undefined;
+    };
+    const result = surf.feed({ character, kind, page, pageSize, q, site, from: time("from"), to: time("to") });
+    sendJson(response, 200, { ...result, page, pageSize, sources: surf.store.sources() });
     return;
   }
 
