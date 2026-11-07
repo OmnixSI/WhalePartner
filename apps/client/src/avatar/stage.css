@@ -1,32 +1,11 @@
-/* 舞台加载态：只有一条海平线。无渐变、无发光、无图形。 */
+/* 舞台状态层：失败时的底部纸条样式在 chat.css（.scene__status）。无渐变、无发光、无图形。 */
 .stage-status {
   position: absolute;
   inset: 0;
   z-index: calc(var(--z-stage, 1) + 1);
   pointer-events: none;
 }
-.stage-status__horizon {
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  top: 62%;
-  height: 1px;
-  background: var(--line-strong);
-  transform-origin: 50% 50%;
-  animation: stage-horizon 2.4s var(--ease-inout, ease-in-out) infinite;
-}
-.stage-status[data-phase="failed"] .stage-status__horizon { animation: none; opacity: .5; }
-@keyframes stage-horizon {
-  0%, 100% { opacity: .25; transform: scaleX(.72); }
-  50% { opacity: .7; transform: scaleX(1); }
-}
-.stage-status__fail {
-  position: absolute;
-  left: 0; right: 0; top: calc(62% + var(--sp-3, .75rem));
-  display: flex; flex-direction: column; align-items: center; gap: var(--sp-2, .5rem);
-  pointer-events: auto;
-}
-.stage-status__text { margin: 0; font-family: var(--font-voice); color: var(--ink-mute); font-size: .9375rem; }
+.stage-status__fail { pointer-events: auto; }
 .stage-status__sr {
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
@@ -36,6 +15,5 @@
 .live2d[data-stage="ready"], .vrm[data-stage="ready"] { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {
-  .stage-status__horizon { animation: none; opacity: .5; }
   .live2d[data-stage], .vrm[data-stage] { transition: none; }
 }

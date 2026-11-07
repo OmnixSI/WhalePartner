@@ -12,20 +12,20 @@ import { useCharacter, type CharacterId } from "../characters";
 import "../styles/mark.css";
 
 /** 页面推给小角的姿态；徽记几乎不变，只用来选择台词（见 CompanionCorner）。 */
-export type StickerMood =
+export type CharacterMood =
   | "idle" | "happy" | "think" | "write" | "sleep" | "sorry" | "wave" | "hold" | "phone" | "paper"
   | "calm" | "sad" | "sleepy" | "curious" | "thinking" | "surprised" | "shy" | "proud" | "worried";
 
 type Props = {
   /** 不传就是当前角色 */
   character?: CharacterId;
-  mood?: StickerMood;
+  mood?: CharacterMood;
   className?: string;
   /** 不传就是纯装饰（aria-hidden） */
   label?: string;
 };
 
-const SLEEPY = new Set<StickerMood>(["sleep", "sleepy", "sorry", "sad", "worried"]);
+const SLEEPY = new Set<CharacterMood>(["sleep", "sleepy", "sorry", "sad", "worried"]);
 
 /** 水平线在 y=62；海在其下。 */
 function Emblem({ id }: { id: CharacterId }) {

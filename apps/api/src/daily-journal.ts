@@ -1,4 +1,5 @@
 import { EmotionFilter } from "./emotion.ts";
+import { publishEvent } from "./events.ts";
 import type { ChatProvider } from "./llm/types.ts";
 import { archiveExperience } from "./memory/archive.ts";
 import type { MemoryStore } from "./memory/types.ts";
@@ -38,7 +39,10 @@ export class DailyJournalService {
     const key = localDate;
     const existing = this.#inFlight.get(key);
     if (existing) return existing;
-    const task = this.#generate(character, localDate, force).finally(() => {
+    const task = this.#generate(character, localDate, force).then((journal) => {
+      if (journal) publishEvent("diary.updated", { reason: "journal", localDate });
+      return journal;
+    }).finally(() => {
       if (this.#inFlight.get(key) === task) this.#inFlight.delete(key);
     });
     this.#inFlight.set(key, task);

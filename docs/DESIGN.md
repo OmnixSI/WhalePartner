@@ -130,4 +130,4 @@ node scripts/redesign/check-contrast.mjs   # 只跑 90 组对比度，逐对打�
 
 ## 角色形象
 
-形象是 three-vrm 渲染的 VRM 模型（`avatar/*`），模型清单在 `apps/client/models.manifest.json`，文件不进仓库，用 `pnpm fetch-model` 下载并校验。拿不到模型、或手机/老人/calm 下，用代码绘制的原创贴纸 `WhaleSticker`（平涂、无渐变）顶上。目前都是别人做好的现成模型，授权没有核对，只作内部展示；对外发布前要换成原创或授权明确的形象。
+形象是 three-vrm 渲染的 VRM 模型（`avatar/*`），模型清单在 `apps/client/models.manifest.json`，文件不进仓库，用 `pnpm fetch-model` 下载并校验。拿不到模型、或手机/老人/calm 下，只显示一条海平线和角色名（`Horizon`），不画任何手绘形象；角色徽记用矢量的 `CharacterMark`（平涂、无渐变）。目前都是别人做好的现成模型，授权没有核对，只作内部展示；对外发布前要换成原创或授权明确的形象。

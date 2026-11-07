@@ -12,7 +12,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCharacter } from "../characters";
 import { spring } from "../motion/tokens";
-import { CharacterMark, type StickerMood } from "./CharacterMark";
+import { CharacterMark, type CharacterMood } from "./CharacterMark";
 
 /* ---------------- 状态：同 avatar-state.ts 的写法 ---------------- */
 
@@ -23,11 +23,11 @@ const subscribe = (listener: () => void) => {
 };
 const notify = () => listeners.forEach((listener) => listener());
 
-let mood: StickerMood = "idle";
+let mood: CharacterMood = "idle";
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 /** 页面用这个推状态；ttl 到期自动回 idle。 */
-export function setCompanionMood(next: StickerMood, opts: { ttl?: number } = {}) {
+export function setCompanionMood(next: CharacterMood, opts: { ttl?: number } = {}) {
   mood = next;
   notify();
   if (timer) clearTimeout(timer);
@@ -44,7 +44,7 @@ export const useCompanionMood = () => useSyncExternalStore(subscribe, () => mood
 
 /* ---------------- 台词（规范 §5.7 的表） ---------------- */
 
-const LINES: Partial<Record<StickerMood, string[]>> = {
+const LINES: Partial<Record<CharacterMood, string[]>> = {
   idle: ["今天的我写在这里了。", "想看哪一天？"],
   calm: ["我在呢，慢慢来。"],
   write: ["我在写，你先歇会儿。"],
@@ -71,7 +71,7 @@ const CLICK_GAP = 10_000;
 
 type Props = {
   /** 不传就用 `setCompanionMood` 推的全局 mood */
-  mood?: StickerMood;
+  mood?: CharacterMood;
   className?: string;
 };
 

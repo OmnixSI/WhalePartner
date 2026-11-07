@@ -1,5 +1,5 @@
 /** 「她自己去逛」的前端调用（规范 §10.6.9 / §10.6.10）。接口不在就返回 null，页面自己说“没逛成”。 */
-import { API_BASE } from "./api";
+import { API_BASE, authedUrl } from "./api";
 import { describeNetError } from "./net";
 import { timeOf } from "./surf-view";
 
@@ -186,7 +186,7 @@ export async function deleteSurfItem(id: number): Promise<void> {
   if (!response.ok && response.status !== 404) throw new Error(`忘不掉（HTTP ${response.status}）`);
 }
 
-export const thumbUrl = (id: number) => `${API_BASE}/api/surf/thumb/${id}`;
+export const thumbUrl = (id: number) => authedUrl(`${API_BASE}/api/surf/thumb/${id}`);
 
 // ---- 本机看过到哪儿了（导航红点与「新」邮戳） ----
 

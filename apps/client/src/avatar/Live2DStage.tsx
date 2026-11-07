@@ -26,6 +26,8 @@ interface Props {
   speaking: boolean;
   onReady?: () => void;
   onError?: (error: Error) => void;
+  /** 点到模型时通知外层一次（外层不再自己监听舞台点击，避免重复触发）。 */
+  onTap?: () => void;
 }
 
 type Live2DWindow = Window & { PIXI?: typeof PIXI };
@@ -56,18 +58,18 @@ function watchSafeArea(host: HTMLElement, onChange: () => void) {
   return () => observer.disconnect();
 }
 
-export function Live2DStage({ modelUrl, emotion, speaking, onReady, onError }: Props) {
+export function Live2DStage({ modelUrl, emotion, speaking, onReady, onError, onTap }: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const emotionRef = useRef(emotion);
   const speakingRef = useRef(speaking);
   const reactRef = useRef<((value: AvatarEmotion) => void) | null>(null);
-  const callbacks = useRef({ onReady, onError });
+  const callbacks = useRef({ onReady, onError, onTap });
   const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState<StagePhase>("loading");
 
   useEffect(() => {
-    callbacks.current = { onReady, onError };
-  }, [onReady, onError]);
+    callbacks.current = { onReady, onError, onTap };
+  }, [onReady, onError, onTap]);
 
   useEffect(() => {
     emotionRef.current = emotion;
@@ -326,6 +328,7 @@ export function Live2DStage({ modelUrl, emotion, speaking, onReady, onError }: P
           const names = (model as unknown as { hitTest: (x: number, y: number) => string[] }).hitTest(x, y);
           const b = model.getBounds();
           dispatch({ type: "tap", now: performance.now(), region: classifyTap(names, b, y) });
+          callbacks.current.onTap?.();
         });
 
         // 视线：除掉祖先 CSS transform 的缩放，并且按帧节流

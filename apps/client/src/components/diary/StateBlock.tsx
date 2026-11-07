@@ -8,7 +8,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { InkLine } from "../ink";
-import { CharacterMark, type StickerMood } from "../CharacterMark";
+import { CharacterMark, type CharacterMood } from "../CharacterMark";
 import { Horizon } from "../Horizon";
 import { useInkEnv } from "../ink/useCalm";
 
@@ -19,14 +19,14 @@ type Props = {
   action?: { label: string; onClick: () => void } | null;
   /** 错误详情：只进折叠，不进正文。 */
   detail?: string;
-  mood?: StickerMood;
+  mood?: CharacterMood;
   children?: ReactNode;
 };
 
 export function StateBlock({ kind, title, body, action = null, detail, mood, children }: Props) {
   const calm = useInkEnv().calm;
   const [showDetail, setShowDetail] = useState(false);
-  const sticker: StickerMood = mood ?? (kind === "error" ? "worried" : kind === "loading" ? "sleepy" : "hold");
+  const sticker: CharacterMood = mood ?? (kind === "error" ? "worried" : kind === "loading" ? "sleepy" : "hold");
 
   return (
     <div className={`state state--${kind}`} role={kind === "error" ? "alert" : kind === "loading" ? "status" : undefined}>

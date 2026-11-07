@@ -175,7 +175,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
       )}
 
       <div className="composer__hint">
-        <span className="composer__keys">{coarse || sendKey === "mod-enter" ? "Enter 换行 · ⌘/Ctrl + Enter 发送" : "Enter 发送 · Shift + Enter 换行"}</span>
+        <span className="composer__keys">{coarse ? "Enter 换行 · ⌘/Ctrl+Enter 发送" : sendKey === "mod-enter" ? "⌘/Ctrl+Enter 发送" : "Enter 发送 · Shift+Enter 换行"}</span>
         <Popover.Root>
           <Popover.Trigger asChild>
             <button type="button" className="iconbtn" aria-label="输入小提示">

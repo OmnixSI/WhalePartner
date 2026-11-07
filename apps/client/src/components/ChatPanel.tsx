@@ -12,7 +12,8 @@
  * 页面里不出现模型名、服务名、技术状态点。
  */
 import { Dialog } from "radix-ui";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAvatarStatus } from "../avatar/avatar-state";
 import type { Character } from "../characters";
 import { useModel } from "../characters";
@@ -25,7 +26,7 @@ import { useSharedChat } from "./chat/useSharedChat";
 import { usePacedReply } from "./chat/usePacedReply";
 import { PREFS_EVENT, readPace } from "../lib/chat-prefs";
 import { sliceChunks } from "../lib/reply";
-import type { StickerMood } from "./CharacterMark";
+import type { CharacterMood } from "./CharacterMark";
 import { Backlog } from "./chat/Backlog";
 import { ConfirmDialog } from "./chat/ConfirmDialog";
 import { stripEmotionTags } from "../lib/emotion";
@@ -74,10 +75,20 @@ export function ChatPanel({ character }: Props) {
     today,
   } = chat;
   const { active: poke, hintSeen, activate: pokeHer } = useTapHint();
+  // 见闻页「和她聊聊」：?quote= 预填输入框，读完立刻把参数清掉（刷新不会重复塞）。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const quote = searchParams.get("quote");
+  useEffect(() => {
+    if (!quote || !historyLoaded) return;
+    setDraft(draft.trim() ? `${draft}\n${quote}` : quote);
+    const next = new URLSearchParams(searchParams);
+    next.delete("quote");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote, historyLoaded]);
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [modelTry, setModelTry] = useState(0);
   const speaking = speech.speaking;
   /* ------------------------------------------------------------ 状态推导 */
   const lastHer = [...turns].reverse().find((t) => t.role === "her" && (t.text || t.status !== "failed" || phase === "failed"));
@@ -141,7 +152,7 @@ export function ChatPanel({ character }: Props) {
     pending?.status === "failed" || (phase === "thinking" && pending?.status === "sending");
   const firstEntry = historyLoaded && turns.length === 0 && !showOffline;
 
-  const mood: StickerMood = poke
+  const mood: CharacterMood = poke
     ? "shy"
     : showOffline
       ? "sleep"
@@ -180,7 +191,6 @@ export function ChatPanel({ character }: Props) {
             character={character}
             model={model}
             avatar={avatar}
-            modelTry={modelTry}
             emotion={emotion}
             speaking={speaking}
             mood={mood}
@@ -189,7 +199,6 @@ export function ChatPanel({ character }: Props) {
             backlogOpen={backlogOpen}
             onPoke={pokeHer}
             onOpenBacklog={() => setBacklogOpen(true)}
-            onRetryModel={() => setModelTry((n) => n + 1)}
           />
 
           <ChatTranscript

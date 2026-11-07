@@ -1,11 +1,11 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { setAvatarStatus, type AvatarStatus } from "../../avatar/avatar-state";
+import type { AvatarStatus } from "../../avatar/avatar-state";
 import type { AvatarEmotion, AvatarModel } from "../../avatar/model.config";
 import type { Character } from "../../characters";
 import { Tide } from "../ink";
 import { SurfStatus, type SurfPhase } from "../surf/SurfStatus";
 import { useSurfEvents } from "../surf/useSurfEvents";
-import type { StickerMood } from "../CharacterMark";
+import type { CharacterMood } from "../CharacterMark";
 import { Horizon } from "../Horizon";
 
 const Live2DStage = lazy(() => import("../../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
@@ -15,23 +15,20 @@ interface Props {
   character: Character;
   model: AvatarModel;
   avatar: AvatarStatus;
-  modelTry: number;
   emotion: AvatarEmotion;
   speaking: boolean;
-  mood: StickerMood;
+  mood: CharacterMood;
   hintSeen: boolean;
   wide: boolean;
   backlogOpen: boolean;
   onPoke: () => void;
   onOpenBacklog: () => void;
-  onRetryModel: () => void;
 }
 
 export function ChatScene({
   character,
   model,
   avatar,
-  modelTry,
   emotion,
   speaking,
   hintSeen,
@@ -39,7 +36,6 @@ export function ChatScene({
   backlogOpen,
   onPoke,
   onOpenBacklog,
-  onRetryModel,
 }: Props) {
   const sceneRef = useRef<HTMLElement>(null);
   // 舞台自己也量一次对话框高度写进 --scene-safe：形象没出来（加载 / 失败）时，海平线和提示也不会被对话框压住。
@@ -78,7 +74,8 @@ export function ChatScene({
           role="button"
           tabIndex={0}
           aria-label={`点一点${character.name}`}
-          onClick={onPoke}
+          // Live2D 的点击由模型自己的 onTap 上报；这里只给没有点击处理的 VRM 用，避免一次点击触发两遍。
+          onClick={model.renderer === "live2d" ? undefined : onPoke}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
@@ -93,9 +90,9 @@ export function ChatScene({
           )}
           <Suspense fallback={null}>
             {model.renderer === "live2d" ? (
-              <Live2DStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
+              <Live2DStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={speaking} onTap={onPoke} />
             ) : (
-              <VrmStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
+              <VrmStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={speaking} />
             )}
           </Suspense>
         </div>
@@ -105,21 +102,6 @@ export function ChatScene({
         </div>
       </div>
 
-      {avatar === "failed" && (
-        <p className="scene__status" role="status">
-          我的样子暂时没画出来，不影响聊天。
-          <button
-            type="button"
-            className="scene__retry"
-            onClick={() => {
-              setAvatarStatus("loading");
-              onRetryModel();
-            }}
-          >
-            再试一次
-          </button>
-        </p>
-      )}
       {avatar === "ready" && !hintSeen && <p className="scene__tip">点一点她，她会看你哦。</p>}
       {wide && !backlogOpen && (
         <button type="button" className="scene__corner" onClick={onOpenBacklog}>

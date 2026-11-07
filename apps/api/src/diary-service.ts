@@ -1,4 +1,5 @@
 import { EmotionFilter } from "./emotion.ts";
+import { publishEvent } from "./events.ts";
 import { humanizeText } from "./humanize.ts";
 import type { ChatProvider } from "./llm/types.ts";
 import type { MemoryStore } from "./memory/types.ts";
@@ -97,7 +98,9 @@ export class DiaryService {
   }
 
   enqueue(url: string) {
-    return this.#deps.store.enqueue(url);
+    const result = this.#deps.store.enqueue(url);
+    publishEvent("diary.updated", { reason: "queued" });
+    return result;
   }
 
   list() {
@@ -114,6 +117,8 @@ export class DiaryService {
     if (this.#active) return this.#active;
     const active = this.#processOnce();
     this.#active = active;
+    // 不管成功失败，处理一轮后让所有设备的日记页 / 记忆页重拉一次。
+    void active.finally(() => publishEvent("diary.updated", { reason: "processed" })).catch(() => {});
     void active.finally(() => {
       if (this.#active === active) this.#active = undefined;
     }).catch(() => {});
@@ -122,6 +127,7 @@ export class DiaryService {
 
   retry(id: number) {
     const result = this.#deps.store.retry(id);
+    publishEvent("diary.updated", { reason: "retry" });
     if (result === "queued" || result === "memory") this.trigger();
     return { result, item: this.#deps.store.get(id) };
   }

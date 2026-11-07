@@ -14,6 +14,7 @@ import { useMediaQuery } from "../components/chat/useViewport";
 import { useInkEnv } from "../components/ink/useCalm";
 import { useCharacter } from "../characters";
 import { enqueueDiaryVideo, generateJournal, retryDiaryItem, runDiaryQueue, type DailyJournal } from "../lib/diary";
+import { useHubRefresh } from "../lib/useHubRefresh";
 import { useDiaryPageData } from "../components/diary/useDiaryPageData";
 import {
   diaryAt,
@@ -46,6 +47,7 @@ export function DiaryPage() {
     from: isoDay(range.start),
     to: isoDay(range.end),
   });
+  useHubRefresh(["diary.updated"], () => void load());
   const [opError, setOpError] = useState("");
   const [chunk, setChunk] = useState(0);
   const [writing, setWriting] = useState(false);

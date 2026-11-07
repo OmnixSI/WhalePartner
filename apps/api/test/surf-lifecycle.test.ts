@@ -7,7 +7,8 @@ import { BiliBackoff, backoffDelay, BACKOFF_BASE_MS, BACKOFF_MAX_MS } from "../s
 import { createBilibiliVideoSource } from "../src/surf/bilibili-source.ts";
 import { classifyError, SurfError, withRetry } from "../src/surf/errors.ts";
 import type { SurfEventName } from "../src/surf/events.ts";
-import { notifySurfItem, resetNotifyCache } from "../src/surf/notify.ts";
+import { notifySurfItem } from "../src/surf/notify.ts";
+import { hubEvents } from "../src/events.ts";
 import { SurfScheduler } from "../src/surf/scheduler.ts";
 import { MAX_ITEMS_PER_SESSION, SurfService } from "../src/surf/service.ts";
 import { summaryPrompt } from "../src/surf/summary.ts";
@@ -308,10 +309,13 @@ test("B 站搜索被限流：记下退避，期间不再发请求", async () => 
 
 // ---- 实时通知适配 ----
 
-test("notify：events.ts 不在时是 no-op，不会抛错", async () => {
-  resetNotifyCache();
+test("notify：新见闻会作为 surf.item 事件广播", async () => {
+  const seen: string[] = [];
+  const off = hubEvents.subscribe((event: { type: string }) => seen.push(event.type));
   const delivered = await notifySurfItem({
     id: 1, kind: "web", title: "t", url: "https://e.com", sourceSite: "e.com", thumb: null, thumbError: null, summary: "s", comment: "c", tags: [], createdAt: new Date().toISOString(), sharedAt: null,
   });
-  assert.equal(typeof delivered, "boolean");
+  assert.equal(delivered, true);
+  off();
+  assert.ok(seen.includes("surf.item"));
 });

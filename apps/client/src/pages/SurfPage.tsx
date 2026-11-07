@@ -13,6 +13,7 @@ import { SurfEmpty } from "../components/surf/SurfEmpty";
 import { SurfFilters } from "../components/surf/SurfFilters";
 import { PostcardDetail } from "../components/surf/PostcardDetail";
 import { SurfStatus, type SurfPhase } from "../components/surf/SurfStatus";
+import { useHubRefresh } from "../lib/useHubRefresh";
 import { useSurfEvents, type SurfShareEvent } from "../components/surf/useSurfEvents";
 import { useCharacter } from "../characters";
 import { useInkEnv } from "../components/ink/useCalm";
@@ -144,6 +145,9 @@ export function SurfPage() {
     },
     [],
   );
+
+  // 另一台设备上的她逛到了新东西：hub 的 surf.item 事件到这里也重拉第一页。
+  useHubRefresh(["surf.item"], () => void load(1, { silent: true }));
 
   useSurfEvents(character.id, {
     onSession: (event) => {
