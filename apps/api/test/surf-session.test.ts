@@ -51,16 +51,19 @@ test("一次会话：1 个视频 + 2 个网页 → 3 条见闻、3 条记忆、2
   assert.equal(store.ledgerUnits("whale"), 26);
   assert.deepEqual(store.ledgerRows("whale").map((row) => [row.kind, row.units]), [["surf", 20], ["surf", 3], ["surf", 3]]);
 
-  // SSE 顺序：先开会话，再 search/watch/read，整理后逐条冒出来，最后收尾
-  const names = events.map((entry) => entry.event);
-  assert.deepEqual(names, [
-    "session", "step", "step", "step", "step", "item", "item", "item", "share", "session",
+  // SSE 顺序：先开会话，再 search/watch/read，整理后逐条冒出来，最后收尾。
+  // 同一阶段里会有带 detail 的细分步骤（在读哪一页），按阶段折叠后顺序不变。
+  const collapsed: string[] = [];
+  for (const entry of events) {
+    const name = entry.event === "step" ? `step:${(entry.data as { stage: string }).stage}` : entry.event;
+    if (collapsed.at(-1) !== name) collapsed.push(name);
+  }
+  assert.deepEqual(collapsed, [
+    "session", "step:searching", "step:watching", "step:reading", "step:writing", "item", "share", "session",
   ]);
+  const details = events.filter((entry) => entry.event === "step").map((entry) => (entry.data as { detail?: string | null }).detail);
+  assert.ok(details.some((detail) => detail?.startsWith("在读《")), "实时步骤要带上她正在读的那一页");
   assert.deepEqual(events[0].data, { state: "start", sessionId: result.sessionId, kinds: ["video", "web"] });
-  assert.deepEqual(
-    events.filter((entry) => entry.event === "step").map((entry) => (entry.data as { stage: string }).stage),
-    ["searching", "watching", "reading", "writing"],
-  );
   assert.deepEqual(events.at(-1)?.data, { state: "end", sessionId: result.sessionId, kinds: ["video", "web"], count: 3 });
 
   // 分享：一条带附件的助手消息，附件指向那条见闻

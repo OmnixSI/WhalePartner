@@ -30,7 +30,8 @@ import { handleSetupRoute } from "./routes/setup.ts";
 import { handleExportRoute, dataMaintenanceBusy } from "./routes/export.ts";
 import { handleVideoSummaryRoute } from "./routes/video-summary.ts";
 import { handleSurf } from "./routes/surf.ts";
-import { createSurf } from "./surf/index.ts";
+import { createSurf, stopSurf } from "./surf/index.ts";
+import { CHAT_RESUME_MS } from "./surf/service.ts";
 import type { ServerDeps } from "./server-types.ts";
 export type { ServerDeps } from "./server-types.ts";
 
@@ -155,7 +156,7 @@ if (import.meta.main) {
     memory,
     messages: store,
     journal: diary,
-    isUserChatting: () => Date.now() - chatActivity.last < 3 * 60_000,
+    isUserChatting: () => chatActivity.last !== 0 && Date.now() - chatActivity.last < CHAT_RESUME_MS,
     userIdleMinutes: () => (chatActivity.last === 0 ? Number.POSITIVE_INFINITY : (Date.now() - chatActivity.last) / 60_000),
   });
   let stopSurfScheduler = () => {};
@@ -171,7 +172,7 @@ if (import.meta.main) {
       store.close();
     });
   });
-  server.on("close", () => { stopSurfScheduler(); });
+  server.on("close", () => { stopSurfScheduler(); void stopSurf(); });
   server.listen(config.port, host, () => {
     if (config.surfEnabled) stopSurfScheduler = surf.start();
     void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));

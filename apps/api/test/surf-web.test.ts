@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "node:test";
-import { createBrowserReader, resolvesPublic } from "../src/surf/browser.ts";
+import { BrowserManager, resolvesPublic } from "../src/surf/browser.ts";
+import { createPageReader } from "../src/surf/page-reader.ts";
 import { filterWebResults } from "../src/surf/picker.ts";
 import { decodeBingRedirect, decodeDuckDuckGoRedirect, parseBingResults, parseDuckDuckGoResults, createWebSource } from "../src/surf/web-search.ts";
 
@@ -52,7 +53,7 @@ test("搜索：Bing 没结果时回退 DuckDuckGo", async () => {
       if (url.includes("bing.com")) return "<html></html>";
       return DDG_HTML;
     },
-    reader: { available: async () => true, read: async () => { throw new Error("不该读"); }, close: async () => {} },
+    reader: { available: async () => true, read: async () => { throw new Error("不该读"); }, prepare() {}, browserStatus: () => ({ state: "ready", percent: 100, message: "" }), close: async () => {} },
   });
   const results = await source.search("鲸歌");
   assert.equal(results.length, 1);
@@ -84,7 +85,7 @@ const ARTICLE = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <p>${"鲸歌是座头鲸的叫声，频率低，能传很远。".repeat(12)}</p></article>
 <footer>页脚不要</footer></body></html>`;
 
-test("无头浏览器读正文：<article> 正文、title、og:image", async (t) => {
+test("读正文：静态抓取 + Readability，去掉导航页脚，拿到 og:image；默认拒绝内网地址", async () => {
   const server = createServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(ARTICLE);
@@ -95,18 +96,11 @@ test("无头浏览器读正文：<article> 正文、title、og:image", async (t)
   const url = `http://127.0.0.1:${port}/article`;
 
   // 默认阅读器会拦下内网地址（防被重定向进内网）。
-  const guarded = createBrowserReader();
-  const available = await guarded.available();
-  if (!available) {
-    await guarded.close();
-    server.close();
-    t.skip("本机没有可用的 Chromium，跳过真实读取。");
-    return;
-  }
+  const guarded = createPageReader({ browser: new BrowserManager({ chromiumModule: {} }) });
   await assert.rejects(() => guarded.read(url), /内部网络/);
   await guarded.close();
 
-  const reader = createBrowserReader({ allowPrivateHosts: true });
+  const reader = createPageReader({ allowPrivateHosts: true, browser: new BrowserManager({ chromiumModule: {}, allowPrivateHosts: true }) });
   try {
     const page = await reader.read(url);
     assert.equal(page.title, "鲸歌笔记");

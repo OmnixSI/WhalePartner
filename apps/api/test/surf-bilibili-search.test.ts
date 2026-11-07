@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { rm, writeFile, mkdir, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
+import { bilibiliCooldownPath } from "../src/data-dir.ts";
 import { createBilibiliVideoSource, durationSeconds, mixinKey, parseSearchPayload, signWbi } from "../src/surf/bilibili-source.ts";
 
 /** 录下来的搜索返回（裁剪成最小结构，字段名与线上一致）。 */
@@ -86,15 +87,14 @@ test("搜索：走假 fetchJson，不连外网；请求带签名和关键词", a
   assert.match(urls[1], /order=totalrank/);
 });
 
-test("限流冷却期：不发任何请求", async (t) => {
-  const ratePath = resolve(import.meta.dirname, "../../../.local/bilibili-rate-limit.json");
-  if (existsSync(ratePath)) {
-    t.skip("本机已经有真实的限流记录，不动它。");
-    return;
-  }
-  await mkdir(resolve(ratePath, ".."), { recursive: true });
-  await writeFile(ratePath, JSON.stringify({ status: -412, retryAt: new Date(Date.now() + 3600_000).toISOString() }));
+test("限流冷却期：不发任何请求（冷却文件在数据目录里）", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "wp-bili-"));
+  const previous = process.env.WP_DATA_DIR;
+  process.env.WP_DATA_DIR = dir;
   try {
+    const ratePath = bilibiliCooldownPath();
+    assert.ok(ratePath.startsWith(dir), "冷却文件必须在数据目录下");
+    await writeFile(ratePath, JSON.stringify({ status: -412, retryAt: new Date(Date.now() + 3600_000).toISOString() }));
     let called = 0;
     const source = createBilibiliVideoSource({
       fetchJson: async () => {
@@ -105,9 +105,8 @@ test("限流冷却期：不发任何请求", async (t) => {
     await assert.rejects(() => source.search("鲸歌"), /暂停视频请求/);
     assert.equal(called, 0);
   } finally {
-    await rm(ratePath, { force: true });
-    assert.equal(existsSync(ratePath), false);
-    // 确认没有破坏仓库里其它东西
-    await readFile(resolve(import.meta.dirname, "../package.json"), "utf8");
+    if (previous === undefined) delete process.env.WP_DATA_DIR;
+    else process.env.WP_DATA_DIR = previous;
+    await rm(dir, { recursive: true, force: true });
   }
 });

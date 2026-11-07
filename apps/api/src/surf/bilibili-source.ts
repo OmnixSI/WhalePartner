@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { assertBilibiliRequestAllowed } from "../bilibili.ts";
 import { loadBilibiliSession } from "../bilibili-session.ts";
+import { BiliBackoff } from "./bili-backoff.ts";
+import { classifyError, SurfError } from "./errors.ts";
 import { acquireVideoLock, sharedParagraph, type VideoService } from "../video-service.ts";
 import type { VideoCandidate, VideoSource, WatchedVideo } from "./types.ts";
 
@@ -63,7 +65,10 @@ const stripTags = (value: unknown) =>
 export function parseSearchPayload(payload: unknown): VideoCandidate[] {
   if (!payload || typeof payload !== "object") throw new Error("B 站搜索没有返回内容。");
   const body = payload as { code?: number; message?: string; data?: { result?: unknown } };
-  if (body.code !== undefined && body.code !== 0) throw new Error(`B 站搜索失败：${body.message ?? body.code}`);
+  if (body.code !== undefined && body.code !== 0) {
+    const limited = [-352, -412, -799, -509].includes(body.code);
+    throw new SurfError(limited ? "rate_limit" : "content", `B 站搜索失败：${body.message ?? body.code}`, { status: body.code });
+  }
   const result = body.data?.result;
   const list = Array.isArray(result) ? result : Array.isArray((result as { list?: unknown } | undefined)?.list) ? ((result as { list: unknown[] }).list) : [];
   const out: VideoCandidate[] = [];
@@ -93,9 +98,22 @@ export interface FetchJsonOptions {
 
 export type JsonFetcher = (url: string, options?: FetchJsonOptions) => Promise<unknown>;
 
+/** B 站接口请求之间至少隔 2 秒（和 vendor 里的请求队列同一个口径）。 */
+const MIN_GAP_MS = 2000;
+let lastRequestAt = 0;
+
 const defaultFetchJson: JsonFetcher = async (url, options) => {
-  const response = await fetch(url, { headers: { "user-agent": UA, referer: "https://www.bilibili.com", ...(options?.headers ?? {}) } });
-  if (!response.ok) throw new Error(`B 站返回了 ${response.status}。`);
+  const wait = lastRequestAt + MIN_GAP_MS - Date.now();
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  lastRequestAt = Date.now();
+  const response = await fetch(url, {
+    headers: { "user-agent": UA, referer: "https://www.bilibili.com", ...(options?.headers ?? {}) },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (response.status === 412 || response.status === 429 || response.status === 403) {
+    throw new SurfError("rate_limit", `B 站返回了 ${response.status}，被限流了。`, { status: response.status });
+  }
+  if (!response.ok) throw new SurfError(response.status >= 500 ? "network" : "content", `B 站返回了 ${response.status}。`, { status: response.status });
   return (await response.json()) as unknown;
 };
 
@@ -106,6 +124,8 @@ export interface BilibiliSourceDeps {
   video?: VideoService;
   /** 现在几点（签名要用 wts）。 */
   now?: () => number;
+  /** 冲浪自己的指数退避（测试里换成临时文件）。 */
+  backoff?: BiliBackoff;
 }
 
 async function wbiKeys(fetchJson: JsonFetcher): Promise<{ imgKey: string; subKey: string }> {
@@ -122,20 +142,37 @@ export function createBilibiliVideoSource(deps: BilibiliSourceDeps = {}): VideoS
   const now = deps.now ?? (() => Math.floor(Date.now() / 1000));
   let videoService = deps.video;
 
+  const backoff = deps.backoff ?? new BiliBackoff();
+  // WBI 密钥半小时内不会变，别每次搜索都多打一个 nav 请求。
+  let keys: { imgKey: string; subKey: string; at: number } | null = null;
+  const currentKeys = async () => {
+    if (keys && Date.now() - keys.at < 30 * 60_000) return keys;
+    keys = { ...(await wbiKeys(fetchJson)), at: Date.now() };
+    return keys;
+  };
+
   return {
     async search(keyword) {
-      // 尊重限流冷却：冷却中直接抛错，调用方把视频部分跳过（§10.6.8 A.1）。
+      // 两层冷却：视频摘要那边记下的限流（bilibili.ts），和冲浪自己的指数退避，任何一个在冷却都不发请求。
       await assertBilibiliRequestAllowed();
-      const { imgKey, subKey } = await wbiKeys(fetchJson);
-      const params = signWbi(
-        { search_type: "video", keyword, page: 1, order: "totalrank" },
-        mixinKey(imgKey, subKey),
-        now(),
-      );
-      const query = Object.keys(params)
-        .map((name) => `${encodeURIComponent(name)}=${encodeURIComponent(params[name])}`)
-        .join("&");
-      return parseSearchPayload(await fetchJson(`${SEARCH_ENDPOINT}?${query}`));
+      await backoff.assertAllowed();
+      try {
+        const { imgKey, subKey } = await currentKeys();
+        const params = signWbi(
+          { search_type: "video", keyword, page: 1, order: "totalrank" },
+          mixinKey(imgKey, subKey),
+          now(),
+        );
+        const query = Object.keys(params)
+          .map((name) => `${encodeURIComponent(name)}=${encodeURIComponent(params[name])}`)
+          .join("&");
+        const results = parseSearchPayload(await fetchJson(`${SEARCH_ENDPOINT}?${query}`));
+        await backoff.recordSuccess();
+        return results;
+      } catch (error) {
+        if (classifyError(error) === "rate_limit") await backoff.recordFailure(error instanceof Error ? error.message : String(error)).catch(() => undefined);
+        throw error;
+      }
     },
 
     async watch(candidate): Promise<WatchedVideo> {
@@ -147,7 +184,11 @@ export function createBilibiliVideoSource(deps: BilibiliSourceDeps = {}): VideoS
         const summary = await service.summarize(collected);
         const text = sharedParagraph(summary.summary);
         if (!text.trim()) throw new Error("看完视频没读到内容。");
+        await backoff.recordSuccess();
         return { bvid: candidate.bvid, title: summary.title || candidate.title, url: summary.url || candidate.url, text };
+      } catch (error) {
+        if (classifyError(error) === "rate_limit") await backoff.recordFailure(error instanceof Error ? error.message : String(error)).catch(() => undefined);
+        throw error;
       } finally {
         release();
       }

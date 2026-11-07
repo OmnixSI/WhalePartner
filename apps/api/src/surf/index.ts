@@ -2,7 +2,8 @@ import type { ApiConfig } from "../config.ts";
 import type { ChatProvider } from "../llm/types.ts";
 import type { MemoryStore } from "../memory/types.ts";
 import { createBilibiliVideoSource } from "./bilibili-source.ts";
-import { createBrowserReader } from "./browser.ts";
+import { closeSharedBrowser } from "./browser.ts";
+import { createPageReader } from "./page-reader.ts";
 import { SurfEventBus } from "./events.ts";
 import { SurfScheduler } from "./scheduler.ts";
 import { SurfService, type MessageSink } from "./service.ts";
@@ -12,10 +13,26 @@ import type { SurfQuotaProbe, VideoSource, WebSource } from "./types.ts";
 import { createWebSource } from "./web-search.ts";
 
 export { SurfRepository } from "./store.ts";
-export { SurfService, SURF_COSTS, MANUAL_COOLDOWN_MS } from "./service.ts";
+export { SurfService, SURF_COSTS, MANUAL_COOLDOWN_MS, CHAT_RESUME_MS, SESSION_TIMEOUT_MS, MAX_ITEMS_PER_SESSION } from "./service.ts";
 export { SurfScheduler } from "./scheduler.ts";
 export { SurfEventBus } from "./events.ts";
 export type { MessageSink } from "./service.ts";
+export { notifySurfItem } from "./notify.ts";
+
+/** 已经装起来的冲浪实例。`stopSurf()` 一次性全部收掉。 */
+const wirings = new Set<SurfWiring>();
+
+/**
+ * 停掉冲浪的一切：调度器、正在跑的会话、共享的 Chromium。
+ * 后端关闭时调用（pack Agent 在退出流程里会调它）；重复调用安全，没启动过也安全。
+ */
+export async function stopSurf(): Promise<void> {
+  const current = [...wirings];
+  wirings.clear();
+  for (const wiring of current) wiring.scheduler.stop();
+  await Promise.allSettled(current.map((wiring) => wiring.service.stop()));
+  await closeSharedBrowser();
+}
 
 export interface SurfOptions {
   dbPath: string;
@@ -44,6 +61,8 @@ export interface SurfWiring {
   repairMissingThumbnails(): Promise<void>;
   /** 服务入口调用：挂上调度器，返回停止函数。 */
   start(expression?: string): () => void;
+  /** 停调度器、中止会话（浏览器由 stopSurf 统一关）。 */
+  stop(): Promise<void>;
 }
 
 /**
@@ -61,7 +80,7 @@ export function createSurf(options: SurfOptions): SurfWiring {
   const web =
     options.web ??
     (options.config.surfEnabled
-      ? createWebSource({ reader: createBrowserReader({ chromiumPath: options.config.surfChromiumPath }) })
+      ? createWebSource({ reader: createPageReader({ chromiumPath: options.config.surfChromiumPath }) })
       : undefined);
 
   const service = new SurfService({
@@ -90,13 +109,27 @@ export function createSurf(options: SurfOptions): SurfWiring {
     onError: (error) => console.warn("冲浪调度失败：", error instanceof Error ? error.message : error),
   });
 
-  return {
+  const wiring: SurfWiring = {
     store,
     service,
     scheduler,
     repairMissingThumbnails: () => repairMissingThumbnails(store, thumbs, dir),
     start(expression?: string) {
-      return scheduler.start(expression);
+      wirings.add(wiring);
+      const stopScheduler = scheduler.start(expression);
+      // 开着冲浪又没装浏览器：稍等一下（别和启动抢资源）就在后台装好，第一次逛网页时就用得上。
+      if (web && options.config.surfEnabled && !options.web) {
+        const timer = setTimeout(() => web.prepare?.(), 20_000);
+        timer.unref?.();
+      }
+      return () => {
+        stopScheduler();
+      };
+    },
+    async stop() {
+      scheduler.stop();
+      await service.stop();
     },
   };
+  return wiring;
 }
