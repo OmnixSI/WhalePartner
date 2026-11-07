@@ -12,6 +12,8 @@ export interface Turn {
   status: TurnStatus;
   /** recall 事件带来的「想起来的事」，只在往回翻里做脚注。 */
   recalled?: string[];
+  /** 她这句话什么情绪：给脸和名字牌用，正文里不出现标签。 */
+  emotion?: import("../../avatar/model.config").AvatarEmotion;
 }
 
 /** 视频 / 网页进度的口语版（§7.1.5）。原始 message 只放 title。 */

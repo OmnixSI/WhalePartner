@@ -11,10 +11,13 @@ import { InkText } from "./InkText";
 import { NameTab } from "./NameTab";
 import { Thinking } from "./Thinking";
 import type { DialogState, Progress } from "./types";
+import type { AvatarEmotion } from "../../avatar/model.config";
 
 type Props = {
   name: string;
   state: DialogState;
+  /** 这句话的情绪：名字牌的点、读屏的话都跟着它，正文本身保持干净。 */
+  emotion?: AvatarEmotion;
   /** 静态文案：问候 / 赶过来 / 没送出去 / 断网。 */
   text?: string;
   /** 流式分片（只给正在说话的这一条）。 */
@@ -33,6 +36,7 @@ type Props = {
 export function DialogBox({
   name,
   state,
+  emotion = "neutral",
   text = "",
   chunks = [],
   merged = true,
@@ -60,8 +64,8 @@ export function DialogBox({
   })();
 
   return (
-    <div className="dlg" data-state={state} aria-busy={busy}>
-      <NameTab name={name} />
+    <div className="dlg" data-state={state} data-emotion={emotion} aria-busy={busy}>
+      <NameTab name={name} emotion={emotion} />
       <InkFrame className="dlg__sheet" radius={20} stroke={2} tone="ink" fill="sheet" openCorner>
         <div className="dlg__body">
           {body}

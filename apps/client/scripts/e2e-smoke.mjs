@@ -150,6 +150,15 @@ for (const [path, name] of [["/", "聊天"], ["/settings", "设置"], ["/memory"
 
 /* 6. 桌面档：写操作必须真的写进去（PUT 走预检），页面上不许出现英文 Load failed */
 if (packaged) {
+  // 先看聊天页：情绪不能漏成正文，名字牌上的点要有颜色
+  {
+    const { page } = await open("/");
+    const chatText = await page.locator("body").innerText();
+    ok("桌面档：字幕里没有 [emotion:xxx] 标签", !/\[\s*emotion\s*:/i.test(chatText), chatText.slice(0, 120).replace(/\n+/g, " "));
+    const dot = await page.locator(".nametab__dot").first().evaluate((el) => getComputedStyle(el).backgroundColor).catch(() => "");
+    ok("桌面档：名字牌情绪点有颜色", /rgb/.test(dot), dot);
+    await page.close();
+  }
   const { page, errors } = await open("/settings");
   const text = await page.locator("body").innerText();
   ok("桌面档：页面里没有英文 Load failed", !/load failed|failed to fetch/i.test(text), text.slice(0, 80).replace(/\n+/g, " "));

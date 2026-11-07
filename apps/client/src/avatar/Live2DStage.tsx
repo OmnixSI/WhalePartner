@@ -55,8 +55,8 @@ function loadCubismCore() {
 
 /**
  * 舞台构图：和 VrmStage 同一条规则，比例只写在 tokens.css。
- *   --stage-char-h    角色高度 / 舞台高度
- *   --stage-char-gap  底边离安全线的间隙 / 舞台高度
+ *   --stage-char-h    角色高度 / 可画区高度
+ *   --stage-char-gap  底边离可画区底边的间隙 / 可画区高度
  *   --stage-char-max  角色最多占「对话框以上」的比例
  */
 function stageMetrics(host: HTMLElement) {
@@ -66,7 +66,8 @@ function stageMetrics(host: HTMLElement) {
     const value = parseFloat(css.getPropertyValue(name));
     return Number.isFinite(value) && value > 0 ? value : fallback;
   };
-  const stageH = scene.clientHeight || host.clientHeight;
+  // 分母是「可画区」= 舞台组件自己这块盒子（对话框以上）；整块舞台当分母会把角色撑到天花板。
+  const stageH = host.clientHeight || scene.clientHeight;
   return {
     stageH,
     ratio: num("--stage-char-h", 0.6),
@@ -81,8 +82,9 @@ function watchSafeArea(host: HTMLElement, onChange: () => void) {
   const chrome = host.closest<HTMLElement>(".room__main")?.querySelector<HTMLElement>(".scene__chrome");
   if (!scene || !chrome) return () => {};
   const apply = () => {
-    const px = Math.round(chrome.getBoundingClientRect().height);
-    if (px <= 0) return;
+    // 手机把 .scene__chrome 放回文档流（舞台下面），那时它不遮舞台，可画区就是整块。
+    const overlays = getComputedStyle(chrome).position === "absolute";
+    const px = overlays ? Math.round(chrome.getBoundingClientRect().height) : 0;
     scene.style.setProperty("--scene-safe", `${px}px`);
     onChange();
   };
