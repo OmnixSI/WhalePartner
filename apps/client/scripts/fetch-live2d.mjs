@@ -49,11 +49,31 @@ try {
     await downloadIfMissing(sourceUrl(modelSource, file), resolve(modelRoot, file));
   }
   await downloadIfMissing(sourceUrl(modelSource, "LICENSE"), resolve(modelRoot, "LICENSE"));
-  await downloadIfMissing(sourceUrl(licenseSource, "NOTICE.md"), resolve(modelRoot, "NOTICE.md"));
-  if (!existsSync(coreTarget)) {
-    console.warn(`未找到 Cubism Core：请自行从 Live2D 官方 SDK 页面获取并放入 ${coreTarget.replace(`${clientRoot}/`, "")}`);
-    console.warn("下载与分发须遵循 Live2D SDK 许可；未安装时应用会显示默认鲸鱼形象。");
-    console.warn("https://www.live2d.com/en/sdk/download/web/");
+  // NOTICE.md 上游不一定存在，缺了不影响运行
+  await downloadIfMissing(sourceUrl(licenseSource, "NOTICE.md"), resolve(modelRoot, "NOTICE.md")).catch(() => {});
+  // Cubism Core（4）与 live2d.min.js（Cubism 2 模型才需要）：尽力从官方地址取，取不到只警告，不让整条命令失败。
+  const runtimes = [
+    { target: coreTarget, url: "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js", needed: true },
+    { target: resolve(clientRoot, "public/live2d/libs/live2d.min.js"), url: "https://cubism.live2d.com/sdk-web/bin/live2d.min.js", needed: false },
+  ];
+  for (const runtime of runtimes) {
+    if (existsSync(runtime.target)) continue;
+    try {
+      const response = await fetch(runtime.url, { headers: { "user-agent": "WhalePartner" } });
+      const text = response.ok ? await response.text() : "";
+      if (!text || /^\s*</.test(text)) throw new Error(`HTTP ${response.status}`);
+      mkdirSync(dirname(runtime.target), { recursive: true });
+      writeFileSync(runtime.target, text);
+      console.log(`已下载 ${runtime.target.replace(`${clientRoot}/`, "")}`);
+    } catch (error) {
+      const label = runtime.target.replace(`${clientRoot}/`, "");
+      if (runtime.needed) {
+        console.warn(`未能获取 ${label}（${error instanceof Error ? error.message : error}）：请自行从 Live2D 官方 SDK 页面获取并放入该路径。`);
+        console.warn("下载与分发须遵循 Live2D SDK 许可。https://www.live2d.com/en/sdk/download/web/");
+      } else {
+        console.warn(`未获取 ${label}：只有 Cubism 2（.model.json）模型需要它，可忽略。`);
+      }
+    }
   }
   console.log("大肥鱼 Live2D 模型资源已准备好。");
 } catch (error) {

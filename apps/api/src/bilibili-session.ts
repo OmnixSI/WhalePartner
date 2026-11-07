@@ -6,7 +6,8 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const APP_DIR = resolve(import.meta.dirname, "..");
 const REPO_DIR = resolve(APP_DIR, "../..");
-const LOCAL_DIR = resolve(REPO_DIR, ".local");
+// 桌面 App 把数据放 WP_DATA_DIR；开发时仍是仓库根的 .local。
+const LOCAL_DIR = process.env.WP_DATA_DIR?.trim() ? resolve(process.env.WP_DATA_DIR.trim()) : resolve(REPO_DIR, ".local");
 const SESSION_PATH = resolve(LOCAL_DIR, "bilibili-session.json");
 const PENDING_PATH = resolve(LOCAL_DIR, "bilibili-login-pending.json");
 const QR_PATH = resolve(LOCAL_DIR, "bilibili-login.png");

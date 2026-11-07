@@ -3,15 +3,16 @@
  * 宽 360，头 64：标题 + `···`（清空聊天记录，走 ConfirmDialog）+ 桌面「收起」。
  * 她的话没有气泡：一段连续发言（间隔 <5 分钟）首行贴 32px 贴纸头像 + 14px 名字，正文文楷 17/1.9；
  * 块间距 20、段内 8；日期分隔是一条手绘线 + 居中 Fraunces 的「11·07 周六」。
- * 列表用 Virtuoso：贴底跟随、不在底部时右下出现「回到最新」；role="log" aria-live="off"。
+ * 列表用 Virtuoso：只在你已经在底部时才自动跟随；不在底部时来了新消息，右下出现「有新消息」小签（点它回到最新）。
  */
 import { DropdownMenu } from "radix-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { InkLine } from "../ink";
 import { Icon } from "../../icons";
-import { WhaleSticker } from "../WhaleSticker";
+import { CharacterMark } from "../CharacterMark";
 import { Slip } from "./Slip";
+import { splitReply } from "../../lib/reply";
 import type { Turn } from "./types";
 
 type Props = {
@@ -79,8 +80,22 @@ function buildRows(turns: Turn[]): Row[] {
 export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Props) {
   const rows = useMemo(() => buildRows(turns), [turns]);
   const [atBottom, setAtBottom] = useState(true);
+  const [unseen, setUnseen] = useState(0);
   const list = useRef<VirtuosoHandle>(null);
   const jumped = useRef(false);
+  const atBottomRef = useRef(true);
+  const lastCount = useRef(0);
+
+  useEffect(() => {
+    if (jumped.current && rows.length > lastCount.current && !atBottomRef.current) setUnseen((n) => n + rows.length - lastCount.current);
+    lastCount.current = rows.length;
+  }, [rows.length]);
+
+  const onBottomChange = (bottom: boolean) => {
+    atBottomRef.current = bottom;
+    setAtBottom(bottom);
+    if (bottom) setUnseen(0);
+  };
 
   // 历史是异步到的：第一次拿到内容时补一次「贴底」，之后交给 followOutput。
   useEffect(() => {
@@ -110,12 +125,15 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
       <article className={`bl__cap${first ? " bl__cap--first" : ""}`}>
         {first && (
           <span className="bl__avatar" aria-hidden>
-            <WhaleSticker mood="idle" />
+            <CharacterMark />
           </span>
         )}
         <div className="bl__capBody">
           {first && <span className="bl__capName">{name}</span>}
-          <p className="bl__capText">{turn.text}</p>
+          {splitReply(turn.text).map((part, index) => (
+            <p key={index} className="bl__capText">{part.trim()}</p>
+          ))}
+          {turn.interrupted && <p className="bl__recall">没说完就被打断了</p>}
           {turn.recalled && turn.recalled.length > 0 && (
             <p className="bl__recall">想起来 · {turn.recalled.join("；")}</p>
           )}
@@ -161,10 +179,10 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
           <Virtuoso
             ref={list}
             data={rows}
-            followOutput="smooth"
+            followOutput={(bottom) => (bottom ? "smooth" : false)}
             alignToBottom
             atBottomThreshold={80}
-            atBottomStateChange={setAtBottom}
+            atBottomStateChange={onBottomChange}
             increaseViewportBy={200}
             components={{ Footer: () => <div className="bl__tail" aria-hidden /> }}
             itemContent={(_, row) => <div className="bl__row">{renderRow(row)}</div>}
@@ -178,7 +196,7 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
           className="btn btn--quiet bl__latest"
           onClick={() => list.current?.scrollToIndex({ index: "LAST", behavior: "smooth" })}
         >
-          回到最新
+          {unseen > 0 ? "有新消息" : "回到最新"}
         </button>
       )}
     </section>

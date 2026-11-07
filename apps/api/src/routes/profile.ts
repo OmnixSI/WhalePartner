@@ -1,3 +1,4 @@
+import { publishEvent } from "../events.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, sendJson } from "../http.ts";
@@ -68,6 +69,7 @@ export async function handleProfileRoute(
         return true;
       }
       db.prepare("INSERT INTO user_profile(key, value) VALUES('userName', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(checked.name);
+      publishEvent("settings.updated", { scope: "profile" });
       sendJson(response, 200, { userName: checked.name });
       return true;
     }

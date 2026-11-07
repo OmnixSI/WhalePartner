@@ -1,24 +1,5 @@
 #!/bin/bash
-# 双击启动「鲸汐」：先确认后端在跑，再打开桌面 App。
-# 后端没起来时会在后台拉起来，日志写到 /tmp/whalepartner-api.log。
-set -e
-cd "$(dirname "$0")"
-
-health() { curl -s -m 2 -o /dev/null "http://127.0.0.1:8787/api/health"; }
-
-if ! health; then
-  echo "后端没在跑，先启动它…"
-  (pnpm --dir apps/api run serve > /tmp/whalepartner-api.log 2>&1 &)
-  for _ in $(seq 1 30); do
-    health && break
-    sleep 1
-  done
-  if ! health; then
-    echo "后端启动失败，看看 /tmp/whalepartner-api.log"
-    exit 1
-  fi
-  echo "后端就绪：http://127.0.0.1:8787"
-fi
-
-open -a "鲸汐"
-echo "已打开「鲸汐」。关掉后端：lsof -ti:8787 | xargs kill"
+# 双击打开「鲸汐」。后端已经装在 App 里，由 App 自己启动、自己关闭，
+# 这里不再单独拉起后端，也不会留下 Terminal 里的后台进程。
+open -a "鲸汐" || { echo "没找到「鲸汐」。先把它拖进“应用程序”再试。"; exit 1; }
+exit 0

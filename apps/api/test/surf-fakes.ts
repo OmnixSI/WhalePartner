@@ -96,7 +96,7 @@ export function fakeVideo(overrides: Partial<VideoSource> = {}): VideoSource & {
       return [videoCandidate({ bvid: `BV1xx411c7m${round % 10}`, url: `https://www.bilibili.com/video/BV1xx411c7m${round % 10}` })];
     },
     async watch(candidate) {
-      return { bvid: candidate.bvid, title: candidate.title, url: candidate.url, text: "视频里讲了鲸歌的三种用法，还有一段水下录音。" };
+      return { bvid: candidate.bvid, title: candidate.title, url: candidate.url, text: `${candidate.bvid} 这支视频里讲了鲸歌的三种用法，还有一段水下录音，作者特意在深夜录下了整整二十分钟的海浪声。` };
     },
     ...overrides,
   };
@@ -126,7 +126,7 @@ export function fakeWeb(options: { delayMs?: number; available?: boolean; /** �
       return {
         url,
         title: `读到的 ${url}`,
-        text: "这是一篇讲鲸歌的网页，正文有两百多个字……".repeat(12),
+        text: `来自 ${url} 的一篇网页。${"这是一篇讲鲸歌的网页，正文有两百多个字……".repeat(12)}`,
         siteName: new URL(url).hostname.replace(/^www\./, ""),
       };
     },

@@ -1,18 +1,21 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "鲸汐",
-  "version": "0.2.6",
+  "version": "0.3.0",
   "identifier": "com.omnixsi.whalepartner",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "pnpm dev",
-    "beforeBuildCommand": "pnpm build"
+    "beforeDevCommand": "pnpm --dir ../api run build:sidecar -- --dev && pnpm dev",
+    "beforeBuildCommand": "pnpm --dir ../api run build:sidecar && pnpm build"
   },
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "鲸汐 · WhalePartner",
+        "visible": false,
+        "backgroundColor": "#F6EFE2",
         "width": 1180,
         "height": 780,
         "resizable": true,
@@ -22,12 +25,17 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: blob: http://127.0.0.1:8787 http://localhost:8787; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' http://127.0.0.1:8787 http://localhost:8787 ipc: http://ipc.localhost; media-src 'self' blob:"
+      "csp": "default-src 'self'; img-src 'self' data: blob: http://127.0.0.1:* http://localhost:* http: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' http://127.0.0.1:* http://localhost:* http: https: ipc: http://ipc.localhost; media-src 'self' blob: http://127.0.0.1:* http://localhost:* http: https:; worker-src 'self' blob:"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/whale-node"],
+    "resources": {
+      "sidecar/api": "api",
+      "sidecar/bin": "bin"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

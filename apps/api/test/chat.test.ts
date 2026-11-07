@@ -79,7 +79,7 @@ test("runChat sends earlier turns as context", async () => {
   assert.deepEqual(seen[0].slice(1).map((m) => m.content), ["我叫阿宁", "记住啦", "我是谁"]);
 });
 
-test("runChat does not save a partial reply when the client aborts", async () => {
+test("runChat keeps the partial reply (marked interrupted) when the client aborts", async () => {
   const store = new ChatStore(":memory:");
   const abort = new AbortController();
   const provider: ChatProvider = {
@@ -92,7 +92,10 @@ test("runChat does not save a partial reply when the client aborts", async () =>
     },
   };
   await assert.rejects(collect(runChat({ provider, store }, "喂", abort.signal)));
-  assert.deepEqual(store.recent(10).map((m) => m.role), ["user"]);
+  const saved = store.recent(10);
+  assert.deepEqual(saved.map((m) => m.role), ["user", "assistant"]);
+  assert.equal(saved[1].content, "半句话");
+  assert.deepEqual(saved[1].attachment, { type: "interrupted" });
 });
 
 test("runChat removes the user message when the model fails before any output", async () => {
@@ -128,7 +131,7 @@ test("POST /api/chat streams SSE events and history persists the turn", async ()
 
     const bad = await fetch(`${base}/api/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: "" }) });
     assert.equal(bad.status, 400);
-    const notJson = await fetch(`${base}/api/chat`, { method: "POST", body: "{oops" });
+    const notJson = await fetch(`${base}/api/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: "{oops" });
     assert.equal(notJson.status, 400);
 
     await fetch(`${base}/api/chat/history`, { method: "DELETE" });

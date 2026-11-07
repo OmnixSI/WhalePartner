@@ -14,19 +14,24 @@ import { getProfile, putNickname } from "../lib/profile";
 import { readA11y } from "../lib/a11y";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 import { useCharacter } from "../characters";
-import { WhaleSticker } from "../components/WhaleSticker";
+import { CharacterMark } from "../components/CharacterMark";
 import { Accounts } from "../components/Accounts";
 import { reopenOnboarding } from "../components/Onboarding";
 import { SettingGroup, SettingRow } from "../components/settings/Row";
 import { ScaleSetting } from "../components/settings/ScaleSetting";
 import { Switch } from "../components/settings/Switch";
+import { BackgroundRunSetting } from "../components/settings/BackgroundRunSetting";
 import { ChoiceCard } from "../components/settings/ChoiceCard";
 import { QuotaMeter } from "../components/settings/QuotaMeter";
 import { DataSection } from "../components/settings/DataSection";
 import { ModelSetup } from "../components/settings/ModelSetup";
 import { CharacterDialog } from "../components/settings/CharacterDialog";
 import { Toast } from "../components/settings/Toast";
+import { SendKeySetting } from "../components/settings/SendKeySetting";
+import { DevicesSetting } from "../components/settings/DevicesSetting";
+import { ConnectServerSetting } from "../components/settings/ConnectServerSetting";
 import { updateA11y, ELDER_MIN_SCALE } from "../components/settings/prefs";
+import { SurfBrowserNote } from "../components/surf/SurfBrowserNote";
 import { TagField } from "../components/surf/TagField";
 import {
   FREQUENCY_HINT,
@@ -175,11 +180,11 @@ export function SettingsPage() {
         <SettingGroup title="她">
           <div className="set-her">
             <span className="set-her__sticker" aria-hidden="true">
-              <WhaleSticker mood="idle" />
+              <CharacterMark />
             </span>
             <div className="set-her__text">
               <p className="set-her__name">{character.name}</p>
-              <p className="set-her__tagline">AI 角色 · {character.tagline}</p>
+              <p className="set-her__tagline">{character.intro}</p>
             </div>
             <button type="button" className="btn btn--secondary" onClick={() => setCharOpen(true)}>
               换一位
@@ -264,6 +269,7 @@ export function SettingsPage() {
               <p className="set-surf-legend" aria-hidden="true">
                 左边是看视频（B 站），右边是翻网页。
               </p>
+              <SurfBrowserNote character={character.id} initial={surf.browser} enabled={surf.enabled && surf.web} />
 
               <SettingRow title="讲给我听" desc="逛到有意思的，她会在聊天里告诉我。" onActivate={() => void saveSurf({ shareToChat: !surf.shareToChat })}>
                 <Switch label="讲给我听" checked={surf.shareToChat} onChange={(next) => void saveSurf({ shareToChat: next })} />
@@ -271,6 +277,8 @@ export function SettingsPage() {
             </>
           )}
         </SettingGroup>
+
+        <BackgroundRunSetting />
 
         <SettingGroup title="她逛什么">
           {surf === null ? (
@@ -385,6 +393,15 @@ export function SettingsPage() {
           <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。" onActivate={() => setCalm(!a11y.calm)}>
             <Switch label="减少动画" checked={a11y.calm} onChange={setCalm} />
           </SettingRow>
+        </SettingGroup>
+
+        <SettingGroup title="聊天">
+          <SendKeySetting />
+        </SettingGroup>
+
+        <SettingGroup title="我的设备" id="devices" note="数据只放在一台「家」里，其他设备都连过来，所以到哪都是同步的。">
+          <DevicesSetting offline={offline} />
+          <ConnectServerSetting onToast={setToast} />
         </SettingGroup>
 
         <SettingGroup title="模型接入" id="model" note="接哪家模型、用多大强度，都在这儿改；以前只能翻 .env 和本机配置。">

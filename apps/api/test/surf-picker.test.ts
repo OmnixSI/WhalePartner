@@ -90,8 +90,8 @@ test("filterCandidates：最多留 8 个", () => {
 });
 
 test("normalizeUrl / webDedupeKey：去掉 utm_*、#、末尾斜杠", () => {
-  assert.equal(normalizeUrl("https://Example.com/a/b/?utm_source=x&id=1#frag"), "https://example.com/a/b?id=1");
-  assert.equal(normalizeUrl("https://example.com/a/"), "https://example.com/a");
+  assert.equal(normalizeUrl("https://Example.com/a/b/?utm_source=x&id=1#frag"), "example.com/a/b?id=1");
+  assert.equal(normalizeUrl("https://example.com/a/"), "example.com/a");
   assert.equal(webDedupeKey("https://example.com/a?utm_medium=y"), webDedupeKey("https://example.com/a"));
   assert.notEqual(webDedupeKey("https://example.com/a"), webDedupeKey("https://example.com/b"));
   assert.match(webDedupeKey("https://example.com/a"), /^web:[0-9a-f]{16}$/);

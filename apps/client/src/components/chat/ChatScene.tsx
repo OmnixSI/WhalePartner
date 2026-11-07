@@ -1,11 +1,12 @@
-import { lazy, Suspense, useState } from "react";
-import { setAvatarStatus, type AvatarStatus } from "../../avatar/avatar-state";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { AvatarStatus } from "../../avatar/avatar-state";
 import type { AvatarEmotion, AvatarModel } from "../../avatar/model.config";
 import type { Character } from "../../characters";
 import { Tide } from "../ink";
 import { SurfStatus, type SurfPhase } from "../surf/SurfStatus";
 import { useSurfEvents } from "../surf/useSurfEvents";
-import { WhaleSticker, type StickerMood } from "../WhaleSticker";
+import { CharacterMark, type CharacterMood } from "../CharacterMark";
+import { Horizon } from "../Horizon";
 
 const Live2DStage = lazy(() => import("../../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
 
@@ -13,23 +14,20 @@ interface Props {
   character: Character;
   model: AvatarModel | null;
   avatar: AvatarStatus;
-  modelTry: number;
   emotion: AvatarEmotion;
   speaking: boolean;
-  mood: StickerMood;
+  mood: CharacterMood;
   hintSeen: boolean;
   wide: boolean;
   backlogOpen: boolean;
   onPoke: () => void;
   onOpenBacklog: () => void;
-  onRetryModel: () => void;
 }
 
 export function ChatScene({
   character,
   model,
   avatar,
-  modelTry,
   emotion,
   speaking,
   mood,
@@ -38,8 +36,22 @@ export function ChatScene({
   backlogOpen,
   onPoke,
   onOpenBacklog,
-  onRetryModel,
 }: Props) {
+  const sceneRef = useRef<HTMLElement>(null);
+  // 舞台自己也量一次对话框高度写进 --scene-safe：形象没出来（加载 / 失败）时，海平线和提示也不会被对话框压住。
+  useEffect(() => {
+    const scene = sceneRef.current;
+    const chrome = scene?.parentElement?.querySelector<HTMLElement>(".scene__chrome");
+    if (!scene || !chrome) return;
+    const apply = () => {
+      const overlays = getComputedStyle(chrome).position === "absolute";
+      scene.style.setProperty("--scene-safe", `${overlays ? Math.round(chrome.getBoundingClientRect().height) : 0}px`);
+    };
+    const observer = new ResizeObserver(apply);
+    observer.observe(chrome);
+    apply();
+    return () => observer.disconnect();
+  }, []);
   const [surfPhase, setSurfPhase] = useState<SurfPhase | null>(null);
   useSurfEvents(character.id, {
     onSession: (event) =>
@@ -50,7 +62,7 @@ export function ChatScene({
   });
 
   return (
-    <section className="scene" aria-label="角色舞台">
+    <section className="scene" aria-label="角色舞台" ref={sceneRef}>
       <SurfStatus phase={surfPhase} onDismiss={() => setSurfPhase(null)} />
       <div className="scene__safe">
         <div className="scene__glow" aria-hidden />
@@ -62,7 +74,8 @@ export function ChatScene({
           role="button"
           tabIndex={0}
           aria-label={`点一点${character.name}`}
-          onClick={onPoke}
+          // Live2D 的点击由模型自己的 onTap 上报；没有模型时（默认徽记）才由这里上报，避免一次点击触发两遍。
+          onClick={model ? undefined : onPoke}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
@@ -70,14 +83,21 @@ export function ChatScene({
             }
           }}
         >
-          {(!model || avatar !== "ready") && (
+          {model ? (
+            avatar !== "ready" && (
+              <div className="scene__wait" aria-hidden>
+                <Horizon />
+              </div>
+            )
+          ) : (
+            // 没有模型的角色：固定的默认形象 = 她自己的矢量徽记（CharacterMark），不画任何手绘形象
             <div className="scene__sticker" aria-hidden>
-              <WhaleSticker mood={mood} />
+              <CharacterMark character={character.id} mood={mood} />
             </div>
           )}
           {model && (
             <Suspense fallback={null}>
-              <Live2DStage key={`${model.id}-${modelTry}`} modelUrl={model.url} emotion={emotion} speaking={speaking} />
+              <Live2DStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={speaking} onTap={onPoke} />
             </Suspense>
           )}
         </div>
@@ -87,28 +107,7 @@ export function ChatScene({
         </div>
       </div>
 
-      {((model && avatar === "failed") || !hintSeen) && (
-        <div className="scene__aside">
-          {model && avatar === "failed" && (
-            <div className="scene__asideRow">
-              <p className="scene__note">
-                我的样子要 Live2D 才能画出来：把 live2dcubismcore.min.js 放进 apps/client/public/live2d/libs/ 就好，不影响聊天。
-              </p>
-              <button
-                type="button"
-                className="btn btn--quiet"
-                onClick={() => {
-                  setAvatarStatus("loading");
-                  onRetryModel();
-                }}
-              >
-                再试一次
-              </button>
-            </div>
-          )}
-          {!hintSeen && <p className="scene__note scene__note--tip">点一点她，她会看你哦。</p>}
-        </div>
-      )}
+      {(model ? avatar === "ready" : true) && !hintSeen && <p className="scene__tip">点一点她，她会看你哦。</p>}
       {wide && !backlogOpen && (
         <button type="button" className="scene__corner" onClick={onOpenBacklog}>
           往回翻

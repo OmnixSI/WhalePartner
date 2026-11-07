@@ -1,6 +1,6 @@
 /**
  * StateBlock（规范 §6.10）：空 / 加载 / 错误 / 离线通用。
- * 贴纸 + 标题（20 文楷）+ 正文（16）+ 至多 1 个 primary + 可选 quiet「详情」；居中，最大宽 360。
+ * 加载 = 海平线 + 角色名；空 / 错误 = 角色徽记。标题（20 文楷）+ 正文（16）+ 至多 1 个 primary + 可选 quiet「详情」；居中，最大宽 360。
  * `loading` 用 `role="status"`，`error` 用 `role="alert"`。
  *
  * 日记页与记忆页共用（两页的 WRITE 范围只有 `components/diary` 与 `components/memory`，
@@ -8,7 +8,8 @@
  */
 import { useState, type ReactNode } from "react";
 import { InkLine } from "../ink";
-import { WhaleSticker, type StickerMood } from "../WhaleSticker";
+import { CharacterMark, type CharacterMood } from "../CharacterMark";
+import { Horizon } from "../Horizon";
 import { useInkEnv } from "../ink/useCalm";
 
 type Props = {
@@ -18,18 +19,18 @@ type Props = {
   action?: { label: string; onClick: () => void } | null;
   /** 错误详情：只进折叠，不进正文。 */
   detail?: string;
-  mood?: StickerMood;
+  mood?: CharacterMood;
   children?: ReactNode;
 };
 
 export function StateBlock({ kind, title, body, action = null, detail, mood, children }: Props) {
   const calm = useInkEnv().calm;
   const [showDetail, setShowDetail] = useState(false);
-  const sticker: StickerMood = mood ?? (kind === "error" ? "worried" : kind === "loading" ? "sleepy" : "hold");
+  const sticker: CharacterMood = mood ?? (kind === "error" ? "worried" : kind === "loading" ? "sleepy" : "hold");
 
   return (
     <div className={`state state--${kind}`} role={kind === "error" ? "alert" : kind === "loading" ? "status" : undefined}>
-      <WhaleSticker mood={sticker} className="state__sticker" />
+      {kind === "loading" ? <Horizon className="state__horizon" /> : <CharacterMark mood={sticker} className="state__sticker" />}
       {title && <h3 className="state__title">{title}</h3>}
       {body ? <p className="state__body">{body}</p> : null}
       {kind === "loading" && <InkLine className="state__ink" id="state-ink" draw={calm ? "none" : "loop"} />}

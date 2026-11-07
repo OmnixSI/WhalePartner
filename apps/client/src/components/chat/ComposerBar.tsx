@@ -1,12 +1,14 @@
 /**
  * 回信条（规范 §7.1.4）。
  * `[+ 分享]` 44 图标按钮 | `<textarea>` 52→160 自动增高 | `[发送 ▷]` primary 88×56。
- * Enter 换行、Cmd/Ctrl+Enter 发送（输入法组合期不拦）；≥1800 字右下显示计数，≥1950 变 --alert。
+ * 默认 Enter 发送、Shift+Enter 换行（设置里可切回 Cmd/Ctrl+Enter 发送；触屏 Enter 恒为换行；输入法组合期不拦）。
+ * 生成中发送键变「停」；此时输入框仍可打字，有字时按发送 = 先停后发。≥1800 字右下显示计数，≥1950 变 --alert。
  * 离线时仍可输入（草稿保留），发送键禁用，条上方一行 14px「连上之后就能发出去。」
  * 听写说明收进右侧 `?` 的 Popover；桌面在条下方一行 13px 快捷键提示，手机隐藏。
  */
 import { Popover } from "radix-ui";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { isSendKey, PREFS_EVENT, readSendKey, type SendKey } from "../../lib/chat-prefs";
 import { Icon } from "../../icons";
 import { InkFrame, InkLine } from "../ink";
 
@@ -15,6 +17,8 @@ type Props = {
   value: string;
   onChange: (value: string) => void;
   onSend: (text: string) => void;
+  /** 生成中点「停」。 */
+  onStop?: () => void;
   busy: boolean;
   online: boolean;
   /** 自增即把焦点还给输入框（一轮说完后）。 */
@@ -25,11 +29,25 @@ type Props = {
 
 const MAX = 2000;
 
-export function ComposerBar({ name, value, onChange, onSend, busy, online, focusSignal = 0, shareSignal = 0 }: Props) {
+function subscribePrefs(callback: () => void) {
+  window.addEventListener(PREFS_EVENT, callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    window.removeEventListener(PREFS_EVENT, callback);
+    window.removeEventListener("storage", callback);
+  };
+}
+
+export function ComposerBar({ name, value, onChange, onSend, onStop, busy, online, focusSignal = 0, shareSignal = 0 }: Props) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [url, setUrl] = useState("");
-  const canSend = online && !busy && value.trim().length > 0;
+  const sendKey: SendKey = useSyncExternalStore(subscribePrefs, readSendKey, () => "enter" as SendKey);
+  const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  const hasText = value.trim().length > 0;
+  const canSend = online && hasText;
+  // 生成中且输入框是空的：发送键就是「停」。
+  const stopMode = busy && !hasText;
 
   // 52 → 160 自动增高（沿用原来的手写逻辑，不引第三方）。
   useEffect(() => {
@@ -48,16 +66,19 @@ export function ComposerBar({ name, value, onChange, onSend, busy, online, focus
   }, [shareSignal]);
 
   const submit = () => {
+    if (stopMode) { onStop?.(); return; }
     if (!canSend) return;
     onSend(value);
+    // 发完焦点还在输入框里，连发不用再点。
+    ref.current?.focus();
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter") return;
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (!event.metaKey && !event.ctrlKey) return; // 不按修饰键 = 换行
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return; // 输入法选词的回车不发送
+    if (!isSendKey(event, sendKey, coarse)) return; // Shift+Enter / 触屏 Enter = 换行
     event.preventDefault();
-    submit();
+    if (canSend) submit();
   };
 
   const share = () => {
@@ -94,7 +115,7 @@ export function ComposerBar({ name, value, onChange, onSend, busy, online, focus
                   aria-label="视频链接"
                   inputMode="url"
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") {
+                    if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                       e.preventDefault();
                       share();
                     }
@@ -128,14 +149,14 @@ export function ComposerBar({ name, value, onChange, onSend, busy, online, focus
             type="button"
             className="btn btn--primary composer__send"
             onClick={submit}
-            disabled={!canSend}
-            aria-busy={busy || undefined}
-            data-loading={busy || undefined}
+            disabled={stopMode ? false : !canSend}
+            aria-label={stopMode ? "停下她" : busy ? "停下她，并发送这句" : undefined}
+            data-stop={stopMode || undefined}
           >
-            {busy ? (
+            {stopMode ? (
               <>
                 <InkLine id="composer-busy" size={2.4} draw="loop" className="composer__busy" />
-                寄出中
+                停
               </>
             ) : (
               <>
@@ -154,7 +175,7 @@ export function ComposerBar({ name, value, onChange, onSend, busy, online, focus
       )}
 
       <div className="composer__hint">
-        <span className="composer__keys">Enter 换行 · ⌘/Ctrl + Enter 发送</span>
+        <span className="composer__keys">{coarse ? "Enter 换行 · ⌘/Ctrl+Enter 发送" : sendKey === "mod-enter" ? "⌘/Ctrl+Enter 发送" : "Enter 发送 · Shift+Enter 换行"}</span>
         <Popover.Root>
           <Popover.Trigger asChild>
             <button type="button" className="iconbtn" aria-label="输入小提示">

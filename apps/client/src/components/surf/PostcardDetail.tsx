@@ -1,15 +1,14 @@
 /**
  * PostcardDetail（规范 §7.7.4 的展开态）：大图 + 完整摘要 + 她的感想 + 来源，
  * 底部三个动作：跟她聊聊这个 / 打开原链接 / 忘掉。
- * 「跟她聊聊这个」把一句话放进 `wp.pendingDraft`，回聊天页时填进回信条。
+ * 「和她聊聊这个」跳到聊天页，把见闻标题和链接通过 `?quote=` 带过去，由聊天页预填进输入框。
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog } from "radix-ui";
 import { InkFrame } from "../ink";
 import { Icon } from "../ink-icons";
-import { siteLabel, stampDate, thumbUrl, timeOf, type SurfFeedItem } from "../../lib/surf";
-import { PostcardMini } from "./PostcardMini";
+import { chatQuoteHref, siteLabel, thumbUrl, whenText, type SurfFeedItem } from "../../lib/surf";
 
 type Props = {
   item: SurfFeedItem | null;
@@ -25,14 +24,10 @@ export function PostcardDetail({ item, onClose, onForget, onOpenUrl }: Props) {
 
   useEffect(() => setBroken(false), [item?.id, item?.thumb]);
 
+  // 把标题和链接用 ?quote= 带到聊天页，由聊天页预填进输入框（不会自动发送）。
   const talkAbout = (target: SurfFeedItem) => {
-    try {
-      localStorage.setItem("wp.pendingDraft", `我看到你逛到了《${target.title}》，`);
-    } catch {
-      /* 隐私模式忽略 */
-    }
     onClose();
-    navigate("/");
+    navigate(chatQuoteHref(target));
   };
 
   return (
@@ -46,7 +41,7 @@ export function PostcardDetail({ item, onClose, onForget, onOpenUrl }: Props) {
                 <span className="pdlg__badge">
                   <Icon name={item.kind === "video" ? "video" : "newspaper"} size={24} />
                   <span>
-                    {siteLabel(item.sourceSite)}·{stampDate(item.createdAt)} {timeOf(item.createdAt)}
+                    {siteLabel(item.sourceSite)} · {whenText(item.createdAt)}
                   </span>
                 </span>
                 <Dialog.Close className="btn btn--quiet" aria-label="关上">
@@ -62,14 +57,22 @@ export function PostcardDetail({ item, onClose, onForget, onOpenUrl }: Props) {
                   : <span>{item.thumbError ?? (broken ? "封面暂不可用" : "暂无封面")}</span>}
               </span>
 
-              <p className="pdlg__body" id="pdlg-body">
-                {item.summary}
-              </p>
-
               {item.comment && (
                 <p className="pdlg__say">
                   <span className="pdlg__say-label">她说</span>
                   {item.comment}
+                </p>
+              )}
+
+              <p className="pdlg__body" id="pdlg-body">
+                {item.summary || "摘要还在整理，稍后刷新就有了。"}
+              </p>
+
+              {item.tags.length > 0 && (
+                <p className="pdlg__tags">
+                  {item.tags.map((tag) => (
+                    <span key={tag} className="pcard__tag">#{tag}</span>
+                  ))}
                 </p>
               )}
 
@@ -84,13 +87,9 @@ export function PostcardDetail({ item, onClose, onForget, onOpenUrl }: Props) {
                 >{item.url}</a>
               </p>
 
-              <div className="pdlg__mini">
-                <PostcardMini item={item} onOpenUrl={onOpenUrl} />
-              </div>
-
               <div className="pdlg__actions">
                 <button type="button" className="btn btn--primary" onClick={() => talkAbout(item)}>
-                  跟她聊聊这个
+                  和她聊聊这个
                 </button>
                 <button type="button" className="btn btn--secondary" onClick={(event) => { event.stopPropagation(); onOpenUrl(item.url); }}>
                   打开原链接

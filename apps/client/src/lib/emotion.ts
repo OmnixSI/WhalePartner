@@ -10,7 +10,7 @@ import type { AvatarEmotion } from "../avatar/model.config";
 
 export type { AvatarEmotion };
 
-const TAGS = /\[\s*emotion\s*:\s*([a-z]+)\s*\]/gi;
+const TAGS = /[\[［【]\s*emotion\s*[:：]\s*([a-z]+)\s*[\]］】]/gi;
 
 /** 老数据兜底：把正文里的标签去掉（前端不依赖后端是否已经做好）。 */
 export function stripEmotionTags(text: string): string {

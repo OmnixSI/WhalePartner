@@ -1,13 +1,13 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { bilibiliCooldownPath, dataDir } from "./data-dir.ts";
 import { capTranscriptSmart } from "../vendor/dsh-bilibili/lib/format.js";
 import { extractAll, parseBvid } from "../vendor/dsh-bilibili/lib/extractor.js";
 
 const COMMENT_LIMIT = 20;
 const MAX_FRAMES = 8;
 const MAX_TRANSCRIPT_CHARS = 12000;
-const RATE_LIMIT_PATH = resolve(import.meta.dirname, "../../../.local/bilibili-rate-limit.json");
-const SUMMARY_ROOT = resolve(import.meta.dirname, "../../../.local/video-summaries");
+const SUMMARY_ROOT = join(dataDir(), "video-summaries");
 
 type VideoComment = {
   content: string;
@@ -91,6 +91,7 @@ type ExtractedVideo = {
 };
 
 export async function assertBilibiliRequestAllowed() {
+  const RATE_LIMIT_PATH = bilibiliCooldownPath();
   let pause: { retryAt?: string; status?: number };
   try {
     pause = JSON.parse(await readFile(RATE_LIMIT_PATH, "utf8"));
@@ -114,6 +115,7 @@ async function recordBilibiliCooldown(rateLimit: {
   status?: number | null;
 }) {
   if (!rateLimit.limited || !rateLimit.retryAt) return;
+  const RATE_LIMIT_PATH = bilibiliCooldownPath();
   await mkdir(resolve(RATE_LIMIT_PATH, ".."), { recursive: true, mode: 0o700 });
   await writeFile(RATE_LIMIT_PATH, JSON.stringify({ status: rateLimit.status, retryAt: rateLimit.retryAt }, null, 2) + "\n", {
     mode: 0o600,

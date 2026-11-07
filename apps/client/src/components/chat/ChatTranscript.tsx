@@ -26,6 +26,13 @@ interface Props {
   shareSignal: number;
   onRetryHealth: () => void;
   onGiveUp: () => void;
+  onStop: () => void;
+  /** 失败时展示给用户的原因。 */
+  detail?: string;
+  /** 失败态「再试一次」。 */
+  onRetryFailed?: () => void;
+  /** 她「正在打字」（按句分条出现的间隙）。 */
+  typing?: boolean;
   onRetrySend: () => void;
   onDiscardSend: () => void;
   onToday: () => void;
@@ -53,6 +60,10 @@ export function ChatTranscript({
   shareSignal,
   onRetryHealth,
   onGiveUp,
+  onStop,
+  detail,
+  onRetryFailed,
+  typing,
   onRetrySend,
   onDiscardSend,
   onToday,
@@ -72,6 +83,9 @@ export function ChatTranscript({
         stamp={firstEntry}
         progress={progress}
         onRetry={onRetryHealth}
+        onRetryFailed={onRetryFailed}
+        detail={detail}
+        typing={typing}
         onGiveUp={onGiveUp}
       >
         <AnimatePresence>
@@ -104,6 +118,7 @@ export function ChatTranscript({
         value={draft}
         onChange={onDraftChange}
         onSend={onSend}
+        onStop={onStop}
         busy={busy}
         online={online}
         focusSignal={focusSignal}

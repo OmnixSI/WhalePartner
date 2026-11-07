@@ -1,6 +1,6 @@
 /**
  * 空态的三个建议芯片（规范 §7.1.6）：聊聊今天（预填「今天……」）、发个视频给她、看看她的日记。
- * 芯片是 secondary 样子的小纸片（高 44），不是按钮墙。
+ * 芯片是统一的纸签按钮（高 ≥36、左右内边距 14），不是按钮墙。
  */
 import { Link } from "react-router-dom";
 
@@ -11,14 +11,14 @@ type Props = {
 
 export function SuggestionChips({ onToday, onVideo }: Props) {
   return (
-    <div className="chips" aria-label="可以这样开始">
-      <button type="button" className="chip" onClick={onToday}>
+    <div className="suggests" aria-label="可以这样开始">
+      <button type="button" className="suggest" onClick={onToday}>
         聊聊今天
       </button>
-      <button type="button" className="chip" onClick={onVideo}>
+      <button type="button" className="suggest" onClick={onVideo}>
         发个视频给她
       </button>
-      <Link className="chip" to="/diary">
+      <Link className="suggest" to="/diary">
         看看她的日记
       </Link>
     </div>

@@ -27,12 +27,12 @@ export async function ask(
 
 const clip = (value: string, max: number) => (value.length > max ? `${value.slice(0, max)}…` : value);
 
-/** 总结提示词（§10.6.11）。 */
+/** 总结提示词（§10.6.11）：事实和感受分开写，感受用她自己的口吻。 */
 export function summaryPrompt(input: { kind: "video" | "web"; title: string; sourceSite: string; text: string }): string {
   const kind = input.kind === "video" ? "视频" : "网页";
   return [
-    `你刚刚自己看了下面这个${kind}。请只输出一个 JSON：`,
-    '{"summary":"<客观摘要，80 到 160 字，写清它讲了什么>","comment":"<你自己的一句话感想，不超过 30 个字，用你平常的口吻，不要加表情符号>","tags":["<至多 3 个短标签，每个不超过 6 字>"],"worth_sharing":<1 到 5 的整数，5 表示非常想讲给对方听>,"safe":<true 或 false，内容是否适合一个温和的陪伴应用展示>}',
+    `你刚刚自己看了下面这个${kind}。请只输出一个 JSON，事实和感受要分开写：`,
+    '{"summary":"<客观摘要，80 到 160 字，只写它讲了什么、有哪些关键事实或观点；不要出现“我”，不要夹带评价和感受>","comment":"<你自己的一句话评价，12 到 30 个字，只写你的感受或想法，用你平常说话的口吻，像随口跟朋友说；不要复述摘要，不要用“很有意思”“值得一看”“推荐”这类套话，不要加表情符号>","tags":["<至多 3 个短标签，每个不超过 6 字>"],"worth_sharing":<1 到 5 的整数，5 表示非常想讲给对方听，没什么意思就给 1 或 2>,"safe":<true 或 false，内容是否适合一个温和的陪伴应用展示>}',
     `标题：${input.title}`,
     `来源：${input.sourceSite}`,
     "内容：",
@@ -102,6 +102,7 @@ export async function pickVideo(
   candidates: readonly VideoCandidate[],
   topics: readonly string[],
   signal?: AbortSignal,
+  recentTitles: readonly string[] = [],
 ): Promise<{ index: number; reason: string }> {
   const list = candidates
     .map((item, index) => `${index}. 标题：${item.title}\n   UP 主：${item.author}｜时长：${Math.round(item.durationSeconds / 60)} 分｜播放：${item.play}\n   简介：${clip(item.description, 60)}`)
@@ -109,9 +110,12 @@ export async function pickVideo(
   const user = [
     "你正在自己刷 B 站。下面是搜到的几个视频。",
     `你最近想看的：${topics.join("、")}`,
+    recentTitles.length > 0 ? `你最近刚看过：${recentTitles.slice(0, 6).join("；")}。这次尽量换个方向，别连着看同一类。` : "",
     list,
     '请只输出 JSON：{"index": <想看的那一个的编号>, "reason": "<一句话，用你平常的口吻说为什么想看>"}',
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   try {
     const raw = await ask(provider, buildSystemPrompt({}, character), user, { temperature: 0.6, maxTokens: 120, signal });
     const parsed = extractJson(raw);
@@ -132,6 +136,7 @@ export async function pickWebs(
   topics: readonly string[],
   limit: number,
   signal?: AbortSignal,
+  recentTitles: readonly string[] = [],
 ): Promise<number[]> {
   const list = results
     .map((item, index) => `${index}. ${item.title}\n   地址：${item.url}\n   摘要：${clip(item.snippet, 80)}`)
@@ -139,9 +144,12 @@ export async function pickWebs(
   const user = [
     "你正在自己上网冲浪。下面是搜到的几个页面。",
     `你最近想看的：${topics.join("、")}`,
+    recentTitles.length > 0 ? `你最近刚看过：${recentTitles.slice(0, 6).join("；")}。尽量挑不同方向的。` : "",
     list,
     `请挑不超过 ${Math.min(3, limit)} 个最想看的，只输出 JSON：{"picks":[{"index":0,"reason":"…"}]}`,
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
   try {
     const raw = await ask(provider, buildSystemPrompt({}, character), user, { temperature: 0.6, maxTokens: 180, signal });
     const parsed = extractJson(raw);

@@ -1,8 +1,14 @@
 import { createServer, type Server } from "node:http";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { loadConfig } from "./config.ts";
 import { applyCors, sendJson } from "./http.ts";
+import { authOptionsFromEnv, authorize, authRequiredFor, type AuthOptions } from "./auth.ts";
+import { DeviceRegistry } from "./devices.ts";
+import { hubEvents } from "./events.ts";
+import { handleHubRoute } from "./routes/hub.ts";
+import { serveStatic } from "./static.ts";
 import { createChatProvider } from "./llm/index.ts";
 import { LazyMemoryStore } from "./memory/mem0.ts";
 import { scheduleMemoryJobs, waitForMemoryJobs } from "./memory/jobs.ts";
@@ -30,17 +36,19 @@ import { handleSetupRoute } from "./routes/setup.ts";
 import { handleExportRoute, dataMaintenanceBusy } from "./routes/export.ts";
 import { handleVideoSummaryRoute } from "./routes/video-summary.ts";
 import { handleSurf } from "./routes/surf.ts";
-import { createSurf } from "./surf/index.ts";
+import { createSurf, stopSurf } from "./surf/index.ts";
+import { CHAT_RESUME_MS } from "./surf/service.ts";
 import type { ServerDeps } from "./server-types.ts";
 export type { ServerDeps } from "./server-types.ts";
 
 // 她逛之前先看用户在不在聊：最后一次聊天时间。main 的 routes/chat.ts 里没有这个状态，这里补一个。
 const chatActivity = { last: 0 };
 
-function healthBody(deps: ServerDeps) {
+function healthBody(deps: ServerDeps, authRequired = false) {
   const { provider } = deps;
   return {
     ok: true,
+    ...(authRequired ? { authRequired: true } : {}),
     service: "whalepartner-api",
     provider: provider.id,
     model: provider.model,
@@ -72,16 +80,29 @@ async function probe({ provider }: ServerDeps) {
 
 export function createApiServer(deps: ServerDeps): Server {
   const sessionRequests = new ChatSessionRequests();
-  return createServer(async (request, response) => {
-    applyCors(request, response);
+  const devices = deps.auth?.devices ?? new DeviceRegistry(deviceFile(deps.config.dbPath));
+  const auth: AuthOptions = { ...deps.auth, devices };
+  const events = deps.events ?? hubEvents;
+  let port = deps.config.port;
+  const server = createServer(async (request, response) => {
+    applyCors(request, response, auth.extraOrigins);
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
       if (request.method === "OPTIONS") {
         response.writeHead(204).end();
         return;
       }
+      const verdict = authorize(request, url, auth);
+      if (!verdict.ok) {
+        sendJson(response, verdict.status, { error: verdict.error, code: verdict.code });
+        return;
+      }
+      if (serveStatic(deps.staticDir, request, response, url.pathname)) return;
+      const address = server.address();
+      if (address && typeof address === "object") port = address.port;
+      if (await handleHubRoute({ devices, events, port }, request, response, url)) return;
       if (request.method === "GET" && url.pathname === "/api/health") {
-        const body = healthBody(deps);
+        const body = healthBody(deps, authRequiredFor(request, auth));
         sendJson(response, 200, url.searchParams.get("probe") === "1" ? { ...body, probe: await probe(deps) } : body);
         return;
       }
@@ -123,20 +144,33 @@ export function createApiServer(deps: ServerDeps): Server {
       if (request.method === "POST" && url.pathname === "/api/chat") {
         if (dataMaintenanceBusy()) { sendJson(response, 409, { error: "busy", message: "正在导出或删除，稍等一下再聊。" }); return; }
         chatActivity.last = Date.now();
-        await handleChatRoute(deps, request, response, sessionRequests);
+        await handleChatRoute({ ...deps, events }, request, response, sessionRequests);
         return;
       }
       sendJson(response, 404, { error: "未找到。" });
     } catch (error) {
-      sendJson(response, 500, { error: error instanceof Error ? error.message : "服务内部错误。" });
+      console.warn("请求处理失败：", error instanceof Error ? error.stack ?? error.message : error);
+      if (!response.headersSent) sendJson(response, 500, { error: "服务内部错误。" });
+      else response.end();
     }
   });
+  return server;
 }
+
+/** 已配对设备存在数据库旁边；内存库 / 无路径时只放内存。 */
+function deviceFile(dbPath: string): string | undefined {
+  return dbPath && dbPath !== ":memory:" ? join(dirname(dbPath), "devices.json") : undefined;
+}
+
+/** 端口被占用时的退出码，桌面外壳据此换端口重试。 */
+const EXIT_ADDR_IN_USE = 98;
 
 if (import.meta.main) {
   const config = loadConfig();
-  const lan = process.argv.includes("--lan");
-  const host = lan ? "0.0.0.0" : config.host;
+  const lanFlag = process.argv.includes("--lan");
+  const host = lanFlag ? "0.0.0.0" : config.host;
+  // 只要不是只听回环地址（--lan 或 API_HOST=0.0.0.0，如 Docker），就必须带令牌。
+  const lan = lanFlag || !["127.0.0.1", "localhost", "::1"].includes(host);
   const provider = createChatProvider(config);
   const store = new ChatStore(config.dbPath);
   if (config.memoryEnabled && !existsSync(join(config.memoryDir, "vectors.db"))) store.resetMemoryVectorIndexes();
@@ -155,11 +189,20 @@ if (import.meta.main) {
     memory,
     messages: store,
     journal: diary,
-    isUserChatting: () => Date.now() - chatActivity.last < 3 * 60_000,
+    isUserChatting: () => chatActivity.last !== 0 && Date.now() - chatActivity.last < CHAT_RESUME_MS,
     userIdleMinutes: () => (chatActivity.last === 0 ? Number.POSITIVE_INFINITY : (Date.now() - chatActivity.last) / 60_000),
   });
   let stopSurfScheduler = () => {};
-  const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService() });
+  const devices = new DeviceRegistry(deviceFile(config.dbPath));
+  const auth = authOptionsFromEnv(lan, devices);
+  let generatedToken = false;
+  // --lan 必须带 token：没配就生成一个，打印在启动日志里。
+  if (lan && !auth.localToken) {
+    auth.localToken = randomBytes(24).toString("base64url");
+    generatedToken = true;
+  }
+  const staticDir = process.env.WP_STATIC_DIR || join(import.meta.dirname, "../../client/dist");
+  const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService(), auth, staticDir: existsSync(staticDir) ? staticDir : undefined });
   let stopDiaryScheduler = () => {};
   let stopJournalScheduler = () => {};
   server.on("close", () => {
@@ -171,7 +214,48 @@ if (import.meta.main) {
       store.close();
     });
   });
-  server.on("close", () => { stopSurfScheduler(); });
+  // 收尾幂等：stopSurfScheduler / stopSurf 重复调用无副作用，shutdown 与 server.close 可各走一次。
+  server.on("close", () => { stopSurfScheduler(); void stopSurf().catch(() => {}); });
+  // 端口被占：打印明确原因，用固定退出码 98 退出（桌面外壳据此换端口重试）。
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(`端口 ${config.port} 已被占用（EADDRINUSE）。换一个 API_PORT，或关掉占用它的旧后端。`);
+      process.exit(EXIT_ADDR_IN_USE);
+    }
+    console.error("后端监听失败：", error);
+    process.exit(1);
+  });
+
+  // 优雅退出：SIGTERM/SIGINT，或 stdin 关闭（父进程 App 没了），都走这里，避免留下孤儿进程。
+  let shuttingDown = false;
+  const shutdown = (reason: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`后端正在退出（${reason}）…`);
+    const hardExit = setTimeout(() => process.exit(0), 2500);
+    hardExit.unref();
+    void (async () => {
+      stopSurfScheduler();
+      try {
+        await stopSurf();
+      } catch {
+        // 浏览器关闭失败不拦退出
+      }
+      stopDiaryScheduler();
+      stopJournalScheduler();
+      server.close(() => process.exit(0));
+      server.closeAllConnections();
+    })();
+  };
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  // 只有被桌面外壳拉起（stdin 是管道）时才监听 stdin 关闭；终端里手动跑不受影响。
+  if (process.env.WP_LOCAL_TOKEN && !process.stdin.isTTY) {
+    process.stdin.on("end", () => shutdown("stdin 已关闭"));
+    process.stdin.on("close", () => shutdown("stdin 已关闭"));
+    process.stdin.resume();
+  }
+
   server.listen(config.port, host, () => {
     if (config.surfEnabled) stopSurfScheduler = surf.start();
     void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));
@@ -183,6 +267,11 @@ if (import.meta.main) {
     console.log(`旧视频日记计划：${config.diaryCron}（本机时区；API 运行时生效）`);
     console.log(`每日综合日记计划：${config.journalCron}（本机时区；API 运行时生效）`);
     console.log(`模型链：${provider.providers.map((item) => `${item.id}(${item.model})`).join(" → ")}`);
-    if (lan) console.log("已开放局域网访问。没有登录保护，只在可信网络里使用。");
+    if (lan) {
+      console.log("已开放局域网访问：所有接口都需要令牌（Authorization: Bearer … 或 ?token=…）。");
+      if (generatedToken) console.log(`本次临时令牌（未设置 WP_LOCAL_TOKEN）：${auth.localToken}`);
+    } else if (auth.localToken) console.log("已启用 WP_LOCAL_TOKEN：所有接口都需要令牌。");
+    if (existsSync(staticDir)) console.log(`网页端已托管：http://${host}:${config.port}/`);
+    process.on("unhandledRejection", (reason) => console.warn("未处理的异步错误：", reason instanceof Error ? reason.message : reason));
   });
 }

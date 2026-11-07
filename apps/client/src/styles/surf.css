@@ -27,6 +27,8 @@
 
 /* 「她在逛」小便签（§7.7.3） */
 .surf-slip {
+  --surf-blink: 1200ms; /* 看视频：三道线依次点亮 */
+  --surf-scan: 1600ms;  /* 翻网页：笔尖往返 */
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -47,7 +49,24 @@
 .surf-slip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .surf-slip__tape { position: absolute; top: -6px; left: 50%; translate: -50% 0; }
 .surf-slip__icon { display: inline-flex; color: var(--accent); }
+.surf-slip__body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.35; }
 .surf-slip__text { white-space: nowrap; }
+.surf-slip__detail {
+  max-width: 280px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-micro);
+  color: var(--ink-mute);
+}
+/* 找 → 看 → 翻 → 记：走到哪一步亮到哪一步 */
+.surf-slip__dots { display: inline-flex; align-items: center; gap: 5px; margin-left: var(--sp-1); }
+.surf-slip__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
+.surf-slip__dot[data-state="done"] { background: var(--ink-soft); }
+.surf-slip__dot[data-state="now"] { background: var(--accent); animation: surf-now var(--surf-blink) var(--ease-inout) infinite alternate; }
+@keyframes surf-now { from { opacity: .35; } to { opacity: 1; } }
+.surf-slip[data-calm="on"] .surf-slip__dot[data-state="now"] { animation: none; }
+:root[data-elder="on"] .surf-slip__dot[data-state="now"] { animation: none; }
 .surf-slip[data-calm="on"] { transform: none; }
 /* 看视频：三道横线依次点亮；翻网页：小笔尖左右走。calm / 老人模式不动。 */
 .surf-slip__icon[data-stage="watching"] svg { animation: surf-blink var(--surf-blink) steps(1, end) infinite; }
@@ -70,7 +89,13 @@
   padding-bottom: var(--sp-3);
 }
 
-.surf-chips { display: flex; gap: var(--sp-2); }
+.surf-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-4); flex: 1 1 100%; }
+.surf-chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.surf-chip--soft { min-height: 36px; padding: 0 var(--sp-3); border-color: var(--line); }
+.surf-select { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-small); color: var(--ink-mute); }
+.surf-select__field { min-width: 9.5rem; max-width: 16rem; min-height: var(--hit); }
+.surf-range { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.surf-range__day { width: 11rem; min-height: 36px; }
 
 .surf-chip {
   min-height: var(--hit);
@@ -98,7 +123,7 @@
 .surf-run[aria-busy="true"] { opacity: .8; }
 
 /* ---------------------------------------------------------------- 日期分隔 */
-.surf-day { margin-top: var(--sp-4); max-width: 780px; }
+.surf-day { margin-top: var(--sp-4); }
 .surf-day__date {
   display: flex;
   align-items: center;
@@ -115,8 +140,9 @@
 /* ---------------------------------------------------------------- 卡片栅格 */
 .surf-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  max-width: 780px;
+  /* 窗口变宽就多排几列，变窄就少排：卡片宽度在 320 到 1fr 之间流动，右边不留白 */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  max-width: none;
   gap: var(--sp-6);
   list-style: none;
   margin: 0;
@@ -200,8 +226,8 @@
 }
 .pcard__photoError {
   position: absolute;
-  inset-inline: 6px;
-  bottom: 6px;
+  left: 10px;
+  top: 10px;
   padding: 3px 6px;
   border-radius: var(--r-xs);
   background: color-mix(in srgb, var(--paper) 88%, transparent);
@@ -269,9 +295,8 @@
 .btn--sm { min-height: 36px; padding: 0 var(--sp-3); font-size: var(--fs-small); }
 
 /* ---------------------------------------------------------------- 翻页 */
-.surf-more { display: flex; justify-content: center; max-width: 780px; padding: var(--sp-8) 0 var(--sp-4); }
+.surf-more { display: flex; justify-content: center; padding: var(--sp-8) 0 var(--sp-4); }
 .surf-end {
-  max-width: 780px;
   padding: var(--sp-8) 0 var(--sp-4);
   text-align: center;
   font-size: var(--fs-small);
@@ -294,7 +319,7 @@
 .pdlg__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
 .pdlg__badge { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-small); color: var(--ink-mute); }
 .pdlg__title { font-family: var(--font-voice); font-size: var(--fs-h3); line-height: var(--lh-ui); }
-.pdlg__photo { display: grid; place-items: center; aspect-ratio: 16 / 9; overflow: hidden; border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink-mute); }
+.pdlg__photo { display: grid; place-items: center; aspect-ratio: 16 / 9; max-height: 200px; overflow: hidden; border-radius: var(--r-sm); background: var(--paper-2); color: var(--ink-mute); }
 .pdlg__photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pdlg__body { font-family: var(--font-voice); font-size: var(--fs-chat); line-height: var(--lh-voice); color: var(--ink-soft); }
 .pdlg__say {
@@ -399,3 +424,78 @@
 .set-surf-quiet__hint { flex-basis: 100%; font-size: var(--fs-small); color: var(--ink-mute); }
 .set-surf-quota { padding: var(--sp-3) 0 0; font-size: var(--fs-small); color: var(--ink-mute); }
 .set-fold--inline { border-top: 1px solid var(--line); padding-top: var(--sp-3); }
+
+/* ---------------------------------------------------------------- 卡片信息行 */
+.pcard__meta-row { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-small); color: var(--ink-mute); }
+.pcard__site { color: var(--ink-soft); font-weight: 600; }
+.pcard__when { font-variant-numeric: lining-nums tabular-nums; }
+.pdlg__tags { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0; }
+
+/* ---------------------------------------------------------------- 空 / 加载 / 错误（没有任何角色形象） */
+.surf-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: 380px;
+  margin: var(--sp-8) auto;
+  text-align: center;
+}
+.surf-empty__card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 220px;
+  padding: var(--sp-5) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--sheet);
+  box-shadow: var(--shadow-1);
+  transform: rotate(-1.5deg);
+  color: var(--ink-mute);
+}
+.surf-empty__tape {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  translate: -50% 0;
+  width: 56px;
+  height: 16px;
+  border-radius: var(--r-xs);
+  background: var(--accent-wash);
+  outline: 1px solid var(--line);
+  rotate: 3deg;
+}
+.surf-empty__icon { display: inline-flex; color: var(--accent); }
+.surf-empty__lines { display: flex; flex: 1; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.surf-empty__line { width: 100%; height: 10px; color: var(--line-strong); }
+.surf-empty__line--short { width: 60%; }
+.surf-empty__postmark {
+  position: absolute;
+  right: -10px;
+  bottom: -12px;
+  width: 38px;
+  height: 38px;
+  border: 2px solid var(--line-strong);
+  border-radius: 50%;
+  rotate: -12deg;
+  opacity: .7;
+}
+.surf-empty__title { font-family: var(--font-voice); font-size: var(--fs-h3); letter-spacing: var(--ls-voice); margin-top: var(--sp-2); }
+.surf-empty--error .surf-empty__title { color: var(--alert); }
+.surf-empty__body { font-size: var(--fs-body); line-height: var(--lh-body); color: var(--ink-soft); }
+.surf-empty__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-3); }
+.surf-empty__detail { font-size: var(--fs-micro); color: var(--ink-mute); overflow-wrap: anywhere; }
+:root[data-elder="on"] .surf-empty__card { transform: none; }
+
+/* ---------------------------------------------------------------- 设置里的浏览器进度 */
+.surf-browser-note { margin: calc(var(--sp-2) * -1) 0 var(--sp-2); font-size: var(--fs-micro); line-height: var(--lh-body); color: var(--ink-mute); }
+.surf-browser-note[data-state="failed"] { color: var(--alert); }
+.surf-browser-note__bar { display: block; height: 4px; margin-top: var(--sp-1); border-radius: 2px; background: var(--paper-2); overflow: hidden; }
+.surf-browser-note__bar span { display: block; height: 100%; background: var(--accent); transition: width var(--dur-hover) var(--ease-out); }
+
+@media (max-width: 767px) {
+  .surf-filters { flex-direction: column; align-items: stretch; }
+  .surf-select { justify-content: space-between; }
+  .surf-select__field { max-width: none; flex: 1; }
+}

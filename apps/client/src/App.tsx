@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
+import { usePrefetchAvatar } from "./avatar/prefetch";
 import { CompanionCorner } from "./components/CompanionCorner";
 import { Nav } from "./components/Nav";
 import { Ocean } from "./components/Ocean";
@@ -15,11 +16,12 @@ const KitPage = lazy(() => import("./pages/KitPage"));
 
 export default function App() {
   const { pathname } = useLocation();
+  usePrefetchAvatar();
   // 引导是「第一次进来」的一整屏：它开着时后面整块先不挂——右栏历史、导航、旧聊天都不露，
   // 也避免同一页跑两个 Live2D 舞台（运行库的着色器是全局单例，两个舞台会互相打断）。
   const onboarding = useOnboardingOpen();
   // 聊天页有自己的舞台，日记页与记忆页自己挂了小角（§5.7）；剩下的页面在这一层补上。
-  const cornerHere = pathname !== "/" && !pathname.startsWith("/diary") && !pathname.startsWith("/memory");
+  const cornerHere = pathname !== "/" && !pathname.startsWith("/diary") && !pathname.startsWith("/memory") && !pathname.startsWith("/settings");
 
   return (
     <>

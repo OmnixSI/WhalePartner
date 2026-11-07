@@ -1,10 +1,13 @@
 export const EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "relaxed"] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
-const TAG = /^\[emotion:([a-z]+)\]/;
+/** 放宽：容忍空格、大小写、全角冒号与全角/中文括号。 */
+const TAG = /^[\[［【]\s*emotion\s*[:：]\s*([a-z]+)\s*[\]］】]/i;
+/** 还没收全的标签开头（`[`、`[emo`、`[emotion :`、`[emotion: ha`），要先缓冲。 */
+const TAG_PARTIAL = /^[\[［【]\s*(?:(?:e(?:m(?:o(?:t(?:i(?:o(?:n)?)?)?)?)?)?)?|emotion\s*(?:[:：]\s*[a-z]*\s*)?)$/i;
 /** 全局扫描用：标签不只在句首，模型有时候会插在中间或结尾。 */
-const TAG_ANY = /\[[\s]*emotion\s*:[\s]*([a-z]+)[\s]*\]/gi;
-const MAX_TAG_LENGTH = "[emotion:surprised]".length;
+const TAG_ANY = /[\[［【]\s*emotion\s*[:：]\s*([a-z]+)\s*[\]］】]/gi;
+const MAX_TAG_LENGTH = 32;
 
 function isEmotion(value: string): value is Emotion {
   return (EMOTIONS as readonly string[]).includes(value);
@@ -45,7 +48,7 @@ export class EmotionFilter {
     const emotions: Emotion[] = [];
 
     while (input.length > 0) {
-      const open = input.indexOf("[");
+      const open = input.search(/[\[［【]/);
       if (open === -1) {
         text += input;
         break;
@@ -55,13 +58,12 @@ export class EmotionFilter {
 
       const match = TAG.exec(input);
       if (match) {
-        if (isEmotion(match[1])) emotions.push(match[1]);
+        if (isEmotion(match[1].toLowerCase())) emotions.push(match[1].toLowerCase() as Emotion);
         input = input.slice(match[0].length);
         continue;
       }
       // 还没收全：可能是被截断的标签，等下一个增量。
-      const prefix = "[emotion:";
-      const couldBeTag = input.length <= MAX_TAG_LENGTH && (prefix.startsWith(input) || /^\[emotion:[a-z]*$/.test(input));
+      const couldBeTag = input.length <= MAX_TAG_LENGTH && TAG_PARTIAL.test(input);
       if (couldBeTag) {
         this.#pending = input;
         break;

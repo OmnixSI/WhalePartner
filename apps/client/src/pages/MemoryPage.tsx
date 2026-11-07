@@ -10,6 +10,7 @@ import { FilterBar } from "../components/memory/FilterBar";
 import { MemoryCard } from "../components/memory/MemoryCard";
 import { MemoryDialog } from "../components/memory/MemoryDialog";
 import { useCharacter } from "../characters";
+import { useHubRefresh } from "../lib/useHubRefresh";
 import { deleteMemory, fetchMemories, fetchNote, type CharacterNote } from "../lib/memory";
 import {
   EMPTY_FILTERS,
@@ -69,6 +70,8 @@ export function MemoryPage() {
     fetchNote(character.id, controller.signal).then(setNote).catch(() => setNote(null));
     return () => controller.abort();
   }, [load, character.id]);
+
+  useHubRefresh(["memory.updated", "diary.updated"], () => load());
 
   // 离开页面 / 关标签：还没到 5 秒的那几条立刻提交，别把用户的意图丢掉。
   useEffect(() => {

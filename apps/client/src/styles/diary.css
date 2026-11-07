@@ -4,15 +4,18 @@
    ============================================================================ */
 
 .diary-page {
-  padding: var(--sp-12) clamp(var(--sp-5), 5vw, var(--sp-12)) var(--sp-20) var(--sp-6);
+  padding: var(--sp-12) var(--gutter) var(--sp-20);
 }
 
 .diary-page__inner {
   display: flex;
   flex-direction: column;
   gap: var(--sp-6);
-  max-width: var(--memory-max);
+  width: 100%;
+  max-width: calc(var(--page-max) + var(--sp-16));
+  margin-inline: auto;
   min-width: 0;
+  container: page / inline-size;
 }
 
 /* ---------------------------------------------------------------- 页头 */
@@ -26,7 +29,7 @@
 
 .diary-page__title {
   font-family: var(--font-voice);
-  font-size: clamp(var(--fs-h1), 3.4vw, var(--fs-display));
+  font-size: clamp(var(--fs-h1), 2.6vw, var(--fs-display));
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-voice);
 }
@@ -45,7 +48,7 @@
 .diary-page__panel {
   order: 1;
   min-width: 0;
-  width: min(var(--page-max), 100% - var(--sp-6));
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--sp-6);
@@ -297,7 +300,7 @@
   align-items: center;
   gap: var(--sp-3);
   flex-wrap: wrap;
-  width: min(var(--page-max), 100% - var(--sp-6));
+  width: min(var(--page-max), 100%);
 }
 
 .pagebar__step {
@@ -430,7 +433,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  width: min(var(--page-max), 100% - var(--sp-6));
+  width: min(var(--page-max), 100%);
   padding-top: var(--sp-2);
 }
 
@@ -490,7 +493,8 @@
   text-align: center;
 }
 
-.state__sticker { width: 120px; height: auto; }
+.state__sticker { width: 96px; height: auto; }
+.state__horizon { padding: var(--sp-4) 0; }
 .state__title { font-family: var(--font-voice); font-size: var(--fs-h3); letter-spacing: var(--ls-voice); }
 .state__body { font-size: var(--fs-body); line-height: var(--lh-body); color: var(--ink-soft); }
 .state__ink { width: 96px; color: var(--ink-mute); }
@@ -524,6 +528,7 @@
 /* ---------------------------------------------------------------- 手机 */
 @media (max-width: 959px) {
   .diary-page { padding: var(--sp-6) var(--sp-4) var(--sp-16); }
+  .diary-page__inner { max-width: none; }
 
   .diary-page__stage { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
 

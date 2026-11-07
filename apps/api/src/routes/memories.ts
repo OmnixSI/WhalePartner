@@ -1,3 +1,4 @@
+import { publishEvent } from "../events.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError } from "../chat.ts";
 import { readJsonBody, sendJson } from "../http.ts";
@@ -60,6 +61,7 @@ export async function handleMemoriesRoute(
         sourceId: text(body.sourceId, 64, "sourceId", false),
       };
       const entry = await archiveExperience(deps.store, memory, input, "经历");
+      publishEvent("memory.updated", { reason: "added" });
       return sendJson(response, 200, { entry });
     }
     return sendJson(response, 404, { error: "未找到。" });
@@ -196,5 +198,6 @@ async function deleteMemory(store: ServerDeps["store"], memory: MemoryStore | un
     if (!memory) return sendJson(response, 503, { error: "语义记忆索引未启用，无法删除该索引条目。" });
     await memory.remove(id);
   }
+  publishEvent("memory.updated", { reason: "removed" });
   return sendJson(response, 200, { ok: true });
 }

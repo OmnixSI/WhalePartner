@@ -6,17 +6,20 @@
  * 她的进度靠 `useSurfEvents` 的 SSE 推过来，页不可见时断开、回来先对齐一次状态。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StateBlock } from "../components/diary/StateBlock";
 import { ConfirmDialog } from "../components/chat/ConfirmDialog";
 import { Toast } from "../components/diary/Toast";
 import { PostcardCard } from "../components/surf/PostcardCard";
+import { SurfEmpty } from "../components/surf/SurfEmpty";
+import { SurfFilters } from "../components/surf/SurfFilters";
 import { PostcardDetail } from "../components/surf/PostcardDetail";
 import { SurfStatus, type SurfPhase } from "../components/surf/SurfStatus";
-import { useSurfEvents, type SurfItemEvent, type SurfShareEvent } from "../components/surf/useSurfEvents";
+import { useHubRefresh } from "../lib/useHubRefresh";
+import { useSurfEvents, type SurfShareEvent } from "../components/surf/useSurfEvents";
 import { useCharacter } from "../characters";
 import { useInkEnv } from "../components/ink/useCalm";
 import { openExternalUrl } from "../lib/external-url";
 import {
+  dateRangeBounds,
   dayLabelOf,
   deleteSurfItem,
   getSurfFeed,
@@ -27,18 +30,15 @@ import {
   putSurfSettings,
   readSeenId,
   runSurf,
+  type DateRange,
   type SurfFeedItem,
   type SurfKind,
+  type SurfSource,
   type SurfStatus as Status,
 } from "../lib/surf";
 import "../styles/surf.css";
 
 const PAGE_SIZE = 20;
-const FILTERS: Array<{ value: SurfKind | "all"; label: string }> = [
-  { value: "all", label: "全部" },
-  { value: "video", label: "视频" },
-  { value: "web", label: "网页" },
-];
 
 export function SurfPage() {
   const character = useCharacter();
@@ -49,6 +49,10 @@ export function SurfPage() {
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [kind, setKind] = useState<SurfKind | "all">("all");
+  const [site, setSite] = useState("");
+  const [range, setRange] = useState<DateRange>("all");
+  const [day, setDay] = useState("");
+  const [sources, setSources] = useState<SurfSource[]>([]);
   const [query, setQuery] = useState("");
   const [applied, setApplied] = useState("");
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -70,16 +74,26 @@ export function SurfPage() {
   const seenAtMount = useRef(readSeenId());
 
   const load = useCallback(
-    async (nextPage: number, options: { append?: boolean; signal?: AbortSignal } = {}) => {
-      if (!options.append) setState("loading");
+    async (nextPage: number, options: { append?: boolean; silent?: boolean; signal?: AbortSignal } = {}) => {
+      if (!options.append && !options.silent) setState("loading");
       setError("");
       try {
+        const bounds = dateRangeBounds(range, day);
         const feed = await getSurfFeed(
-          { character: character.id, kind: kind === "all" ? undefined : kind, page: nextPage, pageSize: PAGE_SIZE, q: applied },
+          {
+            character: character.id,
+            kind: kind === "all" ? undefined : kind,
+            page: nextPage,
+            pageSize: PAGE_SIZE,
+            q: applied,
+            site: site || undefined,
+            ...bounds,
+          },
           options.signal,
         );
         setItems((prev) => (options.append ? [...prev, ...feed.items] : feed.items));
         setTotal(feed.total);
+        if (feed.sources) setSources(feed.sources);
         setPage(nextPage);
         setState("ready");
         const maxId = feed.items.reduce((max, item) => Math.max(max, item.id), 0);
@@ -90,12 +104,17 @@ export function SurfPage() {
         setState("error");
       }
     },
-    [character.id, kind, applied],
+    [character.id, kind, applied, site, range, day],
   );
 
   const refreshStatus = useCallback(async () => {
     const next = await getSurfStatus(character.id);
-    if (next) setStatus(next);
+    if (!next) return;
+    setStatus(next);
+    // 刷新页面或从别处回来时，她正好在逛：直接接上当前这一步。
+    if (next.running && next.stage) {
+      setPhase((prev) => (prev?.kind === "browsing" && !next.detail ? prev : { kind: "browsing", stage: next.stage!, detail: next.detail, paused: next.waiting }));
+    }
   }, [character.id]);
 
   useEffect(() => {
@@ -114,25 +133,21 @@ export function SurfPage() {
     return () => window.clearInterval(timer);
   }, [refreshStatus]);
 
-  const onItem = useCallback((event: SurfItemEvent) => {
-    const incoming: SurfFeedItem = {
-      id: event.id,
-      kind: event.kind,
-      title: event.title,
-      url: "",
-      sourceSite: event.sourceSite,
-      thumb: event.thumb,
-      thumbError: null,
-      summary: "",
-      comment: event.comment,
-      tags: [],
-      createdAt: event.createdAt,
-      sharedAt: null,
-    };
-    setItems((prev) => (prev.some((item) => item.id === event.id) ? prev : [incoming, ...prev]));
-    setTotal((prev) => prev + 1);
-    markSeen(event.id);
-  }, []);
+  // 新见闻：整页静默重拉第一页（实时事件里没有摘要和链接，重拉能拿到完整的一条）。
+  const reloadTimer = useRef<number | null>(null);
+  const onItem = useCallback(() => {
+    if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+    reloadTimer.current = window.setTimeout(() => void load(1, { silent: true }), 400);
+  }, [load]);
+  useEffect(
+    () => () => {
+      if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+    },
+    [],
+  );
+
+  // 另一台设备上的她逛到了新东西：hub 的 surf.item 事件到这里也重拉第一页。
+  useHubRefresh(["surf.item"], () => void load(1, { silent: true }));
 
   useSurfEvents(character.id, {
     onSession: (event) => {
@@ -141,10 +156,10 @@ export function SurfPage() {
         setPhase(event.count && event.count > 0 ? { kind: "done", count: event.count } : { kind: "empty" });
         setBusy(false);
         void refreshStatus();
-        void load(1);
+        void load(1, { silent: true });
       }
     },
-    onStep: (event) => setPhase({ kind: "browsing", stage: event.stage }),
+    onStep: (event) => setPhase({ kind: "browsing", stage: event.stage, detail: event.detail, paused: event.paused }),
     onItem,
     onShare: (_event: SurfShareEvent) => {
       // 分享进聊天页；见闻页只负责刷新，不在这里插消息。
@@ -204,6 +219,14 @@ export function SurfPage() {
     }
   };
 
+  const filtered = kind !== "all" || Boolean(site) || range !== "all";
+  const clearFilters = () => {
+    setKind("all");
+    setSite("");
+    setRange("all");
+    setDay("");
+    setPage(1);
+  };
   const disabled = status?.pausedReason === "disabled";
   const lowQuota = status?.pausedReason === "quota";
   const running = Boolean(status?.running) || busy;
@@ -226,23 +249,30 @@ export function SurfPage() {
         </header>
 
         <div className="surf-bar">
-          <div className="surf-chips" role="group" aria-label="看她带回来的东西">
-            {FILTERS.map((filter) => (
-              <button
-                key={filter.value}
-                type="button"
-                className="surf-chip"
-                aria-pressed={kind === filter.value}
-                data-on={kind === filter.value ? "on" : "off"}
-                onClick={() => {
-                  setKind(filter.value);
-                  setPage(1);
-                }}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
+          <SurfFilters
+            kind={kind}
+            site={site}
+            range={range}
+            day={day}
+            sources={sources}
+            onKind={(next) => {
+              setKind(next);
+              setPage(1);
+            }}
+            onSite={(next) => {
+              setSite(next);
+              setPage(1);
+            }}
+            onRange={(next) => {
+              setRange(next);
+              if (next === "day" && !day) setDay(new Date().toISOString().slice(0, 10));
+              setPage(1);
+            }}
+            onDay={(next) => {
+              setDay(next);
+              setPage(1);
+            }}
+          />
 
           <form
             className="surf-search"
@@ -277,23 +307,23 @@ export function SurfPage() {
         </div>
 
         {state === "error" ? (
-          <StateBlock
+          <SurfEmpty
             kind="error"
-            mood="sorry"
+            icon="bottle"
             title="见闻翻不开了"
-            body="网络好像不太好。"
+            body="网络好像不太好，我再试一次？"
             detail={error}
             action={{ label: "再试一次", onClick: () => void load(1) }}
           />
         ) : state === "loading" ? (
-          <StateBlock kind="loading" mood="sleepy" title="她在整理剪报…" />
+          <SurfEmpty kind="loading" icon="newspaper" title="我在整理剪报…" />
         ) : items.length === 0 ? (
           applied.trim() ? (
-            <StateBlock
+            <SurfEmpty
               kind="empty"
-              mood="think"
-              title={`没找到带「${applied.trim()}」的见闻`}
-              body="换个词试试。"
+              icon="newspaper"
+              title={`没翻到带「${applied.trim()}」的`}
+              body="换个词试试，或者等我下次出去逛的时候留意一下。"
               action={{
                 label: "清掉搜索",
                 onClick: () => {
@@ -303,28 +333,36 @@ export function SurfPage() {
                 },
               }}
             />
-          ) : lowQuota ? (
-            <StateBlock
+          ) : filtered ? (
+            <SurfEmpty
               kind="empty"
-              mood="sleepy"
+              icon="newspaper"
+              title="这个范围里我还没带回东西"
+              body="换个来源或者日期看看。"
+              action={{ label: "清掉筛选", onClick: clearFilters }}
+            />
+          ) : lowQuota ? (
+            <SurfEmpty
+              kind="empty"
+              icon="conch"
               title="这个月的贝壳快用完了"
-              body="她先歇着，下个月 1 号再去逛。"
+              body="我先歇着，下个月 1 号再去逛。"
               action={{ label: "去看看额度", onClick: () => window.location.assign("/settings#quota") }}
             />
           ) : disabled ? (
-            <StateBlock
+            <SurfEmpty
               kind="empty"
-              mood="sleepy"
-              title="她现在不去逛了"
-              body="打开之后，她会自己去看视频、翻网页。"
+              icon="lighthouse"
+              title="我现在不出门了"
+              body="你打开之后，我会自己去看视频、翻网页，回来讲给你听。"
               action={{ label: "打开", onClick: () => void enableBack() }}
             />
           ) : (
-            <StateBlock
+            <SurfEmpty
               kind="empty"
-              mood="phone"
-              title="她还没出去逛过"
-              body="她会挑时间去看视频、翻网页，回来讲给你听。"
+              icon="phone"
+              title="还没出去逛过呢"
+              body="我会挑个时间去看看视频、翻翻网页，把有意思的剪下来给你。"
               action={{ label: "让她现在去逛逛", onClick: () => void trigger() }}
             />
           )

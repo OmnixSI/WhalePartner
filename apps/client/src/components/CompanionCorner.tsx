@@ -1,7 +1,7 @@
 /**
- * 每页都有她的小角（规范 §5.7）：右下角一枚 112×112（手机 64×64）的角色贴纸按钮。
+ * 每页都有她的小角（规范 §5.7）：右下角一枚流式大小（96–150px，手机 64×64）的角色徽记按钮。
  *
- * - 永远用 `WhaleSticker`，**不初始化第二个 Live2D 实例**；大肥鱼的 Live2D 形象只出现在聊天页主舞台。
+ * - 永远用 `CharacterMark`（角色徽记），**不初始化第二个 Live2D 实例**；大肥鱼的 Live2D 形象只出现在聊天页主舞台。
  * - 是 `<button>`，`aria-label="和{名字}打个招呼"`，点击时弹簧 400/17 跳一下（y 0 → -10 → 0），
  *   旁边冒一张便签小字（3 秒消失，role="status"），台词按当前 mood 取；**10 秒内不重复触发**。
  * - mood 由页面推：`setCompanionMood("write")` / `setCompanionMood("happy", { ttl: 2400 })`，
@@ -12,8 +12,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCharacter } from "../characters";
 import { spring } from "../motion/tokens";
-import { WhaleSticker, type StickerMood } from "./WhaleSticker";
-import "../styles/sticker.css";
+import { CharacterMark, type CharacterMood } from "./CharacterMark";
 
 /* ---------------- 状态：同 avatar-state.ts 的写法 ---------------- */
 
@@ -24,11 +23,11 @@ const subscribe = (listener: () => void) => {
 };
 const notify = () => listeners.forEach((listener) => listener());
 
-let mood: StickerMood = "idle";
+let mood: CharacterMood = "idle";
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 /** 页面用这个推状态；ttl 到期自动回 idle。 */
-export function setCompanionMood(next: StickerMood, opts: { ttl?: number } = {}) {
+export function setCompanionMood(next: CharacterMood, opts: { ttl?: number } = {}) {
   mood = next;
   notify();
   if (timer) clearTimeout(timer);
@@ -45,7 +44,7 @@ export const useCompanionMood = () => useSyncExternalStore(subscribe, () => mood
 
 /* ---------------- 台词（规范 §5.7 的表） ---------------- */
 
-const LINES: Partial<Record<StickerMood, string[]>> = {
+const LINES: Partial<Record<CharacterMood, string[]>> = {
   idle: ["今天的我写在这里了。", "想看哪一天？"],
   calm: ["我在呢，慢慢来。"],
   write: ["我在写，你先歇会儿。"],
@@ -72,7 +71,7 @@ const CLICK_GAP = 10_000;
 
 type Props = {
   /** 不传就用 `setCompanionMood` 推的全局 mood */
-  mood?: StickerMood;
+  mood?: CharacterMood;
   className?: string;
 };
 
@@ -124,7 +123,7 @@ export function CompanionCorner({ mood: moodProp, className = "" }: Props) {
         animate={{ y: lifted ? -10 : 0 }}
         transition={spring.cute}
       >
-        <WhaleSticker mood={current} className="companion__sticker" />
+        <CharacterMark mood={current} className="companion__sticker" />
       </motion.button>
     </div>
   );

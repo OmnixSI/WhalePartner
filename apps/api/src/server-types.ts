@@ -8,6 +8,8 @@ import type { WebService } from "./web-service.ts";
 import type { ChatStore } from "./store.ts";
 import type { DailyJournalService } from "./daily-journal.ts";
 import type { SurfService } from "./surf/service.ts";
+import type { AuthOptions } from "./auth.ts";
+import type { EventBus } from "./events.ts";
 
 /** 模型接入（设置 › 模型接入）：要读写的两个文件，测试时注入临时路径。 */
 export interface SetupPaths {
@@ -34,6 +36,12 @@ export interface ServerDeps {
   accounts?: AccountService;
   /** 「她自己去逛」：见闻、设置、调度、SSE。 */
   surf?: SurfService;
+  /** 鉴权配置。省略 = 开发便利模式（仅本机回环免 token，仍校验 Origin / Host）。 */
+  auth?: AuthOptions;
+  /** 实时事件总线；省略用进程单例。 */
+  events?: EventBus;
+  /** 静态托管的前端目录（apps/client/dist）。 */
+  staticDir?: string;
   /** 模型接入要写的两个文件；只有测试会传，正常启动走默认路径。 */
   setup?: SetupPaths;
 }

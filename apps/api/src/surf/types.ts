@@ -94,6 +94,12 @@ export interface SurfStatus {
   nextRunAt: string | null;
   pausedReason: "quota" | "quiet" | "disabled" | null;
   webAvailable: boolean;
+  /** 渲染网页用的浏览器（自动安装在数据目录里）；没有网页源时是 null。 */
+  browser: WebBrowserStatus | null;
+  /** 当前一步的具体内容，例如「在读《鲸歌是什么》」；没在逛时是 null。 */
+  detail: string | null;
+  /** 因为你正在聊天，她先等着。 */
+  waiting: boolean;
 }
 
 export interface SurfFeedQuery {
@@ -102,6 +108,11 @@ export interface SurfFeedQuery {
   page: number;
   pageSize: number;
   q?: string;
+  /** 按来源筛：`bilibili` 或域名主体（`juejin.cn`）。 */
+  site?: string;
+  /** 只要这个时间（含）之后 / 之前（ISO）带回来的。 */
+  from?: string;
+  to?: string;
 }
 
 /** B 站搜索的一条候选（§10.6.8 A.1）。 */
@@ -144,9 +155,20 @@ export interface WebPageText {
   imageUrl?: string;
 }
 
+export interface WebBrowserStatus {
+  state: "idle" | "installing" | "ready" | "failed";
+  /** 0–100；拿不到进度时是 null。 */
+  percent: number | null;
+  message: string;
+}
+
 export interface WebSource {
   search(keyword: string): Promise<WebResult[]>;
-  read(url: string): Promise<WebPageText>;
+  read(url: string, options?: { signal?: AbortSignal }): Promise<WebPageText>;
+  /** 渲染用的浏览器没装好时，后台开始安装（可选）。 */
+  prepare?(): void;
+  /** 浏览器安装进度（可选）。 */
+  browserStatus?(): WebBrowserStatus;
   /** 无头浏览器可用与否；false 时网页部分整体跳过，状态里写 webAvailable:false。 */
   available(): boolean | Promise<boolean>;
 }

@@ -6,7 +6,7 @@ import { Dialog } from "radix-ui";
 import { useEffect, useId, useRef } from "react";
 import { CHARACTERS, setCharacter, useCharacter, useModel } from "../../characters";
 import { setCompanionMood } from "../CompanionCorner";
-import { WhaleSticker } from "../WhaleSticker";
+import { CharacterMark } from "../CharacterMark";
 
 type Props = {
   open: boolean;
@@ -60,7 +60,7 @@ export function CharacterDialog({ open, onOpenChange }: Props) {
                     }}
                   >
                     <span className="set-char__sticker" aria-hidden="true">
-                      <WhaleSticker mood={selected ? "happy" : "idle"} />
+                      <CharacterMark character={item.id} />
                     </span>
                     <span className="set-char__name">{item.name}</span>
                     <span className="set-char__tagline">{item.tagline}</span>

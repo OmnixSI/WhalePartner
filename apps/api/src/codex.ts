@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 
 const CODEX_TIMEOUT_MS = 240000;
 
@@ -90,7 +91,7 @@ export function buildCodexArgs(imagePaths: string[] = []) {
     "--ignore-user-config",
     "--skip-git-repo-check",
     "-C",
-    "/private/tmp",
+    tmpdir(),
     "-m",
     "gpt-6-luna",
     "-c",
@@ -104,7 +105,7 @@ export async function summarizeWithCodex(prompt: string, imagePaths: string[] = 
   const args = buildCodexArgs(imagePaths);
 
   return new Promise<CodexResult>((resolve, reject) => {
-    const codex = spawn("codex", args, { cwd: "/private/tmp", stdio: ["pipe", "pipe", "pipe"] });
+    const codex = spawn("codex", args, { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let timeout: NodeJS.Timeout;

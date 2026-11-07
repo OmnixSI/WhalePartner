@@ -222,3 +222,31 @@ test("聊天历史带上明信片附件", async () => {
   assert.equal(withAttachment?.attachment?.type, "surf");
   assert.equal(withAttachment?.attachment?.itemId, shared.id);
 });
+
+test("设置与状态里带上浏览器安装状态；feed 支持来源和日期筛选并回来源列表", async () => {
+  const settings = (await (await call("GET", "/api/surf/settings?character=whale")).json()) as { browser?: { state: string } | null };
+  assert.ok(settings.browser && typeof settings.browser.state === "string", "设置里要有 browser 状态");
+  const status = (await (await call("GET", "/api/surf/status?character=whale")).json()) as { browser?: unknown; detail: unknown; waiting: boolean };
+  assert.ok("browser" in status && "detail" in status && status.waiting === false);
+
+  const day = new Date(2026, 5, 1, 9, 0, 0).toISOString();
+  const { session } = surfStore.startSession("whale", "filters-test", day);
+  const base = {
+    character: "whale", sessionId: session.id, kind: "web" as const, summary: "一段够长的摘要文字用来占位。", comment: "嗯", tags: [], score: 3,
+  };
+  surfStore.insertItem({ ...base, title: "筛选甲", url: "https://filter-a.example.com/1", sourceSite: "filter-a.example.com", dedupeKey: "web:filter-a-1", createdAt: day });
+  surfStore.insertItem({ ...base, title: "筛选乙", url: "https://filter-b.example.com/1", sourceSite: "filter-b.example.com", dedupeKey: "web:filter-b-1", createdAt: new Date(2026, 5, 3, 9, 0, 0).toISOString() });
+
+  const bySite = (await (await call("GET", "/api/surf/feed?character=whale&site=filter-a.example.com")).json()) as { items: Array<{ title: string }>; total: number; sources: Array<{ site: string }> };
+  assert.deepEqual(bySite.items.map((item) => item.title), ["筛选甲"]);
+  assert.ok(bySite.sources.some((source) => source.site === "filter-b.example.com"), "来源列表不受当前筛选影响");
+
+  const from = encodeURIComponent(new Date(2026, 5, 2).toISOString());
+  const after = (await (await call("GET", `/api/surf/feed?character=whale&from=${from}&site=filter-b.example.com`)).json()) as { total: number };
+  assert.equal(after.total, 1);
+  const to = encodeURIComponent(new Date(2026, 5, 2).toISOString());
+  const before = (await (await call("GET", `/api/surf/feed?character=whale&to=${to}&site=filter-b.example.com`)).json()) as { total: number };
+  assert.equal(before.total, 0, "to 是开区间上界");
+  const bad = (await (await call("GET", "/api/surf/feed?character=whale&from=not-a-date")).json()) as { total: number };
+  assert.ok(bad.total >= 2, "坏日期参数当作没给");
+});

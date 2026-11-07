@@ -1,4 +1,5 @@
 import { EmotionFilter, type Emotion } from "./emotion.ts";
+import { hubEvents, type EventBus } from "./events.ts";
 import type { ChatMessage, ChatProvider, LlmUsage } from "./llm/types.ts";
 import type { MemoryStore } from "./memory/types.ts";
 import { buildChatContext } from "./memory/context.ts";
@@ -17,7 +18,7 @@ export type ChatEvent =
   | { type: "video"; stage: "reading" | "watching" | "thinking" | "failed"; message: string; title?: string }
   | { type: "web"; stage: "reading" | "summarizing" | "failed"; message: string; title?: string }
   | { type: "emotion"; emotion: Emotion }
-  | { type: "done"; messageId: number; sessionId: string; emotion: Emotion; provider?: string; usage?: LlmUsage };
+  | { type: "done"; messageId: number; sessionId: string; emotion: Emotion; provider?: string; usage?: LlmUsage; userMessageId?: number };
 
 export interface ChatDeps {
   provider: ChatProvider;
@@ -36,9 +37,34 @@ export interface ChatDeps {
   web?: WebService;
   /** B5：用户希望被称呼的名字；没设就传 null。 */
   nickname?: string | null;
+  /** 客户端生成的消息 id：幂等去重、多端对账。 */
+  clientId?: string;
+  /** 实时事件总线；默认进程单例。 */
+  bus?: EventBus;
+  /** 记忆召回最长等待（毫秒）。 */
+  recallTimeoutMs?: number;
+  /** 降级链总等待上限：这么久没有第一个字就放弃并给出明确提示。 */
+  firstTokenTimeoutMs?: number;
 }
 
 export class ChatInputError extends Error {}
+
+/** 带可读分类的失败：前端据此显示「再试一次」和人话原因。 */
+export class ChatFailure extends Error {
+  readonly code: "timeout" | "model" | "empty";
+  constructor(code: ChatFailure["code"], message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
+export const FIRST_TOKEN_TIMEOUT_MS = 25_000;
+
+/** 广播给各端的消息形状：去掉裸列名 attachment_json。 */
+function wire(message: object, attachment: unknown = null) {
+  const { attachment_json: _raw, ...rest } = message as Record<string, unknown>;
+  return { ...rest, attachment };
+}
 
 export function validateUserMessage(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) throw new ChatInputError("消息不能为空。");
@@ -53,72 +79,120 @@ export function validateUserMessage(value: unknown): string {
  */
 export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
   const { provider, store, memory } = deps;
+  const bus = deps.bus ?? hubEvents;
   const character = deps.character ?? DEFAULT_CHARACTER;
   const session = store.getOrCreateSession(character, deps.sessionId);
   const userMessage = store.add("user", userText, null, character, session.id);
-  const recalled = await recallChatMemory({ store, memory, character, sessionId: session.id, query: userText });
-  let situation: string | undefined;
-  const videoTarget = deps.video ? extractVideoTarget(userText) : undefined;
-  const webTarget = deps.web && !videoTarget ? extractWebTarget(userText) : undefined;
-  if (deps.video && videoTarget) {
-    situation = yield* watchVideo(deps, character, deps.video, videoTarget, session.id, userMessage.id);
-  } else if (deps.web && webTarget) {
-    situation = yield* readWeb(deps, character, deps.web, webTarget, session.id, userMessage.id);
-  }
+  const streamId = `s${userMessage.id}`;
+  const scope = { character, sessionId: session.id, clientId: deps.clientId };
+  bus.publish("message.created", { ...scope, message: wire(userMessage) });
+  bus.publish("typing", { ...scope, on: true });
 
-  const messages = buildChatContext({
-    persona: withUserName(buildPersonaCore(character), deps.nickname),
-    observation: recalled.observation,
-    memories: recalled.facts.slice(0, 8),
-    experiences: recalled.experiences.slice(0, 5),
-    learned: recalled.learned,
-    note: store.getNote(character)?.text,
-    situation,
-    archive: recalled.archive,
-    history: recalled.history,
-    inputBudget: deps.inputBudget ?? 24_000,
-  });
+  // 召回与后面的视频/网页阅读并行；向量检索最多等 1.5 秒，超时就不带召回结果。
+  const recalling = recallChatMemory({ store, memory, character, sessionId: session.id, query: userText, timeoutMs: deps.recallTimeoutMs });
+  recalling.catch(() => {});
 
   const filter = new EmotionFilter();
   let reply = "";
   let first: Emotion | undefined;
   let usedProvider: string | undefined;
   let usage: LlmUsage | undefined;
+  let finished = false;
 
-  const emit = function* (text: string, emotions: Emotion[]): Generator<ChatEvent> {
-    for (const emotion of emotions) {
-      first ??= emotion;
-      yield { type: "emotion", emotion };
-    }
-    if (!reply) text = text.trimStart();
-    if (text) {
-      reply += text;
-      yield { type: "delta", text };
-    }
-  };
+  // 降级链总等待上限：没有第一个字就放弃。
+  const inner = new AbortController();
+  const onOuterAbort = () => inner.abort(signal?.reason);
+  if (signal?.aborted) inner.abort(signal.reason);
+  else signal?.addEventListener("abort", onOuterAbort, { once: true });
+  const firstTokenMs = deps.firstTokenTimeoutMs ?? FIRST_TOKEN_TIMEOUT_MS;
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; inner.abort(new Error("first-token-timeout")); }, firstTokenMs);
 
   try {
-    for await (const delta of provider.stream(messages, { signal })) {
-      if (delta.provider) usedProvider = delta.provider;
-      if (delta.usage) usage = delta.usage;
-      if (delta.text) {
-        const { text, emotions } = filter.feed(delta.text);
-        yield* emit(text, emotions);
+    let situation: string | undefined;
+    const videoTarget = deps.video ? extractVideoTarget(userText) : undefined;
+    const webTarget = deps.web && !videoTarget ? extractWebTarget(userText) : undefined;
+    if (deps.video && videoTarget) {
+      situation = yield* watchVideo(deps, character, deps.video, videoTarget, session.id, userMessage.id);
+    } else if (deps.web && webTarget) {
+      situation = yield* readWeb(deps, character, deps.web, webTarget, session.id, userMessage.id);
+    }
+    const recalled = await recalling;
+    signal?.throwIfAborted();
+
+    const messages = buildChatContext({
+      persona: withUserName(buildPersonaCore(character), deps.nickname),
+      observation: recalled.observation,
+      memories: recalled.facts.slice(0, 8),
+      experiences: recalled.experiences.slice(0, 5),
+      learned: recalled.learned,
+      note: store.getNote(character)?.text,
+      situation,
+      archive: recalled.archive,
+      history: recalled.history,
+      inputBudget: deps.inputBudget ?? 24_000,
+    });
+
+    const emit = function* (text: string, emotions: Emotion[]): Generator<ChatEvent> {
+      for (const emotion of emotions) {
+        first ??= emotion;
+        yield { type: "emotion", emotion };
+      }
+      if (!reply) text = text.trimStart();
+      if (text) {
+        reply += text;
+        bus.publish("message.delta", { ...scope, streamId, text });
+        yield { type: "delta", text };
+      }
+    };
+
+    try {
+      for await (const delta of provider.stream(messages, { signal: inner.signal })) {
+        if (delta.provider) usedProvider = delta.provider;
+        if (delta.usage) usage = delta.usage;
+        if (delta.text) {
+          clearTimeout(timer);
+          const { text, emotions } = filter.feed(delta.text);
+          yield* emit(text, emotions);
+        }
+      }
+      yield* emit(filter.flush(), []);
+    } catch (error) {
+      if (timedOut && !reply) {
+        throw new ChatFailure("timeout", `她这会儿一直没有回音（等了超过 ${Math.round(firstTokenMs / 1000)} 秒，几条线路都没接通）。可以再试一次。`);
+      }
+      throw error;
+    }
+
+    signal?.throwIfAborted();
+    const emotion = first ?? "neutral";
+    if (!reply.trim()) throw new ChatFailure("empty", "模型没有返回内容。");
+    const saved = store.add("assistant", reply.trimEnd(), emotion, character, session.id);
+    finished = true;
+    store.enqueueMemoryJob({ sessionId: session.id, character, userMessageId: userMessage.id, assistantMessageId: saved.id });
+    void scheduleMemoryJobs({ store, provider, memory });
+    queueReflection(deps, character, false);
+    bus.publish("message.created", { ...scope, streamId, message: wire(saved) });
+    bus.publish("message.done", { ...scope, streamId, messageId: saved.id, emotion, provider: usedProvider });
+    yield { type: "done", messageId: saved.id, sessionId: session.id, emotion, provider: usedProvider, usage, userMessageId: userMessage.id };
+  } catch (error) {
+    if (!finished) {
+      if (reply.trim()) {
+        // 说到一半被打断 / 中途出错：已经生成的部分照常入库，并标记 interrupted。
+        const saved = store.add("assistant", reply.trimEnd(), first ?? "neutral", character, session.id);
+        store.markInterrupted(saved.id);
+        bus.publish("message.created", { ...scope, streamId, message: wire(saved, { type: "interrupted" }) });
+        bus.publish("message.interrupted", { ...scope, streamId, messageId: saved.id, reason: signal?.aborted ? "aborted" : "error" });
+      } else {
+        // 一个字都没回出来：撤掉这条用户消息，重试时不会在历史里重复。
+        store.remove(userMessage.id);
+        bus.publish("message.interrupted", { ...scope, streamId, removedMessageId: userMessage.id, reason: signal?.aborted ? "aborted" : "error" });
       }
     }
-    yield* emit(filter.flush(), []);
-  } catch (error) {
-    // 一个字都没回出来就失败：撤掉这条用户消息，重试时不会在历史里重复。
-    if (!reply) store.remove(userMessage.id);
     throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onOuterAbort);
+    bus.publish("typing", { ...scope, on: false });
   }
-
-  signal?.throwIfAborted();
-  const emotion = first ?? "neutral";
-  if (!reply.trim()) throw new Error("模型没有返回内容。");
-  const saved = store.add("assistant", reply.trimEnd(), emotion, character, session.id);
-  store.enqueueMemoryJob({ sessionId: session.id, character, userMessageId: userMessage.id, assistantMessageId: saved.id });
-  void scheduleMemoryJobs({ store, provider, memory });
-  queueReflection(deps, character, false);
-  yield { type: "done", messageId: saved.id, sessionId: session.id, emotion, provider: usedProvider, usage };
 }
