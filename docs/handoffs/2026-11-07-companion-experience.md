@@ -12,4 +12,6 @@
 - 构建产物：`apps/client/src-tauri/target/release/bundle/macos/鲸汐.app`。
 - 人工验收：开发者已确认本机验收通过。验收范围包括 Live2D 互动、共享日记显示与日期范围、见闻链接打开和设置控件布局。
 - GitHub 跟踪：[Issue #78](https://github.com/OmnixSI/WhalePartner/issues/78)。本地自审检查了 Live2D 动作完成事件、共享日记日期筛选与去重、外链失败提示及 Tauri 权限注册；未发现数据清理或本地配置变更。
-- 后续：推送任务分支并创建关联 Issue #78 的 PR，附自审和验证记录，请求另一位开发者审查；PR 合并后再按授权处理 Release 与云端同步。
+- GitHub：Issue #78 已随 [PR #79](https://github.com/OmnixSI/WhalePartner/pull/79) 关闭；PR 于 2026-11-07 按开发者明确指示经自审后 squash 合并，merge SHA `a85cbeb67594213c0606cfaad4d0894a04cc973d`。Release [v0.2.6](https://github.com/OmnixSI/WhalePartner/releases/tag/v0.2.6) 已发布，附源码归档 `whalepartner-0.2.6-src.tar.gz`（18.64 MB）；未附 `.app`。
+- Release 限制：本机 `.app` 使用本地获取的 Cubism Core，项目许可文档要求不随仓库分发该专有组件。
+- 云端同步：未执行。当前产品范围规定记忆和数据保存在本机、不做云同步，也未在仓库配置云平台目标；如需扩展，需先明确目标平台。
