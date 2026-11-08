@@ -15,6 +15,8 @@ interface TtsMessage {
   message?: string;
 }
 
+const PLAYBACK_PREROLL_SECONDS = 0.96;
+
 export function useVoiceOutput() {
   const [enabled, setEnabledState] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -27,6 +29,8 @@ export function useVoiceOutput() {
   const audioLevel = useRef(0);
   const playbackAt = useRef(0);
   const sources = useRef(new Set<AudioBufferSourceNode>());
+  const pendingAudio = useRef<AudioBuffer[]>([]);
+  const playbackPrimed = useRef(false);
   const queue = useRef<Segment[]>([]);
   const pendingText = useRef("");
   const running = useRef(false);
@@ -120,10 +124,37 @@ export function useVoiceOutput() {
     }
   }, [updateLevel]);
 
-  const playChunk = useCallback(async (chunk: TtsMessage, token: number) => {
+  const flushAudio = useCallback(async (token: number, force = false) => {
     if (token !== generation.current || !enabledRef.current) return;
     const context = ensureAudio();
     if (context.state !== "running") await context.resume();
+    if (token !== generation.current || !enabledRef.current) return;
+    const bufferedSeconds = pendingAudio.current.reduce((total, buffer) => total + buffer.duration, 0);
+    if (!playbackPrimed.current && !force && bufferedSeconds < PLAYBACK_PREROLL_SECONDS) return;
+    playbackPrimed.current = true;
+    while (pendingAudio.current.length > 0) {
+      const buffer = pendingAudio.current.shift();
+      if (!buffer || token !== generation.current || !enabledRef.current) return;
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(analyser.current ?? context.destination);
+      sources.current.add(source);
+      source.onended = () => {
+        sources.current.delete(source);
+        source.disconnect();
+        if (queue.current.length === 0 && !running.current && sources.current.size === 0) {
+          playbackPrimed.current = false;
+          updateSpeaking();
+        }
+      };
+      const startsAt = Math.max(context.currentTime + 0.025, playbackAt.current);
+      source.start(startsAt);
+      playbackAt.current = startsAt + buffer.duration;
+    }
+    updateSpeaking();
+  }, [ensureAudio, updateSpeaking]);
+
+  const playChunk = useCallback(async (chunk: TtsMessage, token: number) => {
     if (token !== generation.current || !enabledRef.current || !chunk.pcm16 || !chunk.sampleRate) return;
     const raw = atob(chunk.pcm16);
     const samples = new Float32Array(Math.floor(raw.length / 2));
@@ -131,22 +162,14 @@ export function useVoiceOutput() {
       const value = raw.charCodeAt(i * 2) | (raw.charCodeAt(i * 2 + 1) << 8);
       samples[i] = (value >= 0x8000 ? value - 0x10000 : value) / 32768;
     }
+    const context = ensureAudio();
+    if (context.state !== "running") await context.resume();
+    if (token !== generation.current || !enabledRef.current) return;
     const buffer = context.createBuffer(1, samples.length, chunk.sampleRate);
     buffer.copyToChannel(samples, 0);
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(analyser.current ?? context.destination);
-    sources.current.add(source);
-    source.onended = () => {
-      sources.current.delete(source);
-      source.disconnect();
-      if (queue.current.length === 0 && !running.current && sources.current.size === 0) updateSpeaking();
-    };
-    const startsAt = Math.max(context.currentTime + 0.025, playbackAt.current);
-    source.start(startsAt);
-    playbackAt.current = startsAt + buffer.duration;
-    updateSpeaking();
-  }, [ensureAudio, updateSpeaking]);
+    pendingAudio.current.push(buffer);
+    await flushAudio(token);
+  }, [ensureAudio, flushAudio]);
 
   const synthesize = useCallback(async (segment: Segment, token: number) => {
     const controller = new AbortController();
@@ -181,11 +204,12 @@ export function useVoiceOutput() {
         if (result.done) break;
       }
       await readLine(carry);
+      await flushAudio(token, true);
     } finally {
       reader.releaseLock();
       if (request.current === controller) request.current = null;
     }
-  }, [playChunk]);
+  }, [flushAudio, playChunk]);
 
   const pump = useCallback(async () => {
     if (running.current || !enabledRef.current) return;
@@ -204,7 +228,10 @@ export function useVoiceOutput() {
       if (token === generation.current) {
         running.current = false;
         if (queue.current.length > 0 && enabledRef.current) void pump();
-        else if (sources.current.size === 0) updateSpeaking();
+        else if (sources.current.size === 0) {
+          playbackPrimed.current = false;
+          updateSpeaking();
+        }
       }
     }
   }, [synthesize, updateSpeaking]);
@@ -246,6 +273,8 @@ export function useVoiceOutput() {
     request.current = null;
     queue.current = [];
     pendingText.current = "";
+    pendingAudio.current = [];
+    playbackPrimed.current = false;
     running.current = false;
     playbackAt.current = 0;
     for (const source of sources.current) {
