@@ -51,10 +51,18 @@ try {
     let microphoneRequests = 0;
     let stoppedTracks = 0;
     let audioPlaybackStarts = 0;
+    let outputWaveformFrames = 0;
+    let nonSilentOutputWaveformFrames = 0;
     const nativeBufferStart = AudioBufferSourceNode.prototype.start;
     AudioBufferSourceNode.prototype.start = function (...args) {
       audioPlaybackStarts += 1;
       return nativeBufferStart.apply(this, args);
+    };
+    const nativeAnalyserRead = AnalyserNode.prototype.getFloatTimeDomainData;
+    AnalyserNode.prototype.getFloatTimeDomainData = function (samples) {
+      nativeAnalyserRead.call(this, samples);
+      outputWaveformFrames += 1;
+      if (samples.some((sample) => Math.abs(sample) > 0.01)) nonSilentOutputWaveformFrames += 1;
     };
     Object.defineProperty(window, "__wpVoiceCheck", {
       configurable: false,
@@ -68,6 +76,8 @@ try {
             microphoneRequests,
             stoppedTracks,
             audioPlaybackStarts,
+            outputWaveformFrames,
+            nonSilentOutputWaveformFrames,
             endedTracks: inputStream?.getTracks().filter((track) => track.readyState === "ended").length ?? 0,
           };
         },
@@ -133,7 +143,7 @@ try {
     if (path === "/api/voice/tts/stream") {
       const input = request.postDataJSON();
       ttsRequests.push(input);
-      const duration = ttsRequests.length === 1 ? 6 : 0.45;
+      const duration = 6;
       const sampleRate = 16_000;
       const samples = Buffer.alloc(Math.ceil(sampleRate * duration) * 2);
       for (let i = 0; i < samples.length / 2; i += 1) samples.writeInt16LE(Math.round(Math.sin((i / sampleRate) * 2 * Math.PI * 220) * 7_500), i * 2);
@@ -216,6 +226,8 @@ try {
   await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("大肥鱼正在回答"), null, { timeout: 10_000 });
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().audioPlaybackStarts >= 2, null, { timeout: 10_000 });
   check("多句回复按句分段生成并排队播放", ttsRequests.slice(0, 2).map((input) => input.text).join("|") === "第1轮回答。|再说一句。");
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().nonSilentOutputWaveformFrames > 0, null, { timeout: 5_000 });
+  check("TTS 播放产生非静音波形供 Live2D 嘴型驱动", (await page.evaluate(() => window.__wpVoiceCheck.stats().outputWaveformFrames)) > 0);
 
   await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
   await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("已停止她当前的回答"), null, { timeout: 5_000 });
@@ -234,12 +246,32 @@ try {
   await speak();
   await page.waitForFunction(() => document.body.innerText.includes("第3轮回答。"), null, { timeout: 10_000 });
   check("语音模式连续完成三轮识别与回复", chatRequests.length === 3 && chatRequests[2]?.message === speechTexts[2]);
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().audioPlaybackStarts >= 5, null, { timeout: 10_000 });
+  const ttsCountBeforeSwitch = ttsRequests.length;
+  await page.evaluate(async () => {
+    const { setCharacter } = await import("/src/characters.ts");
+    setCharacter("claude");
+  });
+  await page.waitForFunction(() => document.querySelector(".mbar__name")?.textContent === "小克");
+  await page.getByRole("button", { name: "进入连续语音模式" }).waitFor({ state: "visible" });
+  check(
+    "切换人格时结束语音会话、停止播放并释放麦克风",
+    (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 1 && ttsRequests.length === ttsCountBeforeSwitch,
+  );
+  await page.evaluate(async () => {
+    const { setCharacter } = await import("/src/characters.ts");
+    setCharacter("deepseek");
+  });
+  await page.waitForFunction(() => document.querySelector(".mbar__name")?.textContent === "大肥鱼");
+  await page.getByRole("button", { name: "进入连续语音模式" }).click();
+  await page.waitForFunction(() => document.body.innerText.includes("语音模式已就绪"), null, { timeout: 15_000 });
+  check("切回大肥鱼后可重新进入语音模式", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 3);
 
   await page.getByRole("button", { name: "结束语音模式" }).click();
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().endedTracks === 1);
   for (let attempt = 0; attempt < 60 && closedSockets < socketCount; attempt += 1) await page.waitForTimeout(50);
-  check("退出时停止麦克风轨道", (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 1);
-  check("退出时关闭 ASR WebSocket", socketCount === 1 && closedSockets === 1, `${closedSockets}/${socketCount}`);
+  check("退出时停止麦克风轨道", (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 2);
+  check("退出时关闭 ASR WebSocket", socketCount === 2 && closedSockets === 2, `${closedSockets}/${socketCount}`);
   check("页面没有未处理异常", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
   await page.close();
 } catch (error) {
