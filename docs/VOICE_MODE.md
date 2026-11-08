@@ -5,9 +5,9 @@
 ## 识别、聊天与合成
 
 - ASR：InterviewHacker 使用的 sherpa-onnx X-ASR 中文/英文 480 ms chunk 流式模型。WhalePartner 只在自己的应用数据目录加载副本；副本缺失时从 sherpa-onnx 官方发布下载，不读取其他项目目录。worker 使用 16 kHz PCM、BPE 词表和端点检测。
-- 聊天：继续使用当前角色和现有服务端模型配置。情绪事件先于回复正文到达；正文分句后才提交 TTS，不逐 token 合成。
+- 聊天：继续使用当前角色和现有服务端模型配置。情绪事件先于回复正文到达；正文完整后作为一次 TTS 输入，让整条回复共用一个韵律上下文，避免每句话重新起合成。模型随后仍以约 0.96 秒音频块流式生成和播放。
 - TTS：`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit`，通过 MLX-Audio 在 Apple Silicon 本机运行，预置 Serena 音色，不使用参考录音或克隆真人声音。Qwen 的 `instruct` 字段支持音色风格、情绪和韵律指令；WhalePartner 将六种情绪映射为这些指令。它是自然语言指令控制，输出仍由模型生成，不保证每次都呈现固定强度。流式音频按约 0.96 秒一块生成。
-- 音频以 24 kHz PCM16 流式返回。浏览器先缓存约 0.96 秒音频，再把已到达的块按连续时间点排队播放，吸收模型产出抖动。新语音输入会取消聊天请求、终止当前 TTS 请求并清空待播音频。Live2D 嘴型读取实际播放波形音量；纯文字回复保留原文字计时嘴型。
+- 音频以 24 kHz PCM16 流式返回。浏览器先缓存约 1.92 秒音频，再把已到达的块按连续时间点排队播放，吸收模型产出抖动。整条文本生成完成后才开始 TTS，因此首声会比逐句合成晚；新语音输入仍会取消聊天请求、终止当前 TTS 请求并清空待播音频。Live2D 嘴型读取实际播放波形音量；纯文字回复保留原文字计时嘴型。
 
 ## 数据和运行环境
 
@@ -24,11 +24,11 @@
 
 测试设备为 Apple M4、16 GB 内存；使用固定合成中文文本和临时聊天服务，不录制真实麦克风，也不调用付费聊天模型。新设置下，缓存模型 worker 启动和预热约 5.1 秒，首块约 0.89 秒；一段 9.52 秒的语音由 10 个音频块组成，合成用时约 8.05 秒。X-ASR 并行处理实时静音帧时，13.04 秒音频在约 11.25 秒内生成，未测到块的产出间隔超过对应播放时长。浏览器模拟另外以 700 毫秒人为抖动验证首播缓存和连续时间排队。打包后的 arm64 X-ASR worker 也已用固定样本完成 16 kHz 重采样和流式识别，最终稿为“你好，今天聊聊最近发生的事情吧”；worker 从 WhalePartner 应用数据目录加载模型。先前单独推理探测的 Python worker 峰值 RSS 约 2.1 GiB。
 
-合成样本：[qwen3-tts-serena-sample.wav](evidence/voice/qwen3-tts-serena-sample.wav)。
+合成样本：[qwen3-tts-serena-sample.wav](evidence/voice/qwen3-tts-serena-sample.wav)、[单次合成的完整多句回复](evidence/voice/qwen3-tts-whole-reply-sample.wav)。后者为 22.56 秒音频，首块约 0.91 秒到达，整段约 19.08 秒生成；音频以 24 个连续输出块返回，没有削波。
 
 ## 浏览器模拟验收
 
-运行 `pnpm --dir apps/client run voice-mode:check` 会启动隔离的 Vite 页面并模拟 ASR、聊天和 TTS 接口及合成麦克风音频。检查无麦克风错误恢复、三轮连续对话、最终稿只提交一次、多句回复分段播放、短音频块预缓冲、抖动下无播放间隙、情绪映射、说话打断、退出停止麦克风轨道和关闭 ASR WebSocket。该检查不调用模型、不录制真实麦克风，也不修改用户数据库；本机模型推理和打包 sidecar 另按上文记录实测。默认使用 Playwright 管理的 Chromium；本机已有 Chrome 时可用 `CHROME_PATH` 指定其可执行文件。
+运行 `pnpm --dir apps/client run voice-mode:check` 会启动隔离的 Vite 页面并模拟 ASR、聊天和 TTS 接口及合成麦克风音频。检查无麦克风错误恢复、三轮连续对话、最终稿只提交一次、多句回复共用一次 TTS 合成、约两秒音频预缓冲、抖动下无播放间隙、情绪映射、说话打断、退出停止麦克风轨道和关闭 ASR WebSocket。该检查不调用模型、不录制真实麦克风，也不修改用户数据库；本机模型推理和打包 sidecar 另按上文记录实测。默认使用 Playwright 管理的 Chromium；本机已有 Chrome 时可用 `CHROME_PATH` 指定其可执行文件。
 
 ## 许可和接口
 

@@ -15,7 +15,7 @@ interface TtsMessage {
   message?: string;
 }
 
-const PLAYBACK_PREROLL_SECONDS = 0.96;
+const PLAYBACK_PREROLL_SECONDS = 1.92;
 
 export function useVoiceOutput() {
   const [enabled, setEnabledState] = useState(false);
@@ -33,6 +33,7 @@ export function useVoiceOutput() {
   const playbackPrimed = useRef(false);
   const queue = useRef<Segment[]>([]);
   const pendingText = useRef("");
+  const pendingEmotion = useRef<AvatarEmotion>("neutral");
   const running = useRef(false);
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
@@ -239,24 +240,13 @@ export function useVoiceOutput() {
   const enqueueText = useCallback((text: string, emotion: AvatarEmotion, flush: boolean) => {
     if (!enabledRef.current || (!text && !flush)) return;
     pendingText.current += text;
-    while (pendingText.current) {
-      const boundary = /[。！？!?；;\n]|\.(?=\s|$)/g;
-      let match: RegExpExecArray | null;
-      let cut = -1;
-      while ((match = boundary.exec(pendingText.current)) !== null) cut = match.index + match[0].length;
-      if (cut < 0 && pendingText.current.length > 120) {
-        const limit = Math.min(120, pendingText.current.length);
-        for (const mark of ["，", "、", ",", " "]) {
-          const idx = pendingText.current.lastIndexOf(mark, limit);
-          if (idx >= 60) { cut = idx + mark.length; break; }
-        }
-        if (cut < 0) cut = limit;
-      }
-      if (cut < 0 && !flush) break;
-      if (cut < 0) cut = pendingText.current.length;
-      const sentence = pendingText.current.slice(0, cut).trim();
-      pendingText.current = pendingText.current.slice(cut);
-      if (sentence) queue.current.push({ text: sentence, emotion });
+    if (text) pendingEmotion.current = emotion;
+    if (!flush) return;
+    const response = pendingText.current.trim();
+    pendingText.current = "";
+    if (response) {
+      queue.current.push({ text: response, emotion: pendingEmotion.current });
+      pendingEmotion.current = "neutral";
     }
     void pump();
   }, [pump]);
@@ -273,6 +263,7 @@ export function useVoiceOutput() {
     request.current = null;
     queue.current = [];
     pendingText.current = "";
+    pendingEmotion.current = "neutral";
     pendingAudio.current = [];
     playbackPrimed.current = false;
     running.current = false;
