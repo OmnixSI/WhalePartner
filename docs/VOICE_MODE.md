@@ -61,6 +61,8 @@ Pure C/Metal 候选使用上游 [qwen3-tts](https://github.com/gabriele-mastrapa
 
 当前部署继续使用 Qwen3-TTS 1.7B MLX 8-bit。4-bit 与 Pure C/Metal 优化暂搁：4-bit 的字词核对没有发现差异，但 ASR 标点和音频时长有差异，听感对照尚未完成，长语音 RTF 仍高于 0.85；Pure C/Metal 的批量 FFN 数值自检失败。相应质量或正确性条件满足后再评估。
 
+2026-11-09 再次核对 Pure C/Metal 上游，远端 HEAD 仍为 `ef339be`，与此前未通过批量 FFN 数值自检的版本相同，本轮不重复下载权重或重跑已失败的候选。当前运行时 MLX 0.32.4 可导出 Metal `.gputrace`，但没有阶段级 profiler；本机也没有 `xctrace`，因此没有可靠的 Talker、Code Predictor、Speech Decoder 分项 GPU 耗时。只保留已同步完成的整段/分块 RTF 与 AudioWorklet 欠载数据，不以异步 Python 调用耗时替代 GPU 阶段计时。优化暂缓，默认仍为 1.7B 8-bit。
+
 ## 许可和接口
 
 Qwen3-TTS 1.7B 8-bit 模型卡标注 Apache-2.0；[MLX-Audio](https://github.com/mlx-audio/mlx-audio) 代码采用 MIT。WhalePartner 的 X-ASR 词表与许可说明位于 `apps/api/src/voice/assets/`；上游模型见 [Gilgamesh-J/X-ASR](https://github.com/Gilgamesh-J/X-ASR)。所有模型权重都留在 WhalePartner 用户数据目录。
