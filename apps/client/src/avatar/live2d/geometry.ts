@@ -17,7 +17,7 @@ export function placeModel(host: HTMLElement, renderer: PIXI.Renderer, model: Li
   if (bounds.width < 1 || bounds.height < 1) return;
 
   const targetHeight = Math.min(readRatio("--stage-char-h", 0.6) * height, height * readRatio("--stage-char-max", 0.94));
-  const targetWidth = width * 0.94;
+  const targetWidth = width * readRatio("--stage-char-w", 0.94);
   const scale = Math.min(targetHeight / bounds.height, targetWidth / bounds.width);
   const gap = readRatio("--stage-char-gap", 0.02) * height;
 

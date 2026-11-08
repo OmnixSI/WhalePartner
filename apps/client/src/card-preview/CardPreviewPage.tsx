@@ -1,23 +1,19 @@
-import { useState } from "react";
-import { ADVANCED_EFFECT_LEVEL, CARD_CHARACTERS, RELATIONSHIP_SAMPLES } from "./data";
+import { useEffect, useState } from "react";
+import { CARD_CHARACTERS, RELATIONSHIP_SAMPLES } from "./data";
 import { CharacterCard } from "./CharacterCard";
+import { CardShowcase } from "./CardShowcase";
 import "./card-preview.css";
 
 export function CardPreviewPage() {
   const [selectedId, setSelectedId] = useState("deepseek");
-  const [sampleIdx, setSampleIdx] = useState(0);
-  const [foilEnabled, setFoilEnabled] = useState(false);
+  const [sampleIdx, setSampleIdx] = useState(3);
   const sample = RELATIONSHIP_SAMPLES[sampleIdx];
   const selected = CARD_CHARACTERS.find((character) => character.id === selectedId) ?? CARD_CHARACTERS[0];
-  const advancedUnlocked = sampleIdx >= ADVANCED_EFFECT_LEVEL;
-  const progress = sampleIdx === RELATIONSHIP_SAMPLES.length - 1
-    ? 100
-    : Math.round((sample.points / sample.next) * 100);
+  const progress = sampleIdx === RELATIONSHIP_SAMPLES.length - 1 ? 100 : 0;
 
-  const chooseSample = (idx: number) => {
-    setSampleIdx(idx);
-    if (idx < ADVANCED_EFFECT_LEVEL) setFoilEnabled(false);
-  };
+  useEffect(() => {
+    document.documentElement.setAttribute("data-character", selected.id);
+  }, [selected.id]);
 
   return (
     <main className="card-preview-page">
@@ -25,7 +21,7 @@ export function CardPreviewPage() {
         <div>
           <p className="card-preview__eyebrow">WHALEPARTNER · CHARACTER COLLECTION</p>
           <h1>角色闪卡</h1>
-          <p className="card-preview__lead">选一位陪你。卡面会随关系进度展现不同的纸上光泽。</p>
+          <p className="card-preview__lead">好感越深，卡面越完整。从立体视差、动态画面，到专属光环与星芒。移动指针或手指倾斜卡面，查看人物分层与光影变化。</p>
         </div>
         <span className="card-preview__demo">独立预览 · 演示数据</span>
       </header>
@@ -49,16 +45,17 @@ export function CardPreviewPage() {
           >
             <span style={{ width: `${progress}%` }} />
           </div>
-          <div className="card-preview__samples" role="group" aria-label="切换关系进度演示">
+          <div className="card-preview__samples" role="group" aria-label="切换好感度与卡面等级演示">
             {RELATIONSHIP_SAMPLES.map((item, idx) => (
               <button
                 key={item.label}
                 type="button"
                 className="card-preview__sample"
+                aria-label={`预览等级 ${item.level}：${item.label}`}
                 aria-pressed={idx === sampleIdx}
-                onClick={() => chooseSample(idx)}
+                onClick={() => setSampleIdx(idx)}
               >
-                {item.label}
+                Lv.{item.level} {item.label}
               </button>
             ))}
           </div>
@@ -66,20 +63,20 @@ export function CardPreviewPage() {
 
         <div className="card-preview__effect-control">
           <p className="card-preview__section-label">卡面效果</p>
-          <p className="card-preview__effect-copy">
-            {advancedUnlocked ? "默契阶段已解锁细闪效果。" : "基础角色照常可选；默契阶段解锁细闪效果。"}
+          <p className="card-preview__effect-copy">Lv.{sample.level} · {sample.effect}<br />{sample.detail}</p>
+          <p className="card-preview__effect-next">
+            {RELATIONSHIP_SAMPLES[sampleIdx + 1]
+              ? `下一阶：${RELATIONSHIP_SAMPLES[sampleIdx + 1].effect} · 待解锁`
+              : "最高级专属特效已解锁"}
           </p>
-          <button
-            type="button"
-            className="btn btn--secondary card-preview__effect-button"
-            disabled={!advancedUnlocked}
-            aria-pressed={foilEnabled}
-            onClick={() => setFoilEnabled((value) => !value)}
-          >
-            {advancedUnlocked ? (foilEnabled ? "关闭细闪" : "预览细闪") : "细闪未解锁"}
-          </button>
         </div>
       </section>
+
+      <CardShowcase
+        character={selected}
+        index={CARD_CHARACTERS.findIndex((character) => character.id === selected.id)}
+        sample={sample}
+      />
 
       <section className="card-preview__collection" aria-labelledby="card-list-title">
         <div className="card-preview__collection-head">
@@ -96,23 +93,15 @@ export function CardPreviewPage() {
               character={character}
               index={idx}
               selected={character.id === selected.id}
-              advancedUnlocked={advancedUnlocked}
-              advancedActive={foilEnabled}
+              effectLevel={sample.level}
+              effectLabel={sample.effect}
               onSelect={() => setSelectedId(character.id)}
             />
           ))}
         </div>
       </section>
 
-      <section className="card-preview__selected" aria-live="polite">
-        <div className="card-preview__selected-copy">
-          <p className="card-preview__section-label">预览中的选择</p>
-          <h2>{selected.name}<span>{selected.model?.label ?? "固定矢量默认形象"}</span></h2>
-          <p>{selected.model ? "当前唯一已接入的 Live2D 模型归大肥鱼所有。" : "此人格保持自己的默认徽记；目前没有可用的额外 Live2D 模型。"}</p>
-        </div>
-        <p className="card-preview__notice">只更改本页演示选择，不会切换应用角色或写入业务数据。</p>
-      </section>
-      <footer className="card-preview__footer">高阶效果只改变卡面表现，不会锁定角色、形象或正常聊天。</footer>
+      <footer className="card-preview__footer">低等级只展示基础卡面，不会锁定角色或默认形象；当前 Live2D 仍只归大肥鱼。所有点数均为固定演示数据。</footer>
     </main>
   );
 }

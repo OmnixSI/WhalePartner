@@ -24,6 +24,7 @@ interface Props {
   modelUrl: string;
   emotion: AvatarEmotion;
   speaking: boolean;
+  failureMessage?: string;
   audioDriven?: boolean;
   audioLevel?: { current: number };
   onReady?: () => void;
@@ -60,7 +61,7 @@ function watchSafeArea(host: HTMLElement, onChange: () => void) {
   return () => observer.disconnect();
 }
 
-export function Live2DStage({ modelUrl, emotion, speaking, audioDriven = false, audioLevel, onReady, onError, onTap }: Props) {
+export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audioDriven = false, audioLevel, onReady, onError, onTap }: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const emotionRef = useRef(emotion);
   const speakingRef = useRef(speaking);
@@ -421,7 +422,7 @@ export function Live2DStage({ modelUrl, emotion, speaking, audioDriven = false, 
   return (
     <>
       <div className="live2d" ref={mount} aria-hidden="true" data-stage={phase} />
-      <StageStatus phase={phase} onRetry={retry} />
+      <StageStatus phase={phase} onRetry={retry} failureMessage={failureMessage} />
     </>
   );
 }
