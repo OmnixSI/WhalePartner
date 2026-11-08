@@ -15,7 +15,7 @@ from mlx_audio.tts.utils import load_model
 protocol = sys.stdout
 sys.stdout = sys.stderr
 
-MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit"
+MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit"
 STREAMING_INTERVAL_SECONDS = 2.0
 DEEPSEEK_VOICE_STYLE = "清澈柔和、明亮温暖的年轻女性中文声线，带一点轻盈俏皮感，像亲切而有活力的朋友在近距离陪伴聊天。语速自然适中，咬字清楚，句尾有柔和起伏；避免童声、尖细夹嗓、夸张撒娇和播音腔。"
 EMOTION_STYLE = {

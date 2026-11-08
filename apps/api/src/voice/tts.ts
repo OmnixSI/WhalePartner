@@ -8,7 +8,7 @@ import { createInterface } from "node:readline";
 import type { Emotion } from "../emotion.ts";
 
 const execFileAsync = promisify(execFile);
-export const TTS_MODEL = "Qwen3-TTS 1.7B · MLX 8-bit · Serena";
+export const TTS_MODEL = "Qwen3-TTS 1.7B · MLX 4-bit · Serena";
 
 export interface TtsStatus {
   state: "idle" | "loading" | "ready" | "failed";

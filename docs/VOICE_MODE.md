@@ -5,7 +5,7 @@
 ## 识别、聊天与合成
 
 - ASR 使用 sherpa-onnx X-ASR 中文/英文 480 ms 流式模型，并对整句做离线精修。流式与离线模型使用不同的编码器和解码器权重：流式模型负责实时 partial，离线模型负责整句重识别。WhalePartner 自己的 RMS VAD 在约 700 ms 静音后收句；流式模型关闭内部端点检测，收句时补 400 ms 静音并冲刷剩余识别状态。随后同一 worker 用离线 X-ASR 模型重识别完整 PCM 句段并补 300 ms 尾音，非空精修稿作为最终稿。两套模型权重都从 WhalePartner 自己的应用数据目录加载；480 ms 是 ASR 块长，不控制 TTS。
-- TTS 使用 [`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit`](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit)，由 WhalePartner 独立 MLX-Audio Python 环境和本地常驻 worker 在 Apple Silicon 上运行，预置 Serena 音色。API 启动时异步加载模型并预热；首次启动会把权重下载到 WhalePartner 自己的应用数据目录。
+- TTS 使用 [`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit`](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit)，由 WhalePartner 独立 MLX-Audio Python 环境和本地常驻 worker 在 Apple Silicon 上运行，预置 Serena 音色。API 启动时异步加载模型并预热；首次启动会把权重下载到 WhalePartner 自己的应用数据目录。
 - 大肥鱼绑定 Serena 音色，并将稳定的角色音色描述与 LLM 发出的结构化情绪标签作为 Qwen3-TTS 指令。情绪标签同时驱动 Live2D 表情；Live2D 嘴型由实际播放 PCM 的 RMS 振幅驱动。
 - 回复按自然句界进入 TTS，不等待 LLM 完成整轮回答。过短的句子会和下一句合并，长句在逗号等自然分句标点处拆分。当前最小独立分段长度为 20 个字符。首句立即提交；首句合成期间已排队的后续句子，在角色与情绪一致且合计不超过 180 个字符时合为一个请求，避免每句重复启动模型并保留标点语气。模型流式块长为 2 秒，与 [MLX Audio 的 Qwen3-TTS 默认间隔](https://github.com/Blaizzy/mlx-audio/blob/main/docs/guides/streaming.md)一致；客户端按实测采用 1.44 秒播放预缓冲。
 - 每个 TTS 请求以 `segment-done` 标记单句完成；只有 LLM 已结束且本轮 TTS 队列排空后，客户端才向 AudioWorklet 发一次 `finish`。Worklet 在同一 turn 中保持播放状态，队列暂时耗尽时记录 underrun，不重置后再次预缓冲。日志包含 turn/segment/chunk 标识、TTS 首块和分块时间、缓冲量、欠载次数与时长、句界空白和打断原因。
@@ -27,9 +27,9 @@
 
 ## 本机验证
 
-测试设备为 Apple M4、16 GB 内存，MLX-Audio 0.6.4 / Python 3.12.7。X-ASR 使用本机两套 INT8 权重和 sherpa-onnx 1.13.8；合成的 4.96 秒中文音频按 100 ms 帧输入后，流式稿连续出现，两个自然句末均由 VAD 收句并产生离线精修稿。2 秒配置的桌面包启动后，API 状态显示 X-ASR 流式与离线精修、Qwen3-TTS 和本地记忆均为 ready。长语音测量期间，TTS worker `vmmap` 当前物理占用 3.1 GiB、进程峰值 6.2 GiB。
+测试设备为 Apple M4、16 GB 内存，MLX-Audio 0.6.4 / Python 3.12.7。X-ASR 使用本机两套 INT8 权重和 sherpa-onnx 1.13.8；合成的 4.96 秒中文音频按 100 ms 帧输入后，流式稿连续出现，两个自然句末均由 VAD 收句并产生离线精修稿。2 秒配置的桌面包启动后，API 状态显示 X-ASR 流式与离线精修、Qwen3-TTS 和本地记忆均为 ready。早期 8-bit 长语音测量期间，TTS worker `vmmap` 当前物理占用 3.1 GiB、进程峰值 6.2 GiB。
 
-真实 TTS 测试使用本机 Qwen3-TTS 1.7B 8-bit Serena，经本机 API 和 Chromium AudioWorklet 播放。测试捕获的是 Worklet 实际输出的 PCM；首声时间从发起首句请求计到 Worklet 启播，RTF 为整段请求生成耗时除以 PCM 时长。整轮协议只启动/排空一次 Worklet；对照逐句发送 `finish` 的协议，三句样本句间空白由 5.29 秒降至 3.86 秒，首声由 4.70 秒降至 3.35 秒。合并后续两句后，TTS 请求从 3 次降到 2 次，首声 2.30 秒、句间空白 0.89 秒、RTF 1.36，欠载静音 7.86 秒。
+早期整轮 AudioWorklet 回归使用本机 Qwen3-TTS 1.7B 8-bit Serena，经本机 API 和 Chromium AudioWorklet 播放。测试捕获的是 Worklet 实际输出的 PCM；首声时间从发起首句请求计到 Worklet 启播，RTF 为整段请求生成耗时除以 PCM 时长。整轮协议只启动/排空一次 Worklet；对照逐句发送 `finish` 的协议，三句样本句间空白由 5.29 秒降至 3.86 秒，首声由 4.70 秒降至 3.35 秒。合并后续两句后，TTS 请求从 3 次降到 2 次，首声 2.30 秒、句间空白 0.89 秒、RTF 1.36，欠载静音 7.86 秒。
 
 60 秒以上中文长测中，逐句请求生成 74.96 秒 PCM，用时 132.49 秒，RTF 1.77；Worklet 启动/排空各 1 次，欠载静音 56.50 秒。采用产品实际策略（首句立即合成，余句按不超过 180 字合并）后，10 句成为 4 个请求，生成 72.48 秒 PCM，用时 103.59 秒，RTF 1.43；Worklet 启动/排空仍各 1 次，34 次欠载共 29.56 秒，句间空白合计 5.86 秒。合批显著减少句界等待，但当前模型吞吐仍低于实时播放速度，长语音会出现句内静音。
 
@@ -45,7 +45,7 @@
 
 ### 模型加速候选
 
-Apple M4、16 GB 上对同一条 Serena 中文短句各预热后重复三次，MLX-Audio 的中位数如下。峰值 RSS 为 worker 进程值：
+Apple M4、16 GB 上对同一条 Serena 中文短句各预热后重复三次，MLX-Audio 的历史中位数如下。峰值 RSS 为 worker 进程值：
 
 | 量化 | RTF | 首块 | 峰值 RSS | 预热 |
 | --- | ---: | ---: | ---: | ---: |
@@ -53,18 +53,18 @@ Apple M4、16 GB 上对同一条 Serena 中文短句各预热后重复三次，M
 | 6-bit | 1.015 | 2.198 s | 2.93 GB | 0.82 s |
 | 4-bit | 0.859 | 1.872 s | 2.55 GB | 15.86 s |
 
-4-bit 候选通过真实 AudioWorklet 生成 101.44 s PCM、耗时 91.07 s（RTF 0.898），首声 2.07 s，欠载 0 次；合批场景生成 146.88 s、耗时 128.20 s（RTF 0.873），同样欠载 0 次。它仍未达到本轮 RTF ≤ 0.85 的门槛。
+4-bit 真实 AudioWorklet 长语音生成 101.44 s PCM，用时 91.07 s（RTF 0.898），首声 2.07 s、欠载 0 次；合批场景生成 146.88 s，用时 128.20 s（RTF 0.873），同样欠载 0 次。两项都低于当前 RTF <1 的要求。
 
-2026-11-09 通过 WhalePartner 的实际 1.7B 8-bit TTS worker，在 `HF_HUB_OFFLINE=1` 下从应用缓存载入模型并合成同一 Serena 短句：预热 6.664 s、首块 2.432 s、4 块共生成 6.88 s PCM，用时 7.694 s（短句 RTF 1.118）。随后用 WhalePartner 应用数据目录中的 X-ASR 480 ms 流式模型和离线精修模型对该输出与 4-bit 候选 WAV 转写。两者字词内容相同，但标点有差异：8-bit 为“你好，今天我们一起慢慢整理思路，无论遇到什么问题都可以一步一步来。”；4-bit 为“你好，今天我们一起慢慢整理思路，无论遇到什么问题，都可以一步一步来。”4-bit 候选时长 8.96 s。词句核对未发现增删字；音色和韵律仍需人工试听比较，因此不替换 8-bit 默认配置。
+2026-11-09 在 WhalePartner 常驻 worker 上用相同长中文段落重新比较。8-bit 生成 23.76 s PCM，用时 27.485 s（RTF 1.157），首块 2.877 s；4-bit 生成 28.88 s PCM，用时 25.633 s（RTF 0.888），首块 2.196 s。4-bit 在同一 worker 配置下低于 RTF 1，因而作为当前 TTS 模型；历史 8-bit 样本保留为基线。此前 X-ASR 对相同短句的 8-bit 和 4-bit 转写词句一致，仅有标点差异。
 
-Pure C/Metal 候选使用上游 [qwen3-tts](https://github.com/gabriele-mastrapasqua/qwen3-tts) MIT 代码，隔离版本为 `ef339be`。M4 上编译成功；运行 `./qwen_tts --gpu-selftest --backend metal` 时，批量 FFN 自检相对误差为 1.32 并失败，其他自检项（含单请求 fused FFN）通过。该数值正确性门槛未通过，因此未下载候选权重、未测模型 RTF，也未接入应用。
+Pure C/Metal 使用上游 [qwen3-tts](https://github.com/gabriele-mastrapasqua/qwen3-tts) MIT 代码，隔离版本为 `ef339be`。首次 `ffn_batched B=16` rel=1.32 来自 CPU 自检参考路径的 KleidiAI BF16 打包缓存：缓存只按权重指针索引，单 FFN 测试释放临时权重时没有注销缓存，下一组测试复用同一地址后，CPU 参考命中了旧打包权重。Metal 上传权重与输入布局正确，逐层 CPU/Metal 对照没有发现矩阵布局或输出缓冲复用错误。
 
-当前部署继续使用 Qwen3-TTS 1.7B MLX 8-bit。4-bit 与 Pure C/Metal 优化暂搁：4-bit 的字词核对没有发现差异，但 ASR 标点和音频时长有差异，听感对照尚未完成，长语音 RTF 仍高于 0.85；Pure C/Metal 的批量 FFN 数值自检失败。相应质量或正确性条件满足后再评估。
+自检现在对 B=1、2、8、16 分别比较 RMSNorm、Gate/Up、SwiGLU、Down、Residual 和融合 FFN；临时 CPU 参考权重在释放/复用前注销 KAI 缓存。最终 Metal kernel 在 `simdgroup_store` 后保留 threadgroup barrier，使临时共享缓冲的写入先于后续读取，符合 [Apple 的 Metal 内存同步要求](https://developer.apple.com/documentation/apple-silicon/porting-your-metal-code-to-apple-silicon)。`make metal_build` 后完整 `./qwen_tts --gpu-selftest --backend metal` 连续三次通过，B=16 融合 rel=0.00315，低于 0.005 阈值。
 
-2026-11-09 再次核对 Pure C/Metal 上游，远端 HEAD 仍为 `ef339be`，与此前未通过批量 FFN 数值自检的版本相同，本轮不重复下载权重或重跑已失败的候选。当前运行时 MLX 0.32.4 可导出 Metal `.gputrace`，但没有阶段级 profiler；本机也没有 `xctrace`，因此没有可靠的 Talker、Code Predictor、Speech Decoder 分项 GPU 耗时。只保留已同步完成的整段/分块 RTF 与 AudioWorklet 欠载数据，不以异步 Python 调用耗时替代 GPU 阶段计时。优化暂缓，默认仍为 1.7B 8-bit。
+最终 Pure C/Metal int4 在同一段中文上生成 25.44 s PCM，用时 28.5 s（RTF 1.12），TTFA 7.954 s，未达到 RTF <1 的要求，因此没有接入 WhalePartner。相同文本的 MLX 4-bit 常驻 worker RTF 为 0.888，生成 28.88 s PCM，用时 25.633 s，首块 2.196 s。Pure C/Metal 4-bit 的 Talker 和 Code Predictor 使用 resident Metal step；该构建的语音解码耗时 17.585 s 并与生成重叠，整轮依然受逐帧 Talker/Code Predictor 计算和 prefill 时间限制。
 
 ## 许可和接口
 
-Qwen3-TTS 1.7B 8-bit 模型卡标注 Apache-2.0；[MLX-Audio](https://github.com/mlx-audio/mlx-audio) 代码采用 MIT。WhalePartner 的 X-ASR 词表与许可说明位于 `apps/api/src/voice/assets/`；上游模型见 [Gilgamesh-J/X-ASR](https://github.com/Gilgamesh-J/X-ASR)。所有模型权重都留在 WhalePartner 用户数据目录。
+Qwen3-TTS 1.7B 模型及 MLX 社区量化变体沿用上游 Apache-2.0 许可；[MLX-Audio](https://github.com/mlx-audio/mlx-audio) 代码采用 MIT。WhalePartner 的 X-ASR 词表与许可说明位于 `apps/api/src/voice/assets/`；上游模型见 [Gilgamesh-J/X-ASR](https://github.com/Gilgamesh-J/X-ASR)。所有 WhalePartner 模型权重都留在其应用数据目录。
 
 语音 API 见 [`API.md`](API.md)：`/api/voice/asr/*` 提供 X-ASR 状态和 WebSocket 流；`/api/voice/tts/*` 提供 TTS 状态、准备和带 turn ID 的 NDJSON 音频流。
