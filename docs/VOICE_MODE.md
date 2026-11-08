@@ -43,6 +43,22 @@
 
 `pnpm --dir apps/client run voice-mode:check` 使用模拟 ASR、LLM 和 TTS，检查提前送入 TTS、情绪标签、单轮 `finish`、AudioWorklet 嘴型波形、用户打断、旧任务取消和麦克风轨道释放。该脚本只验证客户端流程，不作为模型性能数据。
 
+### 模型加速候选
+
+Apple M4、16 GB 上对同一条 Serena 中文短句各预热后重复三次，MLX-Audio 的中位数如下。峰值 RSS 为 worker 进程值：
+
+| 量化 | RTF | 首块 | 峰值 RSS | 预热 |
+| --- | ---: | ---: | ---: | ---: |
+| 8-bit | 1.124 | 2.398 s | 3.30 GB | 2.79 s |
+| 6-bit | 1.015 | 2.198 s | 2.93 GB | 0.82 s |
+| 4-bit | 0.859 | 1.872 s | 2.55 GB | 15.86 s |
+
+4-bit 候选通过真实 AudioWorklet 生成 101.44 s PCM、耗时 91.07 s（RTF 0.898），首声 2.07 s，欠载 0 次；合批场景生成 146.88 s、耗时 128.20 s（RTF 0.873），同样欠载 0 次。它仍未达到本轮 RTF ≤ 0.85 的门槛，且该轮没有完成 Serena 音质试听和 ASR 转写对照，因此不替换 8-bit 默认配置。
+
+Pure C/Metal 候选使用上游 [qwen3-tts](https://github.com/gabriele-mastrapasqua/qwen3-tts) MIT 代码，隔离版本为 `ef339be`。M4 上编译成功；运行 `./qwen_tts --gpu-selftest --backend metal` 时，批量 FFN 自检相对误差为 1.32 并失败，其他自检项（含单请求 fused FFN）通过。该数值正确性门槛未通过，因此未下载候选权重、未测模型 RTF，也未接入应用。
+
+当前部署继续使用 Qwen3-TTS 1.7B MLX 8-bit。4-bit 与 Pure C/Metal 优化暂搁，等待音质验证或上游 Metal 自检通过后再评估。
+
 ## 许可和接口
 
 Qwen3-TTS 1.7B 8-bit 模型卡标注 Apache-2.0；[MLX-Audio](https://github.com/mlx-audio/mlx-audio) 代码采用 MIT。WhalePartner 的 X-ASR 词表与许可说明位于 `apps/api/src/voice/assets/`；上游模型见 [Gilgamesh-J/X-ASR](https://github.com/Gilgamesh-J/X-ASR)。所有模型权重都留在 WhalePartner 用户数据目录。
