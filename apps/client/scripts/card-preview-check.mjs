@@ -27,42 +27,25 @@ try {
     if (url.pathname.startsWith("/api/")) apiRequests.push(request.url());
     if (url.pathname.startsWith("/live2d/")) live2dRequests.push(url.pathname);
   });
-  await page.addInitScript(() => {
-    localStorage.setItem("wp.character", "claude");
-    const drawArrays = WebGLRenderingContext.prototype.drawArrays;
-    WebGLRenderingContext.prototype.drawArrays = function (...args) {
-      const result = drawArrays.apply(this, args);
-      if (this.canvas.classList.contains("card-preview__foil-shader")) {
-        const pixel = new Uint8Array(4);
-        this.readPixels(Math.floor(this.drawingBufferWidth / 2), Math.floor(this.drawingBufferHeight / 2), 1, 1, this.RGBA, this.UNSIGNED_BYTE, pixel);
-        window.__foilPixel = Array.from(pixel);
-      }
-      return result;
-    };
-  });
+  await page.addInitScript(() => localStorage.setItem("wp.character", "claude"));
   await page.goto(base, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
 
   assert.equal(await page.getByRole("heading", { name: "角色闪卡" }).count(), 1);
   assert.equal(await page.locator(".card-preview__card").count(), 4);
-  assert.equal(await page.getByRole("button", { name: /预览等级/ }).count(), 5);
+  assert.equal(await page.getByRole("button", { name: /预览等级/ }).count(), 4);
   assert.match(await page.locator("body").innerText(), /固定演示值，不代表真实账号/);
-  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "5");
+  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "4");
   await page.locator(".card-preview__hero-model .live2d[data-stage='ready']").waitFor({ state: "visible", timeout: 30000 });
   assert.equal(await page.locator(".card-preview__hero-model canvas").count(), 1);
   const modelHeightRatio = await page.locator(".card-preview__hero-model .live2d").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--stage-char-h")));
   const modelWidthRatio = await page.locator(".card-preview__hero-model .live2d").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--stage-char-w")));
   assert.ok(modelHeightRatio >= 1.05, `card model height ratio is too small: ${modelHeightRatio}`);
   assert.ok(modelWidthRatio >= 1, `card model width ratio is too small: ${modelWidthRatio}`);
-  await page.locator(".card-preview__foil-shader[data-shader-state='ready']").waitFor({ state: "visible", timeout: 10000 });
-  assert.equal(await page.locator(".card-preview__foil-shader").count(), 1);
   assert.ok(live2dRequests.includes("/live2d/whale-maid/c_0120.model3.json"));
   assert.ok(live2dRequests.includes("/live2d/libs/live2dcubismcore.min.js"));
   assert.match(await page.locator(".card-preview__model-status").innerText(), /Live2D 已载入/);
   assert.equal(await page.evaluate(() => localStorage.getItem("wp.character")), "claude");
-  await page.waitForTimeout(100);
-  const restingFoilPixel = await page.evaluate(() => window.__foilPixel);
-  assert.ok(Array.isArray(restingFoilPixel) && restingFoilPixel[3] > 20, `resting foil is too transparent: ${restingFoilPixel}`);
 
   const initialFontSize = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
   await page.evaluate(() => document.documentElement.style.setProperty("--scale", "1.25"));
@@ -72,18 +55,14 @@ try {
 
   await page.locator(".card-preview__hero").hover({ position: { x: 42, y: 128 } });
   await page.waitForTimeout(250);
-  const tiltedFoilPixel = await page.evaluate(() => window.__foilPixel);
-  assert.ok(Array.isArray(tiltedFoilPixel) && tiltedFoilPixel[3] > 20, `tilted foil is too transparent: ${tiltedFoilPixel}`);
-  const hueShift = restingFoilPixel.slice(0, 3).reduce((shift, channel, index) => shift + Math.abs(channel - tiltedFoilPixel[index]), 0);
-  assert.ok(hueShift > 50, `foil color did not respond to angle: ${restingFoilPixel} -> ${tiltedFoilPixel}`);
-  await page.screenshot({ path: `${shots}/desktop-foil-1440x960.png`, fullPage: true });
-  await page.locator(".card-preview__hero").screenshot({ path: `${shots}/hero-card-foil.png` });
+  assert.notEqual(await page.locator(".card-preview__hero").getAttribute("data-tilt-y"), "0");
+  await page.screenshot({ path: `${shots}/desktop-level4-1440x960.png`, fullPage: true });
+  await page.locator(".card-preview__hero").screenshot({ path: `${shots}/hero-card-lv4-exclusive.png` });
 
   const modelLoadCount = live2dRequests.filter((path) => path === "/live2d/whale-maid/c_0120.model3.json").length;
   await page.getByRole("button", { name: "预览等级 1：初识" }).click();
   assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "1");
   assert.equal(await page.locator(".card-preview__particles").count(), 0);
-  assert.equal(await page.locator(".card-preview__foil-shader").count(), 0);
   assert.equal(await page.getByRole("button", { name: /选择小克/ }).isEnabled(), true);
   await page.screenshot({ path: `${shots}/desktop-locked-1440x960.png`, fullPage: true });
 
@@ -108,8 +87,7 @@ try {
   await page.locator(".card-preview__hero").hover({ position: { x: 42, y: 128 } });
   await page.waitForTimeout(250);
   await page.locator(".card-preview__hero").screenshot({ path: `${shots}/hero-card-lv4-exclusive.png` });
-  await page.getByRole("button", { name: "预览等级 5：相依" }).click();
-  assert.equal(await page.locator(".card-preview__foil-shader").getAttribute("data-shader-state"), "ready");
+  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "4");
   assert.equal(live2dRequests.filter((path) => path === "/live2d/whale-maid/c_0120.model3.json").length, modelLoadCount);
 
   const claudeCard = page.getByRole("button", { name: /选择小克/ });
@@ -121,10 +99,9 @@ try {
   assert.equal(await page.evaluate(() => localStorage.getItem("wp.character")), "claude");
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const animationNames = await page.locator(".card-preview__card[data-foil='true'] .card-preview__shine, .card-preview__hero-holo, .card-preview__hero-sheen, .card-preview__hero-light, .card-preview__particles span").evaluateAll((elements) => elements.map((el) => getComputedStyle(el).animationName));
+  const animationNames = await page.locator(".card-preview__hero-sheen, .card-preview__hero-light, .card-preview__hero-orbit, .card-preview__particles span").evaluateAll((elements) => elements.map((el) => getComputedStyle(el).animationName));
   assert.ok(animationNames.length >= 4);
   assert.deepEqual([...new Set(animationNames)], ["none"]);
-  assert.equal(await page.locator(".card-preview__foil-shader").evaluate((el) => getComputedStyle(el).opacity), "0.74");
   await page.emulateMedia({ reducedMotion: "no-preference" });
   assert.deepEqual(apiRequests, []);
   assert.deepEqual(errors, []);
@@ -165,6 +142,51 @@ try {
   assert.deepEqual(mobileApiRequests, []);
   assert.deepEqual(mobileErrors, []);
   await mobileContext.close();
+
+  const appContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  const appPage = await appContext.newPage();
+  const appErrors = [];
+  appPage.on("pageerror", (error) => appErrors.push(error.message));
+  await appPage.addInitScript(() => {
+    localStorage.setItem("wp.onboarded", "1");
+    localStorage.setItem("wp.character", "deepseek");
+  });
+  await appPage.goto(new URL("/settings", base).toString(), { waitUntil: "domcontentloaded" });
+  await appPage.getByRole("button", { name: "换一位" }).click();
+  const characterDialog = appPage.getByRole("dialog", { name: "换一位" });
+  await characterDialog.locator(".card-preview__hero-model .live2d[data-stage='ready']").waitFor({ state: "visible", timeout: 30000 });
+  const appCard = characterDialog.locator(".card-preview__hero");
+  assert.equal(await appCard.getAttribute("data-character"), "deepseek");
+  assert.equal(await appCard.getAttribute("data-level"), "1");
+  assert.equal(await characterDialog.locator(".card-preview__hero-seal").innerText(), "默认形象");
+  assert.equal(await characterDialog.locator(".card-preview__hero-bottom").innerText().then((text) => text.includes("基础卡面")), true);
+  assert.equal(await characterDialog.locator(".card-preview__tier-next").count(), 0);
+  assert.match(await characterDialog.innerText(), /好感度进度尚未接入/);
+  assert.doesNotMatch(await characterDialog.innerText(), /\b\d+ 点\b|\b\d+\s*\/\s*\d+\b/);
+  await appPage.screenshot({ path: `${shots}/role-card-dialog-1440x960.png` });
+  await characterDialog.getByRole("button", { name: /小克/ }).click();
+  await appCard.waitFor({ state: "visible" });
+  await appCard.evaluate((el) => el.getAttribute("data-character") === "claude" || new Promise((resolve) => {
+    const observer = new MutationObserver(() => {
+      if (el.getAttribute("data-character") === "claude") {
+        observer.disconnect();
+        resolve(true);
+      }
+    });
+    observer.observe(el, { attributes: true, attributeFilter: ["data-character"] });
+  }));
+  assert.equal(await appPage.evaluate(() => localStorage.getItem("wp.character")), "claude");
+  assert.equal(await characterDialog.locator(".card-preview__hero-model").count(), 0);
+  await characterDialog.getByRole("button", { name: "好" }).click();
+  assert.equal(await appPage.locator(".set-her__name").innerText(), "小克");
+  await appPage.setViewportSize({ width: 390, height: 844 });
+  await appPage.getByRole("button", { name: "换一位" }).click();
+  const mobileDialog = appPage.getByRole("dialog", { name: "换一位" });
+  await mobileDialog.locator(".card-preview__hero").waitFor({ state: "visible" });
+  const appOverflow = await appPage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(appOverflow <= 0, `role selector horizontal overflow: ${appOverflow}px`);
+  assert.deepEqual(appErrors, []);
+  await appContext.close();
   console.log(`角色闪卡检查通过；截图保存至 ${shots}`);
 } finally {
   await browser.close();

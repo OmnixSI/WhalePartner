@@ -6,7 +6,7 @@ import "./card-preview.css";
 
 export function CardPreviewPage() {
   const [selectedId, setSelectedId] = useState("deepseek");
-  const [sampleIdx, setSampleIdx] = useState(4);
+  const [sampleIdx, setSampleIdx] = useState(3);
   const sample = RELATIONSHIP_SAMPLES[sampleIdx];
   const selected = CARD_CHARACTERS.find((character) => character.id === selectedId) ?? CARD_CHARACTERS[0];
   const progress = sampleIdx === RELATIONSHIP_SAMPLES.length - 1
@@ -23,7 +23,7 @@ export function CardPreviewPage() {
         <div>
           <p className="card-preview__eyebrow">WHALEPARTNER · CHARACTER COLLECTION</p>
           <h1>角色闪卡</h1>
-          <p className="card-preview__lead">好感越深，卡面越完整。从立体视差、动态画面，到专属粒子与全息镀闪。移动指针或手指倾斜卡面，查看人物分层与镀闪如何随角度变化。</p>
+          <p className="card-preview__lead">好感越深，卡面越完整。从立体视差、动态画面，到专属光环与星芒。移动指针或手指倾斜卡面，查看人物分层与光影变化。</p>
         </div>
         <span className="card-preview__demo">独立预览 · 演示数据</span>
       </header>
@@ -69,7 +69,7 @@ export function CardPreviewPage() {
           <p className="card-preview__effect-next">
             {RELATIONSHIP_SAMPLES[sampleIdx + 1]
               ? `下一阶：${RELATIONSHIP_SAMPLES[sampleIdx + 1].effect} · 待解锁`
-              : "最高级镀闪效果已解锁"}
+              : "最高级专属特效已解锁"}
           </p>
         </div>
       </section>

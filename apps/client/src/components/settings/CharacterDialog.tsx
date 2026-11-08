@@ -4,7 +4,9 @@
  */
 import { Dialog } from "radix-ui";
 import { useEffect, useId, useRef } from "react";
-import { CHARACTERS, setCharacter, useCharacter, useModel } from "../../characters";
+import { CHARACTERS, setCharacter, useCharacter } from "../../characters";
+import { CARD_CHARACTERS, RELATIONSHIP_SAMPLES } from "../../card-preview/data";
+import { CardShowcase } from "../../card-preview/CardShowcase";
 import { setCompanionMood } from "../CompanionCorner";
 import { CharacterMark } from "../CharacterMark";
 
@@ -15,7 +17,8 @@ type Props = {
 
 export function CharacterDialog({ open, onOpenChange }: Props) {
   const character = useCharacter();
-  const model = useModel();
+  const cardCharacter = CARD_CHARACTERS.find((item) => item.id === character.id) ?? CARD_CHARACTERS[0];
+  const characterIndex = CHARACTERS.findIndex((item) => item.id === character.id);
   const titleId = useId();
   const descId = useId();
   const changed = useRef(false);
@@ -40,8 +43,15 @@ export function CharacterDialog({ open, onOpenChange }: Props) {
             换一位
           </Dialog.Title>
           <Dialog.Description className="set-dialog__body" id={descId}>
-            每个人格有自己的口吻；聊天、记忆、日记和见闻共用。每个人格使用固定的默认形象，选好就换，不用保存。
+            每个人格有自己的口吻；聊天、记忆、日记和见闻共用。选好角色卡就会切换人格，不用保存。
           </Dialog.Description>
+
+          <CardShowcase
+            character={cardCharacter}
+            index={characterIndex}
+            sample={RELATIONSHIP_SAMPLES[0]}
+            showProgress={false}
+          />
 
           <ul className="set-chars">
             {CHARACTERS.map((item) => {
@@ -70,12 +80,6 @@ export function CharacterDialog({ open, onOpenChange }: Props) {
               );
             })}
           </ul>
-
-          <div className="set-models">
-            <p className="set-models__title">{character.name}的默认形象</p>
-            <p className="set-models__current">{model?.label ?? "鲸鱼贴纸"}</p>
-            {!model && <p className="set-models__note">当前没有可用建模，聊天时使用贴纸形象。</p>}
-          </div>
 
           <div className="set-dialog__actions">
             <Dialog.Close className="btn btn--secondary">好</Dialog.Close>

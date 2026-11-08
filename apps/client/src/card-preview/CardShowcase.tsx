@@ -2,7 +2,6 @@ import { useEffect, useState, type PointerEvent } from "react";
 import { Live2DStage } from "../avatar/Live2DStage";
 import type { AvatarEmotion } from "../avatar/model.config";
 import { CharacterMark } from "../components/CharacterMark";
-import { CardFoilShader } from "./CardFoilShader";
 import { CardParticles } from "./CardParticles";
 import { RELATIONSHIP_SAMPLES, type CardCharacter, type RelationshipSample } from "./data";
 import "./card-showcase.css";
@@ -11,6 +10,7 @@ type Props = {
   character: CardCharacter;
   index: number;
   sample: RelationshipSample;
+  showProgress?: boolean;
 };
 
 const EXPRESSIONS: ReadonlyArray<{ value: AvatarEmotion; label: string }> = [
@@ -59,7 +59,7 @@ function resetTilt(event: PointerEvent<HTMLElement>) {
   event.currentTarget.style.setProperty("--parallax-model-y", "0px");
 }
 
-export function CardShowcase({ character, index, sample }: Props) {
+export function CardShowcase({ character, index, sample, showProgress = true }: Props) {
   const [emotion, setEmotion] = useState<AvatarEmotion>("neutral");
   const [stage, setStage] = useState<"loading" | "ready" | "failed" | "static">(character.model ? "loading" : "static");
   const [tapCount, setTapCount] = useState(0);
@@ -86,11 +86,10 @@ export function CardShowcase({ character, index, sample }: Props) {
       >
         <div className="card-preview__hero-back" aria-hidden="true" />
         <div className="card-preview__hero-face">
-          <div className="card-preview__hero-holo" aria-hidden="true" />
           <div className="card-preview__hero-sheen" aria-hidden="true" />
           <div className="card-preview__hero-top">
             <span>No.{String(index + 1).padStart(2, "0")} · WHALE PARTNER</span>
-            <span className="card-preview__hero-seal">Lv.{sample.level} · {sample.label}</span>
+            <span className="card-preview__hero-seal">{showProgress ? `Lv.${sample.level} · ${sample.label}` : "默认形象"}</span>
           </div>
           <div className="card-preview__hero-art" aria-label={`${character.name} 的形象预览`}>
             <div className="card-preview__hero-light" aria-hidden="true" />
@@ -118,7 +117,6 @@ export function CardShowcase({ character, index, sample }: Props) {
             {sample.level >= 4 && <CardParticles />}
             <span className="card-preview__hero-art-caption">{model ? "触碰互动" : "默认形象"}</span>
           </div>
-          {sample.level === 5 && <CardFoilShader />}
           <div className="card-preview__hero-copy">
             <div>
               <p className="card-preview__hero-latin">{character.latin}</p>
@@ -126,7 +124,7 @@ export function CardShowcase({ character, index, sample }: Props) {
             </div>
             <div className="card-preview__hero-bottom">
               <span>{model?.label ?? "固定矢量默认形象"}</span>
-              <span>Lv.{sample.level} · {sample.effect}</span>
+              <span>{showProgress ? `Lv.${sample.level} · ${sample.effect}` : "基础卡面"}</span>
             </div>
           </div>
         </div>
@@ -136,13 +134,17 @@ export function CardShowcase({ character, index, sample }: Props) {
         <p className="card-preview__section-label">当前卡面</p>
         <h2>{character.name}<span>{model?.label ?? "固定矢量默认形象"}</span></h2>
         <p className="card-preview__showcase-intro">
-          {model
-            ? `这张卡直接使用应用里已绑定给大肥鱼的 Live2D 模型，悬停和卡面特效不会重载。Lv.${sample.level} ${sample.effect}：${sample.detail}。`
-            : "此人格目前没有可合法接入的 Live2D 文件，预览保留自己的固定默认形象，不借用其他角色的模型。"}
+          {showProgress
+            ? model
+              ? `这张卡直接使用应用里已绑定给大肥鱼的 Live2D 模型，悬停和卡面特效不会重载。Lv.${sample.level} ${sample.effect}：${sample.detail}。`
+              : "此人格目前没有可合法接入的 Live2D 文件，预览保留自己的固定默认形象，不借用其他角色的模型。"
+            : "当前角色卡使用已绑定的默认形象。好感度进度尚未接入，应用暂时展示基础卡面。"}
         </p>
-        <p className="card-preview__tier-next">
-          {nextSample ? `下一阶段：Lv.${nextSample.level} ${nextSample.effect} · 待解锁` : "最高级镀闪卡面已解锁"}
-        </p>
+        {showProgress && (
+          <p className="card-preview__tier-next">
+            {nextSample ? `下一阶段：Lv.${nextSample.level} ${nextSample.effect} · 待解锁` : "最高级专属特效已解锁"}
+          </p>
+        )}
 
         {model ? (
           <>
@@ -172,10 +174,16 @@ export function CardShowcase({ character, index, sample }: Props) {
             </details>
           </>
         ) : (
-          <p className="card-preview__showcase-note">大肥鱼的 Live2D 只归大肥鱼使用；GPT、Claude 和鲸汐不会显示或复用它。</p>
+          <p className="card-preview__showcase-note">
+            {showProgress
+              ? "大肥鱼的 Live2D 只归大肥鱼使用；GPT、Claude 和鲸汐不会显示或复用它。"
+              : "该角色目前没有可用的 Live2D 模型，卡面展示其固定默认形象。"}
+          </p>
         )}
 
-        <p className="card-preview__showcase-boundary">只更改本页演示选择，不会切换应用角色或写入业务数据。</p>
+        <p className="card-preview__showcase-boundary">
+          {showProgress ? "只更改本页演示选择，不会切换应用角色或写入业务数据。" : "选择本卡会立即切换当前人格；聊天、记忆、日记和见闻仍共享。"}
+        </p>
       </div>
     </section>
   );

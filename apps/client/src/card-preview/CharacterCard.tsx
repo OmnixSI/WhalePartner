@@ -44,7 +44,6 @@ export function CharacterCard({ character, index, selected, effectLevel, effectL
       data-character={character.id}
       data-level={effectLevel}
       data-selected={selected ? "true" : "false"}
-      data-foil={selected && effectLevel === 5 ? "true" : "false"}
       aria-pressed={selected}
       aria-label={aria}
       onClick={onSelect}
@@ -55,7 +54,6 @@ export function CharacterCard({ character, index, selected, effectLevel, effectL
       <span className="card-preview__underlay card-preview__underlay--back" aria-hidden="true" />
       <span className="card-preview__underlay card-preview__underlay--front" aria-hidden="true" />
       <span className="card-preview__face">
-        <span className="card-preview__shine" aria-hidden="true" />
         <span className="card-preview__card-top">
           <span className="card-preview__index">No.{String(index + 1).padStart(2, "0")}</span>
           <span className="card-preview__seal">{selected ? "已选" : "鲸汐角色"}</span>
