@@ -14,16 +14,8 @@ from mlx_audio.tts.utils import load_model
 protocol = sys.stdout
 sys.stdout = sys.stderr
 
-MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit"
+MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
 STREAMING_INTERVAL_SECONDS = 0.96
-INSTRUCT = {
-    "neutral": "用自然、平和、亲切的语气说话。",
-    "happy": "用开心、轻快、带着笑意的语气说话。",
-    "sad": "用温柔、略带难过但仍关心对方的语气说话。",
-    "angry": "用克制、略带不满但不尖刻的语气说话。",
-    "surprised": "用惊喜、明亮的语气说话。",
-    "relaxed": "用放松、柔和、从容的语气说话。",
-}
 commands = queue.Queue()
 cancelled = set()
 cancel_lock = threading.Lock()
@@ -60,10 +52,7 @@ def clear_cancel(request_id):
 
 def synthesize(model, request):
     request_id = request.get("requestId")
-    emotion = request.get("emotion", "neutral")
     text = request.get("text", "").strip()
-    if emotion not in INSTRUCT:
-        raise ValueError("Unsupported emotion")
     if not text:
         raise ValueError("TTS text is empty")
 
@@ -71,7 +60,6 @@ def synthesize(model, request):
         text=text,
         speaker="Serena",
         language="Chinese",
-        instruct=INSTRUCT[emotion],
         stream=True,
         streaming_interval=STREAMING_INTERVAL_SECONDS,
         verbose=False,
@@ -101,7 +89,6 @@ def main():
         text="好。",
         speaker="Serena",
         language="Chinese",
-        instruct=INSTRUCT["neutral"],
         stream=True,
         streaming_interval=STREAMING_INTERVAL_SECONDS,
         verbose=False,

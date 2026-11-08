@@ -29,8 +29,9 @@ interface SpeechControls {
 
 interface VoiceOutputControls {
   isEnabled: () => boolean;
-  append: (text: string, emotion: AvatarEmotion) => void;
-  finish: () => void;
+  beginTurn: (turnId: string) => void;
+  append: (text: string, turnId: string) => void;
+  finish: (turnId: string) => void;
 }
 
 export interface ChatFailureInfo {
@@ -354,6 +355,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
       const meKey = nextKey();
       const herKey = nextKey();
       const clientId = retryClientId ?? newClientId();
+      voiceOutputRef.current?.beginTurn(clientId);
       ownClientIds.current.add(clientId);
       const at = new Date().toISOString();
       setDraft("");
@@ -374,7 +376,6 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
       abort.current = ctrl;
       let started = false;
       let gotText = false;
-      let replyEmotion: AvatarEmotion = "neutral";
       try {
         for await (const event of streamChat(message, characterId, sessionIdRef.current, ctrl.signal, clientId)) {
           if (event.type === "ack") {
@@ -388,13 +389,12 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
               setTurns((prev) => updateTurn(prev, meKey, (turn) => ({ ...turn, status: "sent" })));
             }
             const voice = voiceOutputRef.current;
-            if (voice?.isEnabled()) voice.append(event.text, replyEmotion);
+            if (voice?.isEnabled()) voice.append(event.text, clientId);
             else speech.append(event.text);
             pushDelta(herKey, event.text);
           } else if (event.type === "video" || event.type === "web") {
             setProgress({ kind: event.type, stage: event.stage, message: event.message, title: event.title });
           } else if (event.type === "emotion") {
-            replyEmotion = event.emotion;
             setEmotion(event.emotion);
             setTurns((prev) => updateTurn(prev, herKey, (turn) => ({ ...turn, emotion: event.emotion })));
           } else if (event.type === "done") {
@@ -413,13 +413,13 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
         setPhase("idle");
         setFocusSignal((value) => value + 1);
         speech.finish();
-        voiceOutputRef.current?.finish();
+        voiceOutputRef.current?.finish(clientId);
       } catch (error) {
         flushDelta();
         if (ctrl.signal.aborted) {
           // 打断：已经说出来的部分保留（服务端同样入库并标记 interrupted）。
           speech.finish();
-          voiceOutputRef.current?.finish();
+          voiceOutputRef.current?.finish(clientId);
           if (gotText) {
             setTurns((prev) => updateTurn(updateTurn(prev, herKey, (turn) => ({ ...turn, status: "done", interrupted: true })), meKey, (turn) => ({ ...turn, status: "sent" })));
           } else {
@@ -431,7 +431,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
           return;
         }
         speech.reset();
-        voiceOutputRef.current?.finish();
+        voiceOutputRef.current?.finish(clientId);
         const info: ChatFailureInfo = error instanceof ChatError
           ? { code: error.code, message: error.message }
           : { code: "unknown", message: describeChatFailure("http", error instanceof Error ? error.message : undefined) };

@@ -198,7 +198,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
           {voiceModel?.state === "loading" && voiceModel.progress !== null && (
             <span className="composer__voice-progress">本地模型 {voiceModel.progress}%</span>
           )}
-          {voiceTtsStatus?.state === "loading" && <span className="composer__voice-progress">正在准备情绪语音</span>}
+          {voiceTtsStatus?.state === "loading" && <span className="composer__voice-progress">正在准备语音模型</span>}
           {voicePhase === "error" && <button type="button" className="composer__voice-retry" onClick={onRetryVoice}>重试</button>}
         </div>
       )}

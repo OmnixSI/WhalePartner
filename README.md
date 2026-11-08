@@ -49,7 +49,7 @@ pnpm --dir apps/client run tauri build      # 首次编译 Rust 约 3 分钟；�
 - 打开 App 即可：它自己选端口、生成随机令牌、启动后端，健康检查通过后才显示窗口。**不用先启动后端，也不会弹出终端。**
 - 关窗口即退出，后端随之停止。「后台继续逛」打开后，关窗口只是隐藏，托盘菜单里可以「打开鲸汐 / 退出鲸汐」。
 - 数据放在系统的应用数据目录（macOS：`~/Library/Application Support/com.omnixsi.whalepartner/`），日志放在应用日志目录的 `api.log`。模型密钥在 **设置 › 模型接入** 里填，保存在数据目录的 `.env`（打包版读它，不读仓库里的 `apps/api/.env`）。
-- macOS 本机开发包使用稳定的自签代码签名身份，保持麦克风等隐私权限与同一应用身份关联；首次打开仍可能需要在「隐私与安全性」中手动允许。此身份只用于本机开发，不提供公证或公开分发信任；正式分发仍需 Developer ID 与公证。新开发环境请按[本机 macOS 签名说明](docs/MACOS_LOCAL_SIGNING.md)配置自己的稳定身份。请在 Node 26 下打包，后端运行时取自打包时的 Node。
+- macOS 本机开发包使用 ad-hoc 签名，不与其他应用共用签名身份。重建后 macOS 可能再次询问麦克风等隐私权限；首次打开可在「隐私与安全性」中手动允许。此签名只用于本机开发，不提供公证或公开分发信任；正式分发仍需 Developer ID 与公证。需要稳定的本机 TCC 身份时，按[本机 macOS 签名说明](docs/MACOS_LOCAL_SIGNING.md)为 WhalePartner 单独创建证书。请在 Node 26 下打包，后端运行时取自打包时的 Node。
 - 开发调试：`pnpm --dir apps/client run tauri dev` 会自动拉起后端，不用另开终端（后端读 `apps/api/.env`）。
 
 ### 浏览器开发模式（所有平台）

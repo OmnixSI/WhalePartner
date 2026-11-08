@@ -8,6 +8,7 @@ export interface VoiceModelStatus {
   progress: number | null;
   message: string;
   model?: string;
+  offlineRefinement?: "idle" | "loading" | "ready" | "unavailable";
 }
 
 const SPEECH_RMS = 0.018;
@@ -25,6 +26,7 @@ interface AsrMessage {
   text?: string;
   message?: string;
   model?: string;
+  offlineRefinement?: VoiceModelStatus["offlineRefinement"];
 }
 
 interface PcmFrame {
@@ -137,7 +139,12 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
         if (settled) return;
         settled = true;
         window.clearTimeout(timeout);
-        if (data.model) setModel((current) => ({ ...current, state: "ready", model: data.model }));
+        if (data.model) setModel((current) => ({
+          ...current,
+          state: "ready",
+          model: data.model,
+          offlineRefinement: data.offlineRefinement,
+        }));
         resolve();
         return;
       }
@@ -266,7 +273,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
       if (!active.current || token !== generation.current) return;
       await connectAudio(token);
       setPhase("listening");
-      setMessage("语音模式已就绪。停顿后会自动提交识别结果，可以随时打断她。");
+      setMessage("语音模式已就绪。停顿约 700 ms 后会提交整句精修结果，可以随时打断她。");
     } catch (error) {
       if (!active.current || token !== generation.current) return;
       const cause = error as DOMException;

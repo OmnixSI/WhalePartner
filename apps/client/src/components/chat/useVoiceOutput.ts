@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AvatarEmotion } from "../../avatar/model.config";
 import { API_BASE } from "../../lib/api";
 import type { VoiceModelStatus } from "./useVoiceMode";
+import { takeSpeechSegments } from "./voice-segments";
+import pcmPlaybackWorkletUrl from "./pcm-playback-worklet.ts?worker&url";
 
 interface Segment {
   text: string;
-  emotion: AvatarEmotion;
+  turnId: string;
 }
 
 interface TtsMessage {
@@ -13,8 +14,10 @@ interface TtsMessage {
   sampleRate?: number;
   pcm16?: string;
   message?: string;
+  turnId?: string;
 }
 
+const PLAYBACK_SAMPLE_RATE = 24_000;
 const PLAYBACK_PREROLL_SECONDS = 1.92;
 
 export function useVoiceOutput() {
@@ -27,13 +30,12 @@ export function useVoiceOutput() {
   const analyser = useRef<AnalyserNode | null>(null);
   const waveform = useRef<Float32Array<ArrayBuffer> | null>(null);
   const audioLevel = useRef(0);
-  const playbackAt = useRef(0);
-  const sources = useRef(new Set<AudioBufferSourceNode>());
-  const pendingAudio = useRef<AudioBuffer[]>([]);
-  const playbackPrimed = useRef(false);
+  const playbackNode = useRef<AudioWorkletNode | null>(null);
+  const playbackReady = useRef<Promise<AudioWorkletNode> | null>(null);
+  const playbackActive = useRef(false);
   const queue = useRef<Segment[]>([]);
   const pendingText = useRef("");
-  const pendingEmotion = useRef<AvatarEmotion>("neutral");
+  const activeTurnId = useRef<string | null>(null);
   const running = useRef(false);
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
@@ -43,7 +45,7 @@ export function useVoiceOutput() {
 
   const ensureAudio = useCallback(() => {
     if (!audioContext.current || audioContext.current.state === "closed") {
-      const context = new AudioContext();
+      const context = new AudioContext({ latencyHint: "interactive", sampleRate: PLAYBACK_SAMPLE_RATE });
       const node = context.createAnalyser();
       node.fftSize = 512;
       node.connect(context.destination);
@@ -102,7 +104,7 @@ export function useVoiceOutput() {
   const updateLevel = useCallback(() => {
     const node = analyser.current;
     const data = waveform.current;
-    if (!node || !data || sources.current.size === 0) {
+    if (!node || !data || !playbackActive.current) {
       audioLevel.current = 0;
       frame.current = 0;
       return;
@@ -115,7 +117,7 @@ export function useVoiceOutput() {
   }, []);
 
   const updateSpeaking = useCallback(() => {
-    const active = sources.current.size > 0;
+    const active = playbackActive.current;
     setSpeaking(active);
     if (active && !frame.current) frame.current = window.requestAnimationFrame(updateLevel);
     if (!active) {
@@ -125,38 +127,43 @@ export function useVoiceOutput() {
     }
   }, [updateLevel]);
 
-  const flushAudio = useCallback(async (token: number, force = false) => {
-    if (token !== generation.current || !enabledRef.current) return;
+  const ensurePlayback = useCallback(async () => {
     const context = ensureAudio();
-    if (context.state !== "running") await context.resume();
-    if (token !== generation.current || !enabledRef.current) return;
-    const bufferedSeconds = pendingAudio.current.reduce((total, buffer) => total + buffer.duration, 0);
-    if (!playbackPrimed.current && !force && bufferedSeconds < PLAYBACK_PREROLL_SECONDS) return;
-    playbackPrimed.current = true;
-    while (pendingAudio.current.length > 0) {
-      const buffer = pendingAudio.current.shift();
-      if (!buffer || token !== generation.current || !enabledRef.current) return;
-      const source = context.createBufferSource();
-      source.buffer = buffer;
-      source.connect(analyser.current ?? context.destination);
-      sources.current.add(source);
-      source.onended = () => {
-        sources.current.delete(source);
-        source.disconnect();
-        if (queue.current.length === 0 && !running.current && sources.current.size === 0) {
-          playbackPrimed.current = false;
+    if (playbackNode.current) return playbackNode.current;
+    if (playbackReady.current) return playbackReady.current;
+    const pending = (async () => {
+      await context.audioWorklet.addModule(pcmPlaybackWorkletUrl);
+      if (audioContext.current !== context || context.state === "closed") throw new Error("语音播放设备已关闭。");
+      const node = new AudioWorkletNode(context, "whale-pcm-playback", {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+      });
+      node.port.onmessage = ({ data }: MessageEvent<{ type?: string }>) => {
+        if (data.type === "started") {
+          playbackActive.current = true;
+          updateSpeaking();
+        } else if (data.type === "drained") {
+          playbackActive.current = false;
           updateSpeaking();
         }
       };
-      const startsAt = Math.max(context.currentTime + 0.025, playbackAt.current);
-      source.start(startsAt);
-      playbackAt.current = startsAt + buffer.duration;
+      node.port.postMessage({ type: "configure", prerollSamples: Math.ceil(context.sampleRate * PLAYBACK_PREROLL_SECONDS) });
+      node.connect(analyser.current ?? context.destination);
+      playbackNode.current = node;
+      return node;
+    })();
+    playbackReady.current = pending;
+    try {
+      return await pending;
+    } catch (error) {
+      if (playbackReady.current === pending) playbackReady.current = null;
+      throw error;
     }
-    updateSpeaking();
   }, [ensureAudio, updateSpeaking]);
 
-  const playChunk = useCallback(async (chunk: TtsMessage, token: number) => {
-    if (token !== generation.current || !enabledRef.current || !chunk.pcm16 || !chunk.sampleRate) return;
+  const playChunk = useCallback(async (chunk: TtsMessage, token: number, turnId: string) => {
+    if (token !== generation.current || activeTurnId.current !== turnId || !enabledRef.current || !chunk.pcm16 || !chunk.sampleRate) return;
     const raw = atob(chunk.pcm16);
     const samples = new Float32Array(Math.floor(raw.length / 2));
     for (let i = 0; i < samples.length; i += 1) {
@@ -164,13 +171,12 @@ export function useVoiceOutput() {
       samples[i] = (value >= 0x8000 ? value - 0x10000 : value) / 32768;
     }
     const context = ensureAudio();
+    if (chunk.sampleRate !== context.sampleRate) throw new Error("语音采样率与播放设备不匹配。");
+    const node = await ensurePlayback();
     if (context.state !== "running") await context.resume();
-    if (token !== generation.current || !enabledRef.current) return;
-    const buffer = context.createBuffer(1, samples.length, chunk.sampleRate);
-    buffer.copyToChannel(samples, 0);
-    pendingAudio.current.push(buffer);
-    await flushAudio(token);
-  }, [ensureAudio, flushAudio]);
+    if (token !== generation.current || activeTurnId.current !== turnId || !enabledRef.current) return;
+    node.port.postMessage({ type: "push", samples }, [samples.buffer]);
+  }, [ensureAudio, ensurePlayback]);
 
   const synthesize = useCallback(async (segment: Segment, token: number) => {
     const controller = new AbortController();
@@ -188,11 +194,17 @@ export function useVoiceOutput() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let carry = "";
+    let completed = false;
     const readLine = async (line: string) => {
       if (!line.trim()) return;
       const message = JSON.parse(line) as TtsMessage;
-      if (message.type === "audio") await playChunk(message, token);
+      if (message.turnId !== segment.turnId || activeTurnId.current !== segment.turnId || token !== generation.current) return;
+      if (message.type === "audio") await playChunk(message, token, segment.turnId);
       else if (message.type === "error") throw new Error(message.message || "本地语音生成失败。");
+      else if (message.type === "done") {
+        completed = true;
+        playbackNode.current?.port.postMessage({ type: "finish" });
+      }
     };
     try {
       while (true) {
@@ -205,12 +217,21 @@ export function useVoiceOutput() {
         if (result.done) break;
       }
       await readLine(carry);
-      await flushAudio(token, true);
+      if (!completed && token === generation.current && activeTurnId.current === segment.turnId) {
+        throw new Error("本地语音流没有正常结束。");
+      }
+    } catch (error) {
+      if (token === generation.current && activeTurnId.current === segment.turnId) {
+        playbackNode.current?.port.postMessage({ type: "stop" });
+        playbackActive.current = false;
+        updateSpeaking();
+      }
+      throw error;
     } finally {
       reader.releaseLock();
       if (request.current === controller) request.current = null;
     }
-  }, [flushAudio, playChunk]);
+  }, [playChunk, updateSpeaking]);
 
   const pump = useCallback(async () => {
     if (running.current || !enabledRef.current) return;
@@ -229,52 +250,43 @@ export function useVoiceOutput() {
       if (token === generation.current) {
         running.current = false;
         if (queue.current.length > 0 && enabledRef.current) void pump();
-        else if (sources.current.size === 0) {
-          playbackPrimed.current = false;
-          updateSpeaking();
-        }
+        else if (!playbackActive.current) updateSpeaking();
       }
     }
   }, [synthesize, updateSpeaking]);
 
-  const enqueueText = useCallback((text: string, emotion: AvatarEmotion, flush: boolean) => {
-    if (!enabledRef.current || (!text && !flush)) return;
+  const enqueueText = useCallback((turnId: string, text: string, flush: boolean) => {
+    if (activeTurnId.current !== turnId || !enabledRef.current || (!text && !flush)) return;
     pendingText.current += text;
-    if (text) pendingEmotion.current = emotion;
-    if (!flush) return;
-    const response = pendingText.current.trim();
-    pendingText.current = "";
-    if (response) {
-      queue.current.push({ text: response, emotion: pendingEmotion.current });
-      pendingEmotion.current = "neutral";
-    }
-    void pump();
+    const segments = takeSpeechSegments(pendingText.current, flush);
+    pendingText.current = segments.remainder;
+    queue.current.push(...segments.ready.map((segment) => ({ text: segment, turnId })));
+    if (segments.ready.length > 0) void pump();
   }, [pump]);
 
-  const append = useCallback((text: string, emotion: AvatarEmotion) => {
+  const append = useCallback((text: string, turnId: string) => {
     setError((current) => current ? "" : current);
-    enqueueText(text, emotion, false);
+    enqueueText(turnId, text, false);
   }, [enqueueText]);
-  const finish = useCallback(() => enqueueText("", "neutral", true), [enqueueText]);
+  const finish = useCallback((turnId: string) => enqueueText(turnId, "", true), [enqueueText]);
 
   const stop = useCallback(() => {
     generation.current += 1;
+    activeTurnId.current = null;
     request.current?.abort();
     request.current = null;
     queue.current = [];
     pendingText.current = "";
-    pendingEmotion.current = "neutral";
-    pendingAudio.current = [];
-    playbackPrimed.current = false;
     running.current = false;
-    playbackAt.current = 0;
-    for (const source of sources.current) {
-      try { source.stop(); } catch { /* 已结束的片段 */ }
-      source.disconnect();
-    }
-    sources.current.clear();
+    playbackNode.current?.port.postMessage({ type: "stop" });
+    playbackActive.current = false;
     updateSpeaking();
   }, [updateSpeaking]);
+
+  const beginTurn = useCallback((turnId: string) => {
+    stop();
+    activeTurnId.current = turnId;
+  }, [stop]);
 
   const setEnabled = useCallback((value: boolean) => {
     if (enabledRef.current === value) return;
@@ -282,6 +294,7 @@ export function useVoiceOutput() {
     setEnabledState(value);
     if (value) {
       ensureAudio();
+      void ensurePlayback().catch((error: unknown) => setError(error instanceof Error ? error.message : "语音播放设备准备失败。"));
       void warm().catch(() => {});
     } else {
       stop();
@@ -290,27 +303,34 @@ export function useVoiceOutput() {
       warmPromise.current = null;
       const context = audioContext.current;
       audioContext.current = null;
+      playbackNode.current?.disconnect();
+      playbackNode.current = null;
+      playbackReady.current = null;
       analyser.current = null;
       waveform.current = null;
       if (context && context.state !== "closed") void context.close();
     }
-  }, [ensureAudio, stop, warm]);
+  }, [ensureAudio, ensurePlayback, stop, warm]);
 
   const activate = useCallback((value: boolean) => {
     setEnabled(value);
     if (value) {
       const context = ensureAudio();
       if (context.state !== "running") void context.resume();
+      void ensurePlayback().catch((error: unknown) => setError(error instanceof Error ? error.message : "语音播放设备准备失败。"));
     }
-  }, [ensureAudio, setEnabled]);
+  }, [ensureAudio, ensurePlayback, setEnabled]);
 
   useEffect(() => () => {
     stop();
     warmRequest.current?.abort();
     const context = audioContext.current;
     audioContext.current = null;
+    playbackNode.current?.disconnect();
+    playbackNode.current = null;
+    playbackReady.current = null;
     if (context && context.state !== "closed") void context.close();
   }, [stop]);
 
-  return { enabled, speaking, error, model, audioLevel, activate, setEnabled, append, finish, stop, isEnabled: () => enabledRef.current };
+  return { enabled, speaking, error, model, audioLevel, activate, setEnabled, beginTurn, append, finish, stop, isEnabled: () => enabledRef.current };
 }

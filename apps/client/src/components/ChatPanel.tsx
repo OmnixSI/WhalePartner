@@ -136,7 +136,7 @@ export function ChatPanel({ character }: Props) {
       : voiceOutput.model.state === "failed" || voiceOutput.error
         ? `语音输入仍可用，语音回复暂不可用：${voiceOutput.error || voiceOutput.model.message}`
         : voiceOutput.model.state === "loading"
-          ? `${voice.message} 正在准备情绪语音模型。`
+          ? `${voice.message} 正在准备语音模型。`
           : voiceOutput.speaking
             ? "大肥鱼正在回答；继续说话可以打断。"
             : voice.message;
