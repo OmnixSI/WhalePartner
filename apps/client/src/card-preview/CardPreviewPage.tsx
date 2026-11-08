@@ -9,9 +9,7 @@ export function CardPreviewPage() {
   const [sampleIdx, setSampleIdx] = useState(3);
   const sample = RELATIONSHIP_SAMPLES[sampleIdx];
   const selected = CARD_CHARACTERS.find((character) => character.id === selectedId) ?? CARD_CHARACTERS[0];
-  const progress = sampleIdx === RELATIONSHIP_SAMPLES.length - 1
-    ? 100
-    : Math.round((sample.points / sample.next) * 100);
+  const progress = sampleIdx === RELATIONSHIP_SAMPLES.length - 1 ? 100 : 0;
 
   useEffect(() => {
     document.documentElement.setAttribute("data-character", selected.id);

@@ -3,7 +3,7 @@ import { Live2DStage } from "../avatar/Live2DStage";
 import type { AvatarEmotion } from "../avatar/model.config";
 import { CharacterMark } from "../components/CharacterMark";
 import { CardParticles } from "./CardParticles";
-import { RELATIONSHIP_SAMPLES, type CardCharacter, type RelationshipSample } from "./data";
+import { RELATIONSHIP_SAMPLES, type CardCharacter, type RelationshipProgress, type RelationshipSample } from "./data";
 import "./card-showcase.css";
 
 type Props = {
@@ -11,6 +11,8 @@ type Props = {
   index: number;
   sample: RelationshipSample;
   showProgress?: boolean;
+  relationship?: RelationshipProgress | null;
+  relationshipStatus?: "loading" | "error";
 };
 
 const EXPRESSIONS: ReadonlyArray<{ value: AvatarEmotion; label: string }> = [
@@ -59,7 +61,7 @@ function resetTilt(event: PointerEvent<HTMLElement>) {
   event.currentTarget.style.setProperty("--parallax-model-y", "0px");
 }
 
-export function CardShowcase({ character, index, sample, showProgress = true }: Props) {
+export function CardShowcase({ character, index, sample, showProgress = true, relationship, relationshipStatus }: Props) {
   const [emotion, setEmotion] = useState<AvatarEmotion>("neutral");
   const [stage, setStage] = useState<"loading" | "ready" | "failed" | "static">(character.model ? "loading" : "static");
   const [tapCount, setTapCount] = useState(0);
@@ -138,8 +140,37 @@ export function CardShowcase({ character, index, sample, showProgress = true }: 
             ? model
               ? `这张卡直接使用应用里已绑定给大肥鱼的 Live2D 模型，悬停和卡面特效不会重载。Lv.${sample.level} ${sample.effect}：${sample.detail}。`
               : "此人格目前没有可合法接入的 Live2D 文件，预览保留自己的固定默认形象，不借用其他角色的模型。"
-            : "当前角色卡使用已绑定的默认形象。好感度进度尚未接入，应用暂时展示基础卡面。"}
+            : relationshipStatus === "loading"
+              ? "当前角色卡使用已绑定的默认形象，正在读取真实好感度与对应卡面等级。"
+              : relationshipStatus === "error"
+                ? "当前角色卡使用已绑定的默认形象；暂时无法读取好感度，重试后会显示对应等级。"
+                : "当前角色卡使用已绑定的默认形象。"}
         </p>
+        {relationship && (
+          <div className="card-preview__live-progress">
+            <div className="card-preview__live-progress-head">
+              <span>真实好感度 · {relationship.points} 点</span>
+              <span>Lv.{relationship.level} {relationship.label}</span>
+            </div>
+            <div
+              className="card-preview__progress"
+              role="progressbar"
+              aria-label="当前角色好感度进度"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={relationship.progress}
+            >
+              <span style={{ width: `${relationship.progress}%` }} />
+            </div>
+            <p className="card-preview__tier-next">
+              {relationship.nextThreshold === null
+                ? "已解锁最高级专属特效"
+                : `下一阶段还需 ${Math.max(0, relationship.nextThreshold - relationship.points)} 点好感`}
+            </p>
+          </div>
+        )}
+        {relationshipStatus === "loading" && <p className="card-preview__tier-next" role="status">正在读取好感度…</p>}
+        {relationshipStatus === "error" && <p className="card-preview__tier-next" role="status">好感度暂不可读取，请重试。</p>}
         {showProgress && (
           <p className="card-preview__tier-next">
             {nextSample ? `下一阶段：Lv.${nextSample.level} ${nextSample.effect} · 待解锁` : "最高级专属特效已解锁"}
