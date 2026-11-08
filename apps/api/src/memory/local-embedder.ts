@@ -30,6 +30,10 @@ export class LocalEmbedder {
     return this.#extractor;
   }
 
+  async warm(): Promise<void> {
+    await this.#load();
+  }
+
   async embedDocuments(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
     const extractor = await this.#load();

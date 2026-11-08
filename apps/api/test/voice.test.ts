@@ -7,7 +7,7 @@ import { loadConfig } from "../src/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import type { AsrService, AsrStatus, AsrUpdate } from "../src/voice/asr.ts";
-import type { TtsService, TtsStatus } from "../src/voice/tts.ts";
+import type { TtsService, TtsStatus, TtsStreamContext } from "../src/voice/tts.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
 
@@ -36,15 +36,15 @@ function fakeAsr(): AsrService & { received: Buffer[]; setUpdate(update: AsrUpda
   };
 }
 
-function fakeTts(): TtsService & { received: Array<{ text: string }> } {
-  const received: Array<{ text: string }> = [];
+function fakeTts(): TtsService & { received: Array<{ text: string; context?: TtsStreamContext }> } {
+  const received: Array<{ text: string; context?: TtsStreamContext }> = [];
   let current: TtsStatus = { state: "idle", progress: null, message: "待准备", model: "TTS fixture", speaker: "Fixture" };
   return {
     received,
     status: () => current,
     async warm() { current = { ...current, state: "ready", progress: 100, message: "已就绪" }; },
-    async stream(text, onChunk) {
-      received.push({ text });
+    async stream(text, onChunk, _signal, context) {
+      received.push({ text, context });
       onChunk({ sampleRate: 24_000, pcm16: "AAABAA==" });
     },
   };
@@ -73,14 +73,18 @@ test("voice routes stream X-ASR PCM and segmented TTS audio", async () => {
     const ttsResponse = await fetch(`${base}/api/voice/tts/stream`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "你好，今天聊聊吧。", turnId: "voice-turn-1" }),
+      body: JSON.stringify({ text: "你好，今天聊聊吧。", turnId: "voice-turn-1", segmentIndex: 2, characterId: "deepseek", emotion: "happy" }),
     });
     assert.equal(ttsResponse.status, 200);
     const ttsLines = (await ttsResponse.text()).trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
     assert.deepEqual(ttsLines.map((line) => line.type), ["meta", "audio", "done"]);
     assert.ok(ttsLines.every((line) => line.turnId === "voice-turn-1"));
+    assert.ok(ttsLines.every((line) => line.segmentIndex === 2));
     assert.equal(ttsLines[1].sampleRate, 24_000);
-    assert.deepEqual(tts.received, [{ text: "你好，今天聊聊吧。" }]);
+    assert.deepEqual(tts.received, [{
+      text: "你好，今天聊聊吧。",
+      context: { turnId: "voice-turn-1", segmentIndex: 2, characterId: "deepseek", emotion: "happy" },
+    }]);
     const invalidTts = await fetch(`${base}/api/voice/tts/stream`, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -30,8 +30,9 @@ interface SpeechControls {
 interface VoiceOutputControls {
   isEnabled: () => boolean;
   beginTurn: (turnId: string) => void;
-  append: (text: string, turnId: string) => void;
+  append: (text: string, turnId: string, emotion: AvatarEmotion, characterId: CharacterId) => void;
   finish: (turnId: string) => void;
+  stop: (reason?: string) => void;
 }
 
 export interface ChatFailureInfo {
@@ -96,6 +97,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
   const lastActivityRef = useRef(Date.now());
   const abort = useRef<AbortController | null>(null);
   const voiceOutputRef = useRef(voiceOutput);
+  const voiceEmotionRef = useRef<AvatarEmotion>("neutral");
   const voicePlayingRef = useRef(voicePlaying);
   const inflight = useRef<Promise<void> | null>(null);
   const ownClientIds = useRef(new Set<string>());
@@ -356,6 +358,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
       const herKey = nextKey();
       const clientId = retryClientId ?? newClientId();
       voiceOutputRef.current?.beginTurn(clientId);
+      voiceEmotionRef.current = "neutral";
       ownClientIds.current.add(clientId);
       const at = new Date().toISOString();
       setDraft("");
@@ -389,12 +392,13 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
               setTurns((prev) => updateTurn(prev, meKey, (turn) => ({ ...turn, status: "sent" })));
             }
             const voice = voiceOutputRef.current;
-            if (voice?.isEnabled()) voice.append(event.text, clientId);
+            if (voice?.isEnabled()) voice.append(event.text, clientId, voiceEmotionRef.current, characterId);
             else speech.append(event.text);
             pushDelta(herKey, event.text);
           } else if (event.type === "video" || event.type === "web") {
             setProgress({ kind: event.type, stage: event.stage, message: event.message, title: event.title });
           } else if (event.type === "emotion") {
+            voiceEmotionRef.current = event.emotion;
             setEmotion(event.emotion);
             setTurns((prev) => updateTurn(prev, herKey, (turn) => ({ ...turn, emotion: event.emotion })));
           } else if (event.type === "done") {

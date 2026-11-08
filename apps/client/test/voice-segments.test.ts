@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { takeSpeechSegments } from "../src/components/chat/voice-segments.ts";
+import { takeQueuedSpeechBatch, takeSpeechSegments } from "../src/components/chat/voice-segments.ts";
 
 test("releases a complete natural sentence without waiting for the reply to finish", () => {
-  const result = takeSpeechSegments("第一句内容足够完整，可以先开始合成。第二句还在生成");
-  assert.deepEqual(result.ready, ["第一句内容足够完整，可以先开始合成。"]);
+  const sentence = "第一句内容已经足够完整，而且表达了清楚的意思，我们可以先开始合成。";
+  const result = takeSpeechSegments(`${sentence}第二句还在生成`);
+  assert.deepEqual(result.ready, [sentence]);
   assert.equal(result.remainder, "第二句还在生成");
 });
 
 test("keeps a short sentence with the next sentence to preserve a natural phrase", () => {
   const first = takeSpeechSegments("嗯。", false);
   assert.deepEqual(first.ready, []);
-  const next = takeSpeechSegments(`${first.remainder}我会认真听你说完。`, false);
-  assert.deepEqual(next.ready, ["嗯。我会认真听你说完。"]);
+  const next = takeSpeechSegments(`${first.remainder}我会认真听你说完，也会记住你刚才提到的细节。`, false);
+  assert.deepEqual(next.ready, ["嗯。我会认真听你说完，也会记住你刚才提到的细节。"]);
+});
+
+test("combines consecutive short sentences until the request is long enough", () => {
+  const result = takeSpeechSegments("好。嗯。可以。我们现在就开始处理这件事。");
+  assert.deepEqual(result.ready, ["好。嗯。可以。我们现在就开始处理这件事。"]);
+  assert.equal(result.remainder, "");
 });
 
 test("splits a long sentence at a clause boundary instead of cutting at a character count", () => {
@@ -30,4 +37,33 @@ test("flushes the final unfinished phrase at turn completion", () => {
     ready: ["最后这句还没有句号"],
     remainder: "",
   });
+});
+
+test("batches queued sentences after the first request without crossing emotion or character boundaries", () => {
+  const first = { text: "首句。", turnId: "turn-1", segmentIndex: 0, emotion: "neutral", characterId: "deepseek" };
+  const queued = [
+    { text: "第二句。", turnId: "turn-1", segmentIndex: 1, emotion: "neutral", characterId: "deepseek" },
+    { text: "Third sentence.", turnId: "turn-1", segmentIndex: 2, emotion: "neutral", characterId: "deepseek" },
+    { text: "开心的语气。", turnId: "turn-1", segmentIndex: 3, emotion: "happy", characterId: "deepseek" },
+    { text: "另一个角色。", turnId: "turn-1", segmentIndex: 4, emotion: "happy", characterId: "serena" },
+  ];
+
+  const batch = takeQueuedSpeechBatch(first, queued);
+
+  assert.equal(batch.text, "首句。第二句。 Third sentence.");
+  assert.deepEqual(batch.sourceSegmentIndices, [0, 1, 2]);
+  assert.deepEqual(queued.map((segment) => segment.segmentIndex), [3, 4]);
+});
+
+test("keeps a batch within the TTS request length while leaving remaining sentences queued", () => {
+  const first = { text: "首句。", turnId: "turn-2", segmentIndex: 0, emotion: "neutral", characterId: "deepseek" };
+  const queued = [
+    { text: "第二句。", turnId: "turn-2", segmentIndex: 1, emotion: "neutral", characterId: "deepseek" },
+    { text: "第三句。", turnId: "turn-2", segmentIndex: 2, emotion: "neutral", characterId: "deepseek" },
+  ];
+
+  const batch = takeQueuedSpeechBatch(first, queued, 8);
+
+  assert.equal(batch.text, "首句。第二句。");
+  assert.deepEqual(queued.map((segment) => segment.segmentIndex), [2]);
 });

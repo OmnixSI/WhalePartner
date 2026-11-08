@@ -9,7 +9,7 @@ const TAG_PARTIAL = /^[\[［【]\s*(?:(?:e(?:m(?:o(?:t(?:i(?:o(?:n)?)?)?)?)?)?)?
 const TAG_ANY = /[\[［【]\s*emotion\s*[:：]\s*([a-z]+)\s*[\]］】]/gi;
 const MAX_TAG_LENGTH = 32;
 
-function isEmotion(value: string): value is Emotion {
+export function isEmotion(value: string): value is Emotion {
   return (EMOTIONS as readonly string[]).includes(value);
 }
 

@@ -1,24 +1,49 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
+import { logVoiceDiagnostic } from "../../lib/voice-diagnostics";
+import type { CharacterId } from "../../characters";
+import type { AvatarEmotion } from "../../avatar/model.config";
 import type { VoiceModelStatus } from "./useVoiceMode";
-import { takeSpeechSegments } from "./voice-segments";
+import { takeQueuedSpeechBatch, takeSpeechSegments, type QueuedSpeechSegment } from "./voice-segments";
 import pcmPlaybackWorkletUrl from "./pcm-playback-worklet.ts?worker&url";
 
-interface Segment {
-  text: string;
-  turnId: string;
+interface Segment extends QueuedSpeechSegment {
+  emotion: AvatarEmotion;
+  characterId: CharacterId;
 }
 
 interface TtsMessage {
   type: "meta" | "audio" | "done" | "error";
   sampleRate?: number;
   pcm16?: string;
+  chunkIndex?: number;
+  elapsedMs?: number;
+  audioDurationMs?: number;
+  segmentIndex?: number;
   message?: string;
   turnId?: string;
 }
 
+interface PlaybackMessage {
+  type?: string;
+  phase?: string;
+  turnId?: string;
+  segmentIndex?: number;
+  previousSegmentIndex?: number;
+  chunkIndex?: number;
+  bufferedSamples?: number;
+  bufferedMs?: number;
+  underrunCount?: number;
+  durationMs?: number;
+  gapMs?: number;
+  reason?: string;
+  expectedTurnId?: string;
+  receivedTurnId?: string;
+  outputRms?: number;
+}
+
 const PLAYBACK_SAMPLE_RATE = 24_000;
-const PLAYBACK_PREROLL_SECONDS = 1.92;
+const PLAYBACK_PREROLL_SECONDS = 1.44;
 
 export function useVoiceOutput() {
   const [enabled, setEnabledState] = useState(false);
@@ -36,6 +61,13 @@ export function useVoiceOutput() {
   const queue = useRef<Segment[]>([]);
   const pendingText = useRef("");
   const activeTurnId = useRef<string | null>(null);
+  const pendingEmotion = useRef<AvatarEmotion>("neutral");
+  const pendingCharacterId = useRef<CharacterId>("deepseek");
+  const turnFinished = useRef<string | null>(null);
+  const finishSent = useRef<string | null>(null);
+  const nextSegmentIndex = useRef(0);
+  const lastSegmentDoneAt = useRef<number | null>(null);
+  const bufferedMs = useRef(0);
   const running = useRef(false);
   const generation = useRef(0);
   const request = useRef<AbortController | null>(null);
@@ -139,7 +171,26 @@ export function useVoiceOutput() {
         numberOfOutputs: 1,
         outputChannelCount: [1],
       });
-      node.port.onmessage = ({ data }: MessageEvent<{ type?: string }>) => {
+      node.port.onmessage = ({ data }: MessageEvent<PlaybackMessage>) => {
+        if (data.type === "buffer") bufferedMs.current = data.bufferedMs ?? 0;
+        if (data.type === "buffer" || data.type === "started" || data.type === "drained" || data.type?.startsWith("underrun") || data.type === "segment-boundary" || data.type === "turn-mismatch" || data.type === "stopped") {
+          logVoiceDiagnostic(`worklet-${data.type}`, {
+            turnId: data.turnId,
+            phase: data.phase,
+            segmentIndex: data.segmentIndex,
+            previousSegmentIndex: data.previousSegmentIndex,
+            chunkIndex: data.chunkIndex,
+            bufferedSamples: data.bufferedSamples,
+            bufferedMs: data.bufferedMs === undefined ? undefined : Math.round(data.bufferedMs * 10) / 10,
+            underrunCount: data.underrunCount,
+            durationMs: data.durationMs === undefined ? undefined : Math.round(data.durationMs * 10) / 10,
+            gapMs: data.gapMs === undefined ? undefined : Math.round(data.gapMs * 10) / 10,
+            reason: data.reason,
+            expectedTurnId: data.expectedTurnId,
+            receivedTurnId: data.receivedTurnId,
+            outputRms: data.outputRms === undefined ? undefined : Math.round(data.outputRms * 10000) / 10000,
+          });
+        }
         if (data.type === "started") {
           playbackActive.current = true;
           updateSpeaking();
@@ -162,8 +213,21 @@ export function useVoiceOutput() {
     }
   }, [ensureAudio, updateSpeaking]);
 
-  const playChunk = useCallback(async (chunk: TtsMessage, token: number, turnId: string) => {
-    if (token !== generation.current || activeTurnId.current !== turnId || !enabledRef.current || !chunk.pcm16 || !chunk.sampleRate) return;
+  const playChunk = useCallback(async (chunk: TtsMessage, token: number, segment: Segment) => {
+    if (token !== generation.current || activeTurnId.current !== segment.turnId || !enabledRef.current || !chunk.pcm16 || !chunk.sampleRate) return;
+    const receivedAt = performance.now();
+    const interSegmentMs = chunk.chunkIndex !== 0 || lastSegmentDoneAt.current === null
+      ? null
+      : receivedAt - lastSegmentDoneAt.current;
+    logVoiceDiagnostic("client-tts-chunk", {
+      turnId: segment.turnId,
+      segmentIndex: segment.segmentIndex,
+      chunkIndex: chunk.chunkIndex,
+      elapsedMs: chunk.elapsedMs,
+      audioDurationMs: chunk.audioDurationMs,
+      interSegmentMs: interSegmentMs === null ? null : Math.round(interSegmentMs * 10) / 10,
+      bufferedMs: Math.round(bufferedMs.current * 10) / 10,
+    });
     const raw = atob(chunk.pcm16);
     const samples = new Float32Array(Math.floor(raw.length / 2));
     for (let i = 0; i < samples.length; i += 1) {
@@ -174,13 +238,57 @@ export function useVoiceOutput() {
     if (chunk.sampleRate !== context.sampleRate) throw new Error("语音采样率与播放设备不匹配。");
     const node = await ensurePlayback();
     if (context.state !== "running") await context.resume();
-    if (token !== generation.current || activeTurnId.current !== turnId || !enabledRef.current) return;
-    node.port.postMessage({ type: "push", samples }, [samples.buffer]);
+    if (token !== generation.current || activeTurnId.current !== segment.turnId || !enabledRef.current) return;
+    node.port.postMessage({
+      type: "push",
+      samples,
+      turnId: segment.turnId,
+      segmentIndex: segment.segmentIndex,
+      chunkIndex: chunk.chunkIndex,
+    }, [samples.buffer]);
   }, [ensureAudio, ensurePlayback]);
+
+  const stop = useCallback((reason = "cancelled") => {
+    const turnId = activeTurnId.current;
+    logVoiceDiagnostic("client-voice-stop", {
+      turnId,
+      reason,
+      queuedSegments: queue.current.length,
+      bufferedMs: Math.round(bufferedMs.current * 10) / 10,
+      requestInFlight: request.current !== null,
+    });
+    generation.current += 1;
+    activeTurnId.current = null;
+    turnFinished.current = null;
+    finishSent.current = null;
+    request.current?.abort();
+    request.current = null;
+    queue.current = [];
+    pendingText.current = "";
+    running.current = false;
+    nextSegmentIndex.current = 0;
+    lastSegmentDoneAt.current = null;
+    pendingEmotion.current = "neutral";
+    pendingCharacterId.current = "deepseek";
+    bufferedMs.current = 0;
+    playbackNode.current?.port.postMessage({ type: "stop", reason });
+    playbackActive.current = false;
+    updateSpeaking();
+  }, [updateSpeaking]);
 
   const synthesize = useCallback(async (segment: Segment, token: number) => {
     const controller = new AbortController();
     request.current = controller;
+    const startedAt = performance.now();
+    logVoiceDiagnostic("client-tts-segment-start", {
+      turnId: segment.turnId,
+      segmentIndex: segment.segmentIndex,
+      sourceSegmentIndices: segment.sourceSegmentIndices?.join(","),
+      textLength: segment.text.length,
+      emotion: segment.emotion,
+      characterId: segment.characterId,
+      previousSegmentDoneMsAgo: lastSegmentDoneAt.current === null ? null : Math.round((startedAt - lastSegmentDoneAt.current) * 10) / 10,
+    });
     const response = await fetch(`${API_BASE}/api/voice/tts/stream`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -198,12 +306,19 @@ export function useVoiceOutput() {
     const readLine = async (line: string) => {
       if (!line.trim()) return;
       const message = JSON.parse(line) as TtsMessage;
-      if (message.turnId !== segment.turnId || activeTurnId.current !== segment.turnId || token !== generation.current) return;
-      if (message.type === "audio") await playChunk(message, token, segment.turnId);
+      if (message.turnId !== segment.turnId || message.segmentIndex !== segment.segmentIndex || activeTurnId.current !== segment.turnId || token !== generation.current) return;
+      if (message.type === "audio") await playChunk(message, token, segment);
       else if (message.type === "error") throw new Error(message.message || "本地语音生成失败。");
       else if (message.type === "done") {
         completed = true;
-        playbackNode.current?.port.postMessage({ type: "finish" });
+        lastSegmentDoneAt.current = performance.now();
+        logVoiceDiagnostic("client-tts-segment-done", {
+          turnId: segment.turnId,
+          segmentIndex: segment.segmentIndex,
+          elapsedMs: Math.round((lastSegmentDoneAt.current - startedAt) * 10) / 10,
+          bufferedMs: Math.round(bufferedMs.current * 10) / 10,
+        });
+        playbackNode.current?.port.postMessage({ type: "segment-done", turnId: segment.turnId, segmentIndex: segment.segmentIndex });
       }
     };
     try {
@@ -222,7 +337,7 @@ export function useVoiceOutput() {
       }
     } catch (error) {
       if (token === generation.current && activeTurnId.current === segment.turnId) {
-        playbackNode.current?.port.postMessage({ type: "stop" });
+        stop("tts-error");
         playbackActive.current = false;
         updateSpeaking();
       }
@@ -231,7 +346,7 @@ export function useVoiceOutput() {
       reader.releaseLock();
       if (request.current === controller) request.current = null;
     }
-  }, [playChunk, updateSpeaking]);
+  }, [playChunk, stop, updateSpeaking]);
 
   const pump = useCallback(async () => {
     if (running.current || !enabledRef.current) return;
@@ -239,8 +354,22 @@ export function useVoiceOutput() {
     const token = generation.current;
     try {
       while (enabledRef.current && token === generation.current && queue.current.length > 0) {
-        const segment = queue.current.shift();
-        if (segment) await synthesize(segment, token);
+        const first = queue.current.shift();
+        if (first) {
+          const segment = takeQueuedSpeechBatch(first, queue.current, 180);
+          if (segment.sourceSegmentIndices && segment.sourceSegmentIndices.length > 1) {
+            logVoiceDiagnostic("client-tts-batch", {
+              turnId: segment.turnId,
+              firstSegmentIndex: segment.sourceSegmentIndices[0],
+              lastSegmentIndex: segment.sourceSegmentIndices.at(-1),
+              sourceSegmentCount: segment.sourceSegmentIndices.length,
+              textLength: segment.text.length,
+              emotion: segment.emotion,
+              characterId: segment.characterId,
+            });
+          }
+          await synthesize(segment, token);
+        }
       }
     } catch (error) {
       if (token === generation.current && !(error instanceof DOMException && error.name === "AbortError")) {
@@ -250,7 +379,19 @@ export function useVoiceOutput() {
       if (token === generation.current) {
         running.current = false;
         if (queue.current.length > 0 && enabledRef.current) void pump();
-        else if (!playbackActive.current) updateSpeaking();
+        else {
+          const turnId = activeTurnId.current;
+          if (turnId && turnFinished.current === turnId && finishSent.current !== turnId) {
+            finishSent.current = turnId;
+            logVoiceDiagnostic("client-turn-playback-finish", {
+              turnId,
+              bufferedMs: Math.round(bufferedMs.current * 10) / 10,
+              segmentCount: nextSegmentIndex.current,
+            });
+            playbackNode.current?.port.postMessage({ type: "finish", turnId });
+          }
+          if (!playbackActive.current) updateSpeaking();
+        }
       }
     }
   }, [synthesize, updateSpeaking]);
@@ -260,31 +401,50 @@ export function useVoiceOutput() {
     pendingText.current += text;
     const segments = takeSpeechSegments(pendingText.current, flush);
     pendingText.current = segments.remainder;
-    queue.current.push(...segments.ready.map((segment) => ({ text: segment, turnId })));
+    queue.current.push(...segments.ready.map((segment) => ({
+      text: segment,
+      turnId,
+      segmentIndex: nextSegmentIndex.current++,
+      emotion: pendingEmotion.current,
+      characterId: pendingCharacterId.current,
+    })));
     if (segments.ready.length > 0) void pump();
   }, [pump]);
 
-  const append = useCallback((text: string, turnId: string) => {
+  const append = useCallback((text: string, turnId: string, emotion: AvatarEmotion, characterId: CharacterId) => {
     setError((current) => current ? "" : current);
+    if (activeTurnId.current !== turnId) return;
+    if (pendingText.current && (pendingEmotion.current !== emotion || pendingCharacterId.current !== characterId)) {
+      enqueueText(turnId, "", true);
+    }
+    pendingEmotion.current = emotion;
+    pendingCharacterId.current = characterId;
     enqueueText(turnId, text, false);
   }, [enqueueText]);
-  const finish = useCallback((turnId: string) => enqueueText(turnId, "", true), [enqueueText]);
-
-  const stop = useCallback(() => {
-    generation.current += 1;
-    activeTurnId.current = null;
-    request.current?.abort();
-    request.current = null;
-    queue.current = [];
-    pendingText.current = "";
-    running.current = false;
-    playbackNode.current?.port.postMessage({ type: "stop" });
-    playbackActive.current = false;
-    updateSpeaking();
-  }, [updateSpeaking]);
+  const finish = useCallback((turnId: string) => {
+    if (activeTurnId.current !== turnId) return;
+    turnFinished.current = turnId;
+    enqueueText(turnId, "", true);
+    if (!running.current && queue.current.length === 0 && pendingText.current.length === 0 && finishSent.current !== turnId) {
+      finishSent.current = turnId;
+      logVoiceDiagnostic("client-turn-playback-finish", {
+        turnId,
+        bufferedMs: Math.round(bufferedMs.current * 10) / 10,
+        segmentCount: nextSegmentIndex.current,
+      });
+      playbackNode.current?.port.postMessage({ type: "finish", turnId });
+    }
+  }, [enqueueText]);
 
   const beginTurn = useCallback((turnId: string) => {
-    stop();
+    stop("superseded-by-new-turn");
+    turnFinished.current = null;
+    finishSent.current = null;
+    nextSegmentIndex.current = 0;
+    lastSegmentDoneAt.current = null;
+    pendingEmotion.current = "neutral";
+    pendingCharacterId.current = "deepseek";
+    logVoiceDiagnostic("client-turn-start", { turnId });
     activeTurnId.current = turnId;
   }, [stop]);
 

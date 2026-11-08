@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE, currentToken } from "../../lib/api";
+import { logVoiceDiagnostic } from "../../lib/voice-diagnostics";
 import pcmWorkletUrl from "./pcm16-worklet.ts?worker&url";
 
 export type VoicePhase = "off" | "permission" | "preparing" | "listening" | "recognizing" | "thinking" | "speaking" | "interrupted" | "error";
@@ -13,12 +14,14 @@ export interface VoiceModelStatus {
 
 const SPEECH_RMS = 0.018;
 const SPEECH_CONFIRM_MS = 120;
+const SPEECH_RMS_DURING_PLAYBACK = 0.03;
+const SPEECH_CONFIRM_DURING_PLAYBACK_MS = 180;
 
 interface Props {
   assistantBusy: boolean;
   assistantSpeaking?: boolean;
   onTranscript: (text: string) => void;
-  onInterrupt: () => void;
+  onInterrupt: (reason: string) => void;
 }
 
 interface AsrMessage {
@@ -48,6 +51,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   const silence = useRef<GainNode | null>(null);
   const socket = useRef<WebSocket | null>(null);
   const speakingSince = useRef<number | null>(null);
+  const speechPeak = useRef(0);
   const interrupted = useRef(false);
   const assistantBusyRef = useRef(assistantBusy);
   const assistantSpeakingRef = useRef(false);
@@ -76,6 +80,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     source.current = null;
     silence.current = null;
     speakingSince.current = null;
+    speechPeak.current = 0;
     interrupted.current = false;
     stream.current?.getTracks().forEach((track) => track.stop());
     stream.current = null;
@@ -95,12 +100,25 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     if (!active.current || token !== generation.current) return;
     const now = performance.now();
     if (!assistantBusyRef.current && !assistantSpeakingRef.current) interrupted.current = false;
-    if (frame.rms >= SPEECH_RMS) {
+    const assistantSpeakingNow = assistantSpeakingRef.current;
+    const threshold = assistantSpeakingNow ? SPEECH_RMS_DURING_PLAYBACK : SPEECH_RMS;
+    const confirmationMs = assistantSpeakingNow ? SPEECH_CONFIRM_DURING_PLAYBACK_MS : SPEECH_CONFIRM_MS;
+    if (frame.rms >= threshold) {
       speakingSince.current ??= now;
-      if (now - speakingSince.current >= SPEECH_CONFIRM_MS) {
+      speechPeak.current = Math.max(speechPeak.current, frame.rms);
+      if (now - speakingSince.current >= confirmationMs) {
         if ((assistantBusyRef.current || assistantSpeakingRef.current) && !interrupted.current) {
           interrupted.current = true;
-          interruptRef.current();
+          const reason = assistantSpeakingRef.current ? "vad-user-speech-during-playback" : "vad-user-speech-during-generation";
+          logVoiceDiagnostic("voice-interruption", {
+            reason,
+            assistantBusy: assistantBusyRef.current,
+            assistantSpeaking: assistantSpeakingRef.current,
+            speechRmsPeak: Math.round(speechPeak.current * 10000) / 10000,
+            confirmationMs,
+            threshold,
+          });
+          interruptRef.current(reason);
           setPhase("interrupted");
           setMessage("听到你开始说话，已停止她当前的回答。继续说即可。");
         } else if (!assistantBusyRef.current && !assistantSpeakingRef.current && phaseRef.current !== "recognizing") {
@@ -109,6 +127,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
       }
     } else {
       speakingSince.current = null;
+      speechPeak.current = 0;
     }
 
     const ws = socket.current;
@@ -247,16 +266,25 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     active.current = true;
     try {
       const input = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false },
       });
       if (!active.current || token !== generation.current) {
         input.getTracks().forEach((track) => track.stop());
         return;
       }
       stream.current = input;
-      input.getAudioTracks().forEach((track) => track.addEventListener("ended", () => {
+      input.getAudioTracks().forEach((track) => {
+        const settings = track.getSettings();
+        logVoiceDiagnostic("microphone-settings", {
+          echoCancellation: settings.echoCancellation ?? null,
+          noiseSuppression: settings.noiseSuppression ?? null,
+          autoGainControl: settings.autoGainControl ?? null,
+          sampleRate: settings.sampleRate ?? null,
+        });
+        track.addEventListener("ended", () => {
         showFailure("麦克风连接中断，请检查输入设备后重试。", token);
-      }, { once: true }));
+        }, { once: true });
+      });
       const audioContext = new AudioContext({ latencyHint: "interactive" });
       await audioContext.resume();
       if (!active.current || token !== generation.current) {

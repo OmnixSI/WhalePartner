@@ -5,9 +5,10 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createInterface } from "node:readline";
+import type { Emotion } from "../emotion.ts";
 
 const execFileAsync = promisify(execFile);
-export const TTS_MODEL = "Qwen3-TTS 0.6B · MLX 8-bit · Serena";
+export const TTS_MODEL = "Qwen3-TTS 1.7B · MLX 8-bit · Serena";
 
 export interface TtsStatus {
   state: "idle" | "loading" | "ready" | "failed";
@@ -20,12 +21,22 @@ export interface TtsStatus {
 export interface TtsAudioChunk {
   sampleRate: number;
   pcm16: string;
+  chunkIndex?: number;
+  elapsedMs?: number;
+  audioDurationMs?: number;
+}
+
+export interface TtsStreamContext {
+  turnId?: string;
+  segmentIndex?: number;
+  emotion?: Emotion;
+  characterId?: string;
 }
 
 export interface TtsService {
   status(): TtsStatus;
   warm(): Promise<void>;
-  stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal): Promise<void>;
+  stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal, context?: TtsStreamContext): Promise<void>;
   close?(): Promise<void>;
 }
 
@@ -35,6 +46,9 @@ interface WorkerMessage {
   message?: string;
   sampleRate?: number;
   pcm16?: string;
+  chunkIndex?: number;
+  elapsedMs?: number;
+  audioDurationMs?: number;
 }
 
 interface PendingRequest {
@@ -44,6 +58,14 @@ interface PendingRequest {
   timer: NodeJS.Timeout;
   signal?: AbortSignal;
   abort?: () => void;
+  turnId?: string;
+  segmentIndex?: number;
+  emotion?: Emotion;
+  characterId?: string;
+  startedAt: number;
+  lastChunkAt?: number;
+  chunkIndex: number;
+  textLength: number;
 }
 
 export interface MlxTtsOptions {
@@ -104,7 +126,7 @@ export class MlxTtsService implements TtsService {
     return this.#warmPromise;
   }
 
-  async stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal): Promise<void> {
+  async stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal, context?: TtsStreamContext): Promise<void> {
     if (signal?.aborted) throw abortError();
     await this.warm();
     if (signal?.aborted) throw abortError();
@@ -124,6 +146,13 @@ export class MlxTtsService implements TtsService {
           this.#rejectRequest(requestId, new Error("本地语音生成超时，请重试。"));
         }, 120_000),
         signal,
+        turnId: context?.turnId,
+        segmentIndex: context?.segmentIndex,
+        emotion: context?.emotion,
+        characterId: context?.characterId,
+        startedAt: performance.now(),
+        chunkIndex: 0,
+        textLength: text.length,
       };
       pending.abort = () => {
         if (!this.#pending.has(requestId)) return;
@@ -131,7 +160,24 @@ export class MlxTtsService implements TtsService {
       };
       signal?.addEventListener("abort", pending.abort, { once: true });
       this.#pending.set(requestId, pending);
-      this.#write({ action: "synthesize", requestId, text }, (error) => {
+      console.info("[whalepartner:voice]", JSON.stringify({
+        event: "tts-segment-start",
+        turnId: pending.turnId,
+        segmentIndex: pending.segmentIndex,
+        emotion: pending.emotion,
+        characterId: pending.characterId,
+        textLength: pending.textLength,
+        at: Date.now(),
+      }));
+      this.#write({
+        action: "synthesize",
+        requestId,
+        text,
+        turnId: pending.turnId,
+        segmentIndex: pending.segmentIndex,
+        emotion: pending.emotion,
+        characterId: pending.characterId,
+      }, (error) => {
         if (error) this.#rejectRequest(requestId, error);
       });
     });
@@ -256,7 +302,33 @@ export class MlxTtsService implements TtsService {
     const pending = this.#pending.get(reply.requestId);
     if (!pending) return;
     if (reply.type === "chunk" && reply.pcm16 && reply.sampleRate) {
-      try { pending.onChunk({ sampleRate: reply.sampleRate, pcm16: reply.pcm16 }); }
+      const now = performance.now();
+      const audioDurationMs = reply.audioDurationMs
+        ?? Buffer.from(reply.pcm16, "base64").byteLength / 2 / reply.sampleRate * 1000;
+      console.info("[whalepartner:voice]", JSON.stringify({
+        event: "tts-chunk",
+        turnId: pending.turnId,
+        segmentIndex: pending.segmentIndex,
+        emotion: pending.emotion,
+        characterId: pending.characterId,
+        chunkIndex: reply.chunkIndex ?? pending.chunkIndex,
+        elapsedMs: Math.round((now - pending.startedAt) * 10) / 10,
+        modelElapsedMs: reply.elapsedMs,
+        interChunkMs: pending.lastChunkAt === undefined ? null : Math.round((now - pending.lastChunkAt) * 10) / 10,
+        audioDurationMs: Math.round(audioDurationMs * 10) / 10,
+        sampleRate: reply.sampleRate,
+      }));
+      pending.lastChunkAt = now;
+      pending.chunkIndex += 1;
+      try {
+        pending.onChunk({
+          sampleRate: reply.sampleRate,
+          pcm16: reply.pcm16,
+          chunkIndex: reply.chunkIndex ?? pending.chunkIndex - 1,
+          elapsedMs: reply.elapsedMs,
+          audioDurationMs,
+        });
+      }
       catch (error) {
         this.#write({ action: "cancel", targetRequestId: reply.requestId });
         this.#rejectRequest(reply.requestId, error instanceof Error ? error : new Error(String(error)));
@@ -284,6 +356,16 @@ export class MlxTtsService implements TtsService {
     if (!pending) return;
     this.#pending.delete(requestId);
     this.#clearPending(pending);
+    console.info("[whalepartner:voice]", JSON.stringify({
+      event: "tts-segment-done",
+      turnId: pending.turnId,
+      segmentIndex: pending.segmentIndex,
+      emotion: pending.emotion,
+      characterId: pending.characterId,
+      chunkCount: pending.chunkIndex,
+      textLength: pending.textLength,
+      elapsedMs: Math.round((performance.now() - pending.startedAt) * 10) / 10,
+    }));
     if (pending.signal?.aborted) pending.reject(abortError());
     else pending.resolve();
   }

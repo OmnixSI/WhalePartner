@@ -29,30 +29,39 @@ export class LazyMemoryStore implements MemoryStore {
     return { enabled: true, state: this.#state, ...(this.#error ? { error: this.#error } : {}) };
   }
 
+  async warm(): Promise<void> {
+    await this.#ready();
+  }
+
   #ready(): Promise<MemoryStore> {
-    this.#store ??= this.#create().then(
-      (store) => {
-        this.#state = "ready";
-        this.#error = undefined;
-        return store;
-      },
-      (error: unknown) => {
-        this.#state = "error";
-        this.#error = error instanceof Error ? error.message : String(error);
-        this.#store = undefined;
-        throw error;
-      },
-    );
+    if (!this.#store) {
+      this.#state = "loading";
+      this.#store = this.#create().then(
+        (store) => {
+          this.#state = "ready";
+          this.#error = undefined;
+          return store;
+        },
+        (error: unknown) => {
+          this.#state = "error";
+          this.#error = error instanceof Error ? error.message : String(error);
+          this.#store = undefined;
+          throw error;
+        },
+      );
+    }
     return this.#store;
   }
 
   async #create(): Promise<MemoryStore> {
     const { dataDir, provider, archive } = this.#options;
     mkdirSync(dataDir, { recursive: true });
+    const embedder = new LocalEmbedder(join(dataDir, "models"));
+    await embedder.warm();
     const bridge = await startLlmBridge(provider);
     const memory = new Memory({
       version: "v1.1",
-      embedder: { provider: "langchain", config: { model: new LocalEmbedder(join(dataDir, "models")) } },
+      embedder: { provider: "langchain", config: { model: embedder } },
       vectorStore: { provider: "memory", config: { collectionName: "whalepartner", dimension: EMBEDDING_DIMENSION, dbPath: join(dataDir, "vectors.db") } },
       llm: { provider: "openai", config: { apiKey: bridge.apiKey, baseURL: bridge.baseUrl, model: "whalepartner-bridge" } },
       historyDbPath: join(dataDir, "history.db"),

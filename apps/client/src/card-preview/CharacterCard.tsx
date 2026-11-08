@@ -4,7 +4,6 @@ import type { CardCharacter } from "./data";
 
 type Props = {
   character: CardCharacter;
-  index: number;
   selected: boolean;
   effectLevel: number;
   effectLabel: string;
@@ -33,7 +32,7 @@ function resetAngle(event: PointerEvent<HTMLButtonElement>) {
   event.currentTarget.style.setProperty("--tilt-y", "0deg");
 }
 
-export function CharacterCard({ character, index, selected, effectLevel, effectLabel, onSelect }: Props) {
+export function CharacterCard({ character, selected, effectLevel, effectLabel, onSelect }: Props) {
   const model = modelName(character);
   const aria = `选择${character.name}，${model}，卡面等级${effectLevel}，${effectLabel}`;
 
@@ -53,21 +52,9 @@ export function CharacterCard({ character, index, selected, effectLevel, effectL
     >
       <span className="card-preview__underlay card-preview__underlay--back" aria-hidden="true" />
       <span className="card-preview__underlay card-preview__underlay--front" aria-hidden="true" />
-      <span className="card-preview__face">
-        <span className="card-preview__card-top">
-          <span className="card-preview__index">No.{String(index + 1).padStart(2, "0")}</span>
-          <span className="card-preview__seal">{selected ? "已选" : "鲸汐角色"}</span>
-        </span>
+      <span className="card-preview__face" aria-hidden="true">
         <span className="card-preview__art">
           <CharacterMark character={character.id} className="card-preview__mark" />
-          <span className="card-preview__card-name">{character.name}</span>
-          <span className="card-preview__latin">{character.latin}</span>
-        </span>
-        <span className="card-preview__card-bottom">
-          <span className="card-preview__model">{model}</span>
-          <span className="card-preview__rarity">
-            Lv.{effectLevel} · {effectLabel}
-          </span>
         </span>
       </span>
     </button>
