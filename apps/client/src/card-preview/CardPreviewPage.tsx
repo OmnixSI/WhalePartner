@@ -74,7 +74,6 @@ export function CardPreviewPage() {
 
       <CardShowcase
         character={selected}
-        index={CARD_CHARACTERS.findIndex((character) => character.id === selected.id)}
         sample={sample}
       />
 
@@ -87,11 +86,10 @@ export function CardPreviewPage() {
           <span className="card-preview__count">{CARD_CHARACTERS.length} 张</span>
         </div>
         <div className="card-preview__grid">
-          {CARD_CHARACTERS.map((character, idx) => (
+          {CARD_CHARACTERS.map((character) => (
             <CharacterCard
               key={character.id}
               character={character}
-              index={idx}
               selected={character.id === selected.id}
               effectLevel={sample.level}
               effectLabel={sample.effect}

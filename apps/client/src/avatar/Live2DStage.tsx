@@ -172,7 +172,7 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
           backgroundAlpha: 0,
           antialias: false,
           autoDensity: true,
-          resolution: Math.min(window.devicePixelRatio || 1, 2),
+          resolution: Math.min(window.devicePixelRatio || 1, 1.5),
           powerPreference: "high-performance",
           sharedTicker: true, // 与 Live2DModel 的自动更新共用同一个 ticker，只走一路 rAF
           autoStart: true,

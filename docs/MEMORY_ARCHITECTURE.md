@@ -37,6 +37,8 @@ WhalePartner 的记忆数据保存在用户本机。现有 TypeScript/Node 服�
 
 处理状态和下一次重试时间都在本机数据库中。服务启动时恢复中断任务；向量索引失败时仍保留 SQLite 原文，后续启动或聊天会再次尝试。缺失本地 `vectors.db` 时，B4 SQLite 事实和经历会重置索引游标并重新向量化。`GET /api/health` 返回待处理任务、重试任务和待向量化的事实/经历数量。
 
+启用 Mem0 时，API 开始监听后会异步初始化本地 BGE 向量模型；初始化状态通过 API 的记忆状态字段报告。`MEMORY=off` 时不加载该模型。首次进入聊天或记忆页面不会再触发模型下载与初始化。
+
 ## 查找与上下文
 
 - **FTS5**：中文文本先转换为二元词项，精确查找消息、事实和经历；返回结果带时间、会话和消息来源。查询含“去年/上个月/某年”等时间范围时，同时使用 SQLite 时间索引筛选原文、经历和事实有效期。
@@ -61,7 +63,7 @@ WhalePartner 的记忆数据保存在用户本机。现有 TypeScript/Node 服�
 | `apps/api/src/memory/facts.ts`、`observer.ts`、`jobs.ts` | 用户事实候选、会话观察及可恢复任务处理 |
 | `apps/api/src/memory/archive.ts` | 经历先写 SQLite，再尽力更新可重建的向量索引 |
 | `apps/api/src/memory/recall.ts`、`context.ts` | 本地混合召回、来源核对、预算估算和上下文打包 |
-| `apps/api/src/memory/mem0-store.ts`、`mem0.ts` | 本地向量存储适配及懒加载 |
+| `apps/api/src/memory/mem0-store.ts`、`mem0.ts` | 本地向量存储适配及启动预热 |
 | `apps/api/src/chat-materials.ts`、`chat-background.ts` | 视频/网页经历写入、角色学习和近况反思 |
 | `apps/api/src/routes/` | 按聊天、历史、记忆、视频、日记和账号分开的 HTTP 入口 |
 

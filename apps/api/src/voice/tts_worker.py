@@ -6,6 +6,7 @@ import json
 import queue
 import sys
 import threading
+import time
 
 import mlx.core as mx
 import numpy as np
@@ -14,8 +15,17 @@ from mlx_audio.tts.utils import load_model
 protocol = sys.stdout
 sys.stdout = sys.stderr
 
-MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
-STREAMING_INTERVAL_SECONDS = 0.96
+MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit"
+STREAMING_INTERVAL_SECONDS = 2.0
+DEEPSEEK_VOICE_STYLE = "清澈柔和、明亮温暖的年轻女性中文声线，带一点轻盈俏皮感，像亲切而有活力的朋友在近距离陪伴聊天。语速自然适中，咬字清楚，句尾有柔和起伏；避免童声、尖细夹嗓、夸张撒娇和播音腔。"
+EMOTION_STYLE = {
+    "neutral": "情绪平静自然，语气温和，不冷淡。",
+    "happy": "开心明亮，带轻微笑意，语调轻快但不过度兴奋。",
+    "sad": "柔和共情，语速稍缓，克制温暖，不要哭腔。",
+    "angry": "坚定有力量但保持克制，不吼叫，不尖锐。",
+    "surprised": "带一点惊喜和意外，语调稍扬但不夸张。",
+    "relaxed": "放松轻柔，节奏舒缓，像安心地闲聊。",
+}
 commands = queue.Queue()
 cancelled = set()
 cancel_lock = threading.Lock()
@@ -56,10 +66,18 @@ def synthesize(model, request):
     if not text:
         raise ValueError("TTS text is empty")
 
+    started_at = time.perf_counter()
+    chunk_index = 0
+    character_id = request.get("characterId")
+    emotion = request.get("emotion", "neutral")
+    instruct = None
+    if character_id == "deepseek":
+        instruct = DEEPSEEK_VOICE_STYLE + " " + EMOTION_STYLE.get(emotion, EMOTION_STYLE["neutral"])
     for result in model.generate_custom_voice(
         text=text,
         speaker="Serena",
         language="Chinese",
+        instruct=instruct,
         stream=True,
         streaming_interval=STREAMING_INTERVAL_SECONDS,
         verbose=False,
@@ -70,12 +88,17 @@ def synthesize(model, request):
             return
         audio = np.asarray(result.audio, dtype=np.float32).reshape(-1)
         pcm = (np.clip(audio, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+        emitted_at = time.perf_counter()
         emit({
             "type": "chunk",
             "requestId": request_id,
+            "chunkIndex": chunk_index,
+            "elapsedMs": round((emitted_at - started_at) * 1000, 1),
+            "audioDurationMs": round(len(audio) / result.sample_rate * 1000, 1),
             "sampleRate": int(result.sample_rate),
             "pcm16": base64.b64encode(pcm).decode("ascii"),
         })
+        chunk_index += 1
     clear_cancel(request_id)
     emit({"type": "done", "requestId": request_id})
 

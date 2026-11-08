@@ -2,6 +2,7 @@ import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { readJsonBody, sendJson } from "../http.ts";
 import { authorize, type AuthOptions } from "../auth.ts";
+import { isEmotion } from "../emotion.ts";
 import type { AsrService, AsrStream } from "../voice/asr.ts";
 import type { TtsService } from "../voice/tts.ts";
 
@@ -45,6 +46,9 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
     }
     const text = typeof body.text === "string" ? body.text.trim() : "";
     const turnId = typeof body.turnId === "string" ? body.turnId.trim() : "";
+    const segmentIndex = Number.isInteger(body.segmentIndex) ? Number(body.segmentIndex) : undefined;
+    const emotion = typeof body.emotion === "string" && isEmotion(body.emotion) ? body.emotion : "neutral";
+    const characterId = typeof body.characterId === "string" && body.characterId.length <= 32 ? body.characterId : undefined;
     if (!text || text.length > 1200 || !turnId || turnId.length > 100) {
       sendJson(response, 400, { error: "invalid_request", message: "语音文本或对话轮次无效。" });
       return true;
@@ -59,12 +63,12 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       "x-accel-buffering": "no",
     });
     response.flushHeaders();
-    response.write(`${JSON.stringify({ type: "meta", model: tts.status().model, speaker: tts.status().speaker, turnId })}\n`);
+    response.write(`${JSON.stringify({ type: "meta", model: tts.status().model, speaker: tts.status().speaker, turnId, segmentIndex })}\n`);
     try {
       await tts.stream(text, (chunk) => {
-        if (!controller.signal.aborted && !response.destroyed) response.write(`${JSON.stringify({ type: "audio", ...chunk, turnId })}\n`);
-      }, controller.signal);
-      if (!controller.signal.aborted && !response.destroyed) response.end(`${JSON.stringify({ type: "done", turnId })}\n`);
+        if (!controller.signal.aborted && !response.destroyed) response.write(`${JSON.stringify({ type: "audio", ...chunk, turnId, segmentIndex })}\n`);
+      }, controller.signal, { turnId, segmentIndex, emotion, characterId });
+      if (!controller.signal.aborted && !response.destroyed) response.end(`${JSON.stringify({ type: "done", turnId, segmentIndex })}\n`);
     } catch (error) {
       if (!controller.signal.aborted && !response.destroyed) {
         response.write(`${JSON.stringify({ type: "error", message: error instanceof Error ? error.message : "本地语音生成失败。", turnId })}\n`);

@@ -312,6 +312,7 @@ if (import.meta.main) {
   server.listen(config.port, host, () => {
     void tts.warm().catch((error: unknown) => console.warn("本地语音启动预热失败：", error instanceof Error ? error.message : error));
     void asr.warm().catch((error: unknown) => console.warn("X-ASR 启动预热失败：", error instanceof Error ? error.message : error));
+    if (memory) void memory.warm().catch((error: unknown) => console.warn("本地记忆向量启动预热失败：", error instanceof Error ? error.message : error));
     if (config.surfEnabled) stopSurfScheduler = surf.start();
     void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));
     void scheduleMemoryJobs({ store, provider, memory });

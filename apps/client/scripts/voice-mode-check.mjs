@@ -53,6 +53,8 @@ try {
     let audioPlaybackStops = 0;
     let pcmPlaybackPushes = 0;
     let pcmPlaybackStops = 0;
+    let pcmPlaybackFinishes = 0;
+    let pcmPlaybackSegmentDone = 0;
     let playbackWorklets = 0;
     let ttsStreamCount = 0;
     let ttsAudioChunksReceived = 0;
@@ -68,6 +70,8 @@ try {
     let previousScheduledEnd = null;
     let outputWaveformFrames = 0;
     let nonSilentOutputWaveformFrames = 0;
+    const voiceDiagnostics = [];
+    window.addEventListener("whalepartner:voice-diagnostic", (event) => voiceDiagnostics.push(event.detail));
     const nativeFetch = window.fetch.bind(window);
     window.fetch = async (...args) => {
       const input = args[0];
@@ -81,7 +85,7 @@ try {
         const events = [
           ["ack", { clientId: request.clientId, sessionId: "voice-check-session" }],
           ["emotion", { emotion: "happy" }],
-          ["delta", { text: `第${turn}轮回答内容足够长，可以先开始语音合成。` }],
+          ["delta", { text: `第${turn}轮回答内容足够长，而且已经形成完整意思，可以先开始语音合成。` }],
           ["delta", { text: "再说一句，也保持自然语气。" }],
           ["done", { messageId: turn, sessionId: "voice-check-session", emotion: "happy" }],
         ];
@@ -174,6 +178,8 @@ try {
         audioStartChunkCounts.push(ttsAudioChunksReceived);
       }
       if (message?.type === "stop") pcmPlaybackStops += 1;
+      if (message?.type === "finish") pcmPlaybackFinishes += 1;
+      if (message?.type === "segment-done") pcmPlaybackSegmentDone += 1;
       return nativePortPostMessage.call(this, message, transfer);
     };
     const nativeBufferStart = AudioBufferSourceNode.prototype.start;
@@ -208,6 +214,8 @@ try {
             audioPlaybackStops,
       pcmPlaybackPushes,
       pcmPlaybackStops,
+      pcmPlaybackFinishes,
+      pcmPlaybackSegmentDone,
       playbackWorklets,
             ttsStreamCount,
             ttsAudioChunksReceived,
@@ -215,6 +223,7 @@ try {
             playbackScheduleGaps,
             outputWaveformFrames,
             nonSilentOutputWaveformFrames,
+            voiceDiagnostics: voiceDiagnostics.filter((event) => event.event === "worklet-buffer" || event.event === "worklet-started" || event.event === "worklet-drained" || event.event === "worklet-underrun-start" || event.event === "worklet-underrun-end" || event.event === "voice-interruption"),
             ttsStartedBeforeChatDone,
             ttsAbortRequests,
             chatAbortRequests,
@@ -245,8 +254,8 @@ try {
         }
         await inputContext.resume();
       }
-      if (constraints.audio.echoCancellation !== true || constraints.audio.noiseSuppression !== true) {
-        throw new Error("Voice mode did not request echo cancellation and noise suppression.");
+      if (constraints.audio.echoCancellation !== true || constraints.audio.noiseSuppression !== true || constraints.audio.autoGainControl !== false) {
+        throw new Error("Voice mode must enable echo cancellation and noise suppression while disabling automatic gain control.");
       }
       return inputStream;
     };
@@ -274,17 +283,17 @@ try {
       ttsRequests.push(input);
       const duration = 0.48;
       const sampleRate = 24_000;
-      const messages = [{ type: "meta", model: "Qwen3-TTS (test)", speaker: "Serena", turnId: input.turnId }];
+      const messages = [{ type: "meta", model: "Qwen3-TTS (test)", speaker: "Serena", turnId: input.turnId, segmentIndex: input.segmentIndex }];
       let sampleOffset = 0;
-      for (let chunk = 0; chunk < 4; chunk += 1) {
+      for (let chunk = 0; chunk < 6; chunk += 1) {
         const samples = Buffer.alloc(Math.ceil(sampleRate * duration) * 2);
         for (let i = 0; i < samples.length / 2; i += 1) {
           samples.writeInt16LE(Math.round(Math.sin(((sampleOffset + i) / sampleRate) * 2 * Math.PI * 220) * 7_500), i * 2);
         }
         sampleOffset += samples.length / 2;
-        messages.push({ type: "audio", sampleRate, pcm16: samples.toString("base64"), turnId: input.turnId });
+        messages.push({ type: "audio", sampleRate, pcm16: samples.toString("base64"), turnId: input.turnId, segmentIndex: input.segmentIndex, chunkIndex: chunk });
       }
-      messages.push({ type: "done", turnId: input.turnId });
+      messages.push({ type: "done", turnId: input.turnId, segmentIndex: input.segmentIndex });
       const body = [
         ...messages,
       ].map((message) => JSON.stringify(message)).join("\n") + "\n";
@@ -347,7 +356,7 @@ try {
   await status.waitFor({ state: "visible" });
   await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("语音模式已就绪"), null, { timeout: 15_000 });
   check("重试后进入聆听状态", (await status.innerText()).includes("语音模式已就绪"));
-  check("开启麦克风时启用回声消除和降噪", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 2);
+  check("开启麦克风时启用回声消除和降噪并关闭 AGC", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 2);
 
   async function speak() {
     await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
@@ -367,19 +376,27 @@ try {
     "第一句在 LLM 完成整轮回答前送入 TTS，并使用独立 turn ID",
     (await page.evaluate(() => window.__wpVoiceCheck.stats().ttsStartedBeforeChatDone)) > 0
       && ttsRequests[0]?.turnId === firstTurn?.clientId
-      && ttsRequests[0]?.text === "第1轮回答内容足够长，可以先开始语音合成。",
+      && ttsRequests[0]?.text === "第1轮回答内容足够长，而且已经形成完整意思，可以先开始语音合成。",
     JSON.stringify({ request: ttsRequests[0], turnId: firstTurn?.clientId }),
   );
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 2, null, { timeout: 10_000 });
   check(
-    "按句界排队合成两句话，情绪保留在 LLM 表情标签而非 TTS 指令中",
+    "按句界排队合成两句话，LLM 的结构化情绪同步控制 TTS 表达与角色表情",
     ttsRequests[1]?.text === "再说一句，也保持自然语气。"
-      && ttsRequests.every((input) => !Object.hasOwn(input, "emotion"))
+      && ttsRequests.every((input) => input.emotion === "happy" && input.characterId === "deepseek")
       && (await page.evaluate(() => window.__wpVoiceCheck.stats().emotionEvents)) > 0,
     JSON.stringify(ttsRequests.slice(0, 2)),
   );
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackFinishes >= 1, null, { timeout: 10_000 });
+  check(
+    "单句完成不结束整轮播放，整轮只发送一次 finish",
+    (await page.evaluate(() => window.__wpVoiceCheck.stats().pcmPlaybackSegmentDone)) >= 2
+      && (await page.evaluate(() => window.__wpVoiceCheck.stats().pcmPlaybackFinishes)) === 1,
+    JSON.stringify(await page.evaluate(() => window.__wpVoiceCheck.stats())),
+  );
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackPushes >= 8, null, { timeout: 10_000 });
   const playbackStats = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  console.log(JSON.stringify({ playback: playbackStats }));
   check(
     "流式 PCM 块进入同一个 AudioWorklet 连续播放队列，不逐块创建播放源",
     playbackStats.playbackWorklets === 1
@@ -407,7 +424,7 @@ try {
   check(
     "每轮 TTS 携带对应 turn ID，LLM 情绪事件单独驱动角色表情",
     ttsRequests.filter((input) => input.turnId === chatAfterInterrupt[1]?.clientId).length >= 1
-      && ttsRequests.every((input) => !Object.hasOwn(input, "emotion"))
+      && ttsRequests.every((input) => input.emotion === "happy" && input.characterId === "deepseek")
       && (await page.evaluate(() => window.__wpVoiceCheck.stats().emotionEvents)) >= 2,
   );
 

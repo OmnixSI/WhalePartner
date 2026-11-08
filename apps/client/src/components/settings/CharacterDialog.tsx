@@ -19,7 +19,6 @@ type Props = {
 export function CharacterDialog({ open, onOpenChange }: Props) {
   const character = useCharacter();
   const cardCharacter = CARD_CHARACTERS.find((item) => item.id === character.id) ?? CARD_CHARACTERS[0];
-  const characterIndex = CHARACTERS.findIndex((item) => item.id === character.id);
   const titleId = useId();
   const descId = useId();
   const changed = useRef(false);
@@ -80,7 +79,6 @@ export function CharacterDialog({ open, onOpenChange }: Props) {
 
           <CardShowcase
             character={cardCharacter}
-            index={characterIndex}
             sample={sample}
             showProgress={activeRelationship !== null}
             relationship={activeRelationship}

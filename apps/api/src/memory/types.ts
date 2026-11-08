@@ -53,6 +53,6 @@ export interface MemoryStore {
 
 export interface MemoryStatus {
   enabled: boolean;
-  state: "idle" | "ready" | "error";
+  state: "idle" | "loading" | "ready" | "error";
   error?: string;
 }

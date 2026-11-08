@@ -8,7 +8,6 @@ import "./card-showcase.css";
 
 type Props = {
   character: CardCharacter;
-  index: number;
   sample: RelationshipSample;
   showProgress?: boolean;
   relationship?: RelationshipProgress | null;
@@ -61,7 +60,7 @@ function resetTilt(event: PointerEvent<HTMLElement>) {
   event.currentTarget.style.setProperty("--parallax-model-y", "0px");
 }
 
-export function CardShowcase({ character, index, sample, showProgress = true, relationship, relationshipStatus }: Props) {
+export function CardShowcase({ character, sample, showProgress = true, relationship, relationshipStatus }: Props) {
   const [emotion, setEmotion] = useState<AvatarEmotion>("neutral");
   const [stage, setStage] = useState<"loading" | "ready" | "failed" | "static">(character.model ? "loading" : "static");
   const [tapCount, setTapCount] = useState(0);
@@ -75,7 +74,7 @@ export function CardShowcase({ character, index, sample, showProgress = true, re
   }, [character.id, model]);
 
   return (
-    <section className="card-preview__showcase" aria-labelledby="showcase-title">
+    <section className="card-preview__showcase" aria-label={`${character.name} 闪卡预览`}>
       <article
         className="card-preview__hero"
         data-character={character.id}
@@ -89,10 +88,6 @@ export function CardShowcase({ character, index, sample, showProgress = true, re
         <div className="card-preview__hero-back" aria-hidden="true" />
         <div className="card-preview__hero-face">
           <div className="card-preview__hero-sheen" aria-hidden="true" />
-          <div className="card-preview__hero-top">
-            <span>No.{String(index + 1).padStart(2, "0")} · WHALE PARTNER</span>
-            <span className="card-preview__hero-seal">{showProgress ? `Lv.${sample.level} · ${sample.label}` : "默认形象"}</span>
-          </div>
           <div className="card-preview__hero-art" aria-label={`${character.name} 的形象预览`}>
             <div className="card-preview__hero-light" aria-hidden="true" />
             {sample.level >= 3 && (
@@ -117,17 +112,6 @@ export function CardShowcase({ character, index, sample, showProgress = true, re
               <div className="card-preview__hero-mark"><CharacterMark character={character.id} /></div>
             )}
             {sample.level >= 4 && <CardParticles />}
-            <span className="card-preview__hero-art-caption">{model ? "触碰互动" : "默认形象"}</span>
-          </div>
-          <div className="card-preview__hero-copy">
-            <div>
-              <p className="card-preview__hero-latin">{character.latin}</p>
-              <h2 id="showcase-title">{character.name}</h2>
-            </div>
-            <div className="card-preview__hero-bottom">
-              <span>{model?.label ?? "固定矢量默认形象"}</span>
-              <span>{showProgress ? `Lv.${sample.level} · ${sample.effect}` : "基础卡面"}</span>
-            </div>
           </div>
         </div>
       </article>
