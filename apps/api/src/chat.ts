@@ -169,6 +169,11 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
     if (!reply.trim()) throw new ChatFailure("empty", "模型没有返回内容。");
     const saved = store.add("assistant", reply.trimEnd(), emotion, character, session.id);
     finished = true;
+    try {
+      store.recordCompletedInteraction?.({ userMessageId: userMessage.id, assistantMessageId: saved.id, character, emotion });
+    } catch (error) {
+      console.warn("关系进度更新失败：", error instanceof Error ? error.message : error);
+    }
     store.enqueueMemoryJob({ sessionId: session.id, character, userMessageId: userMessage.id, assistantMessageId: saved.id });
     void scheduleMemoryJobs({ store, provider, memory });
     queueReflection(deps, character, false);

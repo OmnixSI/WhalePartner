@@ -27,6 +27,12 @@ interface SpeechControls {
   reset: () => void;
 }
 
+interface VoiceOutputControls {
+  isEnabled: () => boolean;
+  append: (text: string, emotion: AvatarEmotion) => void;
+  finish: () => void;
+}
+
 export interface ChatFailureInfo {
   code: ChatErrorCode | "unknown";
   message: string;
@@ -67,7 +73,7 @@ function updateTurn(list: Turn[], key: string, fn: (turn: Turn) => Turn): Turn[]
   return list;
 }
 
-export function useSharedChat(characterId: CharacterId, speech: SpeechControls) {
+export function useSharedChat(characterId: CharacterId, speech: SpeechControls, voiceOutput?: VoiceOutputControls, voicePlaying = false) {
   const [health, setHealth] = useState<Health | null | undefined>(undefined);
   const [showOffline, setShowOffline] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -88,6 +94,8 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
   const sessionIdRef = useRef("");
   const lastActivityRef = useRef(Date.now());
   const abort = useRef<AbortController | null>(null);
+  const voiceOutputRef = useRef(voiceOutput);
+  const voicePlayingRef = useRef(voicePlaying);
   const inflight = useRef<Promise<void> | null>(null);
   const ownClientIds = useRef(new Set<string>());
   const remoteKey = useRef<string | null>(null);
@@ -97,6 +105,8 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
   const busy = phase === "thinking" || phase === "streaming";
   const busyRef = useRef(false);
   busyRef.current = busy;
+  voiceOutputRef.current = voiceOutput;
+  voicePlayingRef.current = voicePlaying;
 
   useEffect(() => {
     const activity = () => { lastActivityRef.current = Date.now(); };
@@ -108,7 +118,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
         visible: shown,
         active: shown && Date.now() - lastActivityRef.current < PRESENCE_IDLE_MS,
         busy: busyRef.current,
-        voicePlaying: false,
+        voicePlaying: voicePlayingRef.current,
       }, keepalive).catch(() => {});
     };
     const visibility = () => post();
@@ -127,6 +137,18 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
       void updateChatPresence({ clientId: presenceClientId, character: characterId, visible: false, active: false, busy: false, voicePlaying: false }, true).catch(() => {});
     };
   }, [characterId, presenceClientId]);
+
+  useEffect(() => {
+    const visible = !document.hidden;
+    void updateChatPresence({
+      clientId: presenceClientId,
+      character: characterId,
+      visible,
+      active: visible && Date.now() - lastActivityRef.current < PRESENCE_IDLE_MS,
+      busy: busyRef.current,
+      voicePlaying,
+    }).catch(() => {});
+  }, [characterId, presenceClientId, voicePlaying]);
 
   /* ------------------------------------------------------------ 草稿 */
   const setDraft = useCallback((value: string) => {
@@ -352,6 +374,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
       abort.current = ctrl;
       let started = false;
       let gotText = false;
+      let replyEmotion: AvatarEmotion = "neutral";
       try {
         for await (const event of streamChat(message, characterId, sessionIdRef.current, ctrl.signal, clientId)) {
           if (event.type === "ack") {
@@ -364,11 +387,14 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
               setPhase("streaming");
               setTurns((prev) => updateTurn(prev, meKey, (turn) => ({ ...turn, status: "sent" })));
             }
-            speech.append(event.text);
+            const voice = voiceOutputRef.current;
+            if (voice?.isEnabled()) voice.append(event.text, replyEmotion);
+            else speech.append(event.text);
             pushDelta(herKey, event.text);
           } else if (event.type === "video" || event.type === "web") {
             setProgress({ kind: event.type, stage: event.stage, message: event.message, title: event.title });
           } else if (event.type === "emotion") {
+            replyEmotion = event.emotion;
             setEmotion(event.emotion);
             setTurns((prev) => updateTurn(prev, herKey, (turn) => ({ ...turn, emotion: event.emotion })));
           } else if (event.type === "done") {
@@ -387,11 +413,13 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
         setPhase("idle");
         setFocusSignal((value) => value + 1);
         speech.finish();
+        voiceOutputRef.current?.finish();
       } catch (error) {
         flushDelta();
         if (ctrl.signal.aborted) {
           // 打断：已经说出来的部分保留（服务端同样入库并标记 interrupted）。
           speech.finish();
+          voiceOutputRef.current?.finish();
           if (gotText) {
             setTurns((prev) => updateTurn(updateTurn(prev, herKey, (turn) => ({ ...turn, status: "done", interrupted: true })), meKey, (turn) => ({ ...turn, status: "sent" })));
           } else {
@@ -403,6 +431,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
           return;
         }
         speech.reset();
+        voiceOutputRef.current?.finish();
         const info: ChatFailureInfo = error instanceof ChatError
           ? { code: error.code, message: error.message }
           : { code: "unknown", message: describeChatFailure("http", error instanceof Error ? error.message : undefined) };

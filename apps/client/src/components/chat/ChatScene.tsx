@@ -16,6 +16,8 @@ interface Props {
   avatar: AvatarStatus;
   emotion: AvatarEmotion;
   speaking: boolean;
+  audioDriven?: boolean;
+  audioLevel?: { current: number };
   mood: CharacterMood;
   hintSeen: boolean;
   wide: boolean;
@@ -30,6 +32,8 @@ export function ChatScene({
   avatar,
   emotion,
   speaking,
+  audioDriven = false,
+  audioLevel,
   mood,
   hintSeen,
   wide,
@@ -97,7 +101,7 @@ export function ChatScene({
           )}
           {model && (
             <Suspense fallback={null}>
-              <Live2DStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={speaking} onTap={onPoke} />
+              <Live2DStage key={model.id} modelUrl={model.url} emotion={emotion} speaking={speaking} audioDriven={audioDriven} audioLevel={audioLevel} onTap={onPoke} />
             </Suspense>
           )}
         </div>

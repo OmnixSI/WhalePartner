@@ -14,6 +14,16 @@
 
 官方依据：[Web SDK 下载与协议](https://www.live2d.com/en/sdk/download/web/)、[Cubism Web SDK 手册](https://docs.live2d.com/en/cubism-sdk-manual/cubism-sdk-for-web/)、[SDK 发布许可（含 AI/聊天机器人）](https://www.live2d.com/en/sdk/license/)。
 
+## GPT 与 Claude 人格模型
+
+目前没有可核验授权、并明确适用于 ChatGPT 娘或 Claude 娘的完整 Live2D 模型包。候选核验结果：
+
+- [Slebee/ChatGPT-live2d-Desktop](https://github.com/Slebee/ChatGPT-live2d-Desktop) 的 MIT 许可覆盖项目代码。README 将 Live2D 描述为拖入用户自备模型的预览功能，并将模型持久化列为待办；仓库树没有 `.model3.json` 或 `.moc3`。
+- [kirbystudy/chatgpt-desktopPet](https://github.com/kirbystudy/chatgpt-desktopPet) 的 BSD-2-Clause 许可覆盖项目代码。README 说明角色形象是秋蒂，模型压缩包由用户向创作者获取；仓库没有 Live2D 模型文件，且该形象不属于 ChatGPT 娘。
+- [Navi-Studio/Virtual-Human-for-Chatting](https://github.com/Navi-Studio/Virtual-Human-for-Chatting) 包含完整模型资源，但 README 将模型和美术资源的权利归于各自作者，并要求按各作者许可使用。仓库提供的「桃花酪」模型不是 GPT/Claude 角色，也没有允许将其改名或绑定到这两个人格的授权。
+
+因此小智与小克仍使用各自的固定矢量徽记；不借用大肥鱼或第三方样例模型。Issue [#95](https://github.com/OmnixSI/WhalePartner/issues/95) 保持未完成，直到取得分别属于这两个人格且许可可核查的完整模型包及署名/分发条件。运行时继续要求 Cubism Core 单独按 Live2D 官方条款获取。
+
 ## 集成方式
 
 - React 聊天页通过 `pixi-live2d-display` 0.4.0 与 PixiJS 6.5.10 加载 Cubism 4；运行时与模型均通过现有主应用入口加载。
