@@ -18,6 +18,7 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 const apiDir = resolve(import.meta.dirname, "..");
@@ -68,7 +69,7 @@ const require = createRequire(join(apiDir, "package.json"));
 const esbuild = require("esbuild");
 const pkg = JSON.parse(readFileSync(join(apiDir, "package.json"), "utf8"));
 // 不进 bundle、改为随包安装 node_modules 的依赖：带原生二进制或动态 require 的那几个。
-const externals = ["@huggingface/transformers", "mem0ai", "playwright-core", "onnxruntime-node", "onnxruntime-web", "sharp", "better-sqlite3"];
+const externals = ["@huggingface/transformers", "mem0ai", "playwright-core", "ws", "onnxruntime-node", "onnxruntime-web", "sharp", "better-sqlite3"];
 
 rmSync(join(sidecarDir, "api"), { recursive: true, force: true });
 const distDir = join(sidecarDir, "api", "dist");
@@ -94,11 +95,39 @@ cpSync(join(apiDir, "src/persona/rules.md"), join(distDir, "rules.md"));
 cpSync(join(apiDir, "src/persona/style.md"), join(distDir, "style.md"));
 cpSync(join(apiDir, "src/persona/characters"), join(distDir, "characters"), { recursive: true });
 cpSync(join(apiDir, "src/prompts"), join(distDir, "prompts"), { recursive: true });
+cpSync(join(apiDir, "src/voice/xasr_worker.py"), join(distDir, "xasr_worker.py"));
+cpSync(join(apiDir, "src/voice/assets"), join(distDir, "voice/assets"), { recursive: true });
+cpSync(join(apiDir, "src/voice/tts_worker.py"), join(distDir, "voice/tts_worker.py"));
+mkdirSync(join(sidecarDir, "api/scripts"), { recursive: true });
+cpSync(join(apiDir, "scripts/setup-tts-runtime.sh"), join(sidecarDir, "api/scripts/setup-tts-runtime.sh"));
+cpSync(join(apiDir, "scripts/setup-xasr-runtime.sh"), join(sidecarDir, "api/scripts/setup-xasr-runtime.sh"));
 cpSync(join(apiDir, "vendor"), join(sidecarDir, "api/vendor"), { recursive: true });
 
-/* ---- 4. 外置依赖（含 onnxruntime-node 原生库）---- */
+/* ---- 4. X-ASR native Python worker ---- */
+if (process.platform === "darwin") {
+  const dataDirectory = process.env.WP_DATA_DIR || join(homedir(), "Library", "Application Support", "com.omnixsi.whalepartner");
+  const python = process.env.WP_XASR_PYTHON || join(dataDirectory, "runtimes", "asr-sherpa", "bin", "python");
+  let runtimeReady = existsSync(python);
+  if (runtimeReady) {
+    try { execFileSync(python, ["-c", "import PyInstaller, numpy, sherpa_onnx"], { stdio: "ignore" }); }
+    catch { runtimeReady = false; }
+  }
+  if (!runtimeReady) {
+    execFileSync("bash", [join(apiDir, "scripts/setup-xasr-runtime.sh")], { stdio: "inherit" });
+  }
+  const resolvedPython = existsSync(python) ? python : join(dataDirectory, "runtimes", "asr-sherpa", "bin", "python");
+  const xasrBuildDir = join(sidecarDir, ".xasr-build");
+  mkdirSync(xasrBuildDir, { recursive: true });
+  execFileSync(resolvedPython, ["-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--collect-all", "sherpa_onnx", "--collect-all", "sherpa_onnx_core", "--name", "whale-xasr-worker",
+    "--distpath", join(sidecarDir, "bin"), "--workpath", join(xasrBuildDir, "work"), "--specpath", xasrBuildDir,
+    join(apiDir, "src/voice/xasr_worker.py")], { stdio: "inherit" });
+  chmodSync(join(sidecarDir, "bin", "whale-xasr-worker"), 0o755);
+  log("X-ASR 本机推理运行时已打包");
+}
+
+/* ---- 5. 外置依赖（含 onnxruntime-node 原生库）---- */
 const deps = {};
-for (const name of ["@huggingface/transformers", "mem0ai", "playwright-core"]) {
+for (const name of ["@huggingface/transformers", "mem0ai", "playwright-core", "ws"]) {
   const v = pkg.dependencies?.[name];
   if (!v) throw new Error(`apps/api/package.json 里没有 ${name}。`);
   deps[name] = v;
@@ -115,7 +144,7 @@ execFileSync("npm", npmArgs, {
   shell: process.platform === "win32",
 });
 
-/* ---- 5. ffmpeg ---- */
+/* ---- 6. ffmpeg ---- */
 let ffmpeg;
 try {
   const p = createRequire(join(apiDir, "package.json"))("ffmpeg-static");

@@ -10,6 +10,8 @@ import type { DailyJournalService } from "./daily-journal.ts";
 import type { SurfService } from "./surf/service.ts";
 import type { AuthOptions } from "./auth.ts";
 import type { EventBus } from "./events.ts";
+import type { AsrService } from "./voice/asr.ts";
+import type { TtsService } from "./voice/tts.ts";
 
 /** 模型接入（设置 › 模型接入）：要读写的两个文件，测试时注入临时路径。 */
 export interface SetupPaths {
@@ -44,4 +46,8 @@ export interface ServerDeps {
   staticDir?: string;
   /** 模型接入要写的两个文件；只有测试会传，正常启动走默认路径。 */
   setup?: SetupPaths;
+  /** 本地语音识别；测试可以注入固定实现。 */
+  asr?: AsrService;
+  /** 本地流式语音合成；测试可以注入固定实现。 */
+  tts?: TtsService;
 }

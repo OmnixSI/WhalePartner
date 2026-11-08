@@ -11,6 +11,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent }
 import { isSendKey, PREFS_EVENT, readSendKey, type SendKey } from "../../lib/chat-prefs";
 import { Icon } from "../../icons";
 import { InkFrame, InkLine } from "../ink";
+import type { VoiceModelStatus, VoicePhase } from "./useVoiceMode";
 
 type Props = {
   name: string;
@@ -25,6 +26,13 @@ type Props = {
   focusSignal?: number;
   /** 自增即打开「给她看个视频」这个弹层（空态芯片用）。 */
   shareSignal?: number;
+  voicePhase?: VoicePhase;
+  voiceMessage?: string;
+  voiceModel?: VoiceModelStatus;
+  voiceTtsStatus?: VoiceModelStatus;
+  onStartVoice?: () => void;
+  onStopVoice?: () => void;
+  onRetryVoice?: () => void;
 };
 
 const MAX = 2000;
@@ -38,7 +46,7 @@ function subscribePrefs(callback: () => void) {
   };
 }
 
-export function ComposerBar({ name, value, onChange, onSend, onStop, busy, online, focusSignal = 0, shareSignal = 0 }: Props) {
+export function ComposerBar({ name, value, onChange, onSend, onStop, busy, online, focusSignal = 0, shareSignal = 0, voicePhase = "off", voiceMessage = "", voiceModel, voiceTtsStatus, onStartVoice, onStopVoice, onRetryVoice }: Props) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [url, setUrl] = useState("");
@@ -48,6 +56,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
   const canSend = online && hasText;
   // 生成中且输入框是空的：发送键就是「停」。
   const stopMode = busy && !hasText;
+  const voiceActive = voicePhase !== "off" && voicePhase !== "error";
 
   // 52 → 160 自动增高（沿用原来的手写逻辑，不引第三方）。
   useEffect(() => {
@@ -95,6 +104,20 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
 
       <InkFrame className="composer__frame" radius={14} stroke={2} tone="ink" fill="sheet" openCorner id="composer">
         <div className="composer__bar">
+          <button
+            type="button"
+            className="iconbtn composer__voice"
+            data-active={voiceActive || undefined}
+            aria-pressed={voiceActive}
+            aria-label={voicePhase === "error" ? "重试语音模式" : voiceActive ? "结束语音模式" : "进入连续语音模式"}
+            title={voicePhase === "error" ? "重试语音模式" : voiceActive ? "结束语音模式" : "连续语音对话"}
+            onClick={voicePhase === "error" ? onRetryVoice : voiceActive ? onStopVoice : onStartVoice}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <rect x="9" y="3" width="6" height="12" rx="3" />
+              <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" />
+            </svg>
+          </button>
           <Popover.Root open={shareOpen} onOpenChange={setShareOpen}>
             <Popover.Trigger asChild>
               <button type="button" className="iconbtn" aria-label="发个视频给她">
@@ -167,6 +190,18 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
           </button>
         </div>
       </InkFrame>
+
+      {(voiceActive || voicePhase === "error") && (
+        <div className="composer__voice-status" role={voicePhase === "error" ? "alert" : "status"} aria-live="polite" data-error={voicePhase === "error" || undefined}>
+          <span className="composer__voice-dot" aria-hidden />
+          <span>{voiceMessage || (voicePhase === "listening" ? "正在聆听，停顿后会自动发送。" : "语音模式正在准备。")}</span>
+          {voiceModel?.state === "loading" && voiceModel.progress !== null && (
+            <span className="composer__voice-progress">本地模型 {voiceModel.progress}%</span>
+          )}
+          {voiceTtsStatus?.state === "loading" && <span className="composer__voice-progress">正在准备情绪语音</span>}
+          {voicePhase === "error" && <button type="button" className="composer__voice-retry" onClick={onRetryVoice}>重试</button>}
+        </div>
+      )}
 
       {value.length >= 1800 && (
         <span className="composer__count" data-alert={value.length >= 1950 || undefined}>

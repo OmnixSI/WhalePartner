@@ -419,6 +419,29 @@
 .composer__input::placeholder { color: var(--ink-mute); }
 .composer__input:focus-visible { box-shadow: none; }
 .composer__send { flex: none; min-width: 88px; height: 56px; }
+.composer__voice { flex: none; width: var(--hit); height: var(--hit); }
+.composer__voice[data-active] { color: var(--accent); background: var(--accent-wash); }
+.composer__voice-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 30px;
+  padding: 2px var(--sp-2);
+  color: var(--ink-soft);
+  font-size: var(--fs-small);
+}
+.composer__voice-status[data-error] { color: var(--alert); }
+.composer__voice-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+.composer__voice-status[data-error] .composer__voice-dot { background: var(--alert); box-shadow: none; }
+.composer__voice-progress { margin-left: auto; color: var(--ink-mute); font-family: var(--font-num); }
+.composer__voice-retry { border: 0; color: var(--accent-ink); text-decoration: underline; background: transparent; }
 .composer__busy { width: 20px; color: var(--accent-ink); }
 /* 寄出中：不是禁用，是加载——保持主色，只把图标位换成会自己画的墨线（§6.1） */
 .btn--primary[data-loading]:disabled {

@@ -49,7 +49,7 @@ pnpm --dir apps/client run tauri build      # 首次编译 Rust 约 3 分钟；�
 - 打开 App 即可：它自己选端口、生成随机令牌、启动后端，健康检查通过后才显示窗口。**不用先启动后端，也不会弹出终端。**
 - 关窗口即退出，后端随之停止。「后台继续逛」打开后，关窗口只是隐藏，托盘菜单里可以「打开鲸汐 / 退出鲸汐」。
 - 数据放在系统的应用数据目录（macOS：`~/Library/Application Support/com.omnixsi.whalepartner/`），日志放在应用日志目录的 `api.log`。模型密钥在 **设置 › 模型接入** 里填，保存在数据目录的 `.env`（打包版读它，不读仓库里的 `apps/api/.env`）。
-- macOS 是 ad-hoc 签名、未公证：别人拿到后首次打开请右键 → 打开，或 `xattr -dr com.apple.quarantine /Applications/鲸汐.app`。自己本机打的包可直接打开。请在 Node 26 下打包，后端运行时取自打包时的 Node。
+- macOS 本机开发包使用稳定的自签代码签名身份，保持麦克风等隐私权限与同一应用身份关联；首次打开仍可能需要在「隐私与安全性」中手动允许。此身份只用于本机开发，不提供公证或公开分发信任；正式分发仍需 Developer ID 与公证。新开发环境请按[本机 macOS 签名说明](docs/MACOS_LOCAL_SIGNING.md)配置自己的稳定身份。请在 Node 26 下打包，后端运行时取自打包时的 Node。
 - 开发调试：`pnpm --dir apps/client run tauri dev` 会自动拉起后端，不用另开终端（后端读 `apps/api/.env`）。
 
 ### 浏览器开发模式（所有平台）
@@ -180,11 +180,13 @@ implement-stage/     实施阶段的规格与假设记录
 | 协作流程、分支、PR | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) |
 | 产品边界 | [docs/PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md) |
 | 接口 | [docs/API.md](docs/API.md) |
+| 关系成长 | [docs/RELATIONSHIP.md](docs/RELATIONSHIP.md) |
 | 界面设计与规范 | [docs/DESIGN.md](docs/DESIGN.md) · [docs/redesign/spec/](docs/redesign/spec/WhalePartner_UI重设计规范.md) |
 | 人格与成长 | [docs/PERSONALITY.md](docs/PERSONALITY.md) |
 | 记忆 | [docs/MEMORY_ARCHITECTURE.md](docs/MEMORY_ARCHITECTURE.md) · [docs/MEMORY_RESEARCH.md](docs/MEMORY_RESEARCH.md) |
 | 日记与定时 | [docs/DAILY_JOURNAL.md](docs/DAILY_JOURNAL.md) |
 | 技术选型 / Live2D 评估 | [docs/TECH_STACK_PROPOSAL.md](docs/TECH_STACK_PROPOSAL.md) · [docs/LIVE2D_ASSESSMENT.md](docs/LIVE2D_ASSESSMENT.md) |
+| 连续语音与情绪语音 | [docs/VOICE_MODE.md](docs/VOICE_MODE.md) |
 | 会话交接 | [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) · [docs/handoffs/](docs/handoffs/) |
 
 ## 许可与第三方

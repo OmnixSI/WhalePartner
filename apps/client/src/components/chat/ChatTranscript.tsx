@@ -6,6 +6,7 @@ import { ComposerBar } from "./ComposerBar";
 import { Slip } from "./Slip";
 import { SuggestionChips } from "./SuggestionChips";
 import type { DialogState, Progress, Turn } from "./types";
+import type { VoiceModelStatus, VoicePhase } from "./useVoiceMode";
 
 interface Props {
   name: string;
@@ -39,6 +40,13 @@ interface Props {
   onVideo: () => void;
   onDraftChange: (value: string) => void;
   onSend: (text: string) => void;
+  voicePhase?: VoicePhase;
+  voiceMessage?: string;
+  voiceModel?: VoiceModelStatus;
+  voiceTtsStatus?: VoiceModelStatus;
+  onStartVoice?: () => void;
+  onStopVoice?: () => void;
+  onRetryVoice?: () => void;
 }
 
 export function ChatTranscript({
@@ -70,6 +78,13 @@ export function ChatTranscript({
   onVideo,
   onDraftChange,
   onSend,
+  voicePhase,
+  voiceMessage,
+  voiceModel,
+  voiceTtsStatus,
+  onStartVoice,
+  onStopVoice,
+  onRetryVoice,
 }: Props) {
   return (
     <div className="scene__chrome">
@@ -123,6 +138,13 @@ export function ChatTranscript({
         online={online}
         focusSignal={focusSignal}
         shareSignal={shareSignal}
+        voicePhase={voicePhase}
+        voiceMessage={voiceMessage}
+        voiceModel={voiceModel}
+        voiceTtsStatus={voiceTtsStatus}
+        onStartVoice={onStartVoice}
+        onStopVoice={onStopVoice}
+        onRetryVoice={onRetryVoice}
       />
     </div>
   );

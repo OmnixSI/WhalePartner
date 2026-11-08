@@ -25,6 +25,8 @@ interface Props {
   emotion: AvatarEmotion;
   speaking: boolean;
   failureMessage?: string;
+  audioDriven?: boolean;
+  audioLevel?: { current: number };
   onReady?: () => void;
   onError?: (error: Error) => void;
   /** 点到模型时通知外层一次（外层不再自己监听舞台点击，避免重复触发）。 */
@@ -59,10 +61,12 @@ function watchSafeArea(host: HTMLElement, onChange: () => void) {
   return () => observer.disconnect();
 }
 
-export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, onReady, onError, onTap }: Props) {
+export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audioDriven = false, audioLevel, onReady, onError, onTap }: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const emotionRef = useRef(emotion);
   const speakingRef = useRef(speaking);
+  const audioDrivenRef = useRef(audioDriven);
+  const audioLevelRef = useRef(audioLevel);
   const reactRef = useRef<((value: AvatarEmotion) => void) | null>(null);
   const callbacks = useRef({ onReady, onError, onTap });
   const [attempt, setAttempt] = useState(0);
@@ -80,6 +84,11 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, onRea
   useEffect(() => {
     speakingRef.current = speaking;
   }, [speaking]);
+
+  useEffect(() => {
+    audioDrivenRef.current = audioDriven;
+    audioLevelRef.current = audioLevel;
+  }, [audioDriven, audioLevel]);
 
   const retry = useCallback(() => {
     setAvatarStatus("loading");
@@ -114,7 +123,11 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, onRea
       const core = mouthCore();
       if (!core || !mouthId) return;
       if (!speakingRef.current && !wasSpeaking) return;
-      const open = speakingRef.current ? 0.18 + 0.48 * Math.abs(Math.sin(performance.now() / 105)) : 0;
+      const open = speakingRef.current
+        ? audioDrivenRef.current
+          ? Math.min(1, 0.04 + (audioLevelRef.current?.current ?? 0) * 2.8)
+          : 0.18 + 0.48 * Math.abs(Math.sin(performance.now() / 105))
+        : 0;
       (core.setParameterValueById ?? core.setParamFloat)?.call(core, mouthId, open);
       wasSpeaking = speakingRef.current;
     };

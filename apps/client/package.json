@@ -10,6 +10,7 @@
     "test": "node --test test/*.test.ts",
     "preview": "vite preview",
     "card-preview:check": "node scripts/card-preview-check.mjs",
+    "voice-mode:check": "node scripts/voice-mode-check.mjs",
     "tauri": "tauri",
     "fonts": "node scripts/build-fonts.mjs",
     "fetch-live2d": "node scripts/fetch-live2d.mjs"

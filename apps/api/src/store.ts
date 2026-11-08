@@ -11,6 +11,7 @@ import { rebuildSearchIndexes } from "./store/search-index.ts";
 import { matchesTimeWindow, overlapsFactTimeWindow } from "./store/search.ts";
 import { SessionRepository } from "./store/sessions.ts";
 import { ProactiveRepository } from "./store/proactive.ts";
+import { RelationshipRepository } from "./store/relationship.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { ArchiveHit, ChatSession, FactCandidate, MemoryJob, StoredExperience, StoredFact, StoredMessage, StoredRole } from "./store/types.ts";
 
@@ -31,6 +32,7 @@ export class ChatStore {
   readonly #observations: ObservationRepository;
   readonly #jobs: MemoryJobRepository;
   readonly #proactive: ProactiveRepository;
+  readonly #relationship: RelationshipRepository;
   #proactiveWake?: (id: string) => void;
 
   readonly dbPath: string;
@@ -46,6 +48,7 @@ export class ChatStore {
     this.#observations = new ObservationRepository(this.#db);
     this.#jobs = new MemoryJobRepository(this.#db);
     this.#proactive = new ProactiveRepository(this.#db, this.#sessions);
+    this.#relationship = new RelationshipRepository(this.#db);
   }
 
   createSession(character: string, title?: string) { return this.#sessions.createSession(character, title); }
@@ -67,6 +70,10 @@ export class ChatStore {
   getNote(character: string) { return this.#sessions.getNote(character); }
   setNote(character: string, text: string, assistantCount: number) { return this.#sessions.setNote(character, text, assistantCount); }
   countAssistant(character?: string) { return this.#sessions.countAssistant(character); }
+  recordCompletedInteraction(input: { userMessageId: number; assistantMessageId: number; character: string; emotion: import("./emotion.ts").Emotion }, now?: Date) {
+    return this.#relationship.recordCompletedInteraction(input, now);
+  }
+  relationshipSnapshot(character: string, now?: Date) { return this.#relationship.snapshot(character, now); }
 
   saveFacts(sourceMessageId: number, candidates: FactCandidate[]) { return this.#facts.saveFacts(sourceMessageId, candidates); }
   getFact(id: number) { return this.#facts.getFact(id); }

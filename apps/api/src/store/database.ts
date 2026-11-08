@@ -78,6 +78,27 @@ export function openChatDatabase(path: string): DatabaseSync {
     );
     INSERT OR IGNORE INTO companion_settings(id, enabled, frequency, quiet_start, quiet_end, updated_at)
       VALUES (1, 0, 'rare', '23:00', '08:00', strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    CREATE TABLE IF NOT EXISTS relationship_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      affinity_points INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO relationship_state(id, affinity_points, updated_at)
+      VALUES (1, 0, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    CREATE TABLE IF NOT EXISTS relationship_events (
+      assistant_message_id INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+      user_message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      character TEXT NOT NULL,
+      points INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS relationship_events_created_at ON relationship_events(created_at, character);
+    CREATE TABLE IF NOT EXISTS character_moods (
+      character TEXT PRIMARY KEY,
+      emotion TEXT NOT NULL,
+      intensity INTEGER NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS proactive_triggers (
       id TEXT PRIMARY KEY,
       source_message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
