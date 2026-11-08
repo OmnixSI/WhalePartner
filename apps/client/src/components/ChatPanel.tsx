@@ -12,7 +12,7 @@
  * 页面里不出现模型名、服务名、技术状态点。
  */
 import { Dialog } from "radix-ui";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAvatarStatus } from "../avatar/avatar-state";
 import type { Character } from "../characters";
@@ -24,6 +24,8 @@ import { useSpeechAnimation } from "../avatar/live2d/useSpeechAnimation";
 import { useTapHint } from "./chat/useTapHint";
 import { useSharedChat } from "./chat/useSharedChat";
 import { usePacedReply } from "./chat/usePacedReply";
+import { useVoiceMode } from "./chat/useVoiceMode";
+import { useVoiceOutput } from "./chat/useVoiceOutput";
 import { PREFS_EVENT, readPace } from "../lib/chat-prefs";
 import { sliceChunks } from "../lib/reply";
 import type { CharacterMood } from "./CharacterMark";
@@ -46,7 +48,14 @@ export function ChatPanel({ character }: Props) {
   useKeyboardInset();
 
   const speech = useSpeechAnimation();
-  const chat = useSharedChat(character.id, speech);
+  const voiceOutput = useVoiceOutput();
+  const chat = useSharedChat(character.id, speech, voiceOutput, voiceOutput.speaking);
+  const voice = useVoiceMode({
+    assistantBusy: chat.busy,
+    assistantSpeaking: voiceOutput.speaking,
+    onTranscript: (text) => { void chat.send(text); },
+    onInterrupt: () => { voiceOutput.stop(); speech.reset(); chat.stop(); },
+  });
   const {
     showOffline,
     starting,
@@ -75,6 +84,36 @@ export function ChatPanel({ character }: Props) {
     today,
   } = chat;
   const { active: poke, hintSeen, activate: pokeHer } = useTapHint();
+  const previousCharacter = useRef(character.id);
+  useEffect(() => {
+    if (previousCharacter.current === character.id) return;
+    previousCharacter.current = character.id;
+    voice.stop();
+    voiceOutput.setEnabled(false);
+    speech.reset();
+  }, [character.id, speech.reset, voice.stop, voiceOutput.setEnabled]);
+  useEffect(() => {
+    voiceOutput.setEnabled(voice.active && voice.phase !== "error" && character.id === "deepseek");
+  }, [character.id, voice.active, voice.phase, voiceOutput.setEnabled]);
+  const startVoice = () => {
+    speech.reset();
+    voiceOutput.activate(character.id === "deepseek");
+    void voice.start();
+  };
+  const stopVoice = () => {
+    voice.stop();
+    voiceOutput.setEnabled(false);
+    speech.reset();
+  };
+  const retryVoice = () => {
+    speech.reset();
+    voiceOutput.activate(character.id === "deepseek");
+    voice.retry();
+  };
+  const stopChat = () => {
+    voiceOutput.stop();
+    stop();
+  };
   // 见闻页「和她聊聊」：?quote= 预填输入框，读完立刻把参数清掉（刷新不会重复塞）。
   const [searchParams, setSearchParams] = useSearchParams();
   const quote = searchParams.get("quote");
@@ -89,7 +128,18 @@ export function ChatPanel({ character }: Props) {
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
-  const speaking = speech.speaking;
+  const speaking = speech.speaking || voiceOutput.speaking;
+  const voiceMessage = voice.phase === "error"
+    ? voice.message
+    : voice.active && character.id !== "deepseek"
+      ? "语音输入已开启；语音回复目前支持大肥鱼。"
+      : voiceOutput.model.state === "failed" || voiceOutput.error
+        ? `语音输入仍可用，语音回复暂不可用：${voiceOutput.error || voiceOutput.model.message}`
+        : voiceOutput.model.state === "loading"
+          ? `${voice.message} 正在准备情绪语音模型。`
+          : voiceOutput.speaking
+            ? "大肥鱼正在回答；继续说话可以打断。"
+            : voice.message;
   /* ------------------------------------------------------------ 状态推导 */
   const lastHer = [...turns].reverse().find((t) => t.role === "her" && (t.text || t.status !== "failed" || phase === "failed"));
   const pending = [...turns].reverse().find((t) => t.role === "me");
@@ -193,6 +243,8 @@ export function ChatPanel({ character }: Props) {
             avatar={avatar}
             emotion={emotion}
             speaking={speaking}
+            audioDriven={voiceOutput.speaking}
+            audioLevel={voiceOutput.audioLevel}
             mood={mood}
             hintSeen={hintSeen}
             wide={wide}
@@ -211,7 +263,7 @@ export function ChatPanel({ character }: Props) {
             typing={paced.typing}
             detail={failure?.message}
             onRetryFailed={retrySend}
-            onStop={stop}
+            onStop={stopChat}
             firstEntry={firstEntry}
             progress={progress}
             pending={pending}
@@ -230,6 +282,13 @@ export function ChatPanel({ character }: Props) {
             onVideo={() => setShareSignal((n) => n + 1)}
             onDraftChange={setDraft}
             onSend={(value) => void send(value)}
+            voicePhase={voice.phase}
+            voiceMessage={voiceMessage}
+            voiceModel={voice.model}
+            voiceTtsStatus={voiceOutput.model}
+            onStartVoice={startVoice}
+            onStopVoice={stopVoice}
+            onRetryVoice={retryVoice}
           />
         </div>
 

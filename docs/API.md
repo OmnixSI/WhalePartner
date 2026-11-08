@@ -29,6 +29,8 @@
 
 客户端断开连接会中止上游请求；被中止的半句回复不入库。
 
+`GET /api/relationship?character=deepseek` 返回共享关系进度与所选人格当前短期情绪：`{ points, level, label, effect, nextThreshold, progress, mood: { emotion, intensity, updatedAt } }`。好感度只由成功完成的大肥鱼对话增加，每轮 +1 点、本地日最多 10 点；重复事件不会重复计分。阶段阈值为 0、25、100、250，对应四档角色卡效果。情绪按人格分别保存并在 100 分钟内恢复到中性。详情见 [`RELATIONSHIP.md`](RELATIONSHIP.md)。
+
 `GET /api/chat/sessions?character=deepseek` 返回全部共享会话，`character` 保留为兼容参数；条目含 `titleManual`。`POST /api/chat/sessions` 请求体 `{ "character": "deepseek" }` 新建共享会话并记录创建时的人格。`PATCH /api/chat/sessions/:id` 请求体 `{ "character": "deepseek", "title": "周末计划" }` 重命名并固定标题，后续消息不会覆盖手动标题。`DELETE /api/chat/sessions/:id?character=deepseek` 删除该共享会话，停止正在进行的回复并清理该会话独有的来源记忆；多会话共同来源的事实或经历保留。单条已发送消息没有编辑或删除接口。
 
 `GET /api/chat/history?limit=50&character=deepseek&sessionId=…` 返回 `{ messages: [{ id, role, content, emotion, character, sessionId, createdAt, attachment }] }`。不传 `sessionId` 时返回全部共享聊天记录；`character` 保留为兼容参数，不过滤历史。追加 `aroundId=<message-id>` 后，必须同时指定 `sessionId`，接口会返回该消息前后的一段上下文供记忆来源定位。`attachment.type` 可为 `interrupted`、`surf` 或 `proactive`。`DELETE /api/chat/history` 清除全部聊天原文、会话、事实、会话观察、共享近况和聊天来源的学习/经历；视频、网页、日记和非聊天来源的学习经历保留。
@@ -40,6 +42,14 @@
 主动跟进只从用户原话中已保存的 `plan` 事实触发，不猜测用户现实状态。匹配计划后延迟 20 分钟发送，触发 6 小时后失效；模型临时失败最多重试一次。服务重启时只恢复尚未到期的定时项；定时器迟到超过 5 分钟时会丢弃，不补发休眠期间的消息。发送前会检查免打扰、最近活动、进行中的回复、可见页面的人格和语音播放；当前人格不是大肥鱼时会取消该项。触发来源、计划证据和最终消息 ID 保存在共享 SQLite 中。主动消息以 `character: "deepseek"` 写入原聊天会话，并通过 `/api/events` 的 `message.created`、`message.done` 显示；附件为 `{ type: "proactive", source: "plan_follow_up", triggerId, speak: false }`。目前主动消息只发文字，不启动音频播放。
 
 聊天页每 15 秒发送一次在线状态：`POST /api/chat/presence`，请求体 `{ clientId, character, visible, active, busy, voicePlaying }`，成功返回 204。服务端 45 秒未收到同一页面更新后会忘记该状态。此接口供主动消息在生成前判断当前页面，不保存用户身份或活动历史。
+
+## 连续语音
+
+- `GET /api/voice/asr/status` 返回 X-ASR 运行状态；`POST /api/voice/asr/warm` 准备本机模型。`/api/voice/asr/stream` 是受 hub 令牌保护的 WebSocket：客户端先等 `ready`，再持续发送 16 kHz、单声道、PCM16 二进制帧；服务端发 `partial`、`final`、`segment-end` 或 `error`。中间稿不写入聊天历史。
+- `GET /api/voice/tts/status` 返回本机模型、预置音色和运行状态；`POST /api/voice/tts/warm` 安装独立运行环境并准备模型。`POST /api/voice/tts/stream` 接受 `{ "text": "…", "emotion": "happy" }`，以 NDJSON 返回 `meta`、若干 24 kHz PCM16 `audio` 块和 `done`，或 `error`。客户端断开会取消当前合成。
+- 语音识别文本仍通过 `POST /api/chat` 写入共享历史。聊天模型和上下文沿用现有配置；TTS 只在大肥鱼人格及连续语音模式开启时自动播放。退出语音模式会释放麦克风与音频节点，播放队列和请求一并清理。
+
+选型、模型存放、许可和本机实测见 [`VOICE_MODE.md`](VOICE_MODE.md)。
 
 ## 账号
 

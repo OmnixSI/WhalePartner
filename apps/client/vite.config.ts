@@ -12,7 +12,7 @@ export default defineConfig({
     host,
     port: 1420,
     strictPort: true,
-    proxy: { "/api": "http://127.0.0.1:8787" },
+    proxy: { "/api": { target: "http://127.0.0.1:8787", ws: true } },
   },
   build: {
     target: "es2022",

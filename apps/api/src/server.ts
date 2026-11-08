@@ -42,7 +42,16 @@ import { CHAT_RESUME_MS } from "./surf/service.ts";
 import type { ServerDeps } from "./server-types.ts";
 import { PresenceRegistry } from "./proactive/presence.ts";
 import { ProactiveService } from "./proactive/service.ts";
+import { createXAsrAsrService } from "./voice/asr.ts";
+import { createMlxTtsService } from "./voice/tts.ts";
+import { attachVoiceWebSocket, handleVoiceRoute } from "./routes/voice.ts";
+import { handleRelationshipRoute } from "./routes/relationship.ts";
+import { dataDir } from "./data-dir.ts";
 export type { ServerDeps } from "./server-types.ts";
+
+export interface ApiServer extends Server {
+  closeVoiceConnections(): void;
+}
 
 // 她逛之前先看用户在不在聊：最后一次聊天时间。main 的 routes/chat.ts 里没有这个状态，这里补一个。
 const chatActivity = { last: 0 };
@@ -81,8 +90,17 @@ async function probe({ provider }: ServerDeps) {
   }
 }
 
-export function createApiServer(deps: ServerDeps): Server {
+export function createApiServer(deps: ServerDeps): ApiServer {
   const sessionRequests = new ChatSessionRequests();
+  const packagedAsrWorker = join(import.meta.dirname, "../../bin/whale-xasr-worker");
+  const asr = deps.asr ?? createXAsrAsrService(dataDir(), {
+    workerPath: existsSync(packagedAsrWorker) ? packagedAsrWorker : undefined,
+    setupScriptPath: join(import.meta.dirname, "../scripts/setup-xasr-runtime.sh"),
+  });
+  const tts = deps.tts ?? createMlxTtsService(dataDir(), {
+    workerPath: join(import.meta.dirname, "voice/tts_worker.py"),
+    setupScriptPath: join(import.meta.dirname, "../scripts/setup-tts-runtime.sh"),
+  });
   const presence = new PresenceRegistry();
   const devices = deps.auth?.devices ?? new DeviceRegistry(deviceFile(deps.config.dbPath));
   const auth: AuthOptions = { ...deps.auth, devices };
@@ -122,6 +140,8 @@ export function createApiServer(deps: ServerDeps): Server {
       }
       if (await handleSetupRoute(deps, request, response, url)) return;
       if (await handleCompanionRoute({ store: deps.store, presence, events }, request, response, url)) return;
+      if (handleRelationshipRoute({ store: deps.store }, request, response, url)) return;
+      if (await handleVoiceRoute(asr, tts, request, response, url.pathname)) return;
       if (url.pathname === "/api/accounts" || url.pathname.startsWith("/api/accounts/")) {
         await handleAccountsRoute(deps, request, response, url);
         return;
@@ -169,9 +189,15 @@ export function createApiServer(deps: ServerDeps): Server {
       else response.end();
     }
   });
+  const apiServer = server as ApiServer;
+  apiServer.closeVoiceConnections = attachVoiceWebSocket(server, asr, auth);
   server.on("listening", () => proactive.start());
-  server.on("close", () => proactive.stop());
-  return server;
+  server.on("close", () => {
+    proactive.stop();
+    void asr.close?.();
+    void tts.close?.();
+  });
+  return apiServer;
 }
 
 /** 已配对设备存在数据库旁边；内存库 / 无路径时只放内存。 */
@@ -260,6 +286,7 @@ if (import.meta.main) {
       }
       stopDiaryScheduler();
       stopJournalScheduler();
+      server.closeVoiceConnections();
       server.close(() => process.exit(0));
       server.closeAllConnections();
     })();
