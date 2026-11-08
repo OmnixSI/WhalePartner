@@ -26,6 +26,10 @@
 
 合成样本：[qwen3-tts-serena-sample.wav](evidence/voice/qwen3-tts-serena-sample.wav)。
 
+## 浏览器模拟验收
+
+运行 `pnpm --dir apps/client run voice-mode:check` 会启动隔离的 Vite 页面并模拟 ASR、聊天和 TTS 接口及合成麦克风音频。检查无麦克风错误恢复、三轮连续对话、最终稿只提交一次、多句回复按句生成并排队、情绪映射、说话打断、退出停止麦克风轨道和关闭 ASR WebSocket。该检查不调用模型、不录制真实麦克风，也不修改用户数据库；本机模型推理和打包 sidecar 另按上文记录实测。默认使用 Playwright 管理的 Chromium；本机已有 Chrome 时可用 `CHROME_PATH` 指定其可执行文件。
+
 ## 许可和接口
 
 Qwen3-TTS 的 [官方模型卡](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) 和 [MLX 4-bit 权重卡](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit) 标注 Apache-2.0；[MLX-Audio](https://github.com/Blaizzy/mlx-audio) 代码采用 MIT。[Qwen3-TTS 官方说明](https://github.com/QwenLM/Qwen3-TTS) 定义 CustomVoice 的 instruction 控制能力；[MLX-Audio 的模型文档](https://github.com/Blaizzy/mlx-audio/blob/main/mlx_audio/tts/models/qwen3_tts/README.md) 记录分段流式接口。WhalePartner 的 X-ASR 词表和许可说明位于 `apps/api/src/voice/assets/`；上游模型见 [Gilgamesh-J/X-ASR](https://github.com/Gilgamesh-J/X-ASR)。所有模型权重留在用户数据目录。
