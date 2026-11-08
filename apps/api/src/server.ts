@@ -245,7 +245,16 @@ if (import.meta.main) {
     generatedToken = true;
   }
   const staticDir = process.env.WP_STATIC_DIR || join(import.meta.dirname, "../../client/dist");
-  const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService(), auth, staticDir: existsSync(staticDir) ? staticDir : undefined });
+  const packagedAsrWorker = join(import.meta.dirname, "../../bin/whale-xasr-worker");
+  const asr = createXAsrAsrService(dataDir(), {
+    workerPath: existsSync(packagedAsrWorker) ? packagedAsrWorker : undefined,
+    setupScriptPath: join(import.meta.dirname, "../scripts/setup-xasr-runtime.sh"),
+  });
+  const tts = createMlxTtsService(dataDir(), {
+    workerPath: join(import.meta.dirname, "voice/tts_worker.py"),
+    setupScriptPath: join(import.meta.dirname, "../scripts/setup-tts-runtime.sh"),
+  });
+  const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService(), auth, asr, tts, staticDir: existsSync(staticDir) ? staticDir : undefined });
   let stopDiaryScheduler = () => {};
   let stopJournalScheduler = () => {};
   server.on("close", () => {
@@ -301,6 +310,8 @@ if (import.meta.main) {
   }
 
   server.listen(config.port, host, () => {
+    void tts.warm().catch((error: unknown) => console.warn("本地语音启动预热失败：", error instanceof Error ? error.message : error));
+    void asr.warm().catch((error: unknown) => console.warn("X-ASR 启动预热失败：", error instanceof Error ? error.message : error));
     if (config.surfEnabled) stopSurfScheduler = surf.start();
     void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));
     void scheduleMemoryJobs({ store, provider, memory });

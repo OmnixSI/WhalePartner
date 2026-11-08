@@ -6,7 +6,6 @@ import { createServer } from "vite";
 
 const clientDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const speechTexts = ["模拟语音第一轮", "模拟语音打断第二轮", "模拟语音第三轮"];
-const chatRequests = [];
 const ttsRequests = [];
 const failures = [];
 let segments = 0;
@@ -51,8 +50,19 @@ try {
     let microphoneRequests = 0;
     let stoppedTracks = 0;
     let audioPlaybackStarts = 0;
+    let audioPlaybackStops = 0;
+    let pcmPlaybackPushes = 0;
+    let pcmPlaybackStops = 0;
+    let playbackWorklets = 0;
     let ttsStreamCount = 0;
     let ttsAudioChunksReceived = 0;
+    let ttsAbortRequests = 0;
+    let chatAbortRequests = 0;
+    let ttsStartedBeforeChatDone = 0;
+    let chatDone = true;
+    let slowTurnId = null;
+    const chatRequests = [];
+    let emotionEvents = 0;
     const audioStartChunkCounts = [];
     const playbackScheduleGaps = [];
     let previousScheduledEnd = null;
@@ -60,18 +70,66 @@ try {
     let nonSilentOutputWaveformFrames = 0;
     const nativeFetch = window.fetch.bind(window);
     window.fetch = async (...args) => {
-      const response = await nativeFetch(...args);
       const input = args[0];
       const requestUrl = new URL(typeof input === "string" ? input : input.url, window.location.href);
+      if (requestUrl.pathname === "/api/chat") {
+        const request = JSON.parse(args[1]?.body ?? "{}" );
+        chatRequests.push(request);
+        chatDone = false;
+        const turn = chatRequests.length;
+        if (turn === 2) slowTurnId = request.clientId;
+        const events = [
+          ["ack", { clientId: request.clientId, sessionId: "voice-check-session" }],
+          ["emotion", { emotion: "happy" }],
+          ["delta", { text: `第${turn}轮回答内容足够长，可以先开始语音合成。` }],
+          ["delta", { text: "再说一句，也保持自然语气。" }],
+          ["done", { messageId: turn, sessionId: "voice-check-session", emotion: "happy" }],
+        ];
+        const encoder = new TextEncoder();
+        let index = 0;
+        let timer = 0;
+        let streamController;
+        const body = new ReadableStream({
+          start(controller) {
+            streamController = controller;
+            const sendNext = () => {
+              if (index >= events.length) {
+                controller.close();
+                return;
+              }
+              const [name, data] = events[index++];
+              if (name === "emotion") emotionEvents += 1;
+              if (name === "done") chatDone = true;
+              controller.enqueue(encoder.encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`));
+              if (index < events.length) timer = window.setTimeout(sendNext, name === "delta" ? (turn === 2 ? 15_000 : 1_400) : 15);
+              else controller.close();
+            };
+            sendNext();
+          },
+          cancel() { window.clearTimeout(timer); },
+        });
+        args[1]?.signal?.addEventListener("abort", () => {
+          chatAbortRequests += 1;
+          window.clearTimeout(timer);
+          try { streamController?.error(new DOMException("Aborted", "AbortError")); } catch { /* The stream already ended. */ }
+        }, { once: true });
+        return new Response(body, { status: 200, headers: { "content-type": "text/event-stream; charset=utf-8" } });
+      }
+      const ttsRequest = requestUrl.pathname === "/api/voice/tts/stream" ? JSON.parse(args[1]?.body ?? "{}" ) : null;
+      if (ttsRequest) args[1]?.signal?.addEventListener("abort", () => { ttsAbortRequests += 1; }, { once: true });
+      const response = await nativeFetch(...args);
       if (requestUrl.pathname !== "/api/voice/tts/stream") return response;
+      if (!chatDone) ttsStartedBeforeChatDone += 1;
       ttsStreamCount += 1;
       const lines = (await response.text()).trim().split("\n");
       const encoder = new TextEncoder();
       let index = 0;
       let audioIndex = 0;
       let timer = 0;
+      let streamController;
       const body = new ReadableStream({
         start(controller) {
+          streamController = controller;
           const sendNext = () => {
             if (index >= lines.length) {
               controller.close();
@@ -81,29 +139,51 @@ try {
             const message = JSON.parse(line);
             if (message.type === "audio") ttsAudioChunksReceived += 1;
             controller.enqueue(encoder.encode(`${line}\n`));
-            const delay = message.type === "audio" ? (audioIndex++ === 1 ? 700 : 380) : 0;
+            const chunkNumber = message.type === "audio" ? audioIndex++ : -1;
+            const delay = message.type === "audio"
+              ? ttsRequest.turnId === slowTurnId && chunkNumber === 0
+                ? 15_000
+                : chunkNumber === 1 ? 700 : 380
+              : 0;
             timer = window.setTimeout(sendNext, delay);
           };
           sendNext();
         },
         cancel() { window.clearTimeout(timer); },
       });
+      args[1]?.signal?.addEventListener("abort", () => {
+        window.clearTimeout(timer);
+        try { streamController?.error(new DOMException("Aborted", "AbortError")); } catch { /* The stream already ended. */ }
+      }, { once: true });
       return new Response(body, {
         status: response.status,
         headers: { "content-type": response.headers.get("content-type") || "application/x-ndjson" },
       });
     };
+    const NativeAudioWorkletNode = window.AudioWorkletNode;
+    window.AudioWorkletNode = new Proxy(NativeAudioWorkletNode, {
+      construct(target, args, newTarget) {
+        if (args[1] === "whale-pcm-playback") playbackWorklets += 1;
+        return Reflect.construct(target, args, newTarget);
+      },
+    });
+    const nativePortPostMessage = MessagePort.prototype.postMessage;
+    MessagePort.prototype.postMessage = function (message, transfer) {
+      if (message?.type === "push") {
+        pcmPlaybackPushes += 1;
+        audioStartChunkCounts.push(ttsAudioChunksReceived);
+      }
+      if (message?.type === "stop") pcmPlaybackStops += 1;
+      return nativePortPostMessage.call(this, message, transfer);
+    };
     const nativeBufferStart = AudioBufferSourceNode.prototype.start;
     AudioBufferSourceNode.prototype.start = function (...args) {
       audioPlaybackStarts += 1;
-      audioStartChunkCounts.push(ttsAudioChunksReceived);
-      const startsAt = typeof args[0] === "number" ? args[0] : this.context.currentTime;
-      if (previousScheduledEnd !== null) playbackScheduleGaps.push(startsAt - previousScheduledEnd);
-      previousScheduledEnd = startsAt + (this.buffer?.duration ?? 0);
       return nativeBufferStart.apply(this, args);
     };
     const nativeBufferStop = AudioBufferSourceNode.prototype.stop;
     AudioBufferSourceNode.prototype.stop = function (...args) {
+      audioPlaybackStops += 1;
       previousScheduledEnd = null;
       return nativeBufferStop.apply(this, args);
     };
@@ -125,11 +205,22 @@ try {
             microphoneRequests,
             stoppedTracks,
             audioPlaybackStarts,
+            audioPlaybackStops,
+      pcmPlaybackPushes,
+      pcmPlaybackStops,
+      playbackWorklets,
             ttsStreamCount,
+            ttsAudioChunksReceived,
             audioStartChunkCounts,
             playbackScheduleGaps,
             outputWaveformFrames,
             nonSilentOutputWaveformFrames,
+            ttsStartedBeforeChatDone,
+            ttsAbortRequests,
+            chatAbortRequests,
+            chatDone,
+            chatRequests,
+            emotionEvents,
             endedTracks: inputStream?.getTracks().filter((track) => track.readyState === "ended").length ?? 0,
           };
         },
@@ -173,31 +264,17 @@ try {
     if (path === "/api/chat/history") return json({ messages: [] });
     if (path === "/api/events") return route.fulfill({ status: 200, contentType: "text/event-stream", body: ": ready\n\n" });
     if (path === "/api/voice/asr/status" || path === "/api/voice/asr/warm") {
-      return json({ state: "ready", progress: 100, message: "", model: "X-ASR 480 ms (test)" });
+      return json({ state: "ready", progress: 100, message: "", model: "X-ASR 480 ms (test)", offlineRefinement: "ready" });
     }
     if (path === "/api/voice/tts/status" || path === "/api/voice/tts/warm") {
       return json({ state: "ready", progress: 100, message: "", model: "Qwen3-TTS (test)" });
-    }
-    if (path === "/api/chat") {
-      const input = request.postDataJSON();
-      chatRequests.push(input);
-      const turn = chatRequests.length;
-      const events = [
-        ["ack", { clientId: input.clientId, sessionId: "voice-check-session" }],
-        ["emotion", { emotion: "happy" }],
-        ["delta", { text: `第${turn}轮回答。` }],
-        ["delta", { text: "再说一句。" }],
-        ["done", { messageId: turn, sessionId: "voice-check-session", emotion: "happy" }],
-      ];
-      const body = events.map(([name, data]) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`).join("");
-      return route.fulfill({ status: 200, contentType: "text/event-stream; charset=utf-8", body });
     }
     if (path === "/api/voice/tts/stream") {
       const input = request.postDataJSON();
       ttsRequests.push(input);
       const duration = 0.48;
-      const sampleRate = 16_000;
-      const messages = [{ type: "meta", model: "Qwen3-TTS (test)", speaker: "serena" }];
+      const sampleRate = 24_000;
+      const messages = [{ type: "meta", model: "Qwen3-TTS (test)", speaker: "Serena", turnId: input.turnId }];
       let sampleOffset = 0;
       for (let chunk = 0; chunk < 4; chunk += 1) {
         const samples = Buffer.alloc(Math.ceil(sampleRate * duration) * 2);
@@ -205,9 +282,9 @@ try {
           samples.writeInt16LE(Math.round(Math.sin(((sampleOffset + i) / sampleRate) * 2 * Math.PI * 220) * 7_500), i * 2);
         }
         sampleOffset += samples.length / 2;
-        messages.push({ type: "audio", sampleRate, pcm16: samples.toString("base64") });
+        messages.push({ type: "audio", sampleRate, pcm16: samples.toString("base64"), turnId: input.turnId });
       }
-      messages.push({ type: "done" });
+      messages.push({ type: "done", turnId: input.turnId });
       const body = [
         ...messages,
       ].map((message) => JSON.stringify(message)).join("\n") + "\n";
@@ -225,7 +302,7 @@ try {
       closedSockets += 1;
       void socket.close({ code: code ?? 1000, reason: reason ?? "" });
     });
-    socket.send(JSON.stringify({ type: "ready", model: "X-ASR 480 ms (test)" }));
+    socket.send(JSON.stringify({ type: "ready", model: "X-ASR 480 ms (test)", offlineRefinement: "ready" }));
     let voicedFrames = 0;
     let quietFrames = 0;
     socket.onMessage((message) => {
@@ -280,41 +357,79 @@ try {
   }
 
   await speak();
-  await page.waitForFunction(() => document.body.innerText.includes("第1轮回答。"), null, { timeout: 10_000 });
-  check("第一轮语音最终稿只进入共享聊天一次", chatRequests.length === 1 && chatRequests[0]?.message === speechTexts[0]);
+  await page.waitForFunction(() => document.body.innerText.includes("第1轮回答内容足够长"), null, { timeout: 10_000 });
+  const firstTurn = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests[0]);
+  check("第一轮语音最终稿只进入共享聊天一次", firstTurn?.message === speechTexts[0]);
   await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("大肥鱼正在回答"), null, { timeout: 10_000 });
-  await page.waitForFunction(() => window.__wpVoiceCheck.stats().audioPlaybackStarts >= 4, null, { timeout: 10_000 });
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackPushes >= 4, null, { timeout: 10_000 });
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 1, null, { timeout: 10_000 });
-  check("多句回复以完整上下文进行一次 TTS 合成", ttsRequests.length === 1 && ttsRequests[0]?.text === "第1轮回答。再说一句。");
+  check(
+    "第一句在 LLM 完成整轮回答前送入 TTS，并使用独立 turn ID",
+    (await page.evaluate(() => window.__wpVoiceCheck.stats().ttsStartedBeforeChatDone)) > 0
+      && ttsRequests[0]?.turnId === firstTurn?.clientId
+      && ttsRequests[0]?.text === "第1轮回答内容足够长，可以先开始语音合成。",
+    JSON.stringify({ request: ttsRequests[0], turnId: firstTurn?.clientId }),
+  );
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 2, null, { timeout: 10_000 });
+  check(
+    "按句界排队合成两句话，情绪保留在 LLM 表情标签而非 TTS 指令中",
+    ttsRequests[1]?.text === "再说一句，也保持自然语气。"
+      && ttsRequests.every((input) => !Object.hasOwn(input, "emotion"))
+      && (await page.evaluate(() => window.__wpVoiceCheck.stats().emotionEvents)) > 0,
+    JSON.stringify(ttsRequests.slice(0, 2)),
+  );
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackPushes >= 8, null, { timeout: 10_000 });
   const playbackStats = await page.evaluate(() => window.__wpVoiceCheck.stats());
   check(
-    "整段语音预缓冲约两秒音频，并在人为网络抖动下保持无间隙排队",
-    playbackStats.audioStartChunkCounts[0] === 4
-      && playbackStats.audioStartChunkCounts[1] === 4
-      && playbackStats.playbackScheduleGaps.slice(0, 3).every((gap) => gap <= 0.01),
-    JSON.stringify({ starts: playbackStats.audioStartChunkCounts.slice(0, 4), gaps: playbackStats.playbackScheduleGaps.slice(0, 3) }),
+    "流式 PCM 块进入同一个 AudioWorklet 连续播放队列，不逐块创建播放源",
+    playbackStats.playbackWorklets === 1
+      && playbackStats.pcmPlaybackPushes >= 8
+      && playbackStats.audioPlaybackStarts === 0,
+    JSON.stringify({ worklets: playbackStats.playbackWorklets, pcmChunks: playbackStats.pcmPlaybackPushes, bufferSources: playbackStats.audioPlaybackStarts }),
   );
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().nonSilentOutputWaveformFrames > 0, null, { timeout: 5_000 });
   check("TTS 播放产生非静音波形供 Live2D 嘴型驱动", (await page.evaluate(() => window.__wpVoiceCheck.stats().outputWaveformFrames)) > 0);
 
+  const beforePlaybackInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
   await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
   await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("已停止她当前的回答"), null, { timeout: 5_000 });
-  check("说话时打断正在播放的 TTS", (await status.innerText()).includes("已停止她当前的回答"));
+  const afterPlaybackInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  check(
+    "说话时立即停止正在播放的 TTS",
+    (await status.innerText()).includes("已停止她当前的回答")
+      && afterPlaybackInterrupt.pcmPlaybackStops > beforePlaybackInterrupt.pcmPlaybackStops,
+  );
   await page.waitForTimeout(500);
   await page.evaluate(() => window.__wpVoiceCheck.setTone(false));
-  await page.waitForFunction(() => document.body.innerText.includes("第2轮回答。"), null, { timeout: 10_000 });
-  check("打断后识别文本开始第二轮对话", chatRequests.length === 2 && chatRequests[1]?.message === speechTexts[1]);
-  check("情绪标签传入 TTS 合成", ttsRequests.length >= 2 && ttsRequests.every((input) => input.emotion === "happy"));
-
-  await page.waitForFunction(
-    (heard) => document.querySelector(".composer__voice-status")?.textContent?.includes(`听到了：「${heard}」`),
-    speechTexts[1],
-    { timeout: 10_000 },
+  await page.waitForFunction(() => document.body.innerText.includes("第2轮回答内容足够长"), null, { timeout: 10_000 });
+  const chatAfterInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests);
+  check("打断后识别文本开始第二轮对话", chatAfterInterrupt.length === 2 && chatAfterInterrupt[1]?.message === speechTexts[1]);
+  check(
+    "每轮 TTS 携带对应 turn ID，LLM 情绪事件单独驱动角色表情",
+    ttsRequests.filter((input) => input.turnId === chatAfterInterrupt[1]?.clientId).length >= 1
+      && ttsRequests.every((input) => !Object.hasOwn(input, "emotion"))
+      && (await page.evaluate(() => window.__wpVoiceCheck.stats().emotionEvents)) >= 2,
   );
-  await speak();
-  await page.waitForFunction(() => document.body.innerText.includes("第3轮回答。"), null, { timeout: 10_000 });
-  check("语音模式连续完成三轮识别与回复", chatRequests.length === 3 && chatRequests[2]?.message === speechTexts[2]);
-  await page.waitForFunction(() => window.__wpVoiceCheck.stats().audioPlaybackStarts >= 5, null, { timeout: 10_000 });
+
+  await page.waitForFunction(() => {
+    const stats = window.__wpVoiceCheck.stats();
+    return stats.ttsStreamCount >= 3 && stats.ttsAudioChunksReceived >= 9 && !stats.chatDone;
+  }, null, { timeout: 10_000 });
+  const beforeSynthesisInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  check("用户开口时第二轮仍有未完成的聊天与 TTS 请求", beforeSynthesisInterrupt.chatRequests.length === 2);
+  await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
+  await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("已停止她当前的回答"), null, { timeout: 5_000 });
+  const afterSynthesisInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  check(
+    "打断同时取消当前 LLM 与 TTS 请求，并废弃旧 turn 队列",
+    afterSynthesisInterrupt.chatAbortRequests > beforeSynthesisInterrupt.chatAbortRequests
+      && afterSynthesisInterrupt.ttsAbortRequests > beforeSynthesisInterrupt.ttsAbortRequests,
+  );
+  await page.waitForTimeout(200);
+  await page.evaluate(() => window.__wpVoiceCheck.setTone(false));
+  await page.waitForFunction(() => document.body.innerText.includes("第3轮回答内容足够长"), null, { timeout: 10_000 });
+  const allChatRequests = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests);
+  check("语音模式连续完成三轮识别与回复", allChatRequests.length === 3 && allChatRequests[2]?.message === speechTexts[2]);
   const ttsCountBeforeSwitch = ttsRequests.length;
   await page.evaluate(async () => {
     const { setCharacter } = await import("/src/characters.ts");

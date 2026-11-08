@@ -7,7 +7,7 @@ import { loadConfig } from "../src/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import type { AsrService, AsrStatus, AsrUpdate } from "../src/voice/asr.ts";
-import type { TtsEmotion, TtsService, TtsStatus } from "../src/voice/tts.ts";
+import type { TtsService, TtsStatus } from "../src/voice/tts.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
 
@@ -18,14 +18,15 @@ const provider: ChatProvider = {
 };
 
 function fakeAsr(): AsrService & { received: Buffer[]; setUpdate(update: AsrUpdate): void } {
-  let current: AsrStatus = { state: "idle", progress: null, message: "待准备", model: "X-ASR fixture" };
+  let current: AsrStatus = { state: "idle", progress: null, message: "待准备", model: "X-ASR fixture", offlineRefinement: "idle" };
   const received: Buffer[] = [];
   let next: AsrUpdate = { text: "", final: false };
   return {
     received,
     status: () => current,
-    async warm() { current = { ...current, state: "ready", progress: 100, message: "已就绪" }; },
+    async warm() { current = { ...current, state: "ready", progress: 100, message: "已就绪", offlineRefinement: "ready" }; },
     async createStream() {
+      await this.warm();
       return {
         async acceptPcm(pcm) { received.push(pcm); const result = next; next = { text: "", final: false }; return result; },
         async close() {},
@@ -35,15 +36,15 @@ function fakeAsr(): AsrService & { received: Buffer[]; setUpdate(update: AsrUpda
   };
 }
 
-function fakeTts(): TtsService & { received: Array<{ text: string; emotion: TtsEmotion }> } {
-  const received: Array<{ text: string; emotion: TtsEmotion }> = [];
+function fakeTts(): TtsService & { received: Array<{ text: string }> } {
+  const received: Array<{ text: string }> = [];
   let current: TtsStatus = { state: "idle", progress: null, message: "待准备", model: "TTS fixture", speaker: "Fixture" };
   return {
     received,
     status: () => current,
     async warm() { current = { ...current, state: "ready", progress: 100, message: "已就绪" }; },
-    async stream(text, emotion, onChunk) {
-      received.push({ text, emotion });
+    async stream(text, onChunk) {
+      received.push({ text });
       onChunk({ sampleRate: 24_000, pcm16: "AAABAA==" });
     },
   };
@@ -63,24 +64,27 @@ test("voice routes stream X-ASR PCM and segmented TTS audio", async () => {
 
     const prepared = await fetch(`${base}/api/voice/asr/warm`, { method: "POST" });
     assert.equal(prepared.status, 200);
-    assert.equal((await prepared.json() as AsrStatus).state, "ready");
+    const preparedStatus = await prepared.json() as AsrStatus;
+    assert.equal(preparedStatus.state, "ready");
+    assert.equal(preparedStatus.offlineRefinement, "ready");
 
     const ttsStatus = await (await fetch(`${base}/api/voice/tts/status`)).json() as TtsStatus;
     assert.equal(ttsStatus.state, "idle");
     const ttsResponse = await fetch(`${base}/api/voice/tts/stream`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "你好，今天聊聊吧。", emotion: "happy" }),
+      body: JSON.stringify({ text: "你好，今天聊聊吧。", turnId: "voice-turn-1" }),
     });
     assert.equal(ttsResponse.status, 200);
     const ttsLines = (await ttsResponse.text()).trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
     assert.deepEqual(ttsLines.map((line) => line.type), ["meta", "audio", "done"]);
+    assert.ok(ttsLines.every((line) => line.turnId === "voice-turn-1"));
     assert.equal(ttsLines[1].sampleRate, 24_000);
-    assert.deepEqual(tts.received, [{ text: "你好，今天聊聊吧。", emotion: "happy" }]);
+    assert.deepEqual(tts.received, [{ text: "你好，今天聊聊吧。" }]);
     const invalidTts = await fetch(`${base}/api/voice/tts/stream`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: "你好", emotion: "fear" }),
+      body: JSON.stringify({ text: "你好" }),
     });
     assert.equal(invalidTts.status, 400);
 
@@ -88,7 +92,7 @@ test("voice routes stream X-ASR PCM and segmented TTS audio", async () => {
     const opened = once(socket, "open");
     const ready = nextMessage(socket);
     await opened;
-    assert.deepEqual(await ready, { type: "ready", model: "X-ASR fixture" });
+    assert.deepEqual(await ready, { type: "ready", model: "X-ASR fixture", offlineRefinement: "ready" });
     const frame = Buffer.alloc(3_200);
     socket.send(frame);
 
@@ -139,7 +143,7 @@ test("X-ASR WebSocket honors the hub token before opening a microphone stream", 
     const readyMessage = nextMessage(accepted);
     await once(accepted, "open");
     const ready = await readyMessage;
-    assert.deepEqual(ready, { type: "ready", model: "X-ASR fixture" });
+    assert.deepEqual(ready, { type: "ready", model: "X-ASR fixture", offlineRefinement: "ready" });
     accepted.close();
     await once(accepted, "close");
   } finally {

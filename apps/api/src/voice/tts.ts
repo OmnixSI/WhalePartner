@@ -7,8 +7,7 @@ import { promisify } from "node:util";
 import { createInterface } from "node:readline";
 
 const execFileAsync = promisify(execFile);
-export const TTS_MODEL = "Qwen3-TTS 1.7B · MLX 4-bit · Serena";
-export type TtsEmotion = "neutral" | "happy" | "sad" | "angry" | "surprised" | "relaxed";
+export const TTS_MODEL = "Qwen3-TTS 0.6B · MLX 8-bit · Serena";
 
 export interface TtsStatus {
   state: "idle" | "loading" | "ready" | "failed";
@@ -26,7 +25,7 @@ export interface TtsAudioChunk {
 export interface TtsService {
   status(): TtsStatus;
   warm(): Promise<void>;
-  stream(text: string, emotion: TtsEmotion, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal): Promise<void>;
+  stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal): Promise<void>;
   close?(): Promise<void>;
 }
 
@@ -77,7 +76,7 @@ export class MlxTtsService implements TtsService {
     this.#current = {
       state: this.#supported ? "idle" : "failed",
       progress: null,
-      message: this.#supported ? "待准备" : "本地情绪语音需要 Apple Silicon Mac。",
+      message: this.#supported ? "待准备" : "本地语音合成需要 Apple Silicon Mac。",
       model: TTS_MODEL,
       speaker: "Serena",
     };
@@ -92,9 +91,9 @@ export class MlxTtsService implements TtsService {
     if (this.#current.state === "ready" && this.#worker) return Promise.resolve();
     if (this.#warmPromise) return this.#warmPromise;
     if (!this.#supported) return Promise.reject(new Error(this.#current.message));
-    this.#current = { ...this.#current, state: "loading", progress: null, message: "正在准备本地情绪语音模型。首次启动会下载模型。" };
+    this.#current = { ...this.#current, state: "loading", progress: null, message: "正在准备本地语音模型。首次启动会下载模型。" };
     this.#warmPromise = this.#prepare().then(() => {
-      this.#current = { ...this.#current, state: "ready", progress: 100, message: "本地情绪语音已就绪。" };
+      this.#current = { ...this.#current, state: "ready", progress: 100, message: "本地语音已就绪。" };
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       this.#current = { ...this.#current, state: "failed", progress: null, message };
@@ -105,7 +104,7 @@ export class MlxTtsService implements TtsService {
     return this.#warmPromise;
   }
 
-  async stream(text: string, emotion: TtsEmotion, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal): Promise<void> {
+  async stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) throw abortError();
     await this.warm();
     if (signal?.aborted) throw abortError();
@@ -113,7 +112,7 @@ export class MlxTtsService implements TtsService {
     await new Promise<void>((resolveRequest, rejectRequest) => {
       const worker = this.#worker;
       if (!worker || worker.killed) {
-        rejectRequest(new Error("本地情绪语音运行时没有启动。"));
+        rejectRequest(new Error("本地语音运行时没有启动。"));
         return;
       }
       const pending: PendingRequest = {
@@ -132,7 +131,7 @@ export class MlxTtsService implements TtsService {
       };
       signal?.addEventListener("abort", pending.abort, { once: true });
       this.#pending.set(requestId, pending);
-      this.#write({ action: "synthesize", requestId, text, emotion }, (error) => {
+      this.#write({ action: "synthesize", requestId, text }, (error) => {
         if (error) this.#rejectRequest(requestId, error);
       });
     });
@@ -143,7 +142,7 @@ export class MlxTtsService implements TtsService {
     this.#closing = true;
     this.#readyResolve = null;
     this.#readyReject = null;
-    for (const requestId of this.#pending.keys()) this.#rejectRequest(requestId, new Error("本地情绪语音已关闭。"));
+    for (const requestId of this.#pending.keys()) this.#rejectRequest(requestId, new Error("本地语音已关闭。"));
     const worker = this.#worker;
     this.#worker = null;
     if (!worker) return;
@@ -174,7 +173,7 @@ export class MlxTtsService implements TtsService {
 
   async #installRuntime(): Promise<void> {
     const setupScript = this.#options.setupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-tts-runtime.sh", import.meta.url));
-    if (!existsSync(setupScript)) throw new Error("本地情绪语音运行环境缺少安装脚本，请重新安装 WhalePartner。");
+    if (!existsSync(setupScript)) throw new Error("本地语音运行环境缺少安装脚本，请重新安装 WhalePartner。");
     this.#current = { ...this.#current, message: "正在 WhalePartner 独立运行环境中准备语音组件。" };
     await new Promise<void>((resolveSetup, rejectSetup) => {
       const child = spawn("bash", [setupScript], {
@@ -274,7 +273,7 @@ export class MlxTtsService implements TtsService {
   #write(message: Record<string, unknown>, callback?: (error?: Error | null) => void): void {
     const worker = this.#worker;
     if (!worker || worker.killed || worker.stdin.destroyed) {
-      callback?.(new Error("本地情绪语音运行时没有启动。"));
+      callback?.(new Error("本地语音运行时没有启动。"));
       return;
     }
     worker.stdin.write(`${JSON.stringify(message)}\n`, callback);

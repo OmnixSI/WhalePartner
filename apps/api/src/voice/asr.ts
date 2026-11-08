@@ -11,16 +11,29 @@ import { pipeline } from "node:stream/promises";
 
 const execFileAsync = promisify(execFile);
 
-export const XASR_MODEL = "X-ASR Chinese-English streaming · 480 ms";
-const ARCHIVE = "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05";
-const MODEL_URL = `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/${ARCHIVE}.tar.bz2`;
-const REQUIRED_MODEL_FILES = ["encoder.int8.onnx", "decoder.onnx", "joiner.int8.onnx", "tokens.txt", "bpe.vocab"];
+export const XASR_MODEL = "X-ASR Chinese-English · 480 ms streaming + offline refinement";
+const STREAMING_ARCHIVE = "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05";
+const OFFLINE_ARCHIVE = "sherpa-onnx-x-asr-zipformer-transducer-zh-en-punct-int8-2026-06-03";
+const MODEL_RELEASES = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models";
+const STREAMING_MODEL_FILES = [
+  { name: "encoder.int8.onnx", size: 155_278_641 },
+  { name: "decoder.onnx", size: 11_309_084 },
+  { name: "joiner.int8.onnx", size: 2_581_422 },
+  { name: "tokens.txt", size: 58_806 },
+];
+const OFFLINE_MODEL_FILES = [
+  { name: "encoder-epoch-99-avg-1.int8.onnx", size: 161_015_713 },
+  { name: "decoder-epoch-99-avg-1.onnx", size: 11_309_084 },
+  { name: "joiner-epoch-99-avg-1.int8.onnx", size: 2_581_422 },
+  { name: "tokens.txt", size: 58_806 },
+];
 
 export interface AsrStatus {
   state: "idle" | "loading" | "ready" | "failed";
   progress: number | null;
   message: string;
   model: string;
+  offlineRefinement: "idle" | "loading" | "ready" | "unavailable";
 }
 
 export interface AsrUpdate {
@@ -44,6 +57,7 @@ interface WorkerReply {
   requestId?: string;
   type: "ready" | "reply" | "error";
   ok?: boolean;
+  refinementReady?: boolean;
   text?: string;
   final?: boolean;
   message?: string;
@@ -67,7 +81,9 @@ export interface XAsrOptions {
 export class XAsrService implements AsrService {
   readonly #options: XAsrOptions;
   readonly #modelDirectory: string;
-  #current: AsrStatus = { state: "idle", progress: null, message: "待准备", model: XASR_MODEL };
+  readonly #offlineModelDirectory: string;
+  #current: AsrStatus = { state: "idle", progress: null, message: "待准备", model: XASR_MODEL, offlineRefinement: "idle" };
+  #offlineRefinementReady = false;
   #warmPromise: Promise<void> | null = null;
   #worker: ChildProcessWithoutNullStreams | null = null;
   #pending = new Map<string, PendingRequest>();
@@ -77,7 +93,8 @@ export class XAsrService implements AsrService {
 
   constructor(options: XAsrOptions) {
     this.#options = options;
-    this.#modelDirectory = join(resolve(options.dataDirectory), "models", ARCHIVE);
+    this.#modelDirectory = join(resolve(options.dataDirectory), "models", STREAMING_ARCHIVE);
+    this.#offlineModelDirectory = join(resolve(options.dataDirectory), "models", OFFLINE_ARCHIVE);
     process.once("exit", this.#processExit);
   }
 
@@ -88,12 +105,18 @@ export class XAsrService implements AsrService {
   warm(): Promise<void> {
     if (this.#current.state === "ready" && this.#worker) return Promise.resolve();
     if (this.#warmPromise) return this.#warmPromise;
-    this.#current = { state: "loading", progress: 0, message: "正在准备 X-ASR 480 ms 中英模型。", model: XASR_MODEL };
+    this.#current = { state: "loading", progress: 0, message: "正在准备 X-ASR 480 ms 中英模型和整句精修。", model: XASR_MODEL, offlineRefinement: "loading" };
     this.#warmPromise = this.#prepare().then(() => {
-      this.#current = { state: "ready", progress: 100, message: "X-ASR 流式识别已就绪。", model: XASR_MODEL };
+      this.#current = {
+        state: "ready",
+        progress: 100,
+        message: this.#offlineRefinementReady ? "X-ASR 流式识别与整句精修已就绪。" : "X-ASR 流式识别已就绪，整句精修暂不可用。",
+        model: XASR_MODEL,
+        offlineRefinement: this.#offlineRefinementReady ? "ready" : "unavailable",
+      };
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      this.#current = { state: "failed", progress: null, message, model: XASR_MODEL };
+      this.#current = { state: "failed", progress: null, message, model: XASR_MODEL, offlineRefinement: "unavailable" };
       throw error instanceof Error ? error : new Error(message);
     }).finally(() => {
       this.#warmPromise = null;
@@ -145,7 +168,9 @@ export class XAsrService implements AsrService {
   async #prepare(): Promise<void> {
     await this.#ensureRuntime();
     await this.#installModel();
+    await this.#installOfflineModel();
     await this.#startWorker();
+    if (!this.#offlineRefinementReady) throw new Error("X-ASR 整句精修模型载入失败。");
   }
 
   async #ensureRuntime(): Promise<void> {
@@ -168,26 +193,34 @@ export class XAsrService implements AsrService {
   }
 
   async #installModel(): Promise<void> {
-    if (await this.#modelIsUsable(this.#modelDirectory)) return;
-    const temporaryDirectory = `${this.#modelDirectory}.install-${randomUUID()}`;
-    await mkdir(dirname(this.#modelDirectory), { recursive: true });
+    await this.#installModelPackage(this.#modelDirectory, STREAMING_ARCHIVE, STREAMING_MODEL_FILES);
+  }
+
+  async #installOfflineModel(): Promise<void> {
+    await this.#installModelPackage(this.#offlineModelDirectory, OFFLINE_ARCHIVE, OFFLINE_MODEL_FILES);
+  }
+
+  async #installModelPackage(directory: string, archiveName: string, files: Array<{ name: string; size: number }>): Promise<void> {
+    if (await this.#modelIsUsable(directory, files)) return;
+    const temporaryDirectory = `${directory}.install-${randomUUID()}`;
+    await mkdir(dirname(directory), { recursive: true });
     await rm(temporaryDirectory, { recursive: true, force: true });
     await mkdir(temporaryDirectory, { recursive: true });
     try {
-      await this.#downloadModel(temporaryDirectory);
+      await this.#downloadModel(temporaryDirectory, archiveName, files);
       const vocabulary = await this.#vocabularyPath();
       if (!(await exists(join(temporaryDirectory, "bpe.vocab")))) await cp(vocabulary, join(temporaryDirectory, "bpe.vocab"));
-      if (!(await this.#modelIsUsable(temporaryDirectory))) throw new Error("X-ASR 模型文件不完整，无法启动识别。");
-      await rm(this.#modelDirectory, { recursive: true, force: true });
-      await rename(temporaryDirectory, this.#modelDirectory);
+      if (!(await this.#modelIsUsable(temporaryDirectory, files))) throw new Error(`X-ASR 模型文件不完整：${archiveName}`);
+      await rm(directory, { recursive: true, force: true });
+      await rename(temporaryDirectory, directory);
     } catch (error) {
       await rm(temporaryDirectory, { recursive: true, force: true });
       throw error;
     }
   }
 
-  async #downloadModel(destination: string): Promise<void> {
-    const response = await fetch(MODEL_URL);
+  async #downloadModel(destination: string, archiveName: string, files: Array<{ name: string; size: number }>): Promise<void> {
+    const response = await fetch(`${MODEL_RELEASES}/${archiveName}.tar.bz2`);
     if (!response.ok || !response.body) throw new Error(`下载 X-ASR 模型失败（HTTP ${response.status}）。`);
     const archive = join(destination, "model.tar.bz2");
     await pipeline(Readable.fromWeb(response.body as never), createWriteStream(archive));
@@ -198,10 +231,8 @@ export class XAsrService implements AsrService {
     } catch {
       throw new Error("X-ASR 模型压缩包解压失败。");
     }
-    const extracted = join(staging, ARCHIVE);
-    for (const name of REQUIRED_MODEL_FILES.filter((item) => item !== "bpe.vocab")) {
-      await cp(join(extracted, name), join(destination, name));
-    }
+    const extracted = join(staging, archiveName);
+    for (const file of files) await cp(join(extracted, file.name), join(destination, file.name));
     await rm(archive, { force: true });
     await rm(staging, { recursive: true, force: true });
   }
@@ -215,13 +246,11 @@ export class XAsrService implements AsrService {
     throw new Error("X-ASR 分词词表不在应用资源中。");
   }
 
-  async #modelIsUsable(directory: string): Promise<boolean> {
+  async #modelIsUsable(directory: string, files: Array<{ name: string; size: number }>): Promise<boolean> {
     try {
-      const [encoder, decoder, joiner, tokens, vocab] = await Promise.all(
-        REQUIRED_MODEL_FILES.map((name) => stat(join(directory, name))),
-      );
-      return encoder.size > 100_000_000 && decoder.size > 1_000_000 && joiner.size > 500_000
-        && tokens.size > 10_000 && vocab.size > 10_000;
+      const installed = await Promise.all(files.map(async (file) => (await stat(join(directory, file.name))).size === file.size));
+      const vocabulary = await stat(join(directory, "bpe.vocab"));
+      return installed.every(Boolean) && vocabulary.size > 10_000;
     } catch {
       return false;
     }
@@ -229,7 +258,10 @@ export class XAsrService implements AsrService {
 
   async #startWorker(): Promise<void> {
     if (this.#worker) return;
-    const args = [this.#modelDirectory];
+    const offlineModelDirectory = await this.#modelIsUsable(this.#offlineModelDirectory, OFFLINE_MODEL_FILES)
+      ? this.#offlineModelDirectory
+      : "";
+    const args = [this.#modelDirectory, offlineModelDirectory];
     const binary = this.#options.workerPath ?? process.env.WP_XASR_WORKER ?? findOnPath("whale-xasr-worker");
     const python = this.#pythonPath();
     const script = fileURLToPath(new URL("./xasr_worker.py", import.meta.url));
@@ -290,6 +322,7 @@ export class XAsrService implements AsrService {
     try { reply = JSON.parse(line) as WorkerReply; }
     catch { return this.#failWorker("X-ASR 运行时返回了无法读取的响应。"); }
     if (reply.type === "ready") {
+      this.#offlineRefinementReady = reply.refinementReady === true;
       this.#readyResolve?.();
       this.#readyResolve = null;
       this.#readyReject = null;
@@ -317,7 +350,7 @@ export class XAsrService implements AsrService {
       pending.reject(new Error(message));
     }
     this.#pending.clear();
-    if (this.#current.state !== "loading") this.#current = { state: "failed", progress: null, message, model: XASR_MODEL };
+    if (this.#current.state !== "loading") this.#current = { state: "failed", progress: null, message, model: XASR_MODEL, offlineRefinement: "unavailable" };
   }
 }
 

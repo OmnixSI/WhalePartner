@@ -45,9 +45,9 @@
 
 ## 连续语音
 
-- `GET /api/voice/asr/status` 返回 X-ASR 运行状态；`POST /api/voice/asr/warm` 准备本机模型。`/api/voice/asr/stream` 是受 hub 令牌保护的 WebSocket：客户端先等 `ready`，再持续发送 16 kHz、单声道、PCM16 二进制帧；服务端发 `partial`、`final`、`segment-end` 或 `error`。中间稿不写入聊天历史。
-- `GET /api/voice/tts/status` 返回本机模型、预置音色和运行状态；`POST /api/voice/tts/warm` 安装独立运行环境并准备模型。`POST /api/voice/tts/stream` 接受 `{ "text": "…", "emotion": "happy" }`，以 NDJSON 返回 `meta`、若干 24 kHz PCM16 `audio` 块和 `done`，或 `error`。客户端断开会取消当前合成。
-- 语音识别文本仍通过 `POST /api/chat` 写入共享历史。聊天模型和上下文沿用现有配置；TTS 只在大肥鱼人格及连续语音模式开启时自动播放。退出语音模式会释放麦克风与音频节点，播放队列和请求一并清理。
+- `GET /api/voice/asr/status` 返回 X-ASR 运行状态与 `offlineRefinement` 精修模型状态；API 启动监听后会异步预热流式、离线模型，`POST /api/voice/asr/warm` 可查询并等待准备完成。`/api/voice/asr/stream` 是受 hub 令牌保护的 WebSocket：客户端先等含模型与精修状态的 `ready`，再持续发送 16 kHz、单声道、PCM16 二进制帧；服务端用应用 RMS VAD 在约 700 ms 静音后结束一句，向流式模型补 400 ms 静音后以整句离线模型精修，再发最终 `final`；实时识别期间发送 `partial`，短于 500 ms 的片段用 `segment-end`，故障时发 `error`。中间稿不写入聊天历史。
+- `GET /api/voice/tts/status` 返回本机模型、预置音色和运行状态；应用启动时会异步启动持久 worker 并预热，`POST /api/voice/tts/warm` 可查询并等待准备完成。`POST /api/voice/tts/stream` 接受 `{ "text": "…", "turnId": "…" }`，以 NDJSON 返回带相同 `turnId` 的 `meta`、若干 24 kHz PCM16 `audio` 块和 `done`，或 `error`。客户端断开会取消当前合成。
+- 语音识别文本仍通过 `POST /api/chat` 写入共享历史。聊天模型和上下文沿用现有配置；TTS 只在大肥鱼人格及连续语音模式开启时自动播放。音频按回复句界提前送入 TTS；用户打断后立即停止 PCM 播放、取消当前聊天和合成请求，并清空旧轮次队列。退出语音模式会释放麦克风与音频节点。
 
 选型、模型存放、许可和本机实测见 [`VOICE_MODE.md`](VOICE_MODE.md)。
 

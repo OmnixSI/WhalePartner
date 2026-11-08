@@ -3,7 +3,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { readJsonBody, sendJson } from "../http.ts";
 import { authorize, type AuthOptions } from "../auth.ts";
 import type { AsrService, AsrStream } from "../voice/asr.ts";
-import type { TtsEmotion, TtsService } from "../voice/tts.ts";
+import type { TtsService } from "../voice/tts.ts";
 
 const STREAM_PATH = "/api/voice/asr/stream";
 const MAX_PCM_FRAME_BYTES = 32 * 1024;
@@ -31,7 +31,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       await tts.warm();
       sendJson(response, 200, tts.status());
     } catch (error) {
-      sendJson(response, 503, { ...tts.status(), message: error instanceof Error ? error.message : "本地情绪语音模型准备失败。" });
+      sendJson(response, 503, { ...tts.status(), message: error instanceof Error ? error.message : "本地语音模型准备失败。" });
     }
     return true;
   }
@@ -44,9 +44,9 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       return true;
     }
     const text = typeof body.text === "string" ? body.text.trim() : "";
-    const emotion = typeof body.emotion === "string" && isTtsEmotion(body.emotion) ? body.emotion : null;
-    if (!text || text.length > 600 || !emotion) {
-      sendJson(response, 400, { error: "invalid_request", message: "语音文本或情绪值无效。" });
+    const turnId = typeof body.turnId === "string" ? body.turnId.trim() : "";
+    if (!text || text.length > 1200 || !turnId || turnId.length > 100) {
+      sendJson(response, 400, { error: "invalid_request", message: "语音文本或对话轮次无效。" });
       return true;
     }
     const controller = new AbortController();
@@ -59,15 +59,15 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       "x-accel-buffering": "no",
     });
     response.flushHeaders();
-    response.write(`${JSON.stringify({ type: "meta", model: tts.status().model, speaker: tts.status().speaker })}\n`);
+    response.write(`${JSON.stringify({ type: "meta", model: tts.status().model, speaker: tts.status().speaker, turnId })}\n`);
     try {
-      await tts.stream(text, emotion, (chunk) => {
-        if (!controller.signal.aborted && !response.destroyed) response.write(`${JSON.stringify({ type: "audio", ...chunk })}\n`);
+      await tts.stream(text, (chunk) => {
+        if (!controller.signal.aborted && !response.destroyed) response.write(`${JSON.stringify({ type: "audio", ...chunk, turnId })}\n`);
       }, controller.signal);
-      if (!controller.signal.aborted && !response.destroyed) response.end(`${JSON.stringify({ type: "done" })}\n`);
+      if (!controller.signal.aborted && !response.destroyed) response.end(`${JSON.stringify({ type: "done", turnId })}\n`);
     } catch (error) {
       if (!controller.signal.aborted && !response.destroyed) {
-        response.write(`${JSON.stringify({ type: "error", message: error instanceof Error ? error.message : "本地语音生成失败。" })}\n`);
+        response.write(`${JSON.stringify({ type: "error", message: error instanceof Error ? error.message : "本地语音生成失败。", turnId })}\n`);
         response.end();
       }
     } finally {
@@ -103,7 +103,10 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
     let queue = Promise.resolve();
     void service.createStream().then((created) => {
       session = created;
-      if (client.readyState === client.OPEN) client.send(JSON.stringify({ type: "ready", model: service.status().model }));
+      if (client.readyState === client.OPEN) {
+        const status = service.status();
+        client.send(JSON.stringify({ type: "ready", model: status.model, offlineRefinement: status.offlineRefinement }));
+      }
     }).catch((error: unknown) => {
       send(client, { type: "error", message: error instanceof Error ? error.message : "X-ASR 会话启动失败。" });
       client.close(1011, "X-ASR unavailable");
@@ -157,8 +160,4 @@ function toBuffer(data: RawData): Buffer {
 
 function send(client: WebSocket, message: Record<string, unknown>): void {
   if (client.readyState === client.OPEN) client.send(JSON.stringify(message));
-}
-
-function isTtsEmotion(value: string): value is TtsEmotion {
-  return value === "neutral" || value === "happy" || value === "sad" || value === "angry" || value === "surprised" || value === "relaxed";
 }

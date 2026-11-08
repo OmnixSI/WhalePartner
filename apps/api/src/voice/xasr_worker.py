@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Newline JSON bridge for the local sherpa-onnx X-ASR streaming recognizer."""
+"""Newline JSON bridge for the local two-pass sherpa-onnx X-ASR recognizer."""
 
 import base64
 import json
@@ -7,10 +7,18 @@ import re
 import sys
 
 import numpy as np
-from sherpa_onnx import OnlineRecognizer
+from sherpa_onnx import OfflineRecognizer, OnlineRecognizer
 
 protocol = sys.stdout
 sys.stdout = sys.stderr
+
+SAMPLE_RATE = 16_000
+BASE_RMS_THRESHOLD = 0.008
+END_SILENCE_SAMPLES = 11_200
+MIN_SPEECH_SAMPLES = 8_000
+PRE_ROLL_SAMPLES = 4_000
+STREAMING_TAIL_PADDING_SAMPLES = 6_400
+OFFLINE_TAIL_PADDING_SAMPLES = 4_800
 
 
 def emit(message):
@@ -32,12 +40,9 @@ def create_recognizer(model_dir):
         decoder=f"{model_dir}/decoder.onnx",
         joiner=f"{model_dir}/joiner.int8.onnx",
         num_threads=2,
-        sample_rate=16000,
+        sample_rate=SAMPLE_RATE,
         feature_dim=80,
-        enable_endpoint_detection=True,
-        rule1_min_trailing_silence=2.4,
-        rule2_min_trailing_silence=0.4,
-        rule3_min_utterance_length=20.0,
+        enable_endpoint_detection=False,
         decoding_method="modified_beam_search",
         max_active_paths=4,
         modeling_unit="bpe",
@@ -46,12 +51,126 @@ def create_recognizer(model_dir):
     )
 
 
+def create_offline_recognizer(model_dir):
+    return OfflineRecognizer.from_transducer(
+        tokens=f"{model_dir}/tokens.txt",
+        encoder=f"{model_dir}/encoder-epoch-99-avg-1.int8.onnx",
+        decoder=f"{model_dir}/decoder-epoch-99-avg-1.onnx",
+        joiner=f"{model_dir}/joiner-epoch-99-avg-1.int8.onnx",
+        num_threads=2,
+        sample_rate=SAMPLE_RATE,
+        feature_dim=80,
+        decoding_method="modified_beam_search",
+        max_active_paths=4,
+        modeling_unit="bpe",
+        bpe_vocab=f"{model_dir}/bpe.vocab",
+        model_type="transducer",
+    )
+
+
+def new_stream_state(recognizer):
+    return {
+        "stream": recognizer.create_stream(),
+        "active": False,
+        "audio": [],
+        "pre_roll": np.empty(0, dtype=np.int16),
+        "silence_samples": 0,
+        "speech_samples": 0,
+        "noise_floor": 0.0,
+        "last_hypothesis": "",
+    }
+
+
+def consume_vad_frame(state, samples):
+    if not samples.size:
+        return False, False
+    normalized = samples.astype(np.float32) / 32768.0
+    level = float(np.sqrt(np.mean(normalized * normalized)))
+    noise_floor = state["noise_floor"]
+    threshold = max(BASE_RMS_THRESHOLD, min(0.03, noise_floor * 3))
+    is_speech = level >= threshold
+    if noise_floor == 0:
+        state["noise_floor"] = min(level, 0.01)
+    elif level < noise_floor:
+        state["noise_floor"] = noise_floor * 0.8 + level * 0.2
+    else:
+        state["noise_floor"] = noise_floor * 0.998 + level * 0.002
+
+    if not state["active"]:
+        if not is_speech:
+            state["pre_roll"] = np.concatenate((state["pre_roll"], samples))[-PRE_ROLL_SAMPLES:]
+            return False, False
+        state["active"] = True
+        state["audio"] = [state["pre_roll"].copy(), samples.copy()]
+        state["speech_samples"] = samples.size
+        state["silence_samples"] = 0
+        return True, False
+
+    state["audio"].append(samples.copy())
+    if is_speech:
+        state["speech_samples"] += samples.size
+        state["silence_samples"] = 0
+    else:
+        state["silence_samples"] += samples.size
+    return False, state["silence_samples"] >= END_SILENCE_SAMPLES
+
+
+def decode_ready(recognizer, stream):
+    while recognizer.is_ready(stream):
+        recognizer.decode_stream(stream)
+
+
+def refine_utterance(offline_recognizer, chunks, streaming_text):
+    if offline_recognizer is None:
+        return streaming_text
+    try:
+        samples = np.concatenate(chunks) if chunks else np.empty(0, dtype=np.int16)
+        if samples.size < MIN_SPEECH_SAMPLES:
+            return streaming_text
+        audio = samples.astype(np.float32) / 32768.0
+        audio = np.concatenate((audio, np.zeros(OFFLINE_TAIL_PADDING_SAMPLES, dtype=np.float32)))
+        stream = offline_recognizer.create_stream()
+        stream.accept_waveform(SAMPLE_RATE, audio)
+        offline_recognizer.decode_stream(stream)
+        refined = normalize_text(stream.result.text)
+        return refined or streaming_text
+    except Exception as error:
+        print(f"X-ASR 整句精修失败，保留流式结果：{error}", file=sys.stderr)
+        return streaming_text
+
+
+def finish_utterance(recognizer, offline_recognizer, state):
+    stream = state["stream"]
+    padding = np.zeros(STREAMING_TAIL_PADDING_SAMPLES, dtype=np.float32)
+    stream.accept_waveform(SAMPLE_RATE, padding)
+    stream.input_finished()
+    decode_ready(recognizer, stream)
+    streaming_text = normalize_text(recognizer.get_result(stream))
+    utterance_text = ""
+    if state["speech_samples"] >= MIN_SPEECH_SAMPLES:
+        utterance_text = refine_utterance(offline_recognizer, state["audio"], streaming_text)
+    state["stream"] = recognizer.create_stream()
+    state["active"] = False
+    state["pre_roll"] = np.concatenate(state["audio"])[-PRE_ROLL_SAMPLES:] if state["audio"] else np.empty(0, dtype=np.int16)
+    state["audio"] = []
+    state["silence_samples"] = 0
+    state["speech_samples"] = 0
+    state["last_hypothesis"] = ""
+    return utterance_text
+
+
 def main():
-    if len(sys.argv) != 2:
-        raise ValueError("Usage: xasr_worker.py MODEL_DIRECTORY")
+    if len(sys.argv) != 3:
+        raise ValueError("Usage: xasr_worker.py STREAMING_MODEL_DIRECTORY OFFLINE_MODEL_DIRECTORY")
     recognizer = create_recognizer(sys.argv[1])
+    offline_recognizer = None
+    if sys.argv[2]:
+        try:
+            offline_recognizer = create_offline_recognizer(sys.argv[2])
+        except Exception as error:
+            print(f"X-ASR 整句精修模型载入失败：{error}", file=sys.stderr)
     streams = {}
-    emit({"type": "ready"})
+    emit({"type": "ready", "refinementReady": offline_recognizer is not None})
 
     for line in sys.stdin:
         request = {}
@@ -63,21 +182,40 @@ def main():
 
             stream_id = request.get("streamId")
             if action == "start":
-                streams[stream_id] = recognizer.create_stream()
+                streams[stream_id] = new_stream_state(recognizer)
                 emit({"type": "reply", "requestId": request.get("requestId"), "ok": True})
             elif action == "audio":
-                stream = streams[stream_id]
+                state = streams[stream_id]
                 pcm = base64.b64decode(request["pcm"], validate=True)
                 if len(pcm) % 2:
                     raise ValueError("PCM16 audio needs an even number of bytes")
-                samples = np.frombuffer(pcm, dtype="<i2").astype(np.float32) / 32768.0
-                stream.accept_waveform(16000, samples)
-                while recognizer.is_ready(stream):
-                    recognizer.decode_stream(stream)
-                text = normalize_text(recognizer.get_result(stream))
-                final = recognizer.is_endpoint(stream)
-                if final:
-                    recognizer.reset(stream)
+                pcm_samples = np.frombuffer(pcm, dtype="<i2")
+                started, ended = consume_vad_frame(state, pcm_samples)
+                if state["active"]:
+                    stream_samples = np.concatenate((state["pre_roll"], pcm_samples)) if started else pcm_samples
+                    state["stream"].accept_waveform(SAMPLE_RATE, stream_samples.astype(np.float32) / 32768.0)
+                    decode_ready(recognizer, state["stream"])
+                text = ""
+                final = False
+                if ended:
+                    final = True
+                    if state["speech_samples"] >= MIN_SPEECH_SAMPLES:
+                        text = finish_utterance(recognizer, offline_recognizer, state)
+                    else:
+                        state["stream"].input_finished()
+                        state["stream"] = recognizer.create_stream()
+                        state["active"] = False
+                        state["pre_roll"] = np.concatenate(state["audio"])[-PRE_ROLL_SAMPLES:]
+                        state["audio"] = []
+                        state["silence_samples"] = 0
+                        state["speech_samples"] = 0
+                        state["last_hypothesis"] = ""
+                elif state["active"]:
+                    text = normalize_text(recognizer.get_result(state["stream"]))
+                    if text == state["last_hypothesis"]:
+                        text = ""
+                    else:
+                        state["last_hypothesis"] = text
                 emit({"type": "reply", "requestId": request.get("requestId"), "ok": True, "text": text, "final": final})
             elif action == "close":
                 streams.pop(stream_id, None)
