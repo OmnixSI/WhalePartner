@@ -77,7 +77,7 @@ export interface XAsrOptions {
   setupScriptPath?: string;
 }
 
-/** Local sherpa-onnx worker for the X-ASR 480 ms model used by InterviewHacker. */
+/** Local sherpa-onnx worker for WhalePartner's 480 ms X-ASR stream and offline refinement. */
 export class XAsrService implements AsrService {
   readonly #options: XAsrOptions;
   readonly #modelDirectory: string;
