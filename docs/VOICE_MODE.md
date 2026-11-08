@@ -63,6 +63,24 @@ Pure C/Metal 使用上游 [qwen3-tts](https://github.com/gabriele-mastrapasqua/q
 
 最终 Pure C/Metal int4 在同一段中文上生成 25.44 s PCM，用时 28.5 s（RTF 1.12），TTFA 7.954 s，未达到 RTF <1 的要求，因此没有接入 WhalePartner。相同文本的 MLX 4-bit 常驻 worker RTF 为 0.888，生成 28.88 s PCM，用时 25.633 s，首块 2.196 s。Pure C/Metal 4-bit 的 Talker 和 Code Predictor 使用 resident Metal step；该构建的语音解码耗时 17.585 s 并与生成重叠，整轮依然受逐帧 Talker/Code Predictor 计算和 prefill 时间限制。
 
+### 当前 4-bit 常驻 worker 与 AudioWorklet 复测（2026-11-09）
+
+对正在运行的打包 app 只读查询状态时，Qwen3-TTS 1.7B MLX 4-bit Serena、X-ASR 480 ms 流式模型和离线整句精修均为 `ready`。Sidecar 打开的数据库路径是 WhalePartner 自己的 `~/Library/Application Support/com.omnixsi.whalepartner/app.db`。下表来自真实本机模型响应和 Chromium AudioWorklet 捕获的 PCM；RTF = TTS 生成耗时 ÷ PCM 时长，“首播”是 Worklet 启播时刻，“句间静音”只合计各 TTS 片段 PCM 自带的首尾静音，不含设备播放检查。所有场景的 Worklet 均只启动/排空一次，underrun 均为 0。
+
+| 场景 | TTS 请求数 | PCM 时长 | 生成耗时 | RTF | Worklet 首播 | 句间静音 | underrun |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 单句 | 1 | 7.36 s | 6.84 s | 0.929 | 2.13 s | — | 0 |
+| 三句整轮连续播放 | 3 | 41.12 s | 36.58 s | 0.890 | 2.06 s | 181 ms | 0 |
+| 三句后续合批 | 2 | 44.00 s | 38.75 s | 0.881 | 2.10 s | 100 ms | 0 |
+| 十句长中文 | 10 | 122.64 s | 108.90 s | 0.888 | 2.16 s | 956 ms | 0 |
+| 十句按语义合批 | 4 | 139.28 s | 125.25 s | 0.899 | 2.07 s | 428 ms | 0 |
+
+这轮长文案实际生成 122.64 秒与 139.28 秒 PCM，持续时间超过 60 秒。程序化打断在旧轮首块到达后取消 TTS 和播放队列，再以新 turn ID 合成下一轮；旧流在约 2.14 秒时被取消，新轮 Worklet 首播约 3.80 秒，turn mismatch 为 0。此项验证覆盖真实模型和 Worklet 的取消协议，不代替真实麦克风收音测试。
+
+同一段中文和 Serena 角色提示的实际合成样本：中性 [neutral](evidence/voice/qwen3-tts-serena-neutral.wav)、开心 [happy](evidence/voice/qwen3-tts-serena-happy.wav)、安慰 [comfort](evidence/voice/qwen3-tts-serena-comfort.wav)、舒缓 [relaxed](evidence/voice/qwen3-tts-serena-relaxed.wav)，以及采用自然语速提示的 [relaxed-natural](evidence/voice/qwen3-tts-serena-relaxed-natural.wav)。四个情绪标签的生成 RTF 依次为 0.886、0.849、0.855、0.849。项目离线 X-ASR 对新旧舒缓样本整段识别均得到完整原句；自然语速样本长 11.68 秒，旧舒缓样本长 15.2 秒。当前 `relaxed` 指令已改为自然语速、短停顿和整句连贯，避免模型按“节奏舒缓”拉长语速。
+
+本次 `card-preview:check` 在桌面与 390 × 844 视口通过，卡面没有内部文字、人物比例符合约束、Live2D 只初始化一个渲染器，等级切换不重载模型；共享 Pixi ticker 在三秒观察窗内渲染 180 帧（60 FPS）。`voice-mode:check` 的模拟收音、LLM 流式、情绪映射、打断与下一轮隔离全部通过。headless Chromium 的 AudioWorklet 结果不代表实体扬声器或耳机；目前未连接耳机，本轮也未完成解锁后的 Tauri 麦克风验收。
+
 ## 许可和接口
 
 Qwen3-TTS 1.7B 模型及 MLX 社区量化变体沿用上游 Apache-2.0 许可；[MLX-Audio](https://github.com/mlx-audio/mlx-audio) 代码采用 MIT。WhalePartner 的 X-ASR 词表与许可说明位于 `apps/api/src/voice/assets/`；上游模型见 [Gilgamesh-J/X-ASR](https://github.com/Gilgamesh-J/X-ASR)。所有 WhalePartner 模型权重都留在其应用数据目录。
