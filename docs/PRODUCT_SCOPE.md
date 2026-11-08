@@ -8,7 +8,7 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 
 ## 本轮明确扩展范围（2026-11）
 
-在上述原型之上，本轮授权的 [总 Issue #91](https://github.com/OmnixSI/WhalePartner/issues/91) 增加主动陪伴、连续实时语音、情绪语音、GPT/Claude 专属 Live2D、好感度与角色闪卡六项功能。实时语音属于本轮范围，即使早期 MVP 文档将它排除在外也不再适用；六项实现及各自验收状态以 [Issue #92–#97](https://github.com/OmnixSI/WhalePartner/issues/92) 为准。角色闪卡已通过用户视觉验收并接入角色选择；真实关系进度与解锁状态仍由 Issue #96 跟踪。
+在上述原型之上，本轮授权的 [总 Issue #91](https://github.com/OmnixSI/WhalePartner/issues/91) 增加主动陪伴、连续实时语音、情绪语音、GPT/Claude 专属 Live2D、好感度与角色闪卡六项功能。实时语音属于本轮范围，即使早期 MVP 文档将它排除在外也不再适用；各项实现及验收状态见 [Issue #92–#97](https://github.com/OmnixSI/WhalePartner/issues/92)。角色闪卡已通过用户视觉验收并接入角色选择；真实关系进度与解锁已实现，规则见 [`RELATIONSHIP.md`](RELATIONSHIP.md)。
 
 ## 当前里程碑：第一周端到端原型
 
