@@ -276,13 +276,15 @@ try {
     if (!finishEachSegment) node.port.postMessage({ type: "finish", turnId: scenarioId });
 
     const expectedDrained = finishEachSegment ? segments.length : 1;
-    const drainDeadline = performance.now() + 15_000;
+    const audioDurationMs = totalAudioSamples / sampleRate * 1000;
+    const playbackStartedAt = events.find((event) => event.type === "started")?.atMs ?? performance.now();
+    const playbackElapsedMs = Math.max(0, performance.now() - playbackStartedAt);
+    const drainDeadline = performance.now() + Math.max(15_000, audioDurationMs - playbackElapsedMs + 5_000);
     while (events.filter((event) => event.type === "drained").length < expectedDrained && performance.now() < drainDeadline) {
       await new Promise((resolve) => window.setTimeout(resolve, 25));
     }
     await new Promise((resolve) => window.setTimeout(resolve, 250));
     window.clearInterval(monitor);
-    const audioDurationMs = totalAudioSamples / sampleRate * 1000;
     const starts = events.filter((event) => event.type === "started");
     const drains = events.filter((event) => event.type === "drained");
     const underruns = events.filter((event) => event.type === "underrun-start");
