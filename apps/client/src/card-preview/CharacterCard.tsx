@@ -6,8 +6,8 @@ type Props = {
   character: CardCharacter;
   index: number;
   selected: boolean;
-  advancedUnlocked: boolean;
-  advancedActive: boolean;
+  effectLevel: number;
+  effectLabel: string;
   onSelect: () => void;
 };
 
@@ -15,7 +15,11 @@ function modelName(character: CardCharacter) {
   return character.model?.label ?? "固定矢量默认形象";
 }
 
-function updateAngle(event: PointerEvent<HTMLButtonElement>) {
+function updateAngle(event: PointerEvent<HTMLButtonElement>, effectLevel: number) {
+  if (effectLevel < 2) {
+    resetAngle(event);
+    return;
+  }
   if (event.pointerType !== "mouse" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const rect = event.currentTarget.getBoundingClientRect();
   const x = (event.clientX - rect.left) / rect.width - 0.5;
@@ -29,21 +33,22 @@ function resetAngle(event: PointerEvent<HTMLButtonElement>) {
   event.currentTarget.style.setProperty("--tilt-y", "0deg");
 }
 
-export function CharacterCard({ character, index, selected, advancedUnlocked, advancedActive, onSelect }: Props) {
+export function CharacterCard({ character, index, selected, effectLevel, effectLabel, onSelect }: Props) {
   const model = modelName(character);
-  const aria = `选择${character.name}，${model}，${advancedUnlocked ? "高级效果已解锁" : "高级效果未解锁"}`;
+  const aria = `选择${character.name}，${model}，卡面等级${effectLevel}，${effectLabel}`;
 
   return (
     <button
       type="button"
       className="card-preview__card"
       data-character={character.id}
+      data-level={effectLevel}
       data-selected={selected ? "true" : "false"}
-      data-foil={selected && advancedActive ? "true" : "false"}
+      data-foil={selected && effectLevel === 5 ? "true" : "false"}
       aria-pressed={selected}
       aria-label={aria}
       onClick={onSelect}
-      onPointerMove={updateAngle}
+      onPointerMove={(event) => updateAngle(event, effectLevel)}
       onPointerLeave={resetAngle}
       onPointerCancel={resetAngle}
     >
@@ -63,7 +68,7 @@ export function CharacterCard({ character, index, selected, advancedUnlocked, ad
         <span className="card-preview__card-bottom">
           <span className="card-preview__model">{model}</span>
           <span className="card-preview__rarity">
-            {advancedUnlocked ? "高级效果可用" : "基础卡面可选"}
+            Lv.{effectLevel} · {effectLabel}
           </span>
         </span>
       </span>

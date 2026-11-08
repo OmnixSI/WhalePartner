@@ -24,6 +24,7 @@ interface Props {
   modelUrl: string;
   emotion: AvatarEmotion;
   speaking: boolean;
+  failureMessage?: string;
   onReady?: () => void;
   onError?: (error: Error) => void;
   /** 点到模型时通知外层一次（外层不再自己监听舞台点击，避免重复触发）。 */
@@ -58,7 +59,7 @@ function watchSafeArea(host: HTMLElement, onChange: () => void) {
   return () => observer.disconnect();
 }
 
-export function Live2DStage({ modelUrl, emotion, speaking, onReady, onError, onTap }: Props) {
+export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, onReady, onError, onTap }: Props) {
   const mount = useRef<HTMLDivElement>(null);
   const emotionRef = useRef(emotion);
   const speakingRef = useRef(speaking);
@@ -408,7 +409,7 @@ export function Live2DStage({ modelUrl, emotion, speaking, onReady, onError, onT
   return (
     <>
       <div className="live2d" ref={mount} aria-hidden="true" data-stage={phase} />
-      <StageStatus phase={phase} onRetry={retry} />
+      <StageStatus phase={phase} onRetry={retry} failureMessage={failureMessage} />
     </>
   );
 }
