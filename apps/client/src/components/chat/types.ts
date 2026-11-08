@@ -20,6 +20,8 @@ export interface Turn {
   clientId?: string;
   /** 说到一半被打断（保留已生成的部分）。 */
   interrupted?: boolean;
+  /** 后端根据用户明确计划延后的主动跟进。 */
+  proactive?: boolean;
   /** 别的设备上正在进行的这一轮（流 id）。 */
   streamId?: string;
 }

@@ -70,13 +70,14 @@ export class SessionRepository {
     return rows.map((row) => ({ ...row, titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) }));
   }
 
-  add(role: StoredRole, content: string, emotion: string | null = null, character = "whale", sessionId?: string): StoredMessage {
+  add(role: StoredRole, content: string, emotion: string | null = null, character = "whale", sessionId?: string, attachment?: unknown): StoredMessage {
     const session = this.getOrCreateSession(character, sessionId);
+    const attachmentJson = attachment === undefined || attachment === null ? null : JSON.stringify(attachment);
     const result = this.db.prepare(`
-      INSERT INTO messages (role, content, emotion, character, session_id)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO messages (role, content, emotion, character, session_id, attachment_json)
+      VALUES (?, ?, ?, ?, ?, ?)
       RETURNING id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
-    `).get(role, content, emotion, character, session.id) as unknown as StoredMessage;
+    `).get(role, content, emotion, character, session.id, attachmentJson) as unknown as StoredMessage;
     indexMessage(this.db, result.id, content);
     if (role === "user") {
       const title = content.replace(/\s+/g, " ").trim().slice(0, 40) || "新聊天";
@@ -87,7 +88,8 @@ export class SessionRepository {
     } else {
       this.db.prepare("UPDATE chat_sessions SET updated_at = ? WHERE id = ?").run(result.createdAt, session.id);
     }
-    return { ...result };
+    const { attachment_json: _raw, ...message } = result as unknown as Record<string, unknown>;
+    return attachmentJson ? { ...message, attachment } as unknown as StoredMessage : message as unknown as StoredMessage;
   }
 
   recent(limit: number, _character?: string, sessionId?: string): StoredMessage[] {

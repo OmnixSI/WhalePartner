@@ -31,7 +31,15 @@
 
 `GET /api/chat/sessions?character=deepseek` 返回全部共享会话，`character` 保留为兼容参数；条目含 `titleManual`。`POST /api/chat/sessions` 请求体 `{ "character": "deepseek" }` 新建共享会话并记录创建时的人格。`PATCH /api/chat/sessions/:id` 请求体 `{ "character": "deepseek", "title": "周末计划" }` 重命名并固定标题，后续消息不会覆盖手动标题。`DELETE /api/chat/sessions/:id?character=deepseek` 删除该共享会话，停止正在进行的回复并清理该会话独有的来源记忆；多会话共同来源的事实或经历保留。单条已发送消息没有编辑或删除接口。
 
-`GET /api/chat/history?limit=50&character=deepseek&sessionId=…` 返回 `{ messages: [{ id, role, content, emotion, character, sessionId, createdAt }] }`。不传 `sessionId` 时返回全部共享聊天记录；`character` 保留为兼容参数，不过滤历史。追加 `aroundId=<message-id>` 后，必须同时指定 `sessionId`，接口会返回该消息前后的一段上下文供记忆来源定位。`DELETE /api/chat/history` 清除全部聊天原文、会话、事实、会话观察、共享近况和聊天来源的学习/经历；视频、网页、日记和非聊天来源的学习经历保留。
+`GET /api/chat/history?limit=50&character=deepseek&sessionId=…` 返回 `{ messages: [{ id, role, content, emotion, character, sessionId, createdAt, attachment }] }`。不传 `sessionId` 时返回全部共享聊天记录；`character` 保留为兼容参数，不过滤历史。追加 `aroundId=<message-id>` 后，必须同时指定 `sessionId`，接口会返回该消息前后的一段上下文供记忆来源定位。`attachment.type` 可为 `interrupted`、`surf` 或 `proactive`。`DELETE /api/chat/history` 清除全部聊天原文、会话、事实、会话观察、共享近况和聊天来源的学习/经历；视频、网页、日记和非聊天来源的学习经历保留。
+
+## 主动陪伴
+
+`GET /api/companion/settings` 返回 `{ enabled, frequency, quiet: { start, end } }`。`PUT` 接受同样字段的部分更新；频率为 `rare`（本地日最多 1 条、间隔至少 18 小时）或 `normal`（本地日最多 2 条、间隔至少 6 小时）。新安装默认为关闭，免打扰时段默认为本地 23:00–08:00。
+
+主动跟进只从用户原话中已保存的 `plan` 事实触发，不猜测用户现实状态。匹配计划后延迟 20 分钟发送，触发 6 小时后失效；模型临时失败最多重试一次。服务重启时只恢复尚未到期的定时项；定时器迟到超过 5 分钟时会丢弃，不补发休眠期间的消息。发送前会检查免打扰、最近活动、进行中的回复、可见页面的人格和语音播放；当前人格不是大肥鱼时会取消该项。触发来源、计划证据和最终消息 ID 保存在共享 SQLite 中。主动消息以 `character: "deepseek"` 写入原聊天会话，并通过 `/api/events` 的 `message.created`、`message.done` 显示；附件为 `{ type: "proactive", source: "plan_follow_up", triggerId, speak: false }`。目前主动消息只发文字，不启动音频播放。
+
+聊天页每 15 秒发送一次在线状态：`POST /api/chat/presence`，请求体 `{ clientId, character, visible, active, busy, voicePlaying }`，成功返回 204。服务端 45 秒未收到同一页面更新后会忘记该状态。此接口供主动消息在生成前判断当前页面，不保存用户身份或活动历史。
 
 ## 账号
 

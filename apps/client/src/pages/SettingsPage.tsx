@@ -11,6 +11,7 @@ import { version as clientVersion } from "../../package.json";
 import { fetchHealth } from "../lib/api";
 import { describeNetError, isNetworkFailure } from "../lib/net";
 import { getProfile, putNickname } from "../lib/profile";
+import { getCompanionSettings, putCompanionSettings, type CompanionSettings, type CompanionSettingsPatch } from "../lib/companion";
 import { readA11y } from "../lib/a11y";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 import { useCharacter } from "../characters";
@@ -66,11 +67,14 @@ export function SettingsPage() {
   const [nickError, setNickError] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [surf, setSurf] = useState<SurfSettings | null>(null);
+  const [companion, setCompanion] = useState<CompanionSettings | null>(null);
   const [surfError, setSurfError] = useState("");
   /** 最近一次保存的回执：让"点了没反应"变成看得见的一句话 */
   const [surfNote, setSurfNote] = useState<{ at: string; ok: boolean; text: string } | null>(null);
   /** 存失败时记住那一次改动，好让「再试一次」直接把同一项重发，不用人重新点一遍 */
   const [surfRetry, setSurfRetry] = useState<SurfSettingsPatch | null>(null);
+  const [companionError, setCompanionError] = useState("");
+  const [companionNote, setCompanionNote] = useState<{ at: string; ok: boolean; text: string } | null>(null);
 
   const offline = backend === "down";
 
@@ -90,6 +94,11 @@ export function SettingsPage() {
     });
     void getSurfSettings(character.id).then((settings) => {
       if (alive) setSurf(settings);
+    });
+    void getCompanionSettings().then((settings) => {
+      if (alive) setCompanion(settings);
+    }).catch((error: unknown) => {
+      if (alive) setCompanionError(describeNetError(error, "主动陪伴设置现在拿不到"));
     });
     return () => {
       alive = false;
@@ -154,6 +163,23 @@ export function SettingsPage() {
       setSurfError(why);
       setSurfNote({ at: stamp, ok: false, text: "没存上，已退回原来的样子" });
       setSurfRetry(patch);
+      if (isNetworkFailure(error)) setBackend("down");
+    }
+  };
+
+  const saveCompanion = async (patch: CompanionSettingsPatch) => {
+    if (!companion) return;
+    const before = companion;
+    setCompanion({ ...companion, ...patch, quiet: { ...companion.quiet, ...(patch.quiet ?? {}) } });
+    setCompanionError("");
+    const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    try {
+      setCompanion(await putCompanionSettings(patch));
+      setCompanionNote({ at: stamp, ok: true, text: "已保存" });
+    } catch (error) {
+      setCompanion(before);
+      setCompanionError(describeNetError(error, "主动陪伴设置没存上"));
+      setCompanionNote({ at: stamp, ok: false, text: "没存上，已退回原来的样子" });
       if (isNetworkFailure(error)) setBackend("down");
     }
   };
@@ -225,6 +251,40 @@ export function SettingsPage() {
             </div>
             {(offline || nickFailed) && <p className="set-row__bad">{nickError || "现在拿不到，先记不了。"}</p>}
           </SettingRow>
+        </SettingGroup>
+
+        <SettingGroup
+          title="主动找你"
+          note={<>只会从你明确提过的计划里挑一件，安静时再问问近况；后端停止或电脑休眠时不会运行。{companionNote && (
+            <span className="set-receipt" data-ok={companionNote.ok ? "on" : "off"} role="status">
+              {companionNote.at} {companionNote.text}
+            </span>
+          )}</>}
+        >
+          {companion === null ? (
+            <SettingRow title="主动陪伴" desc={companionError || "现在拿不到主动陪伴设置。"} icon="phone">
+              <span className="set-offline">还没接上</span>
+            </SettingRow>
+          ) : (
+            <>
+              <SettingRow icon="phone" title="主动找你" desc="开启后，肥鱼会在你提过计划、而且一段时间没聊天时，主动问一句。" onActivate={() => void saveCompanion({ enabled: !companion.enabled })}>
+                <Switch label="让肥鱼主动找你" checked={companion.enabled} onChange={(next) => void saveCompanion({ enabled: next })} />
+              </SettingRow>
+              <SettingRow title="频率" desc="少一点：一天最多 1 条，间隔 18 小时；偶尔：一天最多 2 条，间隔 6 小时。" stacked>
+                <div className="set-choices" role="group" aria-label="主动陪伴频率">
+                  <ChoiceCard groupLabel="主动陪伴频率" label="少一点" hint="一天最多一条" selected={companion.frequency === "rare"} onSelect={() => void saveCompanion({ frequency: "rare" })} />
+                  <ChoiceCard groupLabel="主动陪伴频率" label="偶尔" hint="一天最多两条" selected={companion.frequency === "normal"} onSelect={() => void saveCompanion({ frequency: "normal" })} />
+                </div>
+              </SettingRow>
+              <SettingRow title="免打扰" desc="这段时间不会发出主动消息。默认晚上 11 点到早上 8 点。" stacked>
+                <div className="set-choices" role="group" aria-label="主动陪伴免打扰时段">
+                  <label className="set-nick">开始 <input className="field" type="time" aria-label="免打扰开始时间" value={companion.quiet.start} onChange={(event) => void saveCompanion({ quiet: { start: event.target.value } })} /></label>
+                  <label className="set-nick">结束 <input className="field" type="time" aria-label="免打扰结束时间" value={companion.quiet.end} onChange={(event) => void saveCompanion({ quiet: { end: event.target.value } })} /></label>
+                </div>
+              </SettingRow>
+            </>
+          )}
+          {companionError && companion !== null && <p className="set-row__bad" role="status">{companionError}</p>}
         </SettingGroup>
 
         <SettingGroup

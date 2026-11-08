@@ -55,6 +55,15 @@ export function newClientId(): string {
   return `c-${random}`.slice(0, 64);
 }
 
+export async function updateChatPresence(input: { clientId: string; character: string; visible: boolean; active: boolean; busy: boolean; voicePlaying: boolean }, keepalive = false) {
+  return fetch(`${API_BASE}/api/chat/presence`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+    keepalive,
+  });
+}
+
 export async function* streamChat(message: string, character: string, sessionId: string, signal?: AbortSignal, clientId?: string): AsyncGenerator<ChatStreamEvent> {
   let response: Response;
   try {

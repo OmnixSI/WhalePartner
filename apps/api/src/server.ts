@@ -25,6 +25,7 @@ import { DailyJournalService } from "./daily-journal.ts";
 import { startDailyJournalScheduler } from "./daily-journal-scheduler.ts";
 import { handleAccountsRoute } from "./routes/accounts.ts";
 import { handleChatHistoryRoute } from "./routes/chat-history.ts";
+import { handleCompanionRoute } from "./routes/companion.ts";
 import { handleChatRoute } from "./routes/chat.ts";
 import { ChatSessionRequests } from "./routes/chat-session-requests.ts";
 import { handleDiaryRoute } from "./routes/diary.ts";
@@ -39,6 +40,8 @@ import { handleSurf } from "./routes/surf.ts";
 import { createSurf, stopSurf } from "./surf/index.ts";
 import { CHAT_RESUME_MS } from "./surf/service.ts";
 import type { ServerDeps } from "./server-types.ts";
+import { PresenceRegistry } from "./proactive/presence.ts";
+import { ProactiveService } from "./proactive/service.ts";
 export type { ServerDeps } from "./server-types.ts";
 
 // 她逛之前先看用户在不在聊：最后一次聊天时间。main 的 routes/chat.ts 里没有这个状态，这里补一个。
@@ -80,9 +83,20 @@ async function probe({ provider }: ServerDeps) {
 
 export function createApiServer(deps: ServerDeps): Server {
   const sessionRequests = new ChatSessionRequests();
+  const presence = new PresenceRegistry();
   const devices = deps.auth?.devices ?? new DeviceRegistry(deviceFile(deps.config.dbPath));
   const auth: AuthOptions = { ...deps.auth, devices };
   const events = deps.events ?? hubEvents;
+  const proactive = new ProactiveService({
+    store: deps.store,
+    provider: deps.provider,
+    config: deps.config,
+    memory: deps.memory,
+    events,
+    presence,
+    requests: sessionRequests,
+    lastChatActivity: () => chatActivity.last,
+  });
   let port = deps.config.port;
   const server = createServer(async (request, response) => {
     applyCors(request, response, auth.extraOrigins);
@@ -107,6 +121,7 @@ export function createApiServer(deps: ServerDeps): Server {
         return;
       }
       if (await handleSetupRoute(deps, request, response, url)) return;
+      if (await handleCompanionRoute({ store: deps.store, presence, events }, request, response, url)) return;
       if (url.pathname === "/api/accounts" || url.pathname.startsWith("/api/accounts/")) {
         await handleAccountsRoute(deps, request, response, url);
         return;
@@ -154,6 +169,8 @@ export function createApiServer(deps: ServerDeps): Server {
       else response.end();
     }
   });
+  server.on("listening", () => proactive.start());
+  server.on("close", () => proactive.stop());
   return server;
 }
 
