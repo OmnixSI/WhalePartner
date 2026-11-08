@@ -53,11 +53,11 @@ Apple M4、16 GB 上对同一条 Serena 中文短句各预热后重复三次，M
 | 6-bit | 1.015 | 2.198 s | 2.93 GB | 0.82 s |
 | 4-bit | 0.859 | 1.872 s | 2.55 GB | 15.86 s |
 
-4-bit 候选通过真实 AudioWorklet 生成 101.44 s PCM、耗时 91.07 s（RTF 0.898），首声 2.07 s，欠载 0 次；合批场景生成 146.88 s、耗时 128.20 s（RTF 0.873），同样欠载 0 次。它仍未达到本轮 RTF ≤ 0.85 的门槛，且该轮没有完成 Serena 音质试听和 ASR 转写对照，因此不替换 8-bit 默认配置。
+4-bit 候选通过真实 AudioWorklet 生成 101.44 s PCM、耗时 91.07 s（RTF 0.898），首声 2.07 s，欠载 0 次；合批场景生成 146.88 s、耗时 128.20 s（RTF 0.873），同样欠载 0 次。它仍未达到本轮 RTF ≤ 0.85 的门槛。2026-11-09 使用 WhalePartner 应用数据目录中的 X-ASR 480 ms 流式模型和离线精修模型分别识别 8-bit 参考 WAV 与 4-bit 候选 WAV，两者得到相同文本：“你好，今天我们一起慢慢整理思路，无论遇到什么问题，都可以一步一步来。”候选时长为 8.96 s，参考为 7.12 s；音色与韵律仍需人工试听比较，因此不替换 8-bit 默认配置。
 
 Pure C/Metal 候选使用上游 [qwen3-tts](https://github.com/gabriele-mastrapasqua/qwen3-tts) MIT 代码，隔离版本为 `ef339be`。M4 上编译成功；运行 `./qwen_tts --gpu-selftest --backend metal` 时，批量 FFN 自检相对误差为 1.32 并失败，其他自检项（含单请求 fused FFN）通过。该数值正确性门槛未通过，因此未下载候选权重、未测模型 RTF，也未接入应用。
 
-当前部署继续使用 Qwen3-TTS 1.7B MLX 8-bit。4-bit 与 Pure C/Metal 优化暂搁，等待音质验证或上游 Metal 自检通过后再评估。
+当前部署继续使用 Qwen3-TTS 1.7B MLX 8-bit。4-bit 与 Pure C/Metal 优化暂搁：4-bit 的 ASR 文本核对已通过，但听感对照尚未完成，长语音 RTF 仍高于 0.85；Pure C/Metal 的批量 FFN 数值自检失败。相应质量或正确性条件满足后再评估。
 
 ## 许可和接口
 
