@@ -51,12 +51,61 @@ try {
     let microphoneRequests = 0;
     let stoppedTracks = 0;
     let audioPlaybackStarts = 0;
+    let ttsStreamCount = 0;
+    let ttsAudioChunksReceived = 0;
+    const audioStartChunkCounts = [];
+    const playbackScheduleGaps = [];
+    let previousScheduledEnd = null;
     let outputWaveformFrames = 0;
     let nonSilentOutputWaveformFrames = 0;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const response = await nativeFetch(...args);
+      const input = args[0];
+      const requestUrl = new URL(typeof input === "string" ? input : input.url, window.location.href);
+      if (requestUrl.pathname !== "/api/voice/tts/stream") return response;
+      ttsStreamCount += 1;
+      const lines = (await response.text()).trim().split("\n");
+      const encoder = new TextEncoder();
+      let index = 0;
+      let audioIndex = 0;
+      let timer = 0;
+      const body = new ReadableStream({
+        start(controller) {
+          const sendNext = () => {
+            if (index >= lines.length) {
+              controller.close();
+              return;
+            }
+            const line = lines[index++];
+            const message = JSON.parse(line);
+            if (message.type === "audio") ttsAudioChunksReceived += 1;
+            controller.enqueue(encoder.encode(`${line}\n`));
+            const delay = message.type === "audio" ? (audioIndex++ === 1 ? 700 : 380) : 0;
+            timer = window.setTimeout(sendNext, delay);
+          };
+          sendNext();
+        },
+        cancel() { window.clearTimeout(timer); },
+      });
+      return new Response(body, {
+        status: response.status,
+        headers: { "content-type": response.headers.get("content-type") || "application/x-ndjson" },
+      });
+    };
     const nativeBufferStart = AudioBufferSourceNode.prototype.start;
     AudioBufferSourceNode.prototype.start = function (...args) {
       audioPlaybackStarts += 1;
+      audioStartChunkCounts.push(ttsAudioChunksReceived);
+      const startsAt = typeof args[0] === "number" ? args[0] : this.context.currentTime;
+      if (previousScheduledEnd !== null) playbackScheduleGaps.push(startsAt - previousScheduledEnd);
+      previousScheduledEnd = startsAt + (this.buffer?.duration ?? 0);
       return nativeBufferStart.apply(this, args);
+    };
+    const nativeBufferStop = AudioBufferSourceNode.prototype.stop;
+    AudioBufferSourceNode.prototype.stop = function (...args) {
+      previousScheduledEnd = null;
+      return nativeBufferStop.apply(this, args);
     };
     const nativeAnalyserRead = AnalyserNode.prototype.getFloatTimeDomainData;
     AnalyserNode.prototype.getFloatTimeDomainData = function (samples) {
@@ -76,6 +125,9 @@ try {
             microphoneRequests,
             stoppedTracks,
             audioPlaybackStarts,
+            ttsStreamCount,
+            audioStartChunkCounts,
+            playbackScheduleGaps,
             outputWaveformFrames,
             nonSilentOutputWaveformFrames,
             endedTracks: inputStream?.getTracks().filter((track) => track.readyState === "ended").length ?? 0,
@@ -143,14 +195,21 @@ try {
     if (path === "/api/voice/tts/stream") {
       const input = request.postDataJSON();
       ttsRequests.push(input);
-      const duration = 6;
+      const duration = 0.48;
       const sampleRate = 16_000;
-      const samples = Buffer.alloc(Math.ceil(sampleRate * duration) * 2);
-      for (let i = 0; i < samples.length / 2; i += 1) samples.writeInt16LE(Math.round(Math.sin((i / sampleRate) * 2 * Math.PI * 220) * 7_500), i * 2);
+      const messages = [{ type: "meta", model: "Qwen3-TTS (test)", speaker: "serena" }];
+      let sampleOffset = 0;
+      for (let chunk = 0; chunk < 4; chunk += 1) {
+        const samples = Buffer.alloc(Math.ceil(sampleRate * duration) * 2);
+        for (let i = 0; i < samples.length / 2; i += 1) {
+          samples.writeInt16LE(Math.round(Math.sin(((sampleOffset + i) / sampleRate) * 2 * Math.PI * 220) * 7_500), i * 2);
+        }
+        sampleOffset += samples.length / 2;
+        messages.push({ type: "audio", sampleRate, pcm16: samples.toString("base64") });
+      }
+      messages.push({ type: "done" });
       const body = [
-        { type: "meta", model: "Qwen3-TTS (test)", speaker: "serena" },
-        { type: "audio", sampleRate, pcm16: samples.toString("base64") },
-        { type: "done" },
+        ...messages,
       ].map((message) => JSON.stringify(message)).join("\n") + "\n";
       return route.fulfill({ status: 200, contentType: "application/x-ndjson; charset=utf-8", body });
     }
@@ -224,8 +283,17 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("第1轮回答。"), null, { timeout: 10_000 });
   check("第一轮语音最终稿只进入共享聊天一次", chatRequests.length === 1 && chatRequests[0]?.message === speechTexts[0]);
   await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("大肥鱼正在回答"), null, { timeout: 10_000 });
-  await page.waitForFunction(() => window.__wpVoiceCheck.stats().audioPlaybackStarts >= 2, null, { timeout: 10_000 });
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().audioPlaybackStarts >= 4, null, { timeout: 10_000 });
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 2, null, { timeout: 10_000 });
   check("多句回复按句分段生成并排队播放", ttsRequests.slice(0, 2).map((input) => input.text).join("|") === "第1轮回答。|再说一句。");
+  const playbackStats = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  check(
+    "TTS 预缓冲两个短音频块，并在人为网络抖动下保持无间隙排队",
+    playbackStats.audioStartChunkCounts[0] === 2
+      && playbackStats.audioStartChunkCounts[1] === 2
+      && playbackStats.playbackScheduleGaps.slice(0, 3).every((gap) => gap <= 0.01),
+    JSON.stringify({ starts: playbackStats.audioStartChunkCounts.slice(0, 4), gaps: playbackStats.playbackScheduleGaps.slice(0, 3) }),
+  );
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().nonSilentOutputWaveformFrames > 0, null, { timeout: 5_000 });
   check("TTS 播放产生非静音波形供 Live2D 嘴型驱动", (await page.evaluate(() => window.__wpVoiceCheck.stats().outputWaveformFrames)) > 0);
 

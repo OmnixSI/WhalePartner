@@ -15,6 +15,7 @@ protocol = sys.stdout
 sys.stdout = sys.stderr
 
 MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit"
+STREAMING_INTERVAL_SECONDS = 0.96
 INSTRUCT = {
     "neutral": "用自然、平和、亲切的语气说话。",
     "happy": "用开心、轻快、带着笑意的语气说话。",
@@ -72,7 +73,7 @@ def synthesize(model, request):
         language="Chinese",
         instruct=INSTRUCT[emotion],
         stream=True,
-        streaming_interval=0.48,
+        streaming_interval=STREAMING_INTERVAL_SECONDS,
         verbose=False,
     ):
         if was_cancelled(request_id):
@@ -102,7 +103,7 @@ def main():
         language="Chinese",
         instruct=INSTRUCT["neutral"],
         stream=True,
-        streaming_interval=0.48,
+        streaming_interval=STREAMING_INTERVAL_SECONDS,
         verbose=False,
     ):
         pass
