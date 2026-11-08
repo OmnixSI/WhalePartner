@@ -68,6 +68,37 @@ export function openChatDatabase(path: string): DatabaseSync {
     );
     CREATE INDEX IF NOT EXISTS memory_jobs_pending ON memory_jobs(status, next_attempt_at, id);
 
+    CREATE TABLE IF NOT EXISTS companion_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      enabled INTEGER NOT NULL DEFAULT 0,
+      frequency TEXT NOT NULL DEFAULT 'rare' CHECK (frequency IN ('rare','normal')),
+      quiet_start TEXT NOT NULL DEFAULT '23:00',
+      quiet_end TEXT NOT NULL DEFAULT '08:00',
+      updated_at TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO companion_settings(id, enabled, frequency, quiet_start, quiet_end, updated_at)
+      VALUES (1, 0, 'rare', '23:00', '08:00', strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+    CREATE TABLE IF NOT EXISTS proactive_triggers (
+      id TEXT PRIMARY KEY,
+      source_message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+      fact_id INTEGER NOT NULL REFERENCES memory_facts(id) ON DELETE CASCADE,
+      session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+      plan_text TEXT NOT NULL,
+      evidence TEXT NOT NULL,
+      due_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','generating','sent','suppressed','expired','failed')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      message_id INTEGER UNIQUE REFERENCES messages(id) ON DELETE SET NULL,
+      content TEXT,
+      last_error TEXT,
+      sent_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS proactive_triggers_pending ON proactive_triggers(status, due_at, expires_at);
+    CREATE INDEX IF NOT EXISTS proactive_triggers_sent ON proactive_triggers(status, sent_at DESC);
+
     CREATE TABLE IF NOT EXISTS memory_facts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       subject TEXT NOT NULL,

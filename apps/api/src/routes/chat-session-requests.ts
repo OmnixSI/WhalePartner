@@ -10,6 +10,13 @@ export class ChatSessionRequests {
   readonly #deleting = new Set<string>();
   #clearing = false;
 
+  hasActiveRequests(): boolean {
+    for (const requests of this.#active.values()) {
+      if (requests.size > 0) return true;
+    }
+    return false;
+  }
+
   begin(sessionId: string, abort: AbortController): (() => void) | undefined {
     if (this.#clearing || this.#deleting.has(sessionId)) return undefined;
     let requests = this.#active.get(sessionId);

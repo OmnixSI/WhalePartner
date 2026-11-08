@@ -4,7 +4,11 @@
 
 WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定人格和长期记忆，定时处理用户添加或授权的内容，生成摘要和日记，并能在后续聊天中回忆相关经历。
 
-完整产品方向和研究资料见 [Notion 开发台](https://app.notion.com/p/40db6ca756bc816cb187f164caf87fa4) 及 `ProjectMaterials/` 中的调研计划 PDF。当前开发阶段以 GitHub 第一周 MVP Issues 为准。
+完整产品方向和研究资料见 [Notion 开发台](https://app.notion.com/p/40db6ca756bc816cb187f164caf87fa4) 及 `ProjectMaterials/` 中的调研计划 PDF。第一周 MVP 是早期交付基线；当前范围以 GitHub [总 Issue #91](https://github.com/OmnixSI/WhalePartner/issues/91) 和它拆分的任务为准。
+
+## 本轮明确扩展范围（2026-11）
+
+在上述原型之上，本轮授权的 [总 Issue #91](https://github.com/OmnixSI/WhalePartner/issues/91) 增加主动陪伴、连续实时语音、情绪语音、GPT/Claude 专属 Live2D、好感度与角色闪卡六项功能。实时语音属于本轮范围，即使早期 MVP 文档将它排除在外也不再适用；六项实现及各自验收状态以 [Issue #92–#97](https://github.com/OmnixSI/WhalePartner/issues/92) 为准。闪卡先提供独立预览，必须在用户明确验收后才能接入角色选择与真实关系状态。
 
 ## 当前里程碑：第一周端到端原型
 

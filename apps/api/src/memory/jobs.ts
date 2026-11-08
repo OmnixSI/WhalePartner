@@ -35,6 +35,17 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
       if (!job.factsDone) {
         const candidates = await extractUserFacts(provider, user.content);
         const { facts } = store.saveFacts(user.id, candidates);
+        const plan = facts.find((fact) => fact.kind === "plan" && fact.sources.some((source) => source.messageId === user.id));
+        if (plan) {
+          const source = plan.sources.find((item) => item.messageId === user.id);
+          if (source) store.enqueueProactiveTrigger({
+            sourceMessageId: user.id,
+            factId: plan.id,
+            sessionId: job.sessionId,
+            planText: `${plan.subject}的${plan.predicate}：${plan.value}`,
+            evidence: source.quote,
+          });
+        }
         if (memory) {
           for (const fact of facts) {
             try {

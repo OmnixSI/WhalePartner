@@ -133,6 +133,7 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
           {splitReply(turn.text).map((part, index) => (
             <p key={index} className="bl__capText">{part.trim()}</p>
           ))}
+          {turn.proactive && <p className="bl__recall">主动找你</p>}
           {turn.interrupted && <p className="bl__recall">没说完就被打断了</p>}
           {turn.recalled && turn.recalled.length > 0 && (
             <p className="bl__recall">想起来 · {turn.recalled.join("；")}</p>

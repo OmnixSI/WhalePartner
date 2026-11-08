@@ -13,7 +13,7 @@ import type { AvatarEmotion } from "../../avatar/model.config";
 import type { CharacterId } from "../../characters";
 import { fetchHealth, type Health } from "../../lib/api";
 import { ChatError, describeChatFailure, type ChatErrorCode } from "../../lib/chat-errors";
-import { clearHistory, fetchHistory, fetchSessions, newClientId, streamChat, type HistoryMessage } from "../../lib/chat";
+import { clearHistory, fetchHistory, fetchSessions, newClientId, streamChat, updateChatPresence, type HistoryMessage } from "../../lib/chat";
 import { draftKey, loadDraft, saveDraft } from "../../lib/drafts";
 import { isEmotion, readEmotion } from "../../lib/emotion";
 import { subscribeHub, type HubEventData, type HubEventType } from "../../lib/events";
@@ -38,6 +38,7 @@ const HISTORY_LIMIT = 50;
 /** 启动期宽限：后端还没起来时，这么久之内显示「马上就来」而不是「断网」。 */
 const STARTUP_GRACE_MS = 30_000;
 const BOOT_AT = Date.now();
+const PRESENCE_IDLE_MS = 10 * 60_000;
 
 const toTurn = (message: HistoryMessage): Turn => {
   const clean = readEmotion(message.content);
@@ -50,6 +51,7 @@ const toTurn = (message: HistoryMessage): Turn => {
     status: "sent",
     emotion: isEmotion(message.emotion) ? message.emotion : clean.emotion ?? undefined,
     interrupted: message.attachment?.type === "interrupted" || undefined,
+    proactive: message.attachment?.type === "proactive" || undefined,
   };
 };
 
@@ -82,7 +84,9 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
   const [failure, setFailure] = useState<ChatFailureInfo | null>(null);
   const [remoteTyping, setRemoteTyping] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const [presenceClientId] = useState(() => newClientId());
   const sessionIdRef = useRef("");
+  const lastActivityRef = useRef(Date.now());
   const abort = useRef<AbortController | null>(null);
   const inflight = useRef<Promise<void> | null>(null);
   const ownClientIds = useRef(new Set<string>());
@@ -93,6 +97,36 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls) 
   const busy = phase === "thinking" || phase === "streaming";
   const busyRef = useRef(false);
   busyRef.current = busy;
+
+  useEffect(() => {
+    const activity = () => { lastActivityRef.current = Date.now(); };
+    const post = (visible = true, keepalive = false) => {
+      const shown = visible && !document.hidden;
+      void updateChatPresence({
+        clientId: presenceClientId,
+        character: characterId,
+        visible: shown,
+        active: shown && Date.now() - lastActivityRef.current < PRESENCE_IDLE_MS,
+        busy: busyRef.current,
+        voicePlaying: false,
+      }, keepalive).catch(() => {});
+    };
+    const visibility = () => post();
+    window.addEventListener("pointerdown", activity, { passive: true });
+    window.addEventListener("keydown", activity);
+    window.addEventListener("focus", activity);
+    document.addEventListener("visibilitychange", visibility);
+    post();
+    const timer = setInterval(() => post(), 15_000);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("pointerdown", activity);
+      window.removeEventListener("keydown", activity);
+      window.removeEventListener("focus", activity);
+      document.removeEventListener("visibilitychange", visibility);
+      void updateChatPresence({ clientId: presenceClientId, character: characterId, visible: false, active: false, busy: false, voicePlaying: false }, true).catch(() => {});
+    };
+  }, [characterId, presenceClientId]);
 
   /* ------------------------------------------------------------ 草稿 */
   const setDraft = useCallback((value: string) => {

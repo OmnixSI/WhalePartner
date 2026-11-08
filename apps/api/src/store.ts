@@ -10,6 +10,7 @@ import { ObservationRepository, type ObservationInput, type StoredObservation } 
 import { rebuildSearchIndexes } from "./store/search-index.ts";
 import { matchesTimeWindow, overlapsFactTimeWindow } from "./store/search.ts";
 import { SessionRepository } from "./store/sessions.ts";
+import { ProactiveRepository } from "./store/proactive.ts";
 import type { DatabaseSync } from "node:sqlite";
 import type { ArchiveHit, ChatSession, FactCandidate, MemoryJob, StoredExperience, StoredFact, StoredMessage, StoredRole } from "./store/types.ts";
 
@@ -29,6 +30,8 @@ export class ChatStore {
   readonly #experiences: ExperienceRepository;
   readonly #observations: ObservationRepository;
   readonly #jobs: MemoryJobRepository;
+  readonly #proactive: ProactiveRepository;
+  #proactiveWake?: (id: string) => void;
 
   readonly dbPath: string;
 
@@ -42,6 +45,7 @@ export class ChatStore {
     this.#experiences = new ExperienceRepository(this.#db);
     this.#observations = new ObservationRepository(this.#db);
     this.#jobs = new MemoryJobRepository(this.#db);
+    this.#proactive = new ProactiveRepository(this.#db, this.#sessions);
   }
 
   createSession(character: string, title?: string) { return this.#sessions.createSession(character, title); }
@@ -73,6 +77,26 @@ export class ChatStore {
   factVectorId(id: number) { return this.#facts.factVectorId(id); }
   factVectorIds() { return this.#facts.factVectorIds(); }
   pendingFacts(afterId?: number, limit?: number) { return this.#facts.pendingFacts(afterId, limit); }
+
+  companionSettings() { return this.#proactive.settings(); }
+  putCompanionSettings(patch: import("./proactive/policy.ts").CompanionSettingsPatch) { return this.#proactive.putSettings(patch); }
+  enqueueProactiveTrigger(input: { sourceMessageId: number; factId: number; sessionId: string; planText: string; evidence: string }, now?: Date) {
+    const id = this.#proactive.enqueue(input, now);
+    if (id) this.#proactiveWake?.(id);
+    return id;
+  }
+  setProactiveWake(wake?: (id: string) => void) { this.#proactiveWake = wake; }
+  proactiveTrigger(id: string) { return this.#proactive.trigger(id); }
+  proactiveFactActive(id: number) { return this.#proactive.activePlanFact(id); }
+  pendingProactiveTriggers(now?: Date) { return this.#proactive.pending(now); }
+  recoverProactiveTriggers(now?: Date) { return this.#proactive.recover(now); }
+  claimProactiveTrigger(id: string, now?: Date) { return this.#proactive.claim(id, now); }
+  deferProactiveTrigger(id: string, dueAt: Date, now?: Date) { return this.#proactive.defer(id, dueAt, now); }
+  suppressProactiveTrigger(id: string, now?: Date) { return this.#proactive.suppress(id, now); }
+  expireProactiveTrigger(id: string, now?: Date) { return this.#proactive.expire(id, now); }
+  failProactiveTrigger(id: string, error: string, retryAt: Date, now?: Date) { return this.#proactive.fail(id, error, retryAt, now); }
+  proactiveSendCheck(frequency: "rare" | "normal", now?: Date) { return this.#proactive.sendCheck(frequency, now); }
+  deliverProactiveMessage(id: string, content: string, emotion: string, now?: Date) { return this.#proactive.deliver(id, content, emotion, now); }
 
   upsertExperience(input: ExperienceInput) { return this.#experiences.upsertExperience(input); }
   getExperience(id: number) { return this.#experiences.getExperience(id); }
