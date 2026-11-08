@@ -284,13 +284,13 @@ try {
   check("第一轮语音最终稿只进入共享聊天一次", chatRequests.length === 1 && chatRequests[0]?.message === speechTexts[0]);
   await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("大肥鱼正在回答"), null, { timeout: 10_000 });
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().audioPlaybackStarts >= 4, null, { timeout: 10_000 });
-  await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 2, null, { timeout: 10_000 });
-  check("多句回复按句分段生成并排队播放", ttsRequests.slice(0, 2).map((input) => input.text).join("|") === "第1轮回答。|再说一句。");
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 1, null, { timeout: 10_000 });
+  check("多句回复以完整上下文进行一次 TTS 合成", ttsRequests.length === 1 && ttsRequests[0]?.text === "第1轮回答。再说一句。");
   const playbackStats = await page.evaluate(() => window.__wpVoiceCheck.stats());
   check(
-    "TTS 预缓冲两个短音频块，并在人为网络抖动下保持无间隙排队",
-    playbackStats.audioStartChunkCounts[0] === 2
-      && playbackStats.audioStartChunkCounts[1] === 2
+    "整段语音预缓冲约两秒音频，并在人为网络抖动下保持无间隙排队",
+    playbackStats.audioStartChunkCounts[0] === 4
+      && playbackStats.audioStartChunkCounts[1] === 4
       && playbackStats.playbackScheduleGaps.slice(0, 3).every((gap) => gap <= 0.01),
     JSON.stringify({ starts: playbackStats.audioStartChunkCounts.slice(0, 4), gaps: playbackStats.playbackScheduleGaps.slice(0, 3) }),
   );

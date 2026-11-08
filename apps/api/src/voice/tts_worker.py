@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persistent MLX Qwen3-TTS worker with sentence-level streaming audio."""
+"""Persistent MLX Qwen3-TTS worker with utterance-level streaming audio."""
 
 import base64
 import json
