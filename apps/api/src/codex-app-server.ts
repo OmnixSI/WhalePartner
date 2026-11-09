@@ -64,8 +64,10 @@ class CodexAppServer {
   #pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
   #listeners = new Set<(message: JsonRpcMessage) => void>();
 
-  async request(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  async request(method: string, params: Record<string, unknown> = {}, signal?: AbortSignal): Promise<unknown> {
+    throwIfAborted(signal);
     await this.#ensureReady();
+    throwIfAborted(signal);
     return this.#sendRequest(method, params);
   }
 
@@ -107,7 +109,7 @@ class CodexAppServer {
   }
 
   async *stream(prompt: string, settings: StoredCodexSettings, signal?: AbortSignal): AsyncGenerator<string> {
-    signal?.throwIfAborted();
+    throwIfAborted(signal);
     const thread = await this.request("thread/start", {
       model: settings.model,
       cwd: tmpdir(),
@@ -115,7 +117,8 @@ class CodexAppServer {
       sandbox: "read-only",
       ephemeral: true,
       allowProviderModelFallback: false,
-    }) as { thread?: { id?: string } };
+    }, signal) as { thread?: { id?: string } };
+    throwIfAborted(signal);
     const threadId = thread.thread?.id;
     if (!threadId) throw new Error("Codex 没有建立对话线程。");
 
@@ -142,10 +145,10 @@ class CodexAppServer {
         sandboxPolicy: { type: "readOnly" },
         approvalPolicy: "never",
         input: [{ type: "text", text: prompt }],
-      }) as { turn?: { id?: string } };
+      }, signal) as { turn?: { id?: string } };
       turnId = started.turn?.id ?? "";
       if (!turnId) throw new Error("Codex 没有开始这一轮对话。");
-      if (signal?.aborted) onAbort();
+      throwIfAborted(signal);
 
       const timeout = setTimeout(() => failQueue(queue, new Error("Codex 回复超时。")), TURN_TIMEOUT_MS);
       try {
@@ -313,6 +316,10 @@ function failQueue(queue: NotificationQueue, error: Error) {
   queue.values = [];
   for (const waiter of queue.waiters) waiter.reject(error);
   queue.waiters = [];
+}
+
+function throwIfAborted(signal?: AbortSignal) {
+  if (signal?.aborted) throw new Error("Codex 对话已取消。");
 }
 
 let appServer: CodexAppServer | undefined;
