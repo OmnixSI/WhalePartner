@@ -35,9 +35,9 @@
     "maxSentenceCharacters": 36
   },
   "bufferStrategy": {
-    "standardRtf": 1.35,
+    "standardRtf": 1.2,
     "rtfHeadroom": 0.15,
-    "planningRtf": 1.5,
+    "planningRtf": 1.35,
     "reserveSeconds": 2,
     "targetWaitFormula": "max(0, estimatedAudioSeconds * planningRtf + reserveSeconds - estimatedAudioSeconds)",
     "targetPcmBufferFormula": "targetWaitSeconds / planningRtf"
@@ -46,37 +46,37 @@
     {
       "characterCount": 10,
       "estimatedAudioSeconds": 2.92,
-      "estimatedGenerationSeconds": 4.38,
-      "targetWaitSeconds": 3.46,
-      "targetPcmBufferSeconds": 2.307
+      "estimatedGenerationSeconds": 3.942,
+      "targetWaitSeconds": 3.022,
+      "targetPcmBufferSeconds": 2.239
     },
     {
       "characterCount": 20,
       "estimatedAudioSeconds": 5.84,
-      "estimatedGenerationSeconds": 8.76,
-      "targetWaitSeconds": 4.92,
-      "targetPcmBufferSeconds": 3.28
+      "estimatedGenerationSeconds": 7.884,
+      "targetWaitSeconds": 4.044,
+      "targetPcmBufferSeconds": 2.996
     },
     {
       "characterCount": 40,
       "estimatedAudioSeconds": 11.68,
-      "estimatedGenerationSeconds": 17.52,
-      "targetWaitSeconds": 7.84,
-      "targetPcmBufferSeconds": 5.227
+      "estimatedGenerationSeconds": 15.768,
+      "targetWaitSeconds": 6.088,
+      "targetPcmBufferSeconds": 4.51
     },
     {
       "characterCount": 80,
       "estimatedAudioSeconds": 23.36,
-      "estimatedGenerationSeconds": 35.04,
-      "targetWaitSeconds": 13.68,
-      "targetPcmBufferSeconds": 9.12
+      "estimatedGenerationSeconds": 31.536,
+      "targetWaitSeconds": 10.176,
+      "targetPcmBufferSeconds": 7.538
     },
     {
       "characterCount": 160,
       "estimatedAudioSeconds": 46.72,
-      "estimatedGenerationSeconds": 70.08,
-      "targetWaitSeconds": 25.36,
-      "targetPcmBufferSeconds": 16.907
+      "estimatedGenerationSeconds": 63.072,
+      "targetWaitSeconds": 18.352,
+      "targetPcmBufferSeconds": 13.594
     }
   ],
   "samples": [
