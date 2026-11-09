@@ -1,4 +1,5 @@
-import { summarizeWithCodex } from "../codex.ts";
+import { streamWithCodexAppServer, listCodexModels, resolveCodexSettings } from "../codex-app-server.ts";
+import { readStoredCodexSettings } from "../codex-settings.ts";
 import type { ChatMessage, ChatProvider, LlmDelta, StreamOptions } from "./types.ts";
 
 const ROLE_LABEL = { system: "设定", user: "用户", assistant: "你" } as const;
@@ -15,16 +16,25 @@ export function buildCodexChatPrompt(messages: ChatMessage[]) {
   ].join("\n");
 }
 
-/** 本地开发兜底：不流式，一次返回完整回复。正式多端服务不依赖它。 */
+/** 本地开发兜底：通过本机 Codex app-server 返回正文增量。正式多端服务不依赖它。 */
 export class CodexChatProvider implements ChatProvider {
   readonly id = "codex";
-  readonly model = "gpt-6-luna";
+
+  get model() {
+    return readStoredCodexSettings().model || "gpt-6-luna";
+  }
+
+  async listModels(signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    return (await listCodexModels()).map((model) => model.model);
+  }
 
   async *stream(messages: ChatMessage[], options: StreamOptions = {}): AsyncGenerator<LlmDelta> {
     options.signal?.throwIfAborted();
-    const result = await summarizeWithCodex(buildCodexChatPrompt(messages));
-    options.signal?.throwIfAborted();
-    yield { text: result.message.trim() };
-    if (result.usage) yield { usage: result.usage };
+    const models = await listCodexModels();
+    const settings = resolveCodexSettings(readStoredCodexSettings(), models);
+    for await (const text of streamWithCodexAppServer(buildCodexChatPrompt(messages), settings, options.signal)) {
+      yield { text };
+    }
   }
 }

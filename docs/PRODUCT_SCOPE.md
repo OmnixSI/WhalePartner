@@ -33,7 +33,7 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 | 工作 | 状态 |
 |---|---|
 | A1 应用壳 | 完成：Tauri 2 + React 单页应用，桌面和手机共用界面（[PR #17](https://github.com/OmnixSI/WhalePartner/pull/17)）。 |
-| A2 DeepSeek 后端 | 代码完成：流式聊天、DeepSeek → 备用 → 本机 Codex 回退链（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）。真实 DeepSeek 请求待验证，跟踪于 [Issue #2](https://github.com/OmnixSI/WhalePartner/issues/2)。 |
+| A2 DeepSeek 后端 | 代码完成：流式聊天、DeepSeek → 备用 → 本机 Codex 回退链（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）。本机聊天兜底通过 Codex app-server 流式返回，模型设置来自本机可用清单。真实 DeepSeek 请求待验证，跟踪于 [Issue #2](https://github.com/OmnixSI/WhalePartner/issues/2)。 |
 | B1 聊天与形象 | 完成：自写 React 聊天，大肥鱼使用唯一实际可用的 Live2D 模型；其余人格以原创贴纸为默认形象。形象归属调整见 [Issue #84](https://github.com/OmnixSI/WhalePartner/issues/84)，Live2D 选型依据见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) 和 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。 |
 | B2 人格 | 完成：每个角色一份身份和脾气文件 + 共用的说话方式和底线规则，四个角色的 13 项回归问卷在 DeepSeek 上都是 13/13。 |
 | 成长（人格延伸） | 完成：从看过的视频、读过的网页和用户的话里学新梗和新知识（自动入库，用户可删），定期写“近况小记”，记忆按清晰度衰减，聊天里发网页链接会读。设计与参考见 [`PERSONALITY.md`](PERSONALITY.md)。 |
@@ -64,7 +64,7 @@ PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不
 - **客户端**：Tauri 2 + React + TypeScript + Vite 单页应用，共享 Windows、macOS、iOS、Android 的主要界面。当前在 MacBook 上开发；桌面与手机使用响应式布局。
 - **原生集成**：Rust 限于 Tauri 外壳和操作系统能力；视频处理、摘要、记忆等业务逻辑放在 TypeScript 服务中，不与特定客户端绑定。
 - **应用服务**：TypeScript + Node.js 26（`apps/api` 限定 `>=26 <27`），提供 HTTP API，并承载视频处理、AI 推理、记忆和定时任务。各端通过 HTTPS/JSON 调用；本地开发使用 loopback 服务。
-- **本地模型调用**：Mac 开发原型通过 Node 服务调用本机 Codex CLI，使用 `gpt-6-luna` 和 `none` 推理强度。该适配器仅用于本地开发；正式多端运行时由服务端模型提供方实现，模型密钥只放在服务端，手机端不依赖 Codex CLI。
+- **本地模型调用**：Mac 开发原型的聊天通过 Node 服务调用本机 Codex app-server，且不加载本机 MCP 工具；视频摘要继续使用本机 `codex exec`。模型和推理强度从本机 Codex 可用清单读取，每轮请求明确传入所选档位。该适配器仅用于本地开发；正式多端运行时由服务端模型提供方实现，模型密钥只放在服务端，手机端不依赖 Codex CLI。
 - **视频处理**：作为独立服务流程处理用户分享或授权的 Bilibili 链接。优先读取平台字幕；没有可用字幕时调用 Bilibili 必剪 ASR；FFmpeg 从播放流按字幕和全片间隔采样关键帧，不保存整段视频。摘要模型同时读取转写和关键帧；标题、简介、评论和弹幕只作辅助背景。业务逻辑放在 TypeScript 服务中，不放进客户端。
 - **记忆**：B3 的 Mem0 与本地中文向量模型负责语义搜索；B4 在同一套 TypeScript/Node + SQLite 本地服务中保存原始聊天、会话、来源事实、有效时间和 Observer 观察。FTS5 负责中文词项检索，Mem0 向量索引负责语义召回，索引损坏时原始数据仍在 SQLite。启用 Mem0 时，本地 BGE 向量模型在 API 启动后异步载入并预热。会话上下文使用预算打包摘要、相关记忆、旧聊天来源证据和近期原文。实现细节见 [`MEMORY_ARCHITECTURE.md`](MEMORY_ARCHITECTURE.md)；当前范围不包含服务端部署或多设备同步。
 - **日记链路**：SQLite 保存视频待看项、旧版单视频日记、共享综合日记与未完成任务阶段。综合日记按共享本机日期汇集所有人格的聊天、视频、网页、学习和反思经历，保留当前版本、来源关联与旧版本；API 进程默认本地时间 20:30 运行综合日记任务，可用 `JOURNAL_CRON` 调整。API 启动恢复未完成任务；若当天计划时间已过，为当天补跑一次，不批量补写停机期间的历史日期。旧版视频队列仍由 `DIARY_CRON` 每日 20:00 逐条处理。API 是独立于 Tauri 客户端的进程，停止期间计划任务不会运行。所有来源与正文保存在本机 SQLite，Mem0 只负责可重建的语义索引。行为见 [`DAILY_JOURNAL.md`](DAILY_JOURNAL.md)。
@@ -74,7 +74,7 @@ PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不
 
 ### C1/C2 本地视频摘要范围
 
-`pnpm --dir apps/api run summarize -- <Bilibili 链接或 BV 号>` 会依次解析视频、读取字幕/转写和辅助文字资料、从播放流抽取最多 8 张关键帧，再调用本机 Codex CLI（GPT-6 Luna，推理强度 `none`）生成整条视频的连贯中文摘要。帧图缩至 768 像素宽；完整视频不保存到本地。CLI 将摘要、来源证据、帧图和模型 token 用量写入 `.local/video-summaries/<BV号>/`。
+`pnpm --dir apps/api run summarize -- <Bilibili 链接或 BV 号>` 会依次解析视频、读取字幕/转写和辅助文字资料、从播放流抽取最多 8 张关键帧，再调用本机 Codex CLI 生成整条视频的连贯中文摘要。CLI 使用本机 Codex 当前可用的模型和推理强度；帧图缩至 768 像素宽，完整视频不保存到本地。CLI 将摘要、来源证据、帧图和模型 token 用量写入 `.local/video-summaries/<BV号>/`。
 
 仓库根目录的 `启动视频摘要测试.command` 会启动本地网页测试台，复用同一采集与摘要流程，并展示阶段耗时、实际模型输入文字和帧图、token 用量及摘要。网页模式将结果保留在本次页面响应中，关键帧放在临时目录并在处理结束后删除；Bilibili 限流冷却状态仍由服务记录。两种本地模式都不写入长期记忆，也不代替用户在 B 站发布内容。
 

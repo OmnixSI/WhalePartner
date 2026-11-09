@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildCodexArgs, CODEX_REASONING_EFFORT, codexErrorFromEvents, parseCodexMessage, parseCodexResult } from "../src/codex.ts";
+import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult } from "../src/codex.ts";
+import { resolveCodexSettings, type CodexModelOption } from "../src/codex-app-server.ts";
 import { buildVideoSummaryPrompt } from "../src/prompt.ts";
 
 test("builds a whole-video multimodal summary prompt", () => {
@@ -20,15 +21,29 @@ test("builds a whole-video multimodal summary prompt", () => {
 });
 
 test("attaches keyframe images to GPT-6 Luna with a supported reasoning effort", () => {
-  const args = buildCodexArgs(["/tmp/frame one.jpg", "/tmp/frame-two.jpg"]);
+  const args = buildCodexArgs(["/tmp/frame one.jpg", "/tmp/frame-two.jpg"], { model: "gpt-6-luna", effort: "low" });
 
   assert.equal(args.includes("gpt-6-luna"), true);
-  assert.equal(args.includes(`model_reasoning_effort="${CODEX_REASONING_EFFORT}"`), true);
-  assert.notEqual(CODEX_REASONING_EFFORT, "minimal");
+  assert.equal(args.includes('model_reasoning_effort="low"'), true);
   assert.deepEqual(
     args.flatMap((arg, index) => arg === "--image" ? [args[index + 1]] : []),
     ["/tmp/frame one.jpg", "/tmp/frame-two.jpg"],
   );
+});
+
+test("uses only an effort listed for the selected local Codex model", () => {
+  const model: CodexModelOption = {
+    model: "gpt-6-luna",
+    id: "gpt-6-luna",
+    displayName: "GPT-6 Luna",
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),
+    isDefault: true,
+  };
+
+  assert.equal(resolveCodexSettings({ model: "gpt-6-luna", effort: "low" }, [model]).effort, "low");
+  assert.throws(() => resolveCodexSettings({ model: "gpt-6-luna", effort: "none" }, [model]), /不在 gpt-6-luna 当前可用列表中/);
+  assert.throws(() => resolveCodexSettings({ model: "custom-model", effort: "low" }, [model]), /当前没有可用模型/);
 });
 
 test("reads the final completed Codex agent message from JSONL events", () => {

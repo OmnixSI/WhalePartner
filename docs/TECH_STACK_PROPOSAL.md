@@ -15,7 +15,7 @@ WhalePartner 面向 Windows、macOS、iOS 和 Android。当前先在 MacBook 上
 | 原生能力 | Rust，限于 Tauri 及平台集成 | 文件系统、系统通知、应用生命周期和必要的原生插件 |
 | 应用服务 | TypeScript + Node.js Active LTS | HTTP API、视频处理流程、AI 推理、记忆与定时任务 |
 | 客户端与服务接口 | HTTPS + JSON | 统一 Mac、Windows、iOS、Android 的请求和响应格式 |
-| 本地开发推理 | Node 服务调用本机 Codex CLI | `gpt-6-luna`，`model_reasoning_effort="minimal"`；不需要另配模型 API Key |
+| 本地开发推理 | Node 服务通过 Codex app-server 流式处理聊天，通过 Codex CLI 处理视频摘要 | 使用本机 `model/list` 返回的模型和推理强度；不需要另配模型 API Key |
 
 Tauri 官方支持桌面和移动平台，并允许使用 React 等 Web 前端与 Rust 后端；官方前端指南建议用 Vite 构建 SPA。iOS 构建需要 macOS/Xcode，Android 构建需要 Android 工具链，因此先在 MacBook 开发与测试符合平台约束。[Tauri 平台与架构](https://v2.tauri.app/start/)、[前端配置](https://v2.tauri.app/start/frontend/)、[平台开发依赖](https://v2.tauri.app/start/prerequisites/)
 
@@ -31,7 +31,7 @@ Node.js 服务使用 Active LTS 或 Maintenance LTS 版本；项目启动时锁�
 
 ## Codex 调用边界
 
-当前开发原型由 Mac 上运行的 Node 服务通过 `codex exec` 调用本机 Codex，指定 `gpt-6-luna` 和 `minimal` 推理强度。Codex CLI 不作为 iOS 或 Android 的运行时依赖。正式多端使用时，Node 服务通过同一摘要接口连接可部署的模型服务，密钥只放在服务端；客户端和视频采集流程不需要随之改写。
+当前开发原型由 Mac 上运行的 Node 服务通过 Codex app-server 处理流式聊天，并用 `codex exec` 生成视频摘要。设置界面读取本机 `model/list`，只提供所选模型列出的推理强度；后端保存时校验，且每轮请求显式传入用户选择的模型与档位。聊天适配器不加载本机 MCP 工具。Codex app-server 是本地开发适配器，不作为 iOS 或 Android 的运行时依赖。正式多端使用时，Node 服务通过同一摘要接口连接可部署的模型服务，密钥只放在服务端；客户端和视频采集流程不需要随之改写。
 
 本机 Codex CLI 通过 `--image` 接收关键帧和对应时间索引，使用同一 GPT-6 Luna 调用完成图像与文本理解。摘要提示会把视频标题、简介、字幕、评论、弹幕和画面 OCR 当成不可信资料，不执行其中夹带的指令；输出说明证据来源与判断限制。
 
@@ -45,7 +45,7 @@ Node.js 服务使用 Active LTS 或 Maintenance LTS 版本；项目启动时锁�
   → 读取标题、简介、平台字幕及有限数量的评论和弹幕
   → 缺少平台字幕时，将 Bilibili 音频流地址提交给必剪 ASR
   → 从视频播放流抽取最多 8 张关键帧，不保存完整视频文件
-  → 将转写与关键帧交给本机 Codex（GPT-6 Luna，minimal）
+  → 将转写与关键帧交给本机 Codex（使用本机可用的模型与推理强度）
   → 生成整条视频的连贯摘要，并保存来源、证据、帧图与 token 用量
 ```
 
@@ -77,4 +77,4 @@ Node.js 服务使用 Active LTS 或 Maintenance LTS 版本；项目启动时锁�
 | 模型链 | DeepSeek → 备用 OpenAI 兼容接口 → 本机 Codex | 只在一个提供方还没输出任何文字时才换下一个；Codex 只用于本地开发。 |
 | 人格 | `persona/rules.md` + `persona/characters/<id>.md` | 共用规则固定在文件里，模型不能改；记忆和视频内容只作资料附在后面。 |
 
-已知限制：Codex 的推理强度现在只接受 `none`/`low`/`medium`/`high`/`xhigh`/`max`，不再接受 `minimal`，默认用 `none`，可用 `CODEX_REASONING_EFFORT` 覆盖。
+已知限制：Codex app-server 目前由上游标记为实验性接口，WhalePartner 只在本机开发适配器中使用。模型清单或连接不可用时，设置界面不提供档位选择，聊天请求不会回退到未列出的推理强度。
