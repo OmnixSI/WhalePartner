@@ -41,8 +41,8 @@ class PcmPlaybackWorklet extends AudioWorkletProcessor {
   constructor(options?: AudioWorkletNodeOptions) {
     super(options);
     this.port.onmessage = ({ data }: MessageEvent<PlaybackMessage>) => {
-      if (data.type === "configure" && data.prerollSamples) {
-        this.#prerollSamples = data.prerollSamples;
+      if (data.type === "configure" && data.prerollSamples !== undefined) {
+        this.#prerollSamples = Math.max(0, data.prerollSamples);
       } else if (data.type === "push" && data.samples?.length) {
         const turnId = data.turnId ?? this.#turnId ?? "";
         const segmentIndex = data.segmentIndex ?? 0;
@@ -99,7 +99,7 @@ class PcmPlaybackWorklet extends AudioWorkletProcessor {
     if (!output) return true;
     output.fill(0);
 
-    if (!this.#started && (this.#bufferedSamples >= this.#prerollSamples || (this.#finished && this.#bufferedSamples > 0))) {
+    if (!this.#started && this.#bufferedSamples > 0 && (this.#bufferedSamples >= this.#prerollSamples || this.#finished)) {
       this.#started = true;
       this.port.postMessage({
         type: "started",

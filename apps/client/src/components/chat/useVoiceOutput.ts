@@ -46,15 +46,18 @@ const PLAYBACK_SAMPLE_RATE = 24_000;
 const TTS_STREAMING_INTERVAL_SECONDS = 2;
 const MEASURED_SPEECH_SECONDS_PER_CHARACTER = 0.292;
 const MEASURED_AVERAGE_TTS_RTF = 0.9352;
-const BUFFER_RESERVE_CHUNKS = 1;
+const BUFFER_RESERVE_SECONDS = TTS_STREAMING_INTERVAL_SECONDS;
 
 function countSpeechCharacters(text: string): number {
   return text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
 }
 
-function bufferChunksForResponse(characterCount: number): number {
-  const estimatedGenerationSeconds = characterCount * MEASURED_SPEECH_SECONDS_PER_CHARACTER * MEASURED_AVERAGE_TTS_RTF;
-  return Math.ceil(estimatedGenerationSeconds / TTS_STREAMING_INTERVAL_SECONDS) + BUFFER_RESERVE_CHUNKS;
+function playbackStartTargetForResponse(characterCount: number): { waitSeconds: number; prerollAudioSeconds: number } {
+  const estimatedAudioSeconds = characterCount * MEASURED_SPEECH_SECONDS_PER_CHARACTER;
+  const estimatedGenerationSeconds = estimatedAudioSeconds * MEASURED_AVERAGE_TTS_RTF;
+  const waitSeconds = Math.max(0, estimatedGenerationSeconds + BUFFER_RESERVE_SECONDS - estimatedAudioSeconds);
+  // The worklet measures queued PCM duration, so convert the wall-clock wait back through RTF.
+  return { waitSeconds, prerollAudioSeconds: waitSeconds / MEASURED_AVERAGE_TTS_RTF };
 }
 
 export function useVoiceOutput() {
@@ -74,7 +77,7 @@ export function useVoiceOutput() {
   const pendingText = useRef("");
   const activeTurnId = useRef<string | null>(null);
   const turnSpeechCharacters = useRef(0);
-  const playbackPrerollChunks = useRef(BUFFER_RESERVE_CHUNKS);
+  const playbackPrerollAudioSeconds = useRef(BUFFER_RESERVE_SECONDS / MEASURED_AVERAGE_TTS_RTF);
   const pendingEmotion = useRef<AvatarEmotion>("neutral");
   const pendingCharacterId = useRef<CharacterId>("deepseek");
   const turnFinished = useRef<string | null>(null);
@@ -177,10 +180,9 @@ export function useVoiceOutput() {
     const context = audioContext.current;
     const node = playbackNode.current;
     if (!context || !node || playbackActive.current) return;
-    const prerollSeconds = playbackPrerollChunks.current * TTS_STREAMING_INTERVAL_SECONDS;
     node.port.postMessage({
       type: "configure",
-      prerollSamples: Math.ceil(context.sampleRate * prerollSeconds),
+      prerollSamples: Math.ceil(context.sampleRate * playbackPrerollAudioSeconds.current),
     });
   }, []);
 
@@ -226,7 +228,7 @@ export function useVoiceOutput() {
       };
       node.port.postMessage({
         type: "configure",
-        prerollSamples: Math.ceil(context.sampleRate * playbackPrerollChunks.current * TTS_STREAMING_INTERVAL_SECONDS),
+        prerollSamples: Math.ceil(context.sampleRate * playbackPrerollAudioSeconds.current),
       });
       node.connect(analyser.current ?? context.destination);
       playbackNode.current = node;
@@ -297,7 +299,7 @@ export function useVoiceOutput() {
     nextSegmentIndex.current = 0;
     lastSegmentDoneAt.current = null;
     turnSpeechCharacters.current = 0;
-    playbackPrerollChunks.current = BUFFER_RESERVE_CHUNKS;
+    playbackPrerollAudioSeconds.current = BUFFER_RESERVE_SECONDS / MEASURED_AVERAGE_TTS_RTF;
     pendingEmotion.current = "neutral";
     pendingCharacterId.current = "deepseek";
     bufferedMs.current = 0;
@@ -445,15 +447,17 @@ export function useVoiceOutput() {
     setError((current) => current ? "" : current);
     if (activeTurnId.current !== turnId) return;
     turnSpeechCharacters.current += countSpeechCharacters(text);
-    const targetChunks = bufferChunksForResponse(turnSpeechCharacters.current);
-    if (targetChunks !== playbackPrerollChunks.current) {
-      playbackPrerollChunks.current = targetChunks;
+    const target = playbackStartTargetForResponse(turnSpeechCharacters.current);
+    if (target.prerollAudioSeconds !== playbackPrerollAudioSeconds.current) {
+      playbackPrerollAudioSeconds.current = target.prerollAudioSeconds;
       updatePlaybackPreroll();
       logVoiceDiagnostic("client-playback-buffer-target", {
         turnId,
         speechCharacters: turnSpeechCharacters.current,
-        targetChunks,
-        targetMs: targetChunks * TTS_STREAMING_INTERVAL_SECONDS * 1000,
+        estimatedAudioMs: Math.round(turnSpeechCharacters.current * MEASURED_SPEECH_SECONDS_PER_CHARACTER * 1000),
+        estimatedGenerationMs: Math.round(turnSpeechCharacters.current * MEASURED_SPEECH_SECONDS_PER_CHARACTER * MEASURED_AVERAGE_TTS_RTF * 1000),
+        targetWaitMs: Math.round(target.waitSeconds * 1000),
+        targetBufferedAudioMs: Math.round(target.prerollAudioSeconds * 1000),
         playbackStarted: playbackActive.current,
       });
     }
