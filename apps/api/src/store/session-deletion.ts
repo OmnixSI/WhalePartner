@@ -53,6 +53,23 @@ export function deleteChatSession(db: DatabaseSync, sessionId: string, _characte
 
   db.exec("BEGIN IMMEDIATE");
   try {
+    db.prepare(`
+      DELETE FROM memory_topic_search WHERE rowid IN (
+        SELECT t.id FROM memory_topics t JOIN memory_topic_sources ts ON ts.topic_id = t.id
+        JOIN messages m ON m.id = ts.message_id WHERE m.session_id = ?
+      )
+    `).run(sessionId);
+    db.prepare(`
+      DELETE FROM memory_topics WHERE id IN (
+        SELECT t.id FROM memory_topics t JOIN memory_topic_sources ts ON ts.topic_id = t.id
+        JOIN messages m ON m.id = ts.message_id WHERE m.session_id = ?
+      )
+    `).run(sessionId);
+    db.prepare(`
+      DELETE FROM memory_core WHERE id = 1 AND EXISTS (
+        SELECT 1 FROM memory_core_sources cs JOIN messages m ON m.id = cs.message_id WHERE cs.core_id = 1 AND m.session_id = ?
+      )
+    `).run(sessionId);
     db.prepare("DELETE FROM memory_legacy_sources WHERE session_id = ?").run(sessionId);
     for (const vectorEntryId of legacyVectorIds) {
       const remaining = db.prepare("SELECT 1 FROM memory_legacy_sources WHERE vector_entry_id = ? LIMIT 1").get(vectorEntryId);

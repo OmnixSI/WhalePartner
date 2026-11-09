@@ -53,3 +53,33 @@ API 类型检查通过。完整 API 回归 96 项通过；HTTP 路由测试使�
 仓库现有 `memory:smoke` 在系统临时目录验证了真实 Mem0 / 本地 BGE 链路：写入事实、同来源经历覆盖、创建新实例后语义召回、无关查询不召回、删除后不再出现，全部通过。当前配置的提供方是 Codex `gpt-6-luna`。单次事实提炼耗时 7,090 ms，其中提供方调用 5,500 ms，其余本地/桥接处理约 1,590 ms。该次提供方用量返回输入 24,446 tokens（其中缓存输入 11,520）、输出 118 tokens；WhalePartner 本地字符估算为 12,719。两者口径不同，单次样本不能代表聊天轮次的真实输入成本。此冒烟未运行真实聊天回复，因此没有真实首 token 延迟或聊天轮次用量。
 
 所有回归与基准使用 `:memory:`、系统临时目录或该冒烟脚本自己的临时向量目录；没有打开或修改 `apps/api/.local/app.db` 或主向量索引。测试生成的合成数据未进入主数据库。
+
+## Anthropic Claude 记忆整理机制
+
+本节对应 GitHub Issue [#121](https://github.com/OmnixSI/WhalePartner/issues/121)。资料访问日期为 2026-11-09；实现保留 WhalePartner 的本机 SQLite 权威库和当前模型设置，没有接入 Claude 托管 Dreams、云端记忆或新收费服务。
+
+| 官方资料 | 阅读位置 | 适配结论 |
+|---|---|---|
+| Lance Martin，Anthropic，[The components of agent memory](https://www.anthropic.com/research/components-of-agent-memory)，2026-11-06 | “Memory notes”“Dreaming can correct memory”“Thinking backward, looking forward” | 采用原始记录、笔记、主题表示和注入上下文的分层；把后台整理用于校正和组织，不以不断追加摘要代替事实核验。 |
+| Claude Platform Docs，[Dreams](https://platform.claude.com/docs/en/managed-agents/dreams)，无标注发布日期 | “How it works”“Steer with instructions”；页面标注 Research Preview | 参考异步整理与输入/输出分离的边界。WhalePartner 继续在本机 SQLite 单写者中事务发布，不复制托管服务。 |
+| Brad Abrams，[Dreaming with a dynamic workflow](https://platform.claude.com/cookbook/managed-agents-cma-dreaming-with-a-dynamic-workflow)，2026-11-02；Notebook：`managed_agents/CMA_dreaming_with_a_dynamic_workflow.ipynb` | “Load your sessions”“Create the agents”“Use the memory”“Dream every night” | 采用分析与后续只读消费分离的思路；不照搬依赖已结束会话和每夜时间窗的样例，因为本产品支持持续多日会话。 |
+| anthropics/claude-cookbooks，[analyzer_system.md](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/example_data/memory_distill/prompts/analyzer_system.md) | “Verify”“Enrich”“Organize”“Work in as few turns as you can” | 没有新证据不等于旧事实为假；明确矛盾才更新；证据不确定时不提升为已确认事实。 |
+| anthropics/claude-cookbooks，[organizer_system.md](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/example_data/memory_distill/prompts/organizer_system.md)、[lead_system.md](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/example_data/memory_distill/prompts/lead_system.md)、[work_request.md](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/example_data/memory_distill/prompts/work_request.md) | Organizer 的合并、历史保留、来源和单写者约定 | 主题笔记保留根消息来源；同一整理器串行发布，避免多写者覆盖。 |
+| anthropics/claude-cookbooks，[dreaming_nightly.py](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/dreaming_nightly.py)、[memory_distill_utils.py](https://github.com/anthropics/claude-cookbooks/blob/main/managed_agents/memory_distill_utils.py) | `main` 的时间窗推进；`read_results`、`report_run`、`raise_if_problems` | 任务进度与内容正确性分开验证；对连续聊天使用消息 ID 和可恢复任务，不以会话创建时间作游标。 |
+| anthropics/claude-quickstarts，[knowledge-wiki README](https://github.com/anthropics/claude-quickstarts/blob/main/managed-agents/knowledge-wiki/README.md) 及 analyzer / organizer prompts | README 的适用语料、构建与查询分离；提示词的来源和索引约定 | 陪伴聊天的资料持续变化，首期选择少量 SQLite 主题摘要，不创建全量文件 Wiki。 |
+| Claude Platform Docs，[Memory tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool) | “How it works”“Implement the memory handler” | 持久化由应用负责；该工具协议不是 WhalePartner 必需的新依赖。 |
+
+### 实现
+
+- `memory_jobs` 每次合并同一聊天会话最多 8 轮、合计不超过 12,000 个字符的相邻任务；输入再按查询裁剪为相关事实、最多 4 条主题及精简核心。每批只发起一次整理请求，并在 `WP_DEBUG` 下记录批次数、输入字符数和请求数，不记录原文。
+- 新整理器从本批用户原话提取带消息 ID、逐字引用、有效状态和纠正标记的事实，并同时产出主题、核心入口和会话观察。通过活动事实 ID 明确指向被同义键纠正取代的版本；计划标注进行中、已完成或已取消，终态会取代对应计划并抑制其提醒，终态记录保留为历史；同一主体仍有活动计划但缺少有效关联 ID 时，批次不会发布并留待重试。不同主体的计划不会互相阻塞。助手发言不作为用户事实；输出来源不在允许集合、引用不匹配或格式无效时不会提交事实。未找到新证据不会使旧事实失效。
+- SQLite 事务同时发布结构化事实、`memory_topics` / `memory_topic_sources`、`memory_core` / `memory_core_sources`、会话观察和任务进度。摘要必须有仍存在的消息根来源。来源会话删除、事实手动删除或事实被明确取代时，受影响的主题/核心同步失效。
+- 新事实的 SQLite 记录是权威版本；Mem0 仅接收 `infer:false` 的派生索引。无 SQLite 来源映射的旧 Mem0 事实从当前召回排除，只能在明确的历史问题中作为未核验材料出现。
+- 前台聊天开始时，后台整理与学习/近况请求收到取消信号。记忆批次回到可立即续跑状态，已事务发布的进度保留；聊天完成后恢复调度。任务仍保存在现有本机 `memory_jobs`，重启后继续。
+- 核心入口及相关主题只占用现有聊天上下文预算。没有增加 UI、用户操作、远端存储或新的模型提供方。
+
+### 验证与边界
+
+定向隔离回归覆盖：一批两轮聊天只发起一次整理、带来源事实/主题/核心发布、前台聊天中止并续跑、同义键纠正、纠正后旧观察失效、取消计划抑制旧提醒、缺少活动计划关联 ID 时拒绝完成、不同主体的计划互不阻塞、手动删除和来源会话删除，以及批次缺少新证据时保留旧事实。`memory.test.ts` 覆盖无来源旧 Mem0 事实只进入明确历史查询。测试使用 `:memory:` SQLite 与假 provider，不读取用户数据库或调用真实模型。
+
+确定性测试确认事务、来源过滤和任务恢复；定向记忆回归 10 项通过，API 类型检查通过，完整 API 回归 273 项通过；Tauri macOS `.app` 构建通过，ad-hoc 签名和 `com.omnixsi.whalepartner` bundle ID 校验通过，并已从任务分支产物启动。回归覆盖同义键纠正、纠正后会话观察失效、取消计划时旧提醒抑制、终态缺少活动计划 ID 时拒绝发布，以及不同主体互不阻塞。没有在真实模型或用户数据库上写入聊天内容。模型对临时与稳定偏好、并存兴趣、摘要误读和真实回答质量仍需由用户在当前应用中人工验收。

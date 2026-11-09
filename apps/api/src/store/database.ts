@@ -68,6 +68,30 @@ export function openChatDatabase(path: string): DatabaseSync {
     );
     CREATE INDEX IF NOT EXISTS memory_jobs_pending ON memory_jobs(status, next_attempt_at, id);
 
+    CREATE TABLE IF NOT EXISTS memory_topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      topic_key TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS memory_topic_sources (
+      topic_id INTEGER NOT NULL REFERENCES memory_topics(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      PRIMARY KEY (topic_id, message_id)
+    );
+    CREATE TABLE IF NOT EXISTS memory_core (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      text TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS memory_core_sources (
+      core_id INTEGER NOT NULL REFERENCES memory_core(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+      PRIMARY KEY (core_id, message_id)
+    );
+    CREATE VIRTUAL TABLE IF NOT EXISTS memory_topic_search USING fts5(terms, tokenize='unicode61');
+
     CREATE TABLE IF NOT EXISTS companion_settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       enabled INTEGER NOT NULL DEFAULT 0,

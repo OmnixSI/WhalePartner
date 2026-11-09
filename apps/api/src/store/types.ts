@@ -33,6 +33,39 @@ export interface FactCandidate {
   supersedes: boolean;
 }
 
+export interface SourcedFactCandidate extends FactCandidate {
+  sourceMessageId: number;
+  supersedesFactIds?: number[];
+  planStatus?: "active" | "completed" | "cancelled";
+}
+
+export interface MemoryTopicCandidate {
+  key: string;
+  title: string;
+  summary: string;
+  sourceMessageIds: number[];
+}
+
+export interface MemoryDistillation {
+  facts: SourcedFactCandidate[];
+  topics: MemoryTopicCandidate[];
+  core?: string;
+  coreSourceMessageIds: number[];
+  observation?: string;
+}
+
+export interface StoredMemoryTopic extends MemoryTopicCandidate {
+  updatedAt: string;
+}
+
+export interface MemoryDistillationContext {
+  core?: string;
+  coreSourceMessageIds: number[];
+  topics: StoredMemoryTopic[];
+  facts: StoredFact[];
+  activePlanSubjects?: string[];
+}
+
 export interface StoredFact {
   id: number;
   subject: string;
@@ -83,4 +116,9 @@ export interface MemoryJob {
   vectorsDone: boolean;
   summaryDone: boolean;
   legacyDone: boolean;
+}
+
+export interface MemoryJobBatch {
+  jobs: MemoryJob[];
+  messages: StoredMessage[];
 }

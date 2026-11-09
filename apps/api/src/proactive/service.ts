@@ -191,8 +191,10 @@ export class ProactiveService {
     controller.signal.throwIfAborted();
     const messages = buildChatContext({
       persona: withUserName(buildPersonaCore("deepseek"), readUserName(this.#config.dbPath)),
+      core: recalled.core,
       observation: recalled.observation,
       memories: recalled.facts.slice(0, 8),
+      topics: recalled.topics,
       experiences: recalled.experiences.slice(0, 5),
       learned: recalled.learned,
       note: this.#store.getNote("deepseek")?.text,

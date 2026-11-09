@@ -4,6 +4,7 @@ import type { ChatMessage, ChatProvider, LlmUsage } from "./llm/types.ts";
 import type { MemoryStore } from "./memory/types.ts";
 import { buildChatContext } from "./memory/context.ts";
 import { scheduleMemoryJobs } from "./memory/jobs.ts";
+import { beginForegroundChat } from "./memory/priority.ts";
 import { recallChatMemory } from "./memory/recall.ts";
 import { queueLearning, queueReflection } from "./chat-background.ts";
 import { readWeb, watchVideo } from "./chat-materials.ts";
@@ -107,6 +108,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   const firstTokenMs = deps.firstTokenTimeoutMs ?? FIRST_TOKEN_TIMEOUT_MS;
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; inner.abort(new Error("first-token-timeout")); }, firstTokenMs);
+  const finishForegroundChat = beginForegroundChat();
 
   try {
     let situation: string | undefined;
@@ -122,8 +124,10 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
 
     const messages = buildChatContext({
       persona: withUserName(buildPersonaCore(character), deps.nickname),
+      core: recalled.core,
       observation: recalled.observation,
       memories: recalled.facts.slice(0, 8),
+      topics: recalled.topics,
       experiences: recalled.experiences.slice(0, 5),
       learned: recalled.learned,
       note: store.getNote(character)?.text,
@@ -199,5 +203,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
     clearTimeout(timer);
     signal?.removeEventListener("abort", onOuterAbort);
     bus.publish("typing", { ...scope, on: false });
+    finishForegroundChat();
+    void scheduleMemoryJobs({ store, provider, memory });
   }
 }
