@@ -14,7 +14,8 @@
     "voice-playback:integration": "node scripts/voice-playback-integration.mjs",
     "tauri": "tauri",
     "fonts": "node scripts/build-fonts.mjs",
-    "fetch-live2d": "node scripts/fetch-live2d.mjs"
+    "fetch-live2d": "node scripts/fetch-live2d.mjs",
+    "prepare-live2d": "node scripts/fetch-live2d.mjs --require-core"
   },
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.3.0",

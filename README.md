@@ -85,7 +85,7 @@ pnpm --dir apps/client run dev              # 终端 2：界面
 pnpm --dir apps/client run fetch-live2d     # 大肥鱼 Live2D 模型（CC BY-NC-SA 4.0，仅非商业）
 ```
 
-Live2D 还需要专有的 Cubism Core，仓库不分发：从 [官方 SDK](https://www.live2d.com/en/sdk/download/web/) 取 `live2dcubismcore.min.js`，放到 `apps/client/public/live2d/libs/`。缺少时舞台使用兜底形象，聊天不受影响。
+Tauri 桌面构建会在打包前自动准备大肥鱼模型和 Cubism Core；模型放在 `apps/client/public/live2d/whale-maid/`，Core 放在 `apps/client/public/live2d/libs/`。模型与 Core 都被 Git 忽略，不进入提交；模型仅限 CC BY-NC-SA 4.0 非商业使用，Cubism Core 遵循 Live2D SDK 许可，也不得随应用对外分发。若官方 Core 无法自动获取，构建会停止并提示从 [官方 SDK](https://www.live2d.com/en/sdk/download/web/) 下载后放到对应路径。浏览器构建仍可在未准备素材时使用兜底形象，聊天不受影响。
 
 ---
 
