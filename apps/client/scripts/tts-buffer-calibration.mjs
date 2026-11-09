@@ -8,6 +8,9 @@ const expectedDataDirectory = resolve(process.env.WP_TTS_QA_DATA_DIR ?? "");
 const outputPath = resolve(process.env.WP_TTS_CALIBRATION_OUTPUT ?? "docs/evidence/voice/qwen3-tts-100-sentence-calibration.json");
 const blockSeconds = 2;
 const reserveBlocks = 1;
+const standardRtf = 1.35;
+const rtfHeadroom = 0.15;
+const planningRtf = standardRtf + rtfHeadroom;
 const warmTimeoutMs = 5 * 60_000;
 const topics = ["天气", "工作", "学习", "旅行", "做饭", "音乐", "阅读", "朋友", "周末", "睡眠"];
 const templates = [
@@ -68,15 +71,15 @@ function round(value, places = 3) {
   return Math.round(value * factor) / factor;
 }
 
-function playbackStartTargetForCharacters(characterCount, secondsPerCharacter, averageRtf) {
+function playbackStartTargetForCharacters(characterCount, secondsPerCharacter, targetRtf) {
   const estimatedAudioSeconds = characterCount * secondsPerCharacter;
-  const estimatedGenerationSeconds = estimatedAudioSeconds * averageRtf;
+  const estimatedGenerationSeconds = estimatedAudioSeconds * targetRtf;
   const targetWaitSeconds = Math.max(0, estimatedGenerationSeconds + blockSeconds - estimatedAudioSeconds);
   return {
     estimatedAudioSeconds,
     estimatedGenerationSeconds,
     targetWaitSeconds,
-    targetPcmBufferSeconds: targetWaitSeconds / averageRtf,
+    targetPcmBufferSeconds: targetWaitSeconds / targetRtf,
   };
 }
 
@@ -260,12 +263,15 @@ const result = {
     reserveBlocks,
   },
   bufferStrategy: {
+    standardRtf,
+    rtfHeadroom,
+    planningRtf,
     reserveSeconds: blockSeconds,
-    targetWaitFormula: "max(0, estimatedAudioSeconds * weightedAverageRtf + reserveSeconds - estimatedAudioSeconds)",
-    targetPcmBufferFormula: "targetWaitSeconds / weightedAverageRtf",
+    targetWaitFormula: "max(0, estimatedAudioSeconds * planningRtf + reserveSeconds - estimatedAudioSeconds)",
+    targetPcmBufferFormula: "targetWaitSeconds / planningRtf",
   },
   bufferExamples: [10, 20, 40, 80, 160].map((characterCount) => {
-    const target = playbackStartTargetForCharacters(characterCount, secondsPerCharacter, averageRtf);
+    const target = playbackStartTargetForCharacters(characterCount, secondsPerCharacter, planningRtf);
     return {
       characterCount,
       estimatedAudioSeconds: round(target.estimatedAudioSeconds, 2),
