@@ -44,19 +44,17 @@ interface PlaybackMessage {
 
 const PLAYBACK_SAMPLE_RATE = 24_000;
 const TTS_STREAMING_INTERVAL_SECONDS = 2;
-const SPEECH_CHARACTERS_PER_CHUNK = 10;
-const MAX_ASSUMED_TTS_RTF = 1.35;
+const MEASURED_SPEECH_SECONDS_PER_CHARACTER = 0.292;
+const MEASURED_AVERAGE_TTS_RTF = 0.9352;
 const BUFFER_RESERVE_CHUNKS = 1;
 
 function countSpeechCharacters(text: string): number {
-  return Array.from(text.replace(/\s/gu, "")).length;
+  return text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
 }
 
 function bufferChunksForResponse(characterCount: number): number {
-  const expectedSpeechChunks = Math.ceil(characterCount / SPEECH_CHARACTERS_PER_CHUNK);
-  const reserveChunks = expectedSpeechChunks + BUFFER_RESERVE_CHUNKS;
-  const rtfAdjustedChunks = Math.ceil(expectedSpeechChunks * MAX_ASSUMED_TTS_RTF);
-  return Math.max(reserveChunks, rtfAdjustedChunks);
+  const estimatedGenerationSeconds = characterCount * MEASURED_SPEECH_SECONDS_PER_CHARACTER * MEASURED_AVERAGE_TTS_RTF;
+  return Math.ceil(estimatedGenerationSeconds / TTS_STREAMING_INTERVAL_SECONDS) + BUFFER_RESERVE_CHUNKS;
 }
 
 export function useVoiceOutput() {

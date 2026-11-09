@@ -96,9 +96,11 @@ export function ChatPanel({ character }: Props) {
     voiceOutput.setEnabled(voice.active && voice.phase !== "error" && character.id === "deepseek");
   }, [character.id, voice.active, voice.phase, voiceOutput.setEnabled]);
   const startVoice = () => {
-    speech.reset();
-    voiceOutput.activate(character.id === "deepseek");
-    void voice.start();
+    if (!voice.active) {
+      speech.reset();
+      voiceOutput.activate(character.id === "deepseek");
+    }
+    voice.toggleRecording();
   };
   const stopVoice = () => {
     voice.stop();
@@ -132,13 +134,13 @@ export function ChatPanel({ character }: Props) {
   const voiceMessage = voice.phase === "error"
     ? voice.message
     : voice.active && character.id !== "deepseek"
-      ? "语音输入已开启；语音回复目前支持大肥鱼。"
+      ? voice.recording ? "正在录音，停顿不会自动发送。说完后再按一次麦克风按钮发送。" : "点击麦克风开始录音；语音回复目前支持大肥鱼。"
       : voiceOutput.model.state === "failed" || voiceOutput.error
         ? `语音输入仍可用，语音回复暂不可用：${voiceOutput.error || voiceOutput.model.message}`
         : voiceOutput.model.state === "loading"
           ? `${voice.message} 正在准备语音模型。`
           : voiceOutput.speaking
-            ? "大肥鱼正在回答；继续说话可以打断。"
+            ? "大肥鱼正在回答；点击麦克风开始录音并打断她。"
             : voice.message;
   /* ------------------------------------------------------------ 状态推导 */
   const lastHer = [...turns].reverse().find((t) => t.role === "her" && (t.text || t.status !== "failed" || phase === "failed"));
@@ -283,6 +285,7 @@ export function ChatPanel({ character }: Props) {
             onDraftChange={setDraft}
             onSend={(value) => void send(value)}
             voicePhase={voice.phase}
+            voiceRecording={voice.recording}
             voiceMessage={voiceMessage}
             voiceModel={voice.model}
             voiceTtsStatus={voiceOutput.model}

@@ -3,7 +3,7 @@ import { API_BASE, currentToken } from "../../lib/api";
 import { logVoiceDiagnostic } from "../../lib/voice-diagnostics";
 import pcmWorkletUrl from "./pcm16-worklet.ts?worker&url";
 
-export type VoicePhase = "off" | "permission" | "preparing" | "listening" | "recognizing" | "thinking" | "speaking" | "interrupted" | "error";
+export type VoicePhase = "off" | "permission" | "preparing" | "ready" | "listening" | "recognizing" | "thinking" | "speaking" | "interrupted" | "error";
 export interface VoiceModelStatus {
   state: "idle" | "loading" | "ready" | "failed";
   progress: number | null;
@@ -12,11 +12,7 @@ export interface VoiceModelStatus {
   offlineRefinement?: "idle" | "loading" | "ready" | "unavailable";
 }
 
-const SPEECH_RMS = 0.018;
-const SPEECH_CONFIRM_MS = 120;
-const SPEECH_RMS_DURING_PLAYBACK = 0.03;
-const SPEECH_CONFIRM_DURING_PLAYBACK_MS = 180;
-const ASR_PREROLL_FRAME_COUNT = 5;
+const FINISH_TIMEOUT_MS = 20_000;
 
 interface Props {
   assistantBusy: boolean;
@@ -26,7 +22,7 @@ interface Props {
 }
 
 interface AsrMessage {
-  type: "ready" | "partial" | "final" | "segment-end" | "error";
+  type: "ready" | "partial" | "final" | "segment-end" | "finished" | "error";
   text?: string;
   message?: string;
   model?: string;
@@ -35,15 +31,43 @@ interface AsrMessage {
 
 interface PcmFrame {
   pcm: ArrayBuffer;
-  rms: number;
+}
+
+interface FinishWaiter {
+  resolve(): void;
+  reject(error: Error): void;
+  timer: number;
+}
+
+function mergeTranscriptParts(parts: string[]): string {
+  return parts.reduce((merged, part) => {
+    const next = part.trim();
+    if (!next) return merged;
+    if (!merged) return next;
+    const lastCharacter = Array.from(merged).at(-1) ?? "";
+    const firstCharacter = Array.from(next)[0] ?? "";
+    const touchesCjk = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u.test(lastCharacter)
+      || /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u.test(firstCharacter);
+    return `${merged}${touchesCjk ? "" : " "}${next}`;
+  }, "").replace(/([，。！？、；：])\s+/gu, "$1").trim();
+}
+
+function startErrorMessage(error: unknown): string {
+  const cause = error as DOMException;
+  if (cause?.name === "NotAllowedError" || cause?.name === "SecurityError") {
+    return "麦克风权限未允许。到系统设置 › 隐私与安全性 › 麦克风中允许 WhalePartner 后重试。";
+  }
+  if (cause?.name === "NotFoundError") return "没有检测到可用麦克风。接入麦克风后重试。";
+  if (cause?.name === "NotReadableError") return "麦克风正被其他应用占用，请关闭占用后重试。";
+  return error instanceof Error ? error.message : "语音模式启动失败，请检查麦克风和本地语音服务后重试。";
 }
 
 export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTranscript, onInterrupt }: Props) {
   const [phase, setPhase] = useState<VoicePhase>("off");
   const [message, setMessage] = useState("");
+  const [recording, setRecording] = useState(false);
   const [model, setModel] = useState<VoiceModelStatus>({ state: "idle", progress: null, message: "" });
   const active = useRef(false);
-  const phaseRef = useRef<VoicePhase>("off");
   const generation = useRef(0);
   const stream = useRef<MediaStream | null>(null);
   const context = useRef<AudioContext | null>(null);
@@ -51,50 +75,68 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   const processor = useRef<AudioWorkletNode | null>(null);
   const silence = useRef<GainNode | null>(null);
   const socket = useRef<WebSocket | null>(null);
-  const speakingSince = useRef<number | null>(null);
-  const speechPeak = useRef(0);
-  const interrupted = useRef(false);
+  const recordingRef = useRef(false);
+  const finishing = useRef(false);
+  const transcriptParts = useRef<string[]>([]);
+  const finishWaiter = useRef<FinishWaiter | null>(null);
   const assistantBusyRef = useRef(assistantBusy);
   const assistantSpeakingRef = useRef(false);
-  const assistantActiveDuringPreviousFrame = useRef(false);
-  const asrPrerollFrames = useRef<ArrayBuffer[]>([]);
-  const forwardingAsrDuringAssistant = useRef(false);
   const transcriptRef = useRef(onTranscript);
   const interruptRef = useRef(onInterrupt);
   const preparingRequest = useRef<AbortController | null>(null);
 
   assistantBusyRef.current = assistantBusy;
   assistantSpeakingRef.current = assistantSpeaking;
-  phaseRef.current = phase;
   transcriptRef.current = onTranscript;
   interruptRef.current = onInterrupt;
 
-  const release = useCallback(() => {
-    active.current = false;
-    generation.current += 1;
-    preparingRequest.current?.abort();
-    preparingRequest.current = null;
-    const ws = socket.current;
-    socket.current = null;
-    if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, "voice mode stopped");
+  const interruptAssistant = useCallback(() => {
+    const assistantBusyNow = assistantBusyRef.current;
+    const assistantSpeakingNow = assistantSpeakingRef.current;
+    if (!assistantBusyNow && !assistantSpeakingNow) return;
+    const reason = "voice-button-started-recording";
+    logVoiceDiagnostic("voice-interruption", {
+      reason,
+      assistantBusy: assistantBusyNow,
+      assistantSpeaking: assistantSpeakingNow,
+    });
+    interruptRef.current(reason);
+  }, []);
+
+  const releaseCapture = useCallback(() => {
+    recordingRef.current = false;
+    setRecording(false);
     processor.current?.disconnect();
     source.current?.disconnect();
     silence.current?.disconnect();
     processor.current = null;
     source.current = null;
     silence.current = null;
-    speakingSince.current = null;
-    speechPeak.current = 0;
-    interrupted.current = false;
-    assistantActiveDuringPreviousFrame.current = false;
-    asrPrerollFrames.current = [];
-    forwardingAsrDuringAssistant.current = false;
     stream.current?.getTracks().forEach((track) => track.stop());
     stream.current = null;
     const audioContext = context.current;
     context.current = null;
     if (audioContext && audioContext.state !== "closed") void audioContext.close();
   }, []);
+
+  const release = useCallback(() => {
+    active.current = false;
+    generation.current += 1;
+    preparingRequest.current?.abort();
+    preparingRequest.current = null;
+    const pendingFinish = finishWaiter.current;
+    finishWaiter.current = null;
+    if (pendingFinish) {
+      window.clearTimeout(pendingFinish.timer);
+      pendingFinish.reject(new Error("语音模式已结束。"));
+    }
+    const ws = socket.current;
+    socket.current = null;
+    if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, "voice mode stopped");
+    releaseCapture();
+    finishing.current = false;
+    transcriptParts.current = [];
+  }, [releaseCapture]);
 
   const showFailure = useCallback((detail: string, token: number) => {
     if (!active.current || token !== generation.current) return;
@@ -104,91 +146,9 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   }, [release]);
 
   const consumeFrame = useCallback((frame: PcmFrame, token: number) => {
-    if (!active.current || token !== generation.current) return;
-    const now = performance.now();
-    const assistantBusyNow = assistantBusyRef.current;
-    const assistantSpeakingNow = assistantSpeakingRef.current;
-    const assistantActiveNow = assistantBusyNow || assistantSpeakingNow;
     const ws = socket.current;
-
-    if (!assistantActiveNow) {
-      if (assistantActiveDuringPreviousFrame.current && speakingSince.current !== null && !forwardingAsrDuringAssistant.current) {
-        const pendingFrames = asrPrerollFrames.current;
-        if (ws?.readyState === WebSocket.OPEN) {
-          for (const pcm of pendingFrames) ws.send(pcm);
-        }
-        logVoiceDiagnostic("voice-asr-interruption-prefill", {
-          reason: "assistant-finished-during-speech",
-          frameCount: pendingFrames.length,
-        });
-      }
-      interrupted.current = false;
-      asrPrerollFrames.current = [];
-      forwardingAsrDuringAssistant.current = false;
-    }
-
-    if (assistantActiveNow !== assistantActiveDuringPreviousFrame.current) {
-      logVoiceDiagnostic(assistantActiveNow ? "voice-asr-paused-during-assistant" : "voice-asr-resumed-after-assistant", {
-        assistantBusy: assistantBusyNow,
-        assistantSpeaking: assistantSpeakingNow,
-      });
-    }
-    assistantActiveDuringPreviousFrame.current = assistantActiveNow;
-
-    const threshold = assistantSpeakingNow ? SPEECH_RMS_DURING_PLAYBACK : SPEECH_RMS;
-    const confirmationMs = assistantSpeakingNow ? SPEECH_CONFIRM_DURING_PLAYBACK_MS : SPEECH_CONFIRM_MS;
-    if (frame.rms >= threshold) {
-      speakingSince.current ??= now;
-      speechPeak.current = Math.max(speechPeak.current, frame.rms);
-      if (now - speakingSince.current >= confirmationMs) {
-        if ((assistantBusyRef.current || assistantSpeakingRef.current) && !interrupted.current) {
-          interrupted.current = true;
-          const reason = assistantSpeakingRef.current ? "vad-user-speech-during-playback" : "vad-user-speech-during-generation";
-          logVoiceDiagnostic("voice-interruption", {
-            reason,
-            assistantBusy: assistantBusyRef.current,
-            assistantSpeaking: assistantSpeakingRef.current,
-            speechRmsPeak: Math.round(speechPeak.current * 10000) / 10000,
-            confirmationMs,
-            threshold,
-          });
-          interruptRef.current(reason);
-          setPhase("interrupted");
-          setMessage("听到你开始说话，已停止她当前的回答。继续说即可。");
-        } else if (!assistantBusyRef.current && !assistantSpeakingRef.current && phaseRef.current !== "recognizing") {
-          setMessage("正在听你说话，X-ASR 会边听边识别。");
-        }
-      }
-    } else {
-      speakingSince.current = null;
-      speechPeak.current = 0;
-    }
-
-    if (!assistantActiveNow) {
-      if (ws?.readyState === WebSocket.OPEN) ws.send(frame.pcm);
-      return;
-    }
-
-    if (!forwardingAsrDuringAssistant.current) {
-      const pendingFrames = asrPrerollFrames.current;
-      pendingFrames.push(frame.pcm.slice(0));
-      if (pendingFrames.length > ASR_PREROLL_FRAME_COUNT) pendingFrames.shift();
-
-      if (speakingSince.current !== null && now - speakingSince.current >= confirmationMs) {
-        if (ws?.readyState === WebSocket.OPEN) {
-          for (const pcm of pendingFrames) ws.send(pcm);
-        }
-        logVoiceDiagnostic("voice-asr-interruption-prefill", {
-          reason: "user-speech-confirmed",
-          frameCount: pendingFrames.length,
-        });
-        asrPrerollFrames.current = [];
-        forwardingAsrDuringAssistant.current = true;
-      }
-      return;
-    }
-
-    if (ws?.readyState === WebSocket.OPEN) ws.send(frame.pcm);
+    if (!active.current || token !== generation.current || !recordingRef.current || ws?.readyState !== WebSocket.OPEN) return;
+    ws.send(frame.pcm);
   }, []);
 
   const openStream = useCallback((token: number) => new Promise<void>((resolve, reject) => {
@@ -228,18 +188,33 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
         const text = data.text?.trim();
         if (text) {
           setPhase("recognizing");
-          setMessage(`X-ASR 正在识别：「${text}」`);
+          setMessage(`正在录音，已识别：「${text}」；停顿不会自动发送。`);
         }
       } else if (data.type === "final") {
         const text = data.text?.trim();
         if (text) {
-          setMessage(`听到了：「${text}」`);
-          if (!assistantBusyRef.current && !assistantSpeakingRef.current) setPhase("listening");
-          transcriptRef.current(text);
+          transcriptParts.current.push(text);
+          if (recordingRef.current) {
+            setPhase("listening");
+            setMessage(`已识别一段：「${text}」；可以继续说，按麦克风按钮发送。`);
+          }
         }
       } else if (data.type === "segment-end") {
-        if (!assistantBusyRef.current && !assistantSpeakingRef.current) setPhase("listening");
+        if (recordingRef.current) setMessage("这段停顿已保留；继续说完后按麦克风按钮发送。");
+      } else if (data.type === "finished") {
+        const pendingFinish = finishWaiter.current;
+        finishWaiter.current = null;
+        if (pendingFinish) {
+          window.clearTimeout(pendingFinish.timer);
+          pendingFinish.resolve();
+        }
       } else if (data.type === "error") {
+        const pendingFinish = finishWaiter.current;
+        finishWaiter.current = null;
+        if (pendingFinish) {
+          window.clearTimeout(pendingFinish.timer);
+          pendingFinish.reject(new Error(data.message || "X-ASR 识别失败，请重试。"));
+        }
         showFailure(data.message || "X-ASR 识别失败，请重试。", token);
       }
     };
@@ -251,6 +226,12 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
       }
     };
     ws.onclose = (event) => {
+      const pendingFinish = finishWaiter.current;
+      finishWaiter.current = null;
+      if (pendingFinish) {
+        window.clearTimeout(pendingFinish.timer);
+        pendingFinish.reject(new Error("X-ASR 语音连接已断开，请重试。"));
+      }
       if (!settled) {
         settled = true;
         window.clearTimeout(timeout);
@@ -283,6 +264,47 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     silence.current = mute;
   }, [consumeFrame]);
 
+  const startCapture = useCallback(async (token: number) => {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器无法访问麦克风。请在 WhalePartner 桌面版或最新版 Safari/Chrome 中使用。");
+    setPhase("permission");
+    setMessage("正在请求麦克风权限。");
+    const input = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+    });
+    if (!active.current || token !== generation.current) {
+      input.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    stream.current = input;
+    input.getAudioTracks().forEach((track) => {
+      const settings = track.getSettings();
+      logVoiceDiagnostic("microphone-settings", {
+        echoCancellation: settings.echoCancellation ?? null,
+        noiseSuppression: settings.noiseSuppression ?? null,
+        autoGainControl: settings.autoGainControl ?? null,
+        sampleRate: settings.sampleRate ?? null,
+      });
+      track.addEventListener("ended", () => {
+        showFailure("麦克风连接中断，请检查输入设备后重试。", token);
+      }, { once: true });
+    });
+    const audioContext = new AudioContext({ latencyHint: "interactive" });
+    await audioContext.resume();
+    if (!active.current || token !== generation.current) {
+      input.getTracks().forEach((track) => track.stop());
+      void audioContext.close();
+      return;
+    }
+    context.current = audioContext;
+    await connectAudio(token);
+    if (!active.current || token !== generation.current) return;
+    transcriptParts.current = [];
+    recordingRef.current = true;
+    setRecording(true);
+    setPhase("listening");
+    setMessage("正在录音；中间停顿不会发送。说完后再按一次麦克风按钮发送。");
+  }, [connectAudio, showFailure]);
+
   const warmModel = useCallback(async (token: number) => {
     const controller = new AbortController();
     preparingRequest.current = controller;
@@ -312,8 +334,6 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
 
   const start = useCallback(async () => {
     if (active.current) return;
-    setPhase("permission");
-    setMessage("正在请求麦克风权限。");
     if (!navigator.mediaDevices?.getUserMedia) {
       setPhase("error");
       setMessage("当前浏览器无法访问麦克风。请在 WhalePartner 桌面版或最新版 Safari/Chrome 中使用。");
@@ -321,62 +341,94 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     }
     const token = ++generation.current;
     active.current = true;
-    assistantActiveDuringPreviousFrame.current = false;
-    asrPrerollFrames.current = [];
-    forwardingAsrDuringAssistant.current = false;
+    transcriptParts.current = [];
+    interruptAssistant();
     try {
-      const input = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false },
-      });
-      if (!active.current || token !== generation.current) {
-        input.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      stream.current = input;
-      input.getAudioTracks().forEach((track) => {
-        const settings = track.getSettings();
-        logVoiceDiagnostic("microphone-settings", {
-          echoCancellation: settings.echoCancellation ?? null,
-          noiseSuppression: settings.noiseSuppression ?? null,
-          autoGainControl: settings.autoGainControl ?? null,
-          sampleRate: settings.sampleRate ?? null,
-        });
-        track.addEventListener("ended", () => {
-        showFailure("麦克风连接中断，请检查输入设备后重试。", token);
-        }, { once: true });
-      });
-      const audioContext = new AudioContext({ latencyHint: "interactive" });
-      await audioContext.resume();
-      if (!active.current || token !== generation.current) {
-        input.getTracks().forEach((track) => track.stop());
-        void audioContext.close();
-        return;
-      }
-      context.current = audioContext;
       setPhase("preparing");
-      setMessage("正在准备本地 X-ASR 模型。麦克风音频不会保存。");
+      setMessage("正在准备本地 X-ASR 模型。准备好后开始录音，麦克风音频不会保存。");
       await warmModel(token);
       if (!active.current || token !== generation.current) return;
       await openStream(token);
       if (!active.current || token !== generation.current) return;
-      await connectAudio(token);
-      setPhase("listening");
-      setMessage("语音模式已就绪。停顿约 700 ms 后会提交整句精修结果，可以随时打断她。");
+      await startCapture(token);
     } catch (error) {
       if (!active.current || token !== generation.current) return;
-      const cause = error as DOMException;
-      const detail = cause?.name === "NotAllowedError" || cause?.name === "SecurityError"
-        ? "麦克风权限未允许。到系统设置 › 隐私与安全性 › 麦克风中允许 WhalePartner 后重试。"
-        : cause?.name === "NotFoundError"
-          ? "没有检测到可用麦克风。接入麦克风后重试。"
-          : cause?.name === "NotReadableError"
-            ? "麦克风正被其他应用占用，请关闭占用后重试。"
-            : error instanceof Error ? error.message : "语音模式启动失败，请检查麦克风和本地语音服务后重试。";
       setPhase("error");
-      setMessage(detail);
+      setMessage(startErrorMessage(error));
       release();
     }
-  }, [connectAudio, openStream, release, showFailure, warmModel]);
+  }, [interruptAssistant, openStream, release, startCapture, warmModel]);
+
+  const finishRecording = useCallback(async () => {
+    if (!active.current || !recordingRef.current || finishing.current) return;
+    recordingRef.current = false;
+    setRecording(false);
+    finishing.current = true;
+    setPhase("recognizing");
+    setMessage("正在完成整段语音识别。");
+    const ws = socket.current;
+    if (ws?.readyState !== WebSocket.OPEN) {
+      finishing.current = false;
+      showFailure("X-ASR 语音连接已断开，请重试。", generation.current);
+      return;
+    }
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(() => {
+          if (finishWaiter.current?.timer === timer) finishWaiter.current = null;
+          reject(new Error("整段语音识别超时，请重试。"));
+        }, FINISH_TIMEOUT_MS);
+        finishWaiter.current = {
+          resolve: () => { window.clearTimeout(timer); resolve(); },
+          reject: (error) => { window.clearTimeout(timer); reject(error); },
+          timer,
+        };
+        try {
+          ws.send(JSON.stringify({ type: "finish" }));
+        } catch (error) {
+          window.clearTimeout(timer);
+          finishWaiter.current = null;
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      });
+      const text = mergeTranscriptParts(transcriptParts.current);
+      transcriptParts.current = [];
+      releaseCapture();
+      finishing.current = false;
+      if (!text) {
+        setPhase("ready");
+        setMessage("没有识别到语音。点击麦克风可以重新录制。");
+        return;
+      }
+      setPhase("ready");
+      setMessage(`已发送：「${text}」`);
+      transcriptRef.current(text);
+    } catch (error) {
+      finishing.current = false;
+      showFailure(error instanceof Error ? error.message : "整段语音识别失败，请重试。", generation.current);
+    }
+  }, [releaseCapture, showFailure]);
+
+  const toggleRecording = useCallback(() => {
+    if (!active.current) {
+      void start();
+      return;
+    }
+    if (finishing.current) return;
+    if (recordingRef.current) {
+      void finishRecording();
+      return;
+    }
+    interruptAssistant();
+    transcriptParts.current = [];
+    const token = generation.current;
+    void startCapture(token).catch((error: unknown) => {
+      if (!active.current || token !== generation.current) return;
+      setPhase("error");
+      setMessage(startErrorMessage(error));
+      release();
+    });
+  }, [finishRecording, interruptAssistant, release, start, startCapture]);
 
   const stop = useCallback(() => {
     release();
@@ -395,8 +447,11 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     if (!active.current || ["permission", "preparing", "recognizing", "error", "off"].includes(phase)) return;
     if (assistantSpeaking) setPhase("speaking");
     else if (assistantBusy) setPhase("thinking");
-    else if (["speaking", "thinking", "interrupted"].includes(phase)) setPhase("listening");
+    else if (["speaking", "thinking", "interrupted"].includes(phase)) {
+      setPhase(recordingRef.current ? "listening" : "ready");
+      setMessage("回答结束。点击麦克风开始下一段录音。");
+    }
   }, [assistantBusy, assistantSpeaking, phase]);
 
-  return { active: phase !== "off", phase, message, model, start, stop, retry };
+  return { active: phase !== "off", phase, message, model, recording, start, stop, retry, toggleRecording };
 }

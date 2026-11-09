@@ -41,6 +41,7 @@ interface Props {
   onDraftChange: (value: string) => void;
   onSend: (text: string) => void;
   voicePhase?: VoicePhase;
+  voiceRecording?: boolean;
   voiceMessage?: string;
   voiceModel?: VoiceModelStatus;
   voiceTtsStatus?: VoiceModelStatus;
@@ -79,6 +80,7 @@ export function ChatTranscript({
   onDraftChange,
   onSend,
   voicePhase,
+  voiceRecording,
   voiceMessage,
   voiceModel,
   voiceTtsStatus,
@@ -139,6 +141,7 @@ export function ChatTranscript({
         focusSignal={focusSignal}
         shareSignal={shareSignal}
         voicePhase={voicePhase}
+        voiceRecording={voiceRecording}
         voiceMessage={voiceMessage}
         voiceModel={voiceModel}
         voiceTtsStatus={voiceTtsStatus}

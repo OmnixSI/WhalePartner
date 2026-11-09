@@ -217,6 +217,20 @@ def main():
                     else:
                         state["last_hypothesis"] = text
                 emit({"type": "reply", "requestId": request.get("requestId"), "ok": True, "text": text, "final": final})
+            elif action == "finish":
+                state = streams[stream_id]
+                text = ""
+                if state["active"] and state["speech_samples"] > 0:
+                    text = finish_utterance(recognizer, offline_recognizer, state)
+                else:
+                    state["stream"] = recognizer.create_stream()
+                    state["active"] = False
+                    state["audio"] = []
+                    state["silence_samples"] = 0
+                    state["speech_samples"] = 0
+                    state["last_hypothesis"] = ""
+                state["pre_roll"] = np.empty(0, dtype=np.int16)
+                emit({"type": "reply", "requestId": request.get("requestId"), "ok": True, "text": text, "final": True})
             elif action == "close":
                 streams.pop(stream_id, None)
                 emit({"type": "reply", "requestId": request.get("requestId"), "ok": True})

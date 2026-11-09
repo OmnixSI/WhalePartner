@@ -224,7 +224,7 @@ try {
             playbackScheduleGaps,
             outputWaveformFrames,
             nonSilentOutputWaveformFrames,
-            voiceDiagnostics: voiceDiagnostics.filter((event) => event.event === "client-voice-stop" || event.event === "worklet-buffer" || event.event === "worklet-started" || event.event === "worklet-drained" || event.event === "worklet-stopped" || event.event === "worklet-underrun-start" || event.event === "worklet-underrun-end" || event.event === "voice-interruption" || event.event === "voice-asr-paused-during-assistant" || event.event === "voice-asr-interruption-prefill"),
+            voiceDiagnostics: voiceDiagnostics.filter((event) => event.event === "client-voice-stop" || event.event === "worklet-buffer" || event.event === "worklet-started" || event.event === "worklet-drained" || event.event === "worklet-stopped" || event.event === "worklet-underrun-start" || event.event === "worklet-underrun-end" || event.event === "voice-interruption"),
             ttsStartedBeforeChatDone,
             ttsAbortRequests,
             chatAbortRequests,
@@ -316,7 +316,20 @@ try {
     let voicedFrames = 0;
     let quietFrames = 0;
     socket.onMessage((message) => {
-      if (typeof message === "string") return;
+      if (typeof message === "string") {
+        const control = JSON.parse(message);
+        if (control.type === "finish") {
+          if (voicedFrames > 0) {
+            const text = speechTexts[segments] ?? `模拟语音第${segments + 1}轮`;
+            segments += 1;
+            socket.send(JSON.stringify({ type: "final", text }));
+            voicedFrames = 0;
+            quietFrames = 0;
+          }
+          socket.send(JSON.stringify({ type: "finished" }));
+        }
+        return;
+      }
       asrPcmFramesReceived += 1;
       const pcm = Buffer.isBuffer(message) ? message : Buffer.from(message);
       if (pcm.length < 2 || pcm.length % 2 !== 0) return;
@@ -344,7 +357,7 @@ try {
   });
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  const enterVoice = page.getByRole("button", { name: "进入连续语音模式" });
+  const enterVoice = page.getByRole("button", { name: "开始语音录音" });
   await enterVoice.waitFor({ state: "visible" });
   await page.waitForFunction(() => document.body.innerText.includes("发送"));
 
@@ -356,8 +369,8 @@ try {
   await page.getByRole("button", { name: "重试", exact: true }).click();
   const status = page.locator(".composer__voice-status");
   await status.waitFor({ state: "visible" });
-  await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("语音模式已就绪"), null, { timeout: 15_000 });
-  check("重试后进入聆听状态", (await status.innerText()).includes("语音模式已就绪"));
+  await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 15_000 });
+  check("重试后开始录音，停顿不会自动发送", (await status.innerText()).includes("停顿不会发送"));
   check("开启麦克风时启用回声消除和降噪并关闭 AGC", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 2);
 
   async function speak() {
@@ -367,7 +380,12 @@ try {
     await page.waitForTimeout(350);
   }
 
+  async function finishRecording() {
+    await page.getByRole("button", { name: "结束录音并发送" }).click();
+  }
+
   await speak();
+  await finishRecording();
   await page.waitForFunction(() => document.body.innerText.includes("第1轮回答内容足够长"), null, { timeout: 10_000 });
   const firstTurn = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests[0]);
   check("第一轮语音最终稿只进入共享聊天一次", firstTurn?.message === speechTexts[0]);
@@ -377,7 +395,7 @@ try {
   const asrFramesAtPlayback = asrPcmFramesReceived;
   await page.waitForTimeout(500);
   check(
-    "AI 播放期间暂停向 X-ASR 发送麦克风帧",
+    "按下发送后停止采集并向 X-ASR 结束本轮",
     asrPcmFramesReceived === asrFramesAtPlayback,
     `${asrFramesAtPlayback} -> ${asrPcmFramesReceived}`,
   );
@@ -420,32 +438,30 @@ try {
   const asrFramesBeforeInterrupt = asrPcmFramesReceived;
   const lastPlaybackState = [...beforePlaybackInterrupt.voiceDiagnostics].reverse().find((event) => event.event === "worklet-started" || event.event === "worklet-drained" || event.event === "worklet-stopped");
   check("播放中断言发生在 AudioWorklet 活跃期间", lastPlaybackState?.event === "worklet-started", lastPlaybackState?.event ?? "没有播放状态事件");
+  await page.getByRole("button", { name: "开始语音录音" }).click();
+  await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 5_000 });
   await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
   const interruptObserved = await page.waitForFunction(() => {
     const diagnostics = window.__wpVoiceCheck.stats().voiceDiagnostics;
-    const voiceStopped = diagnostics.some((event) => event.event === "client-voice-stop" && event.reason === "vad-user-speech-during-playback");
-    const workletStopped = diagnostics.some((event) => event.event === "worklet-stopped" && event.reason === "vad-user-speech-during-playback");
+    const voiceStopped = diagnostics.some((event) => event.event === "client-voice-stop" && event.reason === "voice-button-started-recording");
+    const workletStopped = diagnostics.some((event) => event.event === "worklet-stopped" && event.reason === "voice-button-started-recording");
     return voiceStopped && workletStopped;
   }, null, { timeout: 5_000 }).then(() => true, () => false);
   const afterPlaybackInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
   if (!interruptObserved) {
-    console.error(JSON.stringify({ reason: "playback VAD did not confirm speech", pcmFrames: [asrFramesBeforeInterrupt, asrPcmFramesReceived], message: await status.innerText(), diagnostics: afterPlaybackInterrupt.voiceDiagnostics.slice(-8) }));
-    throw new Error("播放期间的 VAD 未确认用户打断。");
+    console.error(JSON.stringify({ reason: "mic button did not interrupt playback", pcmFrames: [asrFramesBeforeInterrupt, asrPcmFramesReceived], message: await status.innerText(), diagnostics: afterPlaybackInterrupt.voiceDiagnostics.slice(-8) }));
+    throw new Error("播放期间按下麦克风未打断当前回答。");
   }
   check(
-    "说话时立即停止正在播放的 TTS",
+    "点击麦克风立即停止正在播放的 TTS",
     afterPlaybackInterrupt.pcmPlaybackStops > beforePlaybackInterrupt.pcmPlaybackStops
-      && afterPlaybackInterrupt.voiceDiagnostics.some((event) => event.event === "voice-interruption" && event.reason === "vad-user-speech-during-playback" && event.assistantSpeaking),
+      && afterPlaybackInterrupt.voiceDiagnostics.some((event) => event.event === "voice-interruption" && event.reason === "voice-button-started-recording" && event.assistantSpeaking),
     JSON.stringify({ stops: [beforePlaybackInterrupt.pcmPlaybackStops, afterPlaybackInterrupt.pcmPlaybackStops], diagnostics: afterPlaybackInterrupt.voiceDiagnostics.slice(-5) }),
-  );
-  check(
-    "打断确认后把前置麦克风帧送入 X-ASR",
-    asrPcmFramesReceived >= asrFramesBeforeInterrupt + 2
-      && afterPlaybackInterrupt.voiceDiagnostics.some((event) => event.event === "voice-asr-interruption-prefill" && event.reason === "user-speech-confirmed" && event.frameCount >= 2),
-    JSON.stringify({ frames: [asrFramesBeforeInterrupt, asrPcmFramesReceived], diagnostics: afterPlaybackInterrupt.voiceDiagnostics.slice(-3) }),
   );
   await page.waitForTimeout(500);
   await page.evaluate(() => window.__wpVoiceCheck.setTone(false));
+  await speak();
+  await finishRecording();
   await page.waitForFunction(() => document.body.innerText.includes("第2轮回答内容足够长"), null, { timeout: 10_000 });
   const chatAfterInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests);
   check("打断后识别文本开始第二轮对话", chatAfterInterrupt.length === 2 && chatAfterInterrupt[1]?.message === speechTexts[1]);
@@ -458,12 +474,13 @@ try {
 
   await page.waitForFunction(() => {
     const stats = window.__wpVoiceCheck.stats();
-    return stats.ttsStreamCount >= 3 && stats.ttsAudioChunksReceived >= 9 && !stats.chatDone;
+    return stats.ttsStreamCount >= 3 && !stats.chatDone;
   }, null, { timeout: 10_000 });
   const beforeSynthesisInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
   check("用户开口时第二轮仍有未完成的聊天与 TTS 请求", beforeSynthesisInterrupt.chatRequests.length === 2);
+  await page.getByRole("button", { name: "开始语音录音" }).click();
+  await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 5_000 });
   await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
-  await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("已停止她当前的回答"), null, { timeout: 5_000 });
   const afterSynthesisInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
   check(
     "打断同时取消当前 LLM 与 TTS 请求，并废弃旧 turn 队列",
@@ -472,34 +489,38 @@ try {
   );
   await page.waitForTimeout(200);
   await page.evaluate(() => window.__wpVoiceCheck.setTone(false));
+  await speak();
+  await finishRecording();
   await page.waitForFunction(() => document.body.innerText.includes("第3轮回答内容足够长"), null, { timeout: 10_000 });
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().chatDone, null, { timeout: 5_000 });
   const allChatRequests = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests);
   check("语音模式连续完成三轮识别与回复", allChatRequests.length === 3 && allChatRequests[2]?.message === speechTexts[2]);
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 4, null, { timeout: 5_000 });
   const ttsCountBeforeSwitch = ttsRequests.length;
   await page.evaluate(async () => {
     const { setCharacter } = await import("/src/characters.ts");
     setCharacter("claude");
   });
   await page.waitForFunction(() => document.querySelector(".mbar__name")?.textContent === "小克");
-  await page.getByRole("button", { name: "进入连续语音模式" }).waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "开始语音录音" }).waitFor({ state: "visible" });
   check(
-    "切换人格时结束语音会话、停止播放并释放麦克风",
-    (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 1 && ttsRequests.length === ttsCountBeforeSwitch,
+    "切换人格时结束语音会话并停止播放",
+    (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 3 && ttsRequests.length === ttsCountBeforeSwitch,
   );
   await page.evaluate(async () => {
     const { setCharacter } = await import("/src/characters.ts");
     setCharacter("deepseek");
   });
   await page.waitForFunction(() => document.querySelector(".mbar__name")?.textContent === "大肥鱼");
-  await page.getByRole("button", { name: "进入连续语音模式" }).click();
-  await page.waitForFunction(() => document.body.innerText.includes("语音模式已就绪"), null, { timeout: 15_000 });
-  check("切回大肥鱼后可重新进入语音模式", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 3);
+  await page.getByRole("button", { name: "开始语音录音" }).click();
+  await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 15_000 });
+  check("切回大肥鱼后可重新开始录音", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 5);
 
   await page.getByRole("button", { name: "结束语音模式" }).click();
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().endedTracks === 1);
   for (let attempt = 0; attempt < 60 && closedSockets < socketCount; attempt += 1) await page.waitForTimeout(50);
-  check("退出时停止麦克风轨道", (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 2);
-  check("退出时关闭 ASR WebSocket", socketCount === 2 && closedSockets === 2, `${closedSockets}/${socketCount}`);
+  check("退出时停止麦克风轨道", (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 4);
+  check("退出时关闭 ASR WebSocket", socketCount === 3 && closedSockets === 3, `${closedSockets}/${socketCount}`);
   check("页面没有未处理异常", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
   await page.close();
 } catch (error) {
