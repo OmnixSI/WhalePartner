@@ -38,6 +38,37 @@ export const MOOD: Record<string, string> = {
 export const WEEKDAY = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"] as const;
 export const MONTH_EN = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] as const;
 
+export type MonthCell = { date: Date; key: string } | null;
+
+/** Monday-first month grid used by the diary overview. */
+export function monthCells(month: Date): MonthCell[] {
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const lead = (first.getDay() + 6) % 7;
+  const dayCount = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  const cells: MonthCell[] = [];
+
+  for (let i = 0; i < lead; i += 1) cells.push(null);
+  for (let day = 1; day <= dayCount; day += 1) {
+    const date = new Date(month.getFullYear(), month.getMonth(), day);
+    cells.push({ date, key: isoDay(date) });
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+/** Use the first real title or sentence as a compact calendar theme. */
+export function shortTheme(value: string, maxLength = 16): string {
+  const firstLine = value.split(/\r?\n/u).map((line) => line.trim()).find(Boolean) ?? "";
+  if (!firstLine) return "";
+
+  const punctuation = firstLine.search(/[。！？.!?]/u);
+  const sentence = (punctuation < 0 ? firstLine : firstLine.slice(0, punctuation)).trim();
+  const theme = sentence || firstLine;
+  const chars = Array.from(theme);
+  if (chars.length <= maxLength) return theme;
+  return `${chars.slice(0, maxLength - 1).join("")}…`;
+}
+
 /** 日记的日期：写完的时间优先，其次入队时间。 */
 export function diaryAt(item: DiaryItemP2): Date | null {
   const raw = item.processedAt ?? item.createdAt;
@@ -89,6 +120,18 @@ export function journalDate(value: string): Date | null {
 
 export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+export function shiftMonth(date: Date, amount: number): Date {
+  const target = new Date(date.getFullYear(), date.getMonth() + amount, 1);
+  const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+  return new Date(target.getFullYear(), target.getMonth(), Math.min(date.getDate(), lastDay));
+}
+
+export function shiftYear(date: Date, amount: number): Date {
+  const year = date.getFullYear() + amount;
+  const lastDay = new Date(year, date.getMonth() + 1, 0).getDate();
+  return new Date(year, date.getMonth(), Math.min(date.getDate(), lastDay));
 }
 
 /** 周一为一周之始。 */

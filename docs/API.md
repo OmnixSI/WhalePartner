@@ -112,7 +112,7 @@
 
 综合日记独立于旧版单视频队列，按共享数据和 API 主机本机日期生成。它可以使用所有人格的聊天、已处理视频/网页、学习记录、会话观察与共享近况；纯聊天当天也可生成。写作时使用当前选择的人格；每个日期写入一个共享记录。旧版按角色保存的历史日记保留，列表在同一日期展示最近更新的一篇。素材无变化的定时重复触发保持当前版本，手动更新追加历史版本。新记录使用稳定 source ID `journal:shared:<YYYY-MM-DD>`，不会作为自己的输入。删除被引用的会话会移除受影响版本，并用当天剩余来源重建当前日记。API 启动会恢复持久化的未完成任务；正文已保存时从归档阶段继续，不重复请求模型。若本机当天计划时间已过，启动时会补跑当天一次。
 
-- `GET /api/journals?character=deepseek&from=2026-11-01&to=2026-11-30&limit=30&offset=0` → `{ items: DailyJournal[], total }`，返回共享日记；`character` 为兼容参数。日期边界均包含在内，按日期倒序；同一日期只展示最近更新的一篇，旧版记录仍留在 SQLite。`from`、`to` 可省略，`limit` 默认为 100、最大为 366，`offset` 默认为 0。日记页按周、月、年传入范围，并对结果分页。
+- `GET /api/journals?character=deepseek&from=2026-11-01&to=2026-11-30&limit=30&offset=0` → `{ items: DailyJournal[], total }`，返回共享日记；`character` 为兼容参数。日期边界均包含在内，按日期倒序；同一日期只展示最近更新的一篇，旧版记录仍留在 SQLite。`from`、`to` 可省略，`limit` 默认为 100、最大为 366，`offset` 默认为 0。日记页按周、月、年传入范围；月视图按日期建索引，选择日期后阅读当天内容，年视图汇总月份数量。
 - `POST /api/journals/generate` 请求体 `{ "character": "deepseek", "date": "2026-11-05", "force": true }` → `{ journal }`；`character` 选择写作人格，日记仍写入共享日期记录；`date` 可省略为本机今天，`force` 用于显式重新生成并留存旧版本。当天无素材时返回 `{ "journal": null, "reason": "no_sources" }`。
 - `GET /api/journals/:id/revisions` → `{ revisions: DailyJournal[] }`，返回含正文和来源的版本记录。
 

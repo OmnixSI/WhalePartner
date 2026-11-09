@@ -5,12 +5,12 @@ import { CompanionCorner, setCompanionMood } from "../components/CompanionCorner
 import { spring } from "../motion/tokens";
 import { DailyJournalLeaf } from "../components/diary/DailyJournalLeaf";
 import { DiaryLeaf } from "../components/diary/DiaryLeaf";
+import { DiaryCalendar, DiaryYearOverview } from "../components/diary/DiaryCalendar";
 import { IndexTabs } from "../components/diary/IndexTabs";
 import { PageBar } from "../components/diary/PageBar";
 import { StateBlock } from "../components/diary/StateBlock";
 import { Toast } from "../components/diary/Toast";
 import { VideoDesk } from "../components/diary/VideoDesk";
-import { useMediaQuery } from "../components/chat/useViewport";
 import { useInkEnv } from "../components/ink/useCalm";
 import { useCharacter } from "../characters";
 import { enqueueDiaryVideo, generateJournal, retryDiaryItem, runDiaryQueue, type DailyJournal } from "../lib/diary";
@@ -22,26 +22,30 @@ import {
   isoDay,
   journalDate,
   rangeOf,
+  shortTheme,
   startOfDay,
   type DiaryItemP2,
   type RangeMode,
 } from "../components/diary/types";
 import "../styles/diary.css";
 
-/** 月 / 年模式一屏最多摊几页；再往后交给底部的「第 n / m 页」。 */
-const CHUNK = 8;
-
 type DiaryPageEntry =
   | { kind: "video"; id: string; at: Date; item: DiaryItemP2 }
   | { kind: "journal"; id: string; at: Date; journal: DailyJournal };
 
+function themeOf(entry: DiaryPageEntry): string {
+  if (entry.kind === "journal") return shortTheme(entry.journal.text);
+  const title = entry.item.diaryTitle?.trim() || entry.item.title?.trim();
+  return shortTheme(title || entry.item.summary || entry.item.diaryText || "");
+}
+
 export function DiaryPage() {
   const character = useCharacter();
-  const wide = useMediaQuery("(min-width: 960px)");
   const env = useInkEnv();
 
   const [mode, setMode] = useState<RangeMode>("week");
   const [cursor, setCursor] = useState<Date>(() => startOfDay(new Date()));
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const range = useMemo(() => rangeOf(mode, cursor), [mode, cursor]);
   const { items, journals, loading, loadError, load } = useDiaryPageData(character.id, {
     from: isoDay(range.start),
@@ -49,7 +53,6 @@ export function DiaryPage() {
   });
   useHubRefresh(["diary.updated"], () => void load());
   const [opError, setOpError] = useState("");
-  const [chunk, setChunk] = useState(0);
   const [writing, setWriting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [running, setRunning] = useState(false);
@@ -63,7 +66,7 @@ export function DiaryPage() {
     (): DiaryPageEntry[] => {
       const videoEntries: DiaryPageEntry[] = (items ?? []).filter(hasText).flatMap((item) => {
         const at = diaryAt(item);
-        return at ? [{ kind: "video", id: `video-${item.id}`, at, item }] : [];
+        return at ? [{ kind: "video", id: "video-" + item.id, at, item }] : [];
       });
       const journalEntries: DiaryPageEntry[] = (journals ?? []).flatMap((journal) => {
         const at = journalDate(journal.localDate);
@@ -81,21 +84,69 @@ export function DiaryPage() {
     [],
   );
 
-  useEffect(() => {
-    setChunk(0);
-  }, [mode, cursor]);
-
-  const marks = useMemo(() => new Set(pages.map((item) => isoDay(item.at))), [pages]);
+  const endExclusive = new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate() + 1);
   const inRange = useMemo(
-    () => pages.filter((item) => item.at >= range.start && item.at <= new Date(range.end.getFullYear(), range.end.getMonth(), range.end.getDate(), 23, 59, 59)),
-    [pages, range.start, range.end],
+    () => pages.filter((entry) => entry.at >= range.start && entry.at < endExclusive),
+    [pages, range.start, endExclusive.getTime()],
   );
 
-  const chunkCount = mode === "week" ? 1 : Math.max(1, Math.ceil(inRange.length / CHUNK));
-  const visible = mode === "week" ? inRange : inRange.slice(chunk * CHUNK, chunk * CHUNK + CHUNK);
+  const themesByDate = useMemo(() => {
+    const themes = new Map<string, string[]>();
+    for (const entry of inRange) {
+      const key = isoDay(entry.at);
+      const theme = themeOf(entry) || "有日记";
+      const dayThemes = themes.get(key) ?? [];
+      dayThemes.push(theme);
+      themes.set(key, dayThemes);
+    }
+    return themes;
+  }, [inRange]);
 
+  const countByMonth = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const entry of inRange) {
+      const month = entry.at.getMonth();
+      counts.set(month, (counts.get(month) ?? 0) + 1);
+    }
+    return counts;
+  }, [inRange]);
+
+  const selectedEntries = useMemo(
+    () => selectedDay ? inRange.filter((entry) => isoDay(entry.at) === selectedDay) : [],
+    [inRange, selectedDay],
+  );
+  const selectedDate = selectedDay ? journalDate(selectedDay) : null;
+  const selectedLabel = selectedDate ? (selectedDate.getMonth() + 1) + "月" + selectedDate.getDate() + "日" : "这一天";
   const pendingCount = items?.filter((item) => item.status === "pending").length ?? 0;
   const hasMaterial = pendingCount > 0;
+  const fallbackTitle = (cursor.getMonth() + 1) + "月" + cursor.getDate() + "日";
+
+  const changeMode = (next: RangeMode) => {
+    setMode(next);
+    setSelectedDay(null);
+  };
+
+  const changeCursor = (date: Date) => {
+    setCursor(startOfDay(date));
+    setSelectedDay(null);
+  };
+
+  const selectDay = (date: Date) => {
+    setCursor(startOfDay(date));
+    setSelectedDay(isoDay(date));
+  };
+
+  const selectMonth = (date: Date) => {
+    setMode("month");
+    setCursor(startOfDay(date));
+    setSelectedDay(null);
+  };
+
+  const renderEntry = (entry: DiaryPageEntry, collapsed: boolean) => entry.kind === "journal" ? (
+    <DailyJournalLeaf key={entry.id} journal={entry.journal} collapsed={collapsed} fresh={fresh === entry.id} />
+  ) : (
+    <DiaryLeaf key={entry.id} item={entry.item} collapsed={collapsed} fresh={fresh === entry.id} fallbackTitle={fallbackTitle} />
+  );
 
   const write = async () => {
     if (writing) return;
@@ -112,6 +163,7 @@ export function DiaryPage() {
       }
       await load();
       setCursor(today);
+      setSelectedDay(null);
       setFresh(journal.id);
       setToast(true);
       setCompanionMood("happy", { ttl: 2400 });
@@ -164,9 +216,6 @@ export function DiaryPage() {
     }
   };
 
-  const fallbackTitle = `${cursor.getMonth() + 1}月${cursor.getDate()}日`;
-  const panelKey = `${mode}-${isoDay(cursor)}-${chunk}`;
-
   return (
     <div className="page diary-page">
       <div className="diary-page__inner">
@@ -182,10 +231,13 @@ export function DiaryPage() {
           </button>
         </header>
 
-        <div className="diary-page__stage">
-          <IndexTabs value={mode} onChange={setMode} vertical={wide} panelId="diary-panel" />
+        <div className="diary-page__controls">
+          <IndexTabs value={mode} onChange={changeMode} panelId="diary-panel" />
+          <PageBar mode={mode} cursor={cursor} onCursor={changeCursor} onToday={() => changeCursor(startOfDay(new Date()))} />
+        </div>
 
-          <div className="diary-page__panel" id="diary-panel" role="tabpanel" aria-label="日记正文">
+        <div className="diary-page__stage">
+          <div className="diary-page__panel" id="diary-panel" role="tabpanel" aria-label="日记内容">
             {loading && !loadError && <StateBlock kind="loading" title="她在翻小本子…" body="马上就好。" />}
 
             {loadError && (
@@ -198,7 +250,42 @@ export function DiaryPage() {
               />
             )}
 
-            {!loading && !loadError && visible.length === 0 && (
+            {!loading && !loadError && mode === "month" && !selectedDay && (
+              <DiaryCalendar month={cursor} selectedDate={isoDay(cursor)} themesByDate={themesByDate} onSelect={selectDay} />
+            )}
+
+            {!loading && !loadError && mode === "month" && selectedDay && (
+              <section className="diary-page__day-detail" aria-label={selectedLabel + "的日记"}>
+                <button type="button" className="btn btn--quiet diary-page__back" onClick={() => setSelectedDay(null)}>
+                  <span aria-hidden="true">‹</span> 返回本月日历
+                </button>
+                <h2 className="diary-page__day-title">{selectedLabel}的日记</h2>
+                {selectedEntries.length === 0 ? (
+                  <StateBlock
+                    kind="empty"
+                    title={selectedLabel + "还没有日记"}
+                    body="这一天先留白，回到月历再看看别的日期吧。"
+                    action={{ label: "返回月历", onClick: () => setSelectedDay(null) }}
+                  />
+                ) : (
+                  <motion.div
+                    key={"day-" + selectedDay}
+                    className="diary-page__leaves"
+                    initial={env.calm ? false : { x: 24, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={env.calm ? { duration: 0 } : spring.page}
+                  >
+                    {selectedEntries.map((entry) => renderEntry(entry, false))}
+                  </motion.div>
+                )}
+              </section>
+            )}
+
+            {!loading && !loadError && mode === "year" && (
+              <DiaryYearOverview year={cursor.getFullYear()} countByMonth={countByMonth} onSelectMonth={selectMonth} />
+            )}
+
+            {!loading && !loadError && mode === "week" && inRange.length === 0 && (
               <StateBlock
                 kind="empty"
                 title="这几天她还没写日记"
@@ -207,11 +294,7 @@ export function DiaryPage() {
                     ? "每天晚上她会自己写。也可以现在请她写今天的。"
                     : "今天我们还没一起经历什么。聊几句，再来找我写吧。"
                 }
-                action={
-                  hasMaterial
-                    ? { label: "请她写今天的", onClick: () => void write() }
-                    : undefined
-                }
+                action={hasMaterial ? { label: "请她写今天的", onClick: () => void write() } : undefined}
               >
                 {!hasMaterial && (
                   <Link className="btn btn--secondary diary-page__gochat" to="/">
@@ -221,44 +304,19 @@ export function DiaryPage() {
               </StateBlock>
             )}
 
-            {!loading && !loadError && visible.length > 0 && (
+            {!loading && !loadError && mode === "week" && inRange.length > 0 && (
               <motion.div
-                key={panelKey}
+                key={"week-" + isoDay(cursor)}
                 className="diary-page__leaves"
                 initial={env.calm ? false : { x: 40, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={env.calm ? { duration: 0 } : spring.page}
               >
-                {visible.map((entry) => entry.kind === "journal" ? (
-                  <DailyJournalLeaf key={entry.id} journal={entry.journal} collapsed={mode !== "week"} fresh={fresh === entry.id} />
-                ) : (
-                  <DiaryLeaf key={entry.id} item={entry.item} collapsed={mode !== "week"} fresh={fresh === entry.id} fallbackTitle={fallbackTitle} />
-                ))}
+                {inRange.map((entry) => renderEntry(entry, false))}
               </motion.div>
-            )}
-
-            {mode !== "week" && chunkCount > 1 && (
-              <div className="diary-page__pager">
-                <button type="button" className="pagebar__step" disabled={chunk === 0} onClick={() => setChunk((v) => Math.max(0, v - 1))}>
-                  <span aria-hidden>‹</span> 上一页
-                </button>
-                <span className="diary-page__pageno">
-                  第 {chunk + 1} / {chunkCount} 页
-                </span>
-                <button
-                  type="button"
-                  className="pagebar__step"
-                  disabled={chunk >= chunkCount - 1}
-                  onClick={() => setChunk((v) => Math.min(chunkCount - 1, v + 1))}
-                >
-                  下一页 <span aria-hidden>›</span>
-                </button>
-              </div>
             )}
           </div>
         </div>
-
-        <PageBar mode={mode} cursor={cursor} marks={marks} onCursor={setCursor} onToday={() => setCursor(startOfDay(new Date()))} />
 
         {writing && (
           <p className="diary-page__writing" role="status">
