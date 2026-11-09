@@ -9,7 +9,9 @@ const clientDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const apiOrigin = "http://127.0.0.1:8787";
 const sampleRate = 24_000;
 const measuredSpeechSecondsPerCharacter = 0.292;
-const measuredAverageTtsRtf = 0.9352;
+const standardTtsRtf = 1.35;
+const ttsRtfHeadroom = 0.15;
+const bufferPlanningRtf = standardTtsRtf + ttsRtfHeadroom;
 const bufferReserveSeconds = 2;
 const characterId = "deepseek";
 const emotion = "neutral";
@@ -35,9 +37,9 @@ const longSpeechSegments = [
 function estimatePrerollSeconds(text) {
   const speechCharacters = text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
   const estimatedAudioSeconds = speechCharacters * measuredSpeechSecondsPerCharacter;
-  const estimatedGenerationSeconds = estimatedAudioSeconds * measuredAverageTtsRtf;
+  const estimatedGenerationSeconds = estimatedAudioSeconds * bufferPlanningRtf;
   const targetWaitSeconds = Math.max(0, estimatedGenerationSeconds + bufferReserveSeconds - estimatedAudioSeconds);
-  return targetWaitSeconds / measuredAverageTtsRtf;
+  return targetWaitSeconds / bufferPlanningRtf;
 }
 
 function findLocalToken() {

@@ -45,7 +45,9 @@ interface PlaybackMessage {
 const PLAYBACK_SAMPLE_RATE = 24_000;
 const TTS_STREAMING_INTERVAL_SECONDS = 2;
 const MEASURED_SPEECH_SECONDS_PER_CHARACTER = 0.292;
-const MEASURED_AVERAGE_TTS_RTF = 0.9352;
+const STANDARD_TTS_RTF = 1.35;
+const TTS_RTF_HEADROOM = 0.15;
+const BUFFER_PLANNING_RTF = STANDARD_TTS_RTF + TTS_RTF_HEADROOM;
 const BUFFER_RESERVE_SECONDS = TTS_STREAMING_INTERVAL_SECONDS;
 
 function countSpeechCharacters(text: string): number {
@@ -54,10 +56,10 @@ function countSpeechCharacters(text: string): number {
 
 function playbackStartTargetForResponse(characterCount: number): { waitSeconds: number; prerollAudioSeconds: number } {
   const estimatedAudioSeconds = characterCount * MEASURED_SPEECH_SECONDS_PER_CHARACTER;
-  const estimatedGenerationSeconds = estimatedAudioSeconds * MEASURED_AVERAGE_TTS_RTF;
+  const estimatedGenerationSeconds = estimatedAudioSeconds * BUFFER_PLANNING_RTF;
   const waitSeconds = Math.max(0, estimatedGenerationSeconds + BUFFER_RESERVE_SECONDS - estimatedAudioSeconds);
   // The worklet measures queued PCM duration, so convert the wall-clock wait back through RTF.
-  return { waitSeconds, prerollAudioSeconds: waitSeconds / MEASURED_AVERAGE_TTS_RTF };
+  return { waitSeconds, prerollAudioSeconds: waitSeconds / BUFFER_PLANNING_RTF };
 }
 
 export function useVoiceOutput() {
@@ -77,7 +79,7 @@ export function useVoiceOutput() {
   const pendingText = useRef("");
   const activeTurnId = useRef<string | null>(null);
   const turnSpeechCharacters = useRef(0);
-  const playbackPrerollAudioSeconds = useRef(BUFFER_RESERVE_SECONDS / MEASURED_AVERAGE_TTS_RTF);
+  const playbackPrerollAudioSeconds = useRef(BUFFER_RESERVE_SECONDS / BUFFER_PLANNING_RTF);
   const pendingEmotion = useRef<AvatarEmotion>("neutral");
   const pendingCharacterId = useRef<CharacterId>("deepseek");
   const turnFinished = useRef<string | null>(null);
@@ -299,7 +301,7 @@ export function useVoiceOutput() {
     nextSegmentIndex.current = 0;
     lastSegmentDoneAt.current = null;
     turnSpeechCharacters.current = 0;
-    playbackPrerollAudioSeconds.current = BUFFER_RESERVE_SECONDS / MEASURED_AVERAGE_TTS_RTF;
+    playbackPrerollAudioSeconds.current = BUFFER_RESERVE_SECONDS / BUFFER_PLANNING_RTF;
     pendingEmotion.current = "neutral";
     pendingCharacterId.current = "deepseek";
     bufferedMs.current = 0;
@@ -454,8 +456,9 @@ export function useVoiceOutput() {
       logVoiceDiagnostic("client-playback-buffer-target", {
         turnId,
         speechCharacters: turnSpeechCharacters.current,
+        planningRtf: BUFFER_PLANNING_RTF,
         estimatedAudioMs: Math.round(turnSpeechCharacters.current * MEASURED_SPEECH_SECONDS_PER_CHARACTER * 1000),
-        estimatedGenerationMs: Math.round(turnSpeechCharacters.current * MEASURED_SPEECH_SECONDS_PER_CHARACTER * MEASURED_AVERAGE_TTS_RTF * 1000),
+        estimatedGenerationMs: Math.round(turnSpeechCharacters.current * MEASURED_SPEECH_SECONDS_PER_CHARACTER * BUFFER_PLANNING_RTF * 1000),
         targetWaitMs: Math.round(target.waitSeconds * 1000),
         targetBufferedAudioMs: Math.round(target.prerollAudioSeconds * 1000),
         playbackStarted: playbackActive.current,
