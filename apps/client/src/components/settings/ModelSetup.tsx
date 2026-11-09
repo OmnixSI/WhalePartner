@@ -59,6 +59,18 @@ type Probe =
   | { phase: "done"; provider: string; model: string; note: string }
   | { phase: "failed"; note: string };
 
+const REASONING_EFFORT_LABELS: Record<string, string> = {
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "超高",
+  max: "最高",
+};
+
+function reasoningEffortLabel(effort: string): string {
+  return REASONING_EFFORT_LABELS[effort] ?? effort;
+}
+
 function isSetup(value: unknown): value is SetupState {
   const setup = value as Partial<SetupState> | null;
   return Boolean(
@@ -297,10 +309,10 @@ export function ModelSetup({ offline, onToast }: Props) {
           {data.codex.present ? (
             <>
               现在用 <strong>{data.codex.model || "（没选模型）"}</strong>
-              {data.codex.effort ? ` · ${data.codex.effort}` : ""}
+              {data.codex.effort ? ` · ${reasoningEffortLabel(data.codex.effort)}` : ""}
             </>
           ) : (
-            <>使用本机列表中的默认模型 <strong>{data.codex.model || "（暂不可用）"}</strong>{data.codex.effort ? ` · ${data.codex.effort}` : ""}</>
+            <>使用本机列表中的默认模型 <strong>{data.codex.model || "（暂不可用）"}</strong>{data.codex.effort ? ` · ${reasoningEffortLabel(data.codex.effort)}` : ""}</>
           )}
         </p>
         <div className="mset__form mset__form--codex">
@@ -356,7 +368,7 @@ export function ModelSetup({ offline, onToast }: Props) {
               </option>
               {availableEfforts.map((item) => (
                 <option key={item.reasoningEffort} value={item.reasoningEffort}>
-                  {item.reasoningEffort}{item.description ? ` · ${item.description}` : ""}
+                  {reasoningEffortLabel(item.reasoningEffort)}
                 </option>
               ))}
             </select>
