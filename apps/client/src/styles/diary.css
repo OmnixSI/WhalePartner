@@ -333,7 +333,7 @@
   gap: var(--sp-1);
   min-width: 0;
   width: 100%;
-  min-height: 96px;
+  min-height: 72px;
   padding: var(--sp-2);
   border: var(--stroke-1) solid transparent;
   border-radius: var(--r-md);
@@ -563,7 +563,7 @@
   .pagebar__range { font-size: var(--fs-body); }
   .pagebar__today { margin-left: 0; }
   .diary-calendar { padding: var(--sp-2); }
-  .diary-calendar__day { min-height: 76px; padding: var(--sp-1); }
+  .diary-calendar__day { min-height: 64px; padding: var(--sp-1); }
   .diary-calendar__date { width: 28px; height: 28px; }
   .diary-calendar__theme { font-size: var(--fs-micro); }
   .diary-year__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
