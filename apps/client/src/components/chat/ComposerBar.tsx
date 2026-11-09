@@ -1,17 +1,13 @@
 /**
- * 回信条（规范 §7.1.4）。
- * `[+ 分享]` 44 图标按钮 | `<textarea>` 52→160 自动增高 | `[发送 ▷]` primary 88×56。
- * 默认 Enter 发送、Shift+Enter 换行（设置里可切回 Cmd/Ctrl+Enter 发送；触屏 Enter 恒为换行；输入法组合期不拦）。
- * 生成中发送键变「停」；此时输入框仍可打字，有字时按发送 = 先停后发。≥1800 字右下显示计数，≥1950 变 --alert。
- * 离线时仍可输入（草稿保留），发送键禁用，条上方一行 14px「连上之后就能发出去。」
- * 听写说明收进右侧 `?` 的 Popover；桌面在条下方一行 13px 快捷键提示，手机隐藏。
+ * 回信条（规范 §7.1.4）。文字与语音共用一条稳定高度的输入区域；语音时将文本框替换为状态和明确操作。
+ * 文字草稿由 ChatPanel 保管，切换输入模式不会清空；录音发送与取消分别绑定独立操作。
  */
 import { Popover } from "radix-ui";
-import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import { isSendKey, PREFS_EVENT, readSendKey, type SendKey } from "../../lib/chat-prefs";
 import { Icon } from "../../icons";
 import { InkFrame, InkLine } from "../ink";
-import type { VoiceModelStatus, VoicePhase } from "./useVoiceMode";
+import type { VoicePhase } from "./useVoiceMode";
 
 type Props = {
   name: string;
@@ -29,9 +25,9 @@ type Props = {
   voicePhase?: VoicePhase;
   voiceRecording?: boolean;
   voiceMessage?: string;
-  voiceModel?: VoiceModelStatus;
-  voiceTtsStatus?: VoiceModelStatus;
   onStartVoice?: () => void;
+  onFinishVoice?: () => void;
+  onCancelRecording?: () => void;
   onStopVoice?: () => void;
   onRetryVoice?: () => void;
 };
@@ -47,26 +43,39 @@ function subscribePrefs(callback: () => void) {
   };
 }
 
-export function ComposerBar({ name, value, onChange, onSend, onStop, busy, online, focusSignal = 0, shareSignal = 0, voicePhase = "off", voiceRecording = false, voiceMessage = "", voiceModel, voiceTtsStatus, onStartVoice, onStopVoice, onRetryVoice }: Props) {
+export function ComposerBar({ name, value, onChange, onSend, onStop, busy, online, focusSignal = 0, shareSignal = 0, voicePhase = "off", voiceRecording = false, voiceMessage = "", onStartVoice, onFinishVoice, onCancelRecording, onStopVoice, onRetryVoice }: Props) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [url, setUrl] = useState("");
+  const [inputHeight, setInputHeight] = useState(56);
   const sendKey: SendKey = useSyncExternalStore(subscribePrefs, readSendKey, () => "enter" as SendKey);
   const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
   const hasText = value.trim().length > 0;
   const canSend = online && hasText;
   // 生成中且输入框是空的：发送键就是「停」。
   const stopMode = busy && !hasText;
-  const voiceActive = voicePhase !== "off" && voicePhase !== "error";
+  const voiceMode = voicePhase !== "off";
   const voiceStarting = voicePhase === "preparing" || voicePhase === "permission";
-  const voiceFinishing = voicePhase === "recognizing" && !voiceRecording;
+  const voiceCanCancel = voiceRecording || voicePhase === "recognizing";
+  const voiceStatus = voicePhase === "preparing"
+    ? "正在准备语音"
+    : voicePhase === "permission"
+      ? "等待麦克风权限"
+      : voiceRecording
+        ? voiceMessage || "正在录音"
+      : voicePhase === "recognizing"
+        ? "识别中"
+        : voiceMessage || "可以开始说话";
+  const composerStyle = { "--composer-input-height": String(inputHeight) + "px" } as CSSProperties;
 
   // 52 → 160 自动增高（沿用原来的手写逻辑，不引第三方）。
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(160, Math.max(52, el.scrollHeight))}px`;
+    const height = Math.min(160, Math.max(52, el.scrollHeight));
+    el.style.height = String(height) + "px";
+    setInputHeight(height);
   }, [value]);
 
   useEffect(() => {
@@ -106,23 +115,71 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
       {!online && <p className="composer__offline">连上之后就能发出去。</p>}
 
       <InkFrame className="composer__frame" radius={14} stroke={2} tone="ink" fill="sheet" openCorner id="composer">
-        <div className="composer__bar">
-          <button
-            type="button"
-            className="iconbtn composer__voice"
-            data-active={voiceActive || undefined}
-            data-recording={voiceRecording || undefined}
-            aria-pressed={voiceRecording}
-            aria-label={voicePhase === "error" ? "重试语音模式" : voiceFinishing ? "正在完成语音识别" : voiceRecording ? "结束录音并发送" : "开始语音录音"}
-            title={voicePhase === "error" ? "重试语音模式" : voiceFinishing ? "正在完成语音识别" : voiceRecording ? "结束录音并发送" : "开始语音录音"}
-            onClick={voicePhase === "error" ? onRetryVoice : onStartVoice}
-            disabled={voiceStarting || voiceFinishing}
-          >
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <rect x="9" y="3" width="6" height="12" rx="3" />
-              <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" />
-            </svg>
-          </button>
+        <div className="composer__bar" data-voice={voiceMode || undefined} style={composerStyle}>
+          {voicePhase === "error" ? (
+            <>
+              <div
+                className="composer__voice-state"
+                role="alert"
+                aria-live="assertive"
+                aria-label={voiceMessage || "语音暂不可用"}
+                title={voiceMessage || "语音暂不可用"}
+                data-error
+              >
+                <span className="composer__voice-dot" aria-hidden />
+                <span className="composer__voice-copy">语音暂不可用</span>
+              </div>
+              <div className="composer__actions">
+                <button type="button" className="btn btn--quiet composer__text-mode" onClick={onStopVoice} aria-label="返回文字输入">
+                  文字
+                </button>
+                <button type="button" className="btn btn--secondary composer__voice-retry" onClick={onRetryVoice}>
+                  重试
+                </button>
+              </div>
+            </>
+          ) : voiceMode ? (
+            <>
+              <div
+                className="composer__voice-state"
+                role="status"
+                aria-live="polite"
+                aria-label={voiceMessage || voiceStatus}
+                title={voiceMessage || voiceStatus}
+                data-recording={voiceRecording || undefined}
+              >
+                {voiceRecording ? (
+                  <span className="composer__voice-wave" aria-hidden>
+                    <i /><i /><i /><i />
+                  </span>
+                ) : (
+                  <span className="composer__voice-dot" aria-hidden />
+                )}
+                <span className="composer__voice-copy">{voiceStatus}</span>
+              </div>
+              <div className="composer__actions">
+                <button type="button" className="btn btn--quiet composer__text-mode" onClick={onStopVoice} aria-label="返回文字输入">
+                  文字
+                </button>
+                {voiceCanCancel && (
+                  <button type="button" className="btn btn--secondary composer__cancel" onClick={onCancelRecording}>
+                    取消
+                  </button>
+                )}
+                {voiceRecording ? (
+                  <button type="button" className="btn btn--primary composer__send" onClick={onFinishVoice} aria-label="结束录音并发送">
+                    发送
+                    <Icon name="send" size={20} />
+                  </button>
+                ) : !voiceCanCancel && !voiceStarting ? (
+                  <button type="button" className="btn btn--primary composer__voice-action" onClick={onStartVoice}>
+                    说话
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
           <Popover.Root open={shareOpen} onOpenChange={setShareOpen}>
             <Popover.Trigger asChild>
               <button type="button" className="iconbtn" aria-label="发个视频给她">
@@ -173,6 +230,19 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             onKeyDown={onKeyDown}
           />
 
+          <div className="composer__actions">
+          <button
+            type="button"
+            className="btn btn--secondary composer__voice-mode"
+            aria-pressed={false}
+            onClick={onStartVoice}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 10v4m4-8v12m4-15v18m4-13v8m4-11v14m2-10v6" />
+            </svg>
+            <span className="composer__voice-label">语音聊天</span>
+            <span className="composer__voice-label-short">语音</span>
+          </button>
           <button
             type="button"
             className="btn btn--primary composer__send"
@@ -193,21 +263,11 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
               </>
             )}
           </button>
+          </div>
+            </>
+          )}
         </div>
       </InkFrame>
-
-      {(voiceActive || voicePhase === "error") && (
-        <div className="composer__voice-status" role={voicePhase === "error" ? "alert" : "status"} aria-live="polite" data-error={voicePhase === "error" || undefined}>
-          <span className="composer__voice-dot" aria-hidden />
-          <span>{voiceMessage || (voiceRecording ? "正在录音；停顿不会自动发送，点击麦克风结束并提交。" : "点击麦克风开始录音。")}</span>
-          {voiceModel?.state === "loading" && voiceModel.progress !== null && (
-            <span className="composer__voice-progress">本地模型 {voiceModel.progress}%</span>
-          )}
-          {voiceTtsStatus?.state === "loading" && <span className="composer__voice-progress">正在准备语音模型</span>}
-          {voicePhase === "error" && <button type="button" className="composer__voice-retry" onClick={onRetryVoice}>重试</button>}
-          {voiceActive && <button type="button" className="composer__voice-close" onClick={onStopVoice}>结束语音模式</button>}
-        </div>
-      )}
 
       {value.length >= 1800 && (
         <span className="composer__count" data-alert={value.length >= 1950 || undefined}>

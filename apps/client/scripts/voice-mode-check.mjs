@@ -357,21 +357,101 @@ try {
   });
 
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
-  const enterVoice = page.getByRole("button", { name: "开始语音录音" });
+  const enterVoice = page.getByRole("button", { name: "语音聊天" });
   await enterVoice.waitFor({ state: "visible" });
   await page.waitForFunction(() => document.body.innerText.includes("发送"));
 
+  const textBarBeforeVoice = await page.locator(".composer__bar").boundingBox();
+  const textControlLayout = await page.locator(".composer__bar").evaluate((element) => {
+    const bounds = (selector) => {
+      const rect = element.querySelector(selector).getBoundingClientRect();
+      return { left: rect.left, right: rect.right };
+    };
+    return {
+      input: bounds(".composer__input"),
+      video: bounds(".iconbtn[aria-label='发个视频给她']"),
+      voice: bounds(".composer__voice-mode"),
+      send: bounds(".composer__send"),
+      bar: { right: element.getBoundingClientRect().right },
+    };
+  });
+  check(
+    "文字、视频、语音和发送按钮集中在输入区右侧",
+    textControlLayout.input.right <= textControlLayout.video.left
+      && textControlLayout.video.right <= textControlLayout.voice.left
+      && textControlLayout.voice.right <= textControlLayout.send.left
+      && textControlLayout.send.right <= textControlLayout.bar.right,
+    JSON.stringify(textControlLayout),
+  );
   await enterVoice.click();
-  const alert = page.locator(".composer__voice-status[role='alert']");
+  const alert = page.locator(".composer__voice-state[role='alert']");
   await alert.waitFor({ state: "visible" });
-  check("无麦克风时显示可恢复错误", (await alert.innerText()).includes("没有检测到可用麦克风"));
+  const initialErrorLabel = await alert.getAttribute("aria-label");
+  const errorBarAfterVoice = await page.locator(".composer__bar").boundingBox();
+  check("无麦克风时显示可恢复错误", (await alert.innerText()).includes("语音暂不可用") && initialErrorLabel?.includes("没有检测到可用麦克风"));
+  check(
+    "文字与语音状态使用同一输入条高度和位置",
+    Boolean(textBarBeforeVoice && errorBarAfterVoice
+      && Math.abs(textBarBeforeVoice.y - errorBarAfterVoice.y) < 1
+      && Math.abs(textBarBeforeVoice.height - errorBarAfterVoice.height) < 1),
+    JSON.stringify({ textBarBeforeVoice, errorBarAfterVoice }),
+  );
+  const voiceErrorLayout = await page.locator(".composer__bar").evaluate((element) => {
+    const state = element.querySelector(".composer__voice-state").getBoundingClientRect();
+    const actions = element.querySelector(".composer__actions").getBoundingClientRect();
+    return { stateRight: state.right, actionsLeft: actions.left, actionsRight: actions.right, barRight: element.getBoundingClientRect().right };
+  });
+  check(
+    "语音状态留左侧，返回文字和重试按钮靠右",
+    voiceErrorLayout.stateRight <= voiceErrorLayout.actionsLeft
+      && voiceErrorLayout.actionsRight <= voiceErrorLayout.barRight,
+    JSON.stringify(voiceErrorLayout),
+  );
+  await page.setViewportSize({ width: 360, height: 800 });
+  const narrowErrorBar = await page.locator(".composer__bar").evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  check("窄屏语音错误状态不横向溢出", narrowErrorBar.scrollWidth <= narrowErrorBar.clientWidth, JSON.stringify(narrowErrorBar));
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.evaluate(() => window.__wpVoiceCheck.setAvailable(true));
   await page.getByRole("button", { name: "重试", exact: true }).click();
-  const status = page.locator(".composer__voice-status");
+  const status = page.locator(".composer__voice-state");
   await status.waitFor({ state: "visible" });
   await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 15_000 });
-  check("重试后开始录音，停顿不会自动发送", (await status.innerText()).includes("停顿不会发送"));
+  await page.setViewportSize({ width: 360, height: 800 });
+  const narrowRecordingBar = await page.locator(".composer__bar").evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+  }));
+  const narrowRecordingLayout = await page.locator(".composer__bar").evaluate((element) => {
+    const state = element.querySelector(".composer__voice-state").getBoundingClientRect();
+    const actions = element.querySelector(".composer__actions").getBoundingClientRect();
+    return { stateRight: state.right, actionsLeft: actions.left, actionsRight: actions.right, barRight: element.getBoundingClientRect().right };
+  });
+  check(
+    "窄屏录音状态下取消和发送按钮可见且不溢出",
+    narrowRecordingBar.scrollWidth <= narrowRecordingBar.clientWidth
+      && narrowRecordingLayout.stateRight <= narrowRecordingLayout.actionsLeft
+      && narrowRecordingLayout.actionsRight <= narrowRecordingLayout.barRight
+      && await page.getByRole("button", { name: "取消", exact: true }).isVisible()
+      && await page.getByRole("button", { name: "结束录音并发送" }).isVisible(),
+    JSON.stringify({ narrowRecordingBar, narrowRecordingLayout }),
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  check("重试后开始录音并显示实际录音状态", (await status.innerText()).includes("正在录音"));
   check("开启麦克风时启用回声消除和降噪并关闭 AGC", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 2);
+
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "说话", exact: true }).waitFor({ state: "visible", timeout: 5_000 });
+  const afterCancel = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  check(
+    "取消丢弃未提交录音、释放麦克风并留在语音模式",
+    afterCancel.stoppedTracks === 1 && afterCancel.chatRequests.length === 0 && (await status.innerText()).includes("录音已取消"),
+    JSON.stringify({ stoppedTracks: afterCancel.stoppedTracks, chatRequests: afterCancel.chatRequests.length, status: await status.innerText() }),
+  );
+  await page.getByRole("button", { name: "说话", exact: true }).click();
+  await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 5_000 });
 
   async function speak() {
     await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
@@ -389,7 +469,7 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("第1轮回答内容足够长"), null, { timeout: 10_000 });
   const firstTurn = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests[0]);
   check("第一轮语音最终稿只进入共享聊天一次", firstTurn?.message === speechTexts[0]);
-  await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("大肥鱼正在回答"), null, { timeout: 10_000 });
+  await page.waitForFunction(() => document.querySelector(".composer__voice-state")?.textContent?.includes("大肥鱼正在回答"), null, { timeout: 10_000 });
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackPushes >= 4, null, { timeout: 10_000 });
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 1, null, { timeout: 10_000 });
   const asrFramesAtPlayback = asrPcmFramesReceived;
@@ -425,8 +505,9 @@ try {
   const playbackStats = await page.evaluate(() => window.__wpVoiceCheck.stats());
   console.log(JSON.stringify({ playback: playbackStats }));
   check(
-    "流式 PCM 块进入同一个 AudioWorklet 连续播放队列，不逐块创建播放源",
-    playbackStats.playbackWorklets === 1
+    "流式 PCM 块进入复用的 AudioWorklet 队列，不逐块创建播放源",
+    playbackStats.playbackWorklets >= 1
+      && playbackStats.playbackWorklets <= 2
       && playbackStats.pcmPlaybackPushes >= 8
       && playbackStats.audioPlaybackStarts === 0,
     JSON.stringify({ worklets: playbackStats.playbackWorklets, pcmChunks: playbackStats.pcmPlaybackPushes, bufferSources: playbackStats.audioPlaybackStarts }),
@@ -438,7 +519,7 @@ try {
   const asrFramesBeforeInterrupt = asrPcmFramesReceived;
   const lastPlaybackState = [...beforePlaybackInterrupt.voiceDiagnostics].reverse().find((event) => event.event === "worklet-started" || event.event === "worklet-drained" || event.event === "worklet-stopped");
   check("播放中断言发生在 AudioWorklet 活跃期间", lastPlaybackState?.event === "worklet-started", lastPlaybackState?.event ?? "没有播放状态事件");
-  await page.getByRole("button", { name: "开始语音录音" }).click();
+  await page.getByRole("button", { name: "说话", exact: true }).click();
   await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 5_000 });
   await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
   const interruptObserved = await page.waitForFunction(() => {
@@ -478,7 +559,7 @@ try {
   }, null, { timeout: 10_000 });
   const beforeSynthesisInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
   check("用户开口时第二轮仍有未完成的聊天与 TTS 请求", beforeSynthesisInterrupt.chatRequests.length === 2);
-  await page.getByRole("button", { name: "开始语音录音" }).click();
+  await page.getByRole("button", { name: "说话", exact: true }).click();
   await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 5_000 });
   await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
   const afterSynthesisInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
@@ -502,25 +583,25 @@ try {
     setCharacter("claude");
   });
   await page.waitForFunction(() => document.querySelector(".mbar__name")?.textContent === "小克");
-  await page.getByRole("button", { name: "开始语音录音" }).waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "语音聊天" }).waitFor({ state: "visible" });
   check(
     "切换人格时结束语音会话并停止播放",
-    (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 3 && ttsRequests.length === ttsCountBeforeSwitch,
+    (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 4 && ttsRequests.length === ttsCountBeforeSwitch,
   );
   await page.evaluate(async () => {
     const { setCharacter } = await import("/src/characters.ts");
     setCharacter("deepseek");
   });
   await page.waitForFunction(() => document.querySelector(".mbar__name")?.textContent === "大肥鱼");
-  await page.getByRole("button", { name: "开始语音录音" }).click();
+  await page.getByRole("button", { name: "语音聊天" }).click();
   await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 15_000 });
-  check("切回大肥鱼后可重新开始录音", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 5);
+  check("切回大肥鱼后可重新开始录音", (await page.evaluate(() => window.__wpVoiceCheck.stats().microphoneRequests)) === 6);
 
-  await page.getByRole("button", { name: "结束语音模式" }).click();
+  await page.getByRole("button", { name: "返回文字输入" }).click();
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().endedTracks === 1);
   for (let attempt = 0; attempt < 60 && closedSockets < socketCount; attempt += 1) await page.waitForTimeout(50);
-  check("退出时停止麦克风轨道", (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 4);
-  check("退出时关闭 ASR WebSocket", socketCount === 3 && closedSockets === 3, `${closedSockets}/${socketCount}`);
+  check("退出时停止麦克风轨道", (await page.evaluate(() => window.__wpVoiceCheck.stats().stoppedTracks)) === 5);
+  check("退出时关闭 ASR WebSocket", socketCount === 4 && closedSockets === 4, `${closedSockets}/${socketCount}`);
   check("页面没有未处理异常", pageErrors.length === 0, pageErrors.slice(0, 3).join(" | "));
   await page.close();
 } catch (error) {

@@ -168,6 +168,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     }, 15_000);
     ws.binaryType = "arraybuffer";
     ws.onmessage = (event) => {
+      if (!active.current || token !== generation.current) return;
       let data: AsrMessage;
       try { data = JSON.parse(String(event.data)) as AsrMessage; }
       catch { return; }
@@ -188,7 +189,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
         const text = data.text?.trim();
         if (text) {
           setPhase("recognizing");
-          setMessage(`正在录音，已识别：「${text}」；停顿不会自动发送。`);
+          setMessage(`已识别：${text}`);
         }
       } else if (data.type === "final") {
         const text = data.text?.trim();
@@ -196,11 +197,11 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
           transcriptParts.current.push(text);
           if (recordingRef.current) {
             setPhase("listening");
-            setMessage(`已识别一段：「${text}」；可以继续说，按麦克风按钮发送。`);
+            setMessage(`已识别：${text}`);
           }
         }
       } else if (data.type === "segment-end") {
-        if (recordingRef.current) setMessage("这段停顿已保留；继续说完后按麦克风按钮发送。");
+        if (recordingRef.current) setMessage("可以继续说话");
       } else if (data.type === "finished") {
         const pendingFinish = finishWaiter.current;
         finishWaiter.current = null;
@@ -267,7 +268,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   const startCapture = useCallback(async (token: number) => {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器无法访问麦克风。请在 WhalePartner 桌面版或最新版 Safari/Chrome 中使用。");
     setPhase("permission");
-    setMessage("正在请求麦克风权限。");
+    setMessage("等待麦克风权限");
     const input = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false },
     });
@@ -302,7 +303,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     recordingRef.current = true;
     setRecording(true);
     setPhase("listening");
-    setMessage("正在录音；中间停顿不会发送。说完后再按一次麦克风按钮发送。");
+    setMessage("正在录音");
   }, [connectAudio, showFailure]);
 
   const warmModel = useCallback(async (token: number) => {
@@ -345,7 +346,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     interruptAssistant();
     try {
       setPhase("preparing");
-      setMessage("正在准备本地 X-ASR 模型。准备好后开始录音，麦克风音频不会保存。");
+      setMessage("正在准备语音");
       await warmModel(token);
       if (!active.current || token !== generation.current) return;
       await openStream(token);
@@ -361,6 +362,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
 
   const finishRecording = useCallback(async () => {
     if (!active.current || !recordingRef.current || finishing.current) return;
+    const token = generation.current;
     recordingRef.current = false;
     setRecording(false);
     finishing.current = true;
@@ -391,23 +393,52 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
           reject(error instanceof Error ? error : new Error(String(error)));
         }
       });
+      if (!active.current || token !== generation.current) return;
       const text = mergeTranscriptParts(transcriptParts.current);
       transcriptParts.current = [];
       releaseCapture();
       finishing.current = false;
       if (!text) {
         setPhase("ready");
-        setMessage("没有识别到语音。点击麦克风可以重新录制。");
+        setMessage("没有识别到声音，可以重新说话。");
         return;
       }
       setPhase("ready");
       setMessage(`已发送：「${text}」`);
       transcriptRef.current(text);
     } catch (error) {
+      if (!active.current || token !== generation.current) return;
       finishing.current = false;
-      showFailure(error instanceof Error ? error.message : "整段语音识别失败，请重试。", generation.current);
+      showFailure(error instanceof Error ? error.message : "整段语音识别失败，请重试。", token);
     }
   }, [releaseCapture, showFailure]);
+
+  const cancelRecording = useCallback(async () => {
+    if (!active.current || (!recordingRef.current && !finishing.current)) return;
+    const token = ++generation.current;
+    const pendingFinish = finishWaiter.current;
+    finishWaiter.current = null;
+    if (pendingFinish) pendingFinish.resolve();
+    const ws = socket.current;
+    socket.current = null;
+    if (ws && ws.readyState < WebSocket.CLOSING) ws.close(1000, "recording canceled");
+    releaseCapture();
+    finishing.current = false;
+    transcriptParts.current = [];
+    setPhase("preparing");
+    setMessage("正在准备语音");
+    try {
+      await openStream(token);
+      if (!active.current || token !== generation.current) return;
+      setPhase("ready");
+      setMessage("录音已取消，可以重新说话。");
+    } catch (error) {
+      if (!active.current || token !== generation.current) return;
+      setPhase("error");
+      setMessage(startErrorMessage(error));
+      release();
+    }
+  }, [openStream, release, releaseCapture]);
 
   const toggleRecording = useCallback(() => {
     if (!active.current) {
@@ -453,5 +484,5 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     }
   }, [assistantBusy, assistantSpeaking, phase]);
 
-  return { active: phase !== "off", phase, message, model, recording, start, stop, retry, toggleRecording };
+  return { active: phase !== "off", phase, message, model, recording, start, stop, retry, toggleRecording, finishRecording, cancelRecording };
 }
