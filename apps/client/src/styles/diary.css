@@ -1,5 +1,5 @@
 /* ============================================================================
-   日记页（规范 §7.2 + §6.10 的 DateStamp / IndexTabs / MiniCalendar / QuotaMeter）
+   日记页（规范 §7.2 + §6.10 的 DateStamp / IndexTabs / 月历）
    规矩：颜色、圆角、间距、时长全部走 tokens；不出现渐变 / 毛玻璃 / 骨架屏条纹。
    ============================================================================ */
 
@@ -36,23 +36,29 @@
 
 .diary-page__write { flex: none; }
 
-/* ---------------------------------------------------------------- 笔记本 + 侧边标签 */
-.diary-page__stage {
+/* ---------------------------------------------------------------- 时间导航与正文 */
+.diary-page__controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
+  grid-template-columns: minmax(160px, auto) minmax(0, 1fr);
+  align-items: center;
   gap: var(--sp-4);
+}
+
+.diary-page__stage {
   min-width: 0;
 }
 
 .diary-page__panel {
-  order: 1;
   min-width: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--sp-6);
 }
+
+.diary-page__day-detail { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+.diary-page__back { align-self: flex-start; }
+.diary-page__day-title { font-family: var(--font-voice); font-size: var(--fs-h2); line-height: var(--lh-tight); }
 
 .diary-page__leaves {
   display: flex;
@@ -61,25 +67,21 @@
   min-width: 0;
 }
 
-/* IndexTabs：桌面竖排贴右缘，选中向外探出 8px；手机横排贴顶部 */
+/* 周 / 月 / 年切换始终放在时间导航上方。 */
 .indextabs {
-  order: 2;
   display: flex;
   gap: var(--sp-2);
+  align-items: center;
   min-width: 0;
-}
-
-.indextabs[data-orientation="vertical"] {
-  flex-direction: column;
-  padding-top: var(--sp-6);
+  flex-wrap: nowrap;
 }
 
 .indextabs__tab {
   display: grid;
   place-items: center;
-  min-width: var(--hit);
+  min-width: 64px;
   min-height: var(--hit);
-  padding: 0;
+  padding: 0 var(--sp-4);
   border-radius: var(--r-sm);
   background: var(--sheet);
   color: var(--ink-mute);
@@ -99,22 +101,7 @@
   box-shadow: var(--shadow-1);
 }
 
-.indextabs[data-orientation="vertical"] .indextabs__tab {
-  width: 44px;
-  height: 72px;
-}
-
-.indextabs[data-orientation="vertical"] .indextabs__label {
-  writing-mode: vertical-rl;
-  letter-spacing: .18em;
-}
-
-.indextabs[data-orientation="vertical"] .indextabs__tab[aria-selected="true"] {
-  transform: translateX(var(--sp-2));
-}
-
-.indextabs[data-orientation="horizontal"] { flex-wrap: nowrap; }
-.indextabs[data-orientation="horizontal"] .indextabs__tab { flex: 1 1 0; min-width: 64px; }
+.indextabs__tab { flex: 1 1 0; }
 
 /* ---------------------------------------------------------------- 日期戳 */
 .dts { position: relative; flex: 1 1 auto; min-width: 0; padding-bottom: var(--sp-1); }
@@ -283,24 +270,12 @@
 .leaf__journal-source-url { margin-top: var(--sp-1) !important; color: var(--ink-mute); font-size: var(--fs-small); }
 .leaf__journal-badge { color: var(--accent); font-size: var(--fs-small); white-space: nowrap; }
 
-/* 月 / 年模式的分页 */
-.diary-page__pager {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-4);
-  flex-wrap: wrap;
-}
-
-.diary-page__pageno { font-size: var(--fs-small); color: var(--ink-mute); font-variant-numeric: tabular-nums; }
-
-/* ---------------------------------------------------------------- 底部导航条 */
+/* ---------------------------------------------------------------- 时间导航 */
 .pagebar {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  flex-wrap: wrap;
-  width: min(var(--page-max), 100%);
+  min-width: 0;
 }
 
 .pagebar__step {
@@ -324,100 +299,141 @@
 .pagebar__step:active:not(:disabled) { transform: scale(.98); }
 .pagebar__step:disabled { color: var(--ink-mute); box-shadow: inset 0 0 0 var(--stroke-1) var(--line); cursor: not-allowed; }
 
-.pagebar__cal {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: var(--hit);
-  padding: 0 var(--sp-4);
+.pagebar__range { flex: 1 1 auto; min-width: 0; text-align: center; font-family: var(--font-voice); font-size: var(--fs-h3); font-weight: 500; font-variant-numeric: lining-nums tabular-nums; }
+.pagebar__word { white-space: nowrap; }
+.pagebar__today { flex: none; margin-left: var(--sp-2); }
+
+/* ---------------------------------------------------------------- 月历总览 */
+.diary-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-4);
   border-radius: var(--r-md);
-  background: var(--accent-wash);
-  color: var(--accent);
-  font-family: var(--font-ui);
-  font-size: var(--fs-body);
-  font-variant-numeric: lining-nums tabular-nums;
+  background: var(--sheet);
+  box-shadow: var(--shadow-1);
 }
 
-.pagebar__today { margin-left: auto; }
-
-/* ---------------------------------------------------------------- MiniCalendar */
-.mini { display: flex; flex-direction: column; gap: var(--sp-2); width: min(320px, 100%); }
-
-.mini__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
-
-.mini__step {
-  display: grid;
-  place-items: center;
-  width: var(--hit);
-  height: var(--hit);
-  border-radius: var(--r-sm);
-  color: var(--ink-soft);
-  font-size: var(--fs-h3);
-  transition: background var(--dur-hover) var(--ease-out);
-}
-
-.mini__step:hover { background: var(--paper-2); color: var(--ink); }
-
-.mini__month { display: flex; align-items: baseline; gap: var(--sp-2); }
-.mini__month-num { font-family: var(--font-voice); font-size: var(--fs-h3); }
-.mini__month-en { font-family: var(--font-num); font-size: var(--fs-micro); letter-spacing: var(--ls-label); color: var(--ink-mute); }
-
-.mini__week,
-.mini__grid {
+.diary-calendar__week,
+.diary-calendar__grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 2px;
+  gap: var(--sp-1);
 }
 
-.mini__weekday { font-size: var(--fs-micro); color: var(--ink-mute); text-align: center; letter-spacing: var(--ls-label); }
+.diary-calendar__week { color: var(--ink-mute); font-size: var(--fs-small); text-align: center; }
+.diary-calendar__week span { padding-block: var(--sp-2); }
 
-.mini__cell {
+.diary-calendar__day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+  min-height: 58px;
+  padding: var(--sp-1);
+  border: var(--stroke-1) solid transparent;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  transition: background var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out);
+}
+
+.diary-calendar__day:hover { background: var(--paper-2); }
+.diary-calendar__day[data-has-records] { background: var(--paper-2); }
+.diary-calendar__day[data-selected] { border-color: var(--accent); background: var(--accent-wash); }
+.diary-calendar__day[data-today] .diary-calendar__date { color: var(--accent); }
+.diary-calendar__day[data-selected] .diary-calendar__date { color: var(--accent); }
+
+.diary-calendar__gap { min-width: 0; min-height: 44px; }
+.diary-calendar__dayhead { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+
+.diary-calendar__date {
   position: relative;
   display: grid;
   place-items: center;
-  min-width: var(--hit);
-  min-height: var(--hit);
-  border-radius: var(--r-sm);
-  color: var(--ink);
+  width: 28px;
+  height: 28px;
   font-family: var(--font-num);
   font-size: var(--fs-body);
   font-variant-numeric: lining-nums tabular-nums;
-  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
 }
 
+.diary-calendar__today-ring { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.diary-calendar__mark { color: var(--accent); font-family: var(--font-ui); font-size: var(--fs-micro); line-height: 1; }
+
+.diary-calendar__theme {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-family: var(--font-voice);
+  font-size: var(--fs-micro);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.diary-calendar__more { color: var(--ink-mute); font-size: var(--fs-micro); }
+.diary-calendar__legend { display: flex; gap: var(--sp-4); color: var(--ink-mute); font-size: var(--fs-micro); }
+.diary-calendar__legend span { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.diary-calendar__legend-mark { width: 6px; height: 6px; border-radius: var(--r-round); background: var(--accent); }
+.diary-calendar__legend-ring { width: 14px; height: 14px; border: var(--stroke-1) solid var(--accent); border-radius: var(--r-round); }
+.diary-calendar__empty { color: var(--ink-mute); font-size: var(--fs-small); }
+
+.diary-year { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+.diary-year__intro { color: var(--ink-mute); font-size: var(--fs-small); }
+.diary-year__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-3); }
+.diary-year__month {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+  min-height: 96px;
+  padding: var(--sp-4);
+  border: var(--stroke-1) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--sheet);
+  color: var(--ink);
+  text-align: left;
+  box-shadow: var(--shadow-1);
+  transition: background var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out);
+}
+
+.diary-year__month:hover { border-color: var(--accent); background: var(--paper-2); }
+.diary-year__name { font-family: var(--font-voice); font-size: var(--fs-h3); }
+.diary-year__count { color: var(--ink-mute); font-size: var(--fs-small); }
+.diary-year__mark { position: absolute; top: var(--sp-3); right: var(--sp-3); color: var(--accent); }
+
+/* 记忆筛选仍使用紧凑日期选择器。 */
+.mini { display: flex; flex-direction: column; gap: var(--sp-2); width: min(320px, 100%); }
+.mini__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.mini__step { display: grid; place-items: center; width: var(--hit); height: var(--hit); border-radius: var(--r-sm); color: var(--ink-soft); font-size: var(--fs-h3); transition: background var(--dur-hover) var(--ease-out); }
+.mini__step:hover { background: var(--paper-2); color: var(--ink); }
+.mini__month { display: flex; align-items: baseline; gap: var(--sp-2); }
+.mini__month-num { font-family: var(--font-voice); font-size: var(--fs-h3); }
+.mini__month-en { font-family: var(--font-num); font-size: var(--fs-micro); letter-spacing: var(--ls-label); color: var(--ink-mute); }
+.mini__week,
+.mini__grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.mini__weekday { font-size: var(--fs-micro); color: var(--ink-mute); text-align: center; letter-spacing: var(--ls-label); }
+.mini__cell { position: relative; display: grid; place-items: center; min-width: var(--hit); min-height: var(--hit); border-radius: var(--r-sm); color: var(--ink); font-family: var(--font-num); font-size: var(--fs-body); font-variant-numeric: lining-nums tabular-nums; transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
 .mini__cell--gap { pointer-events: none; }
 .mini__cell:hover { background: var(--paper-2); }
 .mini__cell[data-selected] { background: var(--accent); color: var(--accent-ink); }
 .mini__cell[data-today] { color: var(--accent); }
 .mini__cell[data-today][data-selected] { color: var(--accent-ink); }
-
-.mini__dot {
-  position: absolute;
-  top: var(--sp-1);
-  right: var(--sp-1);
-  width: 6px;
-  height: 6px;
-  border-radius: var(--r-round);
-  background: var(--accent);
-}
-
+.mini__dot { position: absolute; top: var(--sp-1); right: var(--sp-1); width: 6px; height: 6px; border-radius: var(--r-round); background: var(--accent); }
 .mini__cell[data-selected] .mini__dot { background: var(--accent-ink); }
-
-.mini__ring {
-  position: absolute;
-  inset: 1px;
-  width: calc(100% - 2px);
-  height: calc(100% - 2px);
-  color: currentColor;
-  opacity: .8;
-  pointer-events: none;
-}
-
+.mini__ring { position: absolute; inset: 1px; width: calc(100% - 2px); height: calc(100% - 2px); color: currentColor; opacity: .8; pointer-events: none; }
 .mini__rule { color: color-mix(in oklab, var(--ink) 24%, transparent); }
 .mini__foot { font-size: var(--fs-micro); color: var(--ink-mute); text-align: center; }
-
-.pagebar__pop { padding: var(--sp-3); }
-
 /* ---------------------------------------------------------------- 她在写 */
 .diary-page__writing {
   display: inline-flex;
@@ -529,10 +545,8 @@
 @media (max-width: 959px) {
   .diary-page { padding: var(--sp-6) var(--sp-4) var(--sp-16); }
   .diary-page__inner { max-width: none; }
-
-  .diary-page__stage { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
-
-  .indextabs[data-orientation="horizontal"] { order: -1; }
+  .diary-page__controls { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
+  .indextabs { order: -1; }
 
   .diary-page__panel { width: 100%; }
 
@@ -545,19 +559,41 @@
   .leaf__weather .doodle { width: 44px; height: 44px; }
   .leaf__stamp { transform: scale(.8); transform-origin: top right; }
 
-  .pagebar { width: 100%; }
+  .pagebar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: var(--sp-1); width: 100%; }
+  .pagebar__range { font-size: var(--fs-body); }
   .pagebar__today { margin-left: 0; }
+  .diary-calendar { padding: var(--sp-2); }
+  .diary-calendar__day { min-height: 51px; padding: var(--sp-1); }
+  .diary-calendar__date { width: 28px; height: 28px; }
+  .diary-calendar__theme { font-size: var(--fs-micro); -webkit-line-clamp: 1; }
+  .diary-year__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .vids { width: 100%; }
   .vids__form { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .pagebar__word { display: none; }
+  .pagebar__step { min-width: var(--hit); padding-inline: var(--sp-2); }
+  .diary-calendar__grid { gap: 0; }
+  .diary-calendar__day { min-height: 45px; gap: 0; padding: 0 var(--sp-1); }
+  .diary-calendar__date { width: 24px; height: 24px; }
+  .diary-calendar__theme { -webkit-line-clamp: 1; }
+  .diary-calendar__more { display: none; }
+  .diary-calendar__legend { gap: var(--sp-2); }
+}
+
+@media (max-width: 380px) {
+  .diary-year__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .indextabs__tab,
   .pagebar__step,
+  .diary-calendar__day,
   .mini__cell { transition: none; }
-  .indextabs[data-orientation="vertical"] .indextabs__tab[aria-selected="true"] { transform: none; }
 }
 
 :root[data-motion="calm"] .indextabs__tab,
 :root[data-motion="calm"] .pagebar__step,
+:root[data-motion="calm"] .diary-calendar__day,
 :root[data-motion="calm"] .mini__cell { transition: none; }
