@@ -330,11 +330,11 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--sp-1);
+  gap: 2px;
   min-width: 0;
   width: 100%;
-  min-height: 72px;
-  padding: var(--sp-2);
+  min-height: 58px;
+  padding: var(--sp-1);
   border: var(--stroke-1) solid transparent;
   border-radius: var(--r-md);
   background: transparent;
@@ -356,8 +356,8 @@
   position: relative;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   font-family: var(--font-num);
   font-size: var(--fs-body);
   font-variant-numeric: lining-nums tabular-nums;
@@ -563,9 +563,9 @@
   .pagebar__range { font-size: var(--fs-body); }
   .pagebar__today { margin-left: 0; }
   .diary-calendar { padding: var(--sp-2); }
-  .diary-calendar__day { min-height: 64px; padding: var(--sp-1); }
+  .diary-calendar__day { min-height: 51px; padding: var(--sp-1); }
   .diary-calendar__date { width: 28px; height: 28px; }
-  .diary-calendar__theme { font-size: var(--fs-micro); }
+  .diary-calendar__theme { font-size: var(--fs-micro); -webkit-line-clamp: 1; }
   .diary-year__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .vids { width: 100%; }
   .vids__form { grid-template-columns: minmax(0, 1fr); }
@@ -575,7 +575,7 @@
   .pagebar__word { display: none; }
   .pagebar__step { min-width: var(--hit); padding-inline: var(--sp-2); }
   .diary-calendar__grid { gap: 0; }
-  .diary-calendar__day { min-height: 56px; gap: 0; padding: 0 var(--sp-1); }
+  .diary-calendar__day { min-height: 45px; gap: 0; padding: 0 var(--sp-1); }
   .diary-calendar__date { width: 24px; height: 24px; }
   .diary-calendar__theme { -webkit-line-clamp: 1; }
   .diary-calendar__more { display: none; }
