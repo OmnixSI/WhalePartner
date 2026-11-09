@@ -68,10 +68,16 @@ function round(value, places = 3) {
   return Math.round(value * factor) / factor;
 }
 
-function bufferForCharacters(characterCount, secondsPerCharacter, averageRtf) {
-  const estimatedSpeechSeconds = characterCount * secondsPerCharacter;
-  const estimatedGenerationSeconds = estimatedSpeechSeconds * averageRtf;
-  return Math.ceil(estimatedGenerationSeconds / blockSeconds) + reserveBlocks;
+function playbackStartTargetForCharacters(characterCount, secondsPerCharacter, averageRtf) {
+  const estimatedAudioSeconds = characterCount * secondsPerCharacter;
+  const estimatedGenerationSeconds = estimatedAudioSeconds * averageRtf;
+  const targetWaitSeconds = Math.max(0, estimatedGenerationSeconds + blockSeconds - estimatedAudioSeconds);
+  return {
+    estimatedAudioSeconds,
+    estimatedGenerationSeconds,
+    targetWaitSeconds,
+    targetPcmBufferSeconds: targetWaitSeconds / averageRtf,
+  };
 }
 
 async function synthesize(origin, headers, text, index) {
@@ -189,8 +195,8 @@ const totalAudioMs = samples.reduce((total, sample) => total + sample.audioDurat
 const totalGenerationMs = samples.reduce((total, sample) => total + sample.generationMs, 0);
 const rtfValues = samples.map((sample) => sample.rtf);
 const firstChunkValues = samples.map((sample) => sample.firstChunkMs);
-const secondsPerCharacter = totalAudioMs / 1000 / totalCharacters;
-const averageRtf = totalGenerationMs / totalAudioMs;
+const secondsPerCharacter = round(totalAudioMs / 1000 / totalCharacters, 3);
+const averageRtf = round(totalGenerationMs / totalAudioMs, 4);
 const measuredSpeechBlocks = Math.ceil(totalAudioMs / (blockSeconds * 1000));
 const actualTtsChunks = samples.reduce((total, sample) => total + sample.chunkCount, 0);
 const sentenceTwoSecondBlocks = samples.reduce((total, sample) => total + sample.twoSecondBlocks, 0);
@@ -253,12 +259,21 @@ const result = {
     actualTtsChunks,
     reserveBlocks,
   },
-  bufferExamples: [10, 20, 40, 80, 160].map((characterCount) => ({
-    characterCount,
-    estimatedSpeechSeconds: round(characterCount * secondsPerCharacter, 2),
-    targetBufferBlocks: bufferForCharacters(characterCount, secondsPerCharacter, averageRtf),
-    targetBufferSeconds: bufferForCharacters(characterCount, secondsPerCharacter, averageRtf) * blockSeconds,
-  })),
+  bufferStrategy: {
+    reserveSeconds: blockSeconds,
+    targetWaitFormula: "max(0, estimatedAudioSeconds * weightedAverageRtf + reserveSeconds - estimatedAudioSeconds)",
+    targetPcmBufferFormula: "targetWaitSeconds / weightedAverageRtf",
+  },
+  bufferExamples: [10, 20, 40, 80, 160].map((characterCount) => {
+    const target = playbackStartTargetForCharacters(characterCount, secondsPerCharacter, averageRtf);
+    return {
+      characterCount,
+      estimatedAudioSeconds: round(target.estimatedAudioSeconds, 2),
+      estimatedGenerationSeconds: round(target.estimatedGenerationSeconds, 3),
+      targetWaitSeconds: round(target.targetWaitSeconds, 3),
+      targetPcmBufferSeconds: round(target.targetPcmBufferSeconds, 3),
+    };
+  }),
   samples,
 };
 mkdirSync(dirname(outputPath), { recursive: true });

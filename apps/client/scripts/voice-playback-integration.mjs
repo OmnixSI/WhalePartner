@@ -8,10 +8,9 @@ import { createServer } from "vite";
 const clientDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const apiOrigin = "http://127.0.0.1:8787";
 const sampleRate = 24_000;
-const streamingIntervalSeconds = 2;
-const speechCharactersPerChunk = 10;
-const maxAssumedTtsRtf = 1.35;
-const bufferReserveChunks = 1;
+const measuredSpeechSecondsPerCharacter = 0.292;
+const measuredAverageTtsRtf = 0.9352;
+const bufferReserveSeconds = 2;
 const characterId = "deepseek";
 const emotion = "neutral";
 const interruptionText = "这一轮回答会在播放途中被用户打断。系统必须马上停止旧声音、取消剩余合成，并清除旧轮次的音频队列。随后用户立即开始新的问题，新的回答只能使用新的轮次编号，不能混入上一轮的语音内容。为了覆盖取消时仍有较长文本待生成的情况，我们继续增加一些自然的说明内容，确保服务端还在生成时就发生打断。";
@@ -34,11 +33,11 @@ const longSpeechSegments = [
 ];
 
 function estimatePrerollSeconds(text) {
-  const speechCharacters = Array.from(text.replace(/\s/gu, "")).length;
-  const expectedSpeechChunks = Math.ceil(speechCharacters / speechCharactersPerChunk);
-  const reserveChunks = expectedSpeechChunks + bufferReserveChunks;
-  const rtfAdjustedChunks = Math.ceil(expectedSpeechChunks * maxAssumedTtsRtf);
-  return Math.max(reserveChunks, rtfAdjustedChunks) * streamingIntervalSeconds;
+  const speechCharacters = text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
+  const estimatedAudioSeconds = speechCharacters * measuredSpeechSecondsPerCharacter;
+  const estimatedGenerationSeconds = estimatedAudioSeconds * measuredAverageTtsRtf;
+  const targetWaitSeconds = Math.max(0, estimatedGenerationSeconds + bufferReserveSeconds - estimatedAudioSeconds);
+  return targetWaitSeconds / measuredAverageTtsRtf;
 }
 
 function findLocalToken() {

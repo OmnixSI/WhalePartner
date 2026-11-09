@@ -7,8 +7,8 @@
 - ASR 使用 sherpa-onnx X-ASR 中文/英文 480 ms 流式模型，并对整句做离线精修。流式与离线模型使用不同的编码器和解码器权重：流式模型负责实时 partial，离线模型负责整句重识别。WhalePartner 自己的 RMS VAD 在约 700 ms 静音后收句；流式模型关闭内部端点检测，收句时补 400 ms 静音并冲刷剩余识别状态。随后同一 worker 用离线 X-ASR 模型重识别完整 PCM 句段并补 300 ms 尾音，非空精修稿作为最终稿。录音中的较长停顿可产生多个精修段，但只有用户再次点击麦克风并确认结束后才合并发送。两套模型权重都从 WhalePartner 自己的应用数据目录加载；480 ms 是 ASR 块长，不控制 TTS。
 - TTS 使用 [`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit`](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit)，由 WhalePartner 独立 MLX-Audio Python 环境和本地常驻 worker 在 Apple Silicon 上运行，预置 Serena 音色。API 启动时异步加载模型并预热；首次启动会把权重下载到 WhalePartner 自己的应用数据目录。
 - 大肥鱼绑定 Serena 音色，并将稳定的角色音色描述与 LLM 发出的结构化情绪标签作为 Qwen3-TTS 指令。情绪标签同时驱动 Live2D 表情；Live2D 嘴型由实际播放 PCM 的 RMS 振幅驱动。
-- 回复按自然句界进入 TTS，不等待 LLM 完成整轮回答。过短的句子会和下一句合并，长句在逗号等自然分句标点处拆分。当前最小独立分段长度为 20 个字符。首句立即提交；首句合成期间已排队的后续句子，在角色与情绪一致且合计不超过 180 个字符时合为一个请求，避免每句重复启动模型并保留标点语气。模型流式块长为 2 秒，与 [MLX Audio 的 Qwen3-TTS 默认间隔](https://github.com/Blaizzy/mlx-audio/blob/main/docs/guides/streaming.md)一致。AudioWorklet 的起播水位按 2026-11-09 在 Apple M4 16 GB QA App 上实测的语速和加权 RTF 动态计算：`ceil(字数 × 0.292 秒/字 × 0.9352 ÷ 2 秒) + 1`，字数统计 Unicode 字母和数字、不计空格与标点；例如 20 字目标为 4 个 2 秒块。LLM 输出尚未结束时，客户端根据已生成文本更新目标；若整轮结束时短回复未填满目标，则收到 finish 后直接播放。
-- 起播水位用于吸收首段生成延迟和短时波动。按实测平均 RTF 计算整轮预计生成时间，再额外预留一个 2 秒块；长回复的起播目标会随回答长度增加。该估算来自单台 Apple M4 的 100 句中性中文合成，其他设备、情绪提示和文本类型可能不同。
+- 回复按自然句界进入 TTS，不等待 LLM 完成整轮回答。过短的句子会和下一句合并，长句在逗号等自然分句标点处拆分。当前最小独立分段长度为 20 个字符。首句立即提交；首句合成期间已排队的后续句子，在角色与情绪一致且合计不超过 180 个字符时合为一个请求，避免每句重复启动模型并保留标点语气。模型流式块长为 2 秒，与 [MLX Audio 的 Qwen3-TTS 默认间隔](https://github.com/Blaizzy/mlx-audio/blob/main/docs/guides/streaming.md)一致。语速与加权 RTF 使用 2026-11-09 在 Apple M4 16 GB QA App 上 100 句实测值。客户端按 `max(0, 预计生成时长 + 2 秒余量 - 预计音频时长)` 计算首声等待目标，并按 RTF 折算成 AudioWorklet 所需的 PCM 预缓冲长度；字数统计 Unicode 字母和数字，不计空格与标点。20 字预计 TTS 合成耗时 5.46 秒、语音时长 5.84 秒，首声目标约 1.62 秒，Worklet 预缓冲约 1.73 秒。实际起播还受音频块到达时间影响；若整轮结束时 PCM 未达到目标，则收到 finish 后立即播放。
+- 预缓冲余量为一个 2 秒流式块。该策略估算的是起播墙钟延迟，不把整段回复的生成时长当作必须先收齐的音频长度。例如 10 秒音频、RTF 1.2 时，生成预计 12 秒，首声目标是 `12 + 2 - 10 = 4` 秒；对应的 PCM 预缓冲是 `4 ÷ 1.2 ≈ 3.33` 秒。回答越长，目标会根据实测生成与播放时长差动态变化；首段实际延迟取决于目标 PCM 到达时间。数据来自单台 Apple M4 的中性中文样本，其他设备、情绪提示和文本类型可能不同。
 - 每个 TTS 请求以 `segment-done` 标记单句完成；只有 LLM 已结束且本轮 TTS 队列排空后，客户端才向 AudioWorklet 发一次 `finish`。Worklet 在同一 turn 中保持播放状态，队列暂时耗尽时记录 underrun，不重置后再次预缓冲。日志包含 turn/segment/chunk 标识、TTS 首块和分块时间、缓冲量、欠载次数与时长、句界空白和打断原因。
 - 播放队列直接拼接 PCM，不在每个流式块后插入静音。对实测 WAV 的句界采样检查没有发现不连续尖峰，因此不额外做淡入淡出。
 - 麦克风请求启用系统回声消除和降噪，关闭自动增益控制（AGC）。助手播放期间用 0.03 RMS、连续 180 ms 的门槛识别用户打断；普通聆听期间使用 0.018 RMS、连续 120 ms。实测发现开启 AGC 时扬声器回声会误触发，关闭后回声低于播放期门槛。
@@ -86,7 +86,7 @@ Pure C/Metal 使用上游 [qwen3-tts](https://github.com/gabriele-mastrapasqua/q
 
 校准通过已构建并启动的 Tauri QA App 及其常驻 API/MLX worker 完成，模型为 Qwen3-TTS 1.7B MLX 4-bit Serena，情绪为 neutral。设备为 Apple M4、16 GB、macOS 26.5.2。100 条确定性打乱的合成中文句子覆盖 5–36 个汉字，共 2,060 个汉字，生成 601.44 秒 PCM，耗时 562.44 秒；加权 RTF 为 0.9352，单句 RTF 中位数 0.9413、P90 为 1.1009。实测语速为每秒 3.425 字，即每 10 字约 2.92 秒；首音频块延迟中位数 1.972 秒、P90 为 2.224 秒。共收到 346 个 TTS 块；PCM 总时长对应 301 个完整 2 秒块，按逐句取整则为 346 块。
 
-起播水位使用 `ceil(预计字数 × 0.292 秒/字 × 0.9352 ÷ 2 秒) + 1`。目标示例为 10 字 3 块、20 字 4 块、40 字 7 块、80 字 12 块、160 字 23 块；最后两项是按实测均值外推。字符统计与校准相同，只计算 Unicode 字母和数字，不计算空格和标点。目标在播放开始前随着 LLM 新文本更新；播放开始后保持不变，短回复在整轮 `finish` 到达时直接排空。
+首声等待按 `max(0, 预计音频秒数 × 0.9352 + 2 秒 − 预计音频秒数)` 计算；Worklet 的 PCM 水位为该等待秒数除以 0.9352。20 字对应约 1.62 秒首声目标和 1.73 秒 PCM 水位；10 秒音频、RTF 1.2 对应 4 秒首声目标和 3.33 秒 PCM 水位。目标在播放开始前随 LLM 已生成文本更新；开始播放后保持不变。实际起播等目标 PCM 到达；若整轮先结束，则收到 `finish` 后立即排空已有 PCM。
 
 QA App 使用独立 bundle ID `com.omnixsi.whalepartner.voiceqa` 和独立应用数据目录；模型与运行时从 WhalePartner 自己的数据目录做 APFS 克隆，未访问 InterviewHacker 资源或正式数据库。测试只调用 TTS 流接口，不发聊天请求、不保存 WAV。只读核对 QA 库时 `chat_sessions`、`messages` 与 `usage_ledger` 均为 0。完整 100 条输入与逐条指标见 [`qwen3-tts-100-sentence-calibration.json`](evidence/voice/qwen3-tts-100-sentence-calibration.json)，可复现脚本见 [`tts-buffer-calibration.mjs`](../apps/client/scripts/tts-buffer-calibration.mjs)。此项测量验证实际模型推理速度，不代表 AudioWorklet 起播或实体扬声器欠载结果。
 
