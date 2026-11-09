@@ -7,7 +7,8 @@
 - ASR 使用 sherpa-onnx X-ASR 中文/英文 480 ms 流式模型，并对整句做离线精修。流式与离线模型使用不同的编码器和解码器权重：流式模型负责实时 partial，离线模型负责整句重识别。WhalePartner 自己的 RMS VAD 在约 700 ms 静音后收句；流式模型关闭内部端点检测，收句时补 400 ms 静音并冲刷剩余识别状态。随后同一 worker 用离线 X-ASR 模型重识别完整 PCM 句段并补 300 ms 尾音，非空精修稿作为最终稿。两套模型权重都从 WhalePartner 自己的应用数据目录加载；480 ms 是 ASR 块长，不控制 TTS。
 - TTS 使用 [`mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit`](https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-4bit)，由 WhalePartner 独立 MLX-Audio Python 环境和本地常驻 worker 在 Apple Silicon 上运行，预置 Serena 音色。API 启动时异步加载模型并预热；首次启动会把权重下载到 WhalePartner 自己的应用数据目录。
 - 大肥鱼绑定 Serena 音色，并将稳定的角色音色描述与 LLM 发出的结构化情绪标签作为 Qwen3-TTS 指令。情绪标签同时驱动 Live2D 表情；Live2D 嘴型由实际播放 PCM 的 RMS 振幅驱动。
-- 回复按自然句界进入 TTS，不等待 LLM 完成整轮回答。过短的句子会和下一句合并，长句在逗号等自然分句标点处拆分。当前最小独立分段长度为 20 个字符。首句立即提交；首句合成期间已排队的后续句子，在角色与情绪一致且合计不超过 180 个字符时合为一个请求，避免每句重复启动模型并保留标点语气。模型流式块长为 2 秒，与 [MLX Audio 的 Qwen3-TTS 默认间隔](https://github.com/Blaizzy/mlx-audio/blob/main/docs/guides/streaming.md)一致；客户端按实测采用 1.44 秒播放预缓冲。
+- 回复按自然句界进入 TTS，不等待 LLM 完成整轮回答。过短的句子会和下一句合并，长句在逗号等自然分句标点处拆分。当前最小独立分段长度为 20 个字符。首句立即提交；首句合成期间已排队的后续句子，在角色与情绪一致且合计不超过 180 个字符时合为一个请求，避免每句重复启动模型并保留标点语气。模型流式块长为 2 秒，与 [MLX Audio 的 Qwen3-TTS 默认间隔](https://github.com/Blaizzy/mlx-audio/blob/main/docs/guides/streaming.md)一致。AudioWorklet 的起播水位随已生成回复文本变化：每 10 个非空白字符估算 2 秒语音，以 RTF 1.35 计算块数，并至少保留 1 个额外 2 秒块；例如 20 字估算 2 个语音块，起播目标为 3 块（6 秒）。LLM 输出尚未结束时，客户端根据新文本更新目标；若整轮结束时短回复未填满目标，则收到 finish 后直接播放。
+- 起播水位用于吸收首段生成延迟和短时波动。按每 10 字 2 秒估算且把目标设为整轮估算时长加一个余量块，会让长回复等待更久；固定预缓冲仍不能抵消持续高于实时播放速度的合成吞吐。
 - 每个 TTS 请求以 `segment-done` 标记单句完成；只有 LLM 已结束且本轮 TTS 队列排空后，客户端才向 AudioWorklet 发一次 `finish`。Worklet 在同一 turn 中保持播放状态，队列暂时耗尽时记录 underrun，不重置后再次预缓冲。日志包含 turn/segment/chunk 标识、TTS 首块和分块时间、缓冲量、欠载次数与时长、句界空白和打断原因。
 - 播放队列直接拼接 PCM，不在每个流式块后插入静音。对实测 WAV 的句界采样检查没有发现不连续尖峰，因此不额外做淡入淡出。
 - 麦克风请求启用系统回声消除和降噪，关闭自动增益控制（AGC）。助手播放期间用 0.03 RMS、连续 180 ms 的门槛识别用户打断；普通聆听期间使用 0.018 RMS、连续 120 ms。实测发现开启 AGC 时扬声器回声会误触发，关闭后回声低于播放期门槛。
@@ -65,7 +66,7 @@ Pure C/Metal 使用上游 [qwen3-tts](https://github.com/gabriele-mastrapasqua/q
 
 ### 当前 4-bit 常驻 worker 与 AudioWorklet 复测（2026-11-09）
 
-对正在运行的打包 app 只读查询状态时，Qwen3-TTS 1.7B MLX 4-bit Serena、X-ASR 480 ms 流式模型和离线整句精修均为 `ready`。Sidecar 打开的数据库路径是 WhalePartner 自己的 `~/Library/Application Support/com.omnixsi.whalepartner/app.db`。下表来自真实本机模型响应和 Chromium AudioWorklet 捕获的 PCM；RTF = TTS 生成耗时 ÷ PCM 时长，“首播”是 Worklet 启播时刻，“句间静音”只合计各 TTS 片段 PCM 自带的首尾静音，不含设备播放检查。所有场景的 Worklet 均只启动/排空一次，underrun 均为 0。
+对正在运行的打包 app 只读查询状态时，Qwen3-TTS 1.7B MLX 4-bit Serena、X-ASR 480 ms 流式模型和离线整句精修均为 `ready`。Sidecar 打开的数据库路径是 WhalePartner 自己的 `~/Library/Application Support/com.omnixsi.whalepartner/app.db`。下表来自真实本机模型响应和 Chromium AudioWorklet 捕获的 PCM；这些性能样本记录于固定 1.44 秒起播水位配置。RTF = TTS 生成耗时 ÷ PCM 时长，“首播”是 Worklet 启播时刻，“句间静音”只合计各 TTS 片段 PCM 自带的首尾静音，不含设备播放检查。所有场景的 Worklet 均只启动/排空一次，underrun 均为 0。
 
 | 场景 | TTS 请求数 | PCM 时长 | 生成耗时 | RTF | Worklet 首播 | 句间静音 | underrun |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |

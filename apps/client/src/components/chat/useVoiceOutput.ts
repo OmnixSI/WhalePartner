@@ -43,7 +43,21 @@ interface PlaybackMessage {
 }
 
 const PLAYBACK_SAMPLE_RATE = 24_000;
-const PLAYBACK_PREROLL_SECONDS = 1.44;
+const TTS_STREAMING_INTERVAL_SECONDS = 2;
+const SPEECH_CHARACTERS_PER_CHUNK = 10;
+const MAX_ASSUMED_TTS_RTF = 1.35;
+const BUFFER_RESERVE_CHUNKS = 1;
+
+function countSpeechCharacters(text: string): number {
+  return Array.from(text.replace(/\s/gu, "")).length;
+}
+
+function bufferChunksForResponse(characterCount: number): number {
+  const expectedSpeechChunks = Math.ceil(characterCount / SPEECH_CHARACTERS_PER_CHUNK);
+  const reserveChunks = expectedSpeechChunks + BUFFER_RESERVE_CHUNKS;
+  const rtfAdjustedChunks = Math.ceil(expectedSpeechChunks * MAX_ASSUMED_TTS_RTF);
+  return Math.max(reserveChunks, rtfAdjustedChunks);
+}
 
 export function useVoiceOutput() {
   const [enabled, setEnabledState] = useState(false);
@@ -61,6 +75,8 @@ export function useVoiceOutput() {
   const queue = useRef<Segment[]>([]);
   const pendingText = useRef("");
   const activeTurnId = useRef<string | null>(null);
+  const turnSpeechCharacters = useRef(0);
+  const playbackPrerollChunks = useRef(BUFFER_RESERVE_CHUNKS);
   const pendingEmotion = useRef<AvatarEmotion>("neutral");
   const pendingCharacterId = useRef<CharacterId>("deepseek");
   const turnFinished = useRef<string | null>(null);
@@ -159,6 +175,17 @@ export function useVoiceOutput() {
     }
   }, [updateLevel]);
 
+  const updatePlaybackPreroll = useCallback(() => {
+    const context = audioContext.current;
+    const node = playbackNode.current;
+    if (!context || !node || playbackActive.current) return;
+    const prerollSeconds = playbackPrerollChunks.current * TTS_STREAMING_INTERVAL_SECONDS;
+    node.port.postMessage({
+      type: "configure",
+      prerollSamples: Math.ceil(context.sampleRate * prerollSeconds),
+    });
+  }, []);
+
   const ensurePlayback = useCallback(async () => {
     const context = ensureAudio();
     if (playbackNode.current) return playbackNode.current;
@@ -199,7 +226,10 @@ export function useVoiceOutput() {
           updateSpeaking();
         }
       };
-      node.port.postMessage({ type: "configure", prerollSamples: Math.ceil(context.sampleRate * PLAYBACK_PREROLL_SECONDS) });
+      node.port.postMessage({
+        type: "configure",
+        prerollSamples: Math.ceil(context.sampleRate * playbackPrerollChunks.current * TTS_STREAMING_INTERVAL_SECONDS),
+      });
       node.connect(analyser.current ?? context.destination);
       playbackNode.current = node;
       return node;
@@ -268,6 +298,8 @@ export function useVoiceOutput() {
     running.current = false;
     nextSegmentIndex.current = 0;
     lastSegmentDoneAt.current = null;
+    turnSpeechCharacters.current = 0;
+    playbackPrerollChunks.current = BUFFER_RESERVE_CHUNKS;
     pendingEmotion.current = "neutral";
     pendingCharacterId.current = "deepseek";
     bufferedMs.current = 0;
@@ -414,13 +446,26 @@ export function useVoiceOutput() {
   const append = useCallback((text: string, turnId: string, emotion: AvatarEmotion, characterId: CharacterId) => {
     setError((current) => current ? "" : current);
     if (activeTurnId.current !== turnId) return;
+    turnSpeechCharacters.current += countSpeechCharacters(text);
+    const targetChunks = bufferChunksForResponse(turnSpeechCharacters.current);
+    if (targetChunks !== playbackPrerollChunks.current) {
+      playbackPrerollChunks.current = targetChunks;
+      updatePlaybackPreroll();
+      logVoiceDiagnostic("client-playback-buffer-target", {
+        turnId,
+        speechCharacters: turnSpeechCharacters.current,
+        targetChunks,
+        targetMs: targetChunks * TTS_STREAMING_INTERVAL_SECONDS * 1000,
+        playbackStarted: playbackActive.current,
+      });
+    }
     if (pendingText.current && (pendingEmotion.current !== emotion || pendingCharacterId.current !== characterId)) {
       enqueueText(turnId, "", true);
     }
     pendingEmotion.current = emotion;
     pendingCharacterId.current = characterId;
     enqueueText(turnId, text, false);
-  }, [enqueueText]);
+  }, [enqueueText, updatePlaybackPreroll]);
   const finish = useCallback((turnId: string) => {
     if (activeTurnId.current !== turnId) return;
     turnFinished.current = turnId;
