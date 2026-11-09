@@ -179,6 +179,7 @@ fn build_command(app: &AppHandle, port: u16, token: &str) -> Result<Command, Str
   fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
 
   let mut cmd;
+  let mut paths = Vec::new();
   if tauri::is_dev() {
     // tauri dev：直接跑源码，和 `pnpm --dir apps/api run serve` 一样（读 apps/api/.env）。
     let api_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../api");
@@ -193,14 +194,21 @@ fn build_command(app: &AppHandle, port: u16, token: &str) -> Result<Command, Str
     cmd.current_dir(res.join("api"))
       .arg(format!("--env-file-if-exists={}", data_dir.join(".env").display()))
       .arg(entry);
-    // 后端按名字 spawn("ffmpeg")，把随包的 bin 目录放到 PATH 最前面。
-    let mut paths = vec![res.join("bin")];
-    if let Some(old) = std::env::var_os("PATH") {
-      paths.extend(std::env::split_paths(&old));
-    }
-    if let Ok(joined) = std::env::join_paths(paths) {
-      cmd.env("PATH", joined);
-    }
+    // 后端按名字 spawn("ffmpeg")，优先使用随包的工具目录。
+    paths.push(res.join("bin"));
+  }
+
+  #[cfg(target_os = "macos")]
+  {
+    // Dock 启动的 GUI 不会读取 shell profile；补充 Homebrew 路径以解析本机 Codex CLI。
+    paths.extend([PathBuf::from("/opt/homebrew/bin"), PathBuf::from("/usr/local/bin")]);
+  }
+
+  if let Some(old) = std::env::var_os("PATH") {
+    paths.extend(std::env::split_paths(&old));
+  }
+  if let Ok(joined) = std::env::join_paths(paths) {
+    cmd.env("PATH", joined);
   }
 
   cmd
