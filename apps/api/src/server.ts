@@ -47,6 +47,7 @@ import { createMlxTtsService } from "./voice/tts.ts";
 import { attachVoiceWebSocket, handleVoiceRoute } from "./routes/voice.ts";
 import { handleRelationshipRoute } from "./routes/relationship.ts";
 import { dataDir } from "./data-dir.ts";
+import { closeCodexAppServer } from "./codex-app-server.ts";
 export type { ServerDeps } from "./server-types.ts";
 
 export interface ApiServer extends Server {
@@ -196,6 +197,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
     proactive.stop();
     void asr.close?.();
     void tts.close?.();
+    void closeCodexAppServer();
   });
   return apiServer;
 }

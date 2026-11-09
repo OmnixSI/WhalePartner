@@ -1,10 +1,9 @@
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
+import { listCodexModels, resolveCodexSettings } from "./codex-app-server.ts";
+import { readStoredCodexSettings, type StoredCodexSettings } from "./codex-settings.ts";
 
 const CODEX_TIMEOUT_MS = 240000;
-
-/** gpt-6-luna 不再接受 "minimal"（可选 none/low/medium/high/xhigh/max），默认用最接近的 "none"。 */
-export const CODEX_REASONING_EFFORT = process.env.CODEX_REASONING_EFFORT?.trim() || "none";
 
 export interface CodexTokenUsage {
   inputTokens: number;
@@ -15,6 +14,8 @@ export interface CodexTokenUsage {
 export interface CodexResult {
   message: string;
   usage?: CodexTokenUsage;
+  model?: string;
+  reasoningEffort?: string;
 }
 
 export function parseCodexResult(output: string): CodexResult {
@@ -81,7 +82,7 @@ export function parseCodexMessage(output: string) {
   return parseCodexResult(output).message;
 }
 
-export function buildCodexArgs(imagePaths: string[] = []) {
+export function buildCodexArgs(imagePaths: string[], settings: StoredCodexSettings) {
   return [
     "exec",
     "--ephemeral",
@@ -93,18 +94,23 @@ export function buildCodexArgs(imagePaths: string[] = []) {
     "-C",
     tmpdir(),
     "-m",
-    "gpt-6-luna",
+    settings.model,
     "-c",
-    `model_reasoning_effort="${CODEX_REASONING_EFFORT}"`,
+    `model_reasoning_effort=${JSON.stringify(settings.effort)}`,
     ...imagePaths.flatMap((path) => ["--image", path]),
     "-",
   ];
 }
 
-export async function summarizeWithCodex(prompt: string, imagePaths: string[] = []): Promise<CodexResult> {
-  const args = buildCodexArgs(imagePaths);
+export async function getCodexRequestSettings(configPath?: string) {
+  return resolveCodexSettings(readStoredCodexSettings(configPath), await listCodexModels());
+}
 
-  return new Promise<CodexResult>((resolve, reject) => {
+export async function summarizeWithCodex(prompt: string, imagePaths: string[] = []): Promise<CodexResult> {
+  const settings = await getCodexRequestSettings();
+  const args = buildCodexArgs(imagePaths, settings);
+
+  const result = await new Promise<CodexResult>((resolve, reject) => {
     const codex = spawn("codex", args, { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
@@ -137,4 +143,5 @@ export async function summarizeWithCodex(prompt: string, imagePaths: string[] = 
 
     codex.stdin.end(prompt);
   });
+  return { ...result, model: settings.model, reasoningEffort: settings.effort };
 }

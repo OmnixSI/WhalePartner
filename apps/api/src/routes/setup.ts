@@ -1,8 +1,9 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, sendJson } from "../http.ts";
+import { listCodexModels, type CodexModelOption } from "../codex-app-server.ts";
+import { codexConfigPath, readStoredCodexSettings } from "../codex-settings.ts";
 import type { ServerDeps } from "../server-types.ts";
 
 /**
@@ -16,9 +17,6 @@ import type { ServerDeps } from "../server-types.ts";
  *
  * 都不写日志：这里没有任何 console 调用。
  */
-const EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
-export type CodexEffort = (typeof EFFORTS)[number];
-
 /** `^\S{2,64}$`，另外挡掉会破坏 TOML 基本字符串的引号和反斜杠。 */
 const MODEL_PATTERN = /^\S{2,64}$/;
 const MODEL_UNSAFE = /["\\]/;
@@ -39,7 +37,7 @@ export interface SetupTargets {
 export function setupTargets(deps: ServerDeps): SetupTargets {
   return {
     envPath: deps.setup?.envPath ?? (process.env.WP_DATA_DIR?.trim() ? join(resolve(process.env.WP_DATA_DIR.trim()), ".env") : resolve(import.meta.dirname, "../../.env")),
-    codexPath: deps.setup?.codexPath ?? join(homedir(), ".codex", "config.toml"),
+    codexPath: deps.setup?.codexPath ?? codexConfigPath(),
   };
 }
 
@@ -165,19 +163,36 @@ function writeText(path: string, text: string): void {
 
 /* ---------------------------------------------------------------- 读当前状态 */
 
-export function readSetupState(deps: ServerDeps) {
+async function readCodexModels(deps: ServerDeps) {
+  return deps.codexModels ? deps.codexModels() : listCodexModels();
+}
+
+export async function readSetupState(deps: ServerDeps) {
   const targets = setupTargets(deps);
   // 文件里的值优先：刚保存过就能立刻在界面上看到；进程内 config 兜底（key 也可能来自系统环境变量）。
   const key = readEnvValue(targets.envPath, ENV_FILE_NAME) ?? deps.config.deepseek?.apiKey;
 
-  let codexText = "";
   let present = false;
   try {
     present = existsSync(targets.codexPath);
-    if (present) codexText = readFileSync(targets.codexPath, "utf8");
   } catch {
     present = false;
   }
+
+  let models: CodexModelOption[] = [];
+  let catalogAvailable = true;
+  try {
+    models = await readCodexModels(deps);
+  } catch {
+    catalogAvailable = false;
+  }
+
+  const stored = readStoredCodexSettings(targets.codexPath);
+  const selectedModel = stored.model
+    ? models.find((model) => model.model === stored.model)
+    : models.find((model) => model.isDefault) ?? models[0];
+  const effort = stored.effort || selectedModel?.defaultReasoningEffort || "";
+  const availableEfforts = selectedModel?.supportedReasoningEfforts ?? [];
 
   return {
     deepseek: {
@@ -185,10 +200,15 @@ export function readSetupState(deps: ServerDeps) {
       masked: key ? maskKey(key) : null,
     },
     codex: {
-      model: readTomlTopLevel(codexText, CODEX_MODEL_KEY) ?? "",
-      effort: readTomlTopLevel(codexText, CODEX_EFFORT_KEY) ?? "",
+      model: stored.model || selectedModel?.model || "",
+      effort,
       configPath: targets.codexPath,
       present,
+      catalogAvailable,
+      modelAvailable: Boolean(selectedModel),
+      effortAvailable: availableEfforts.some((option) => option.reasoningEffort === effort),
+      availableEfforts,
+      models,
     },
     chain: deps.provider.providers.map((item) => item.id),
   };
@@ -201,8 +221,8 @@ function validateKey(raw: unknown): { ok: true; key: string } | { ok: false } {
   return KEY_PATTERN.test(raw) ? { ok: true, key: raw } : { ok: false };
 }
 
-function validateEffort(raw: unknown): CodexEffort | undefined {
-  return typeof raw === "string" && (EFFORTS as readonly string[]).includes(raw) ? (raw as CodexEffort) : undefined;
+function validateEffort(raw: unknown): string | undefined {
+  return typeof raw === "string" && raw.trim() ? raw : undefined;
 }
 
 /* ---------------------------------------------------------------- 路由 */
@@ -218,7 +238,7 @@ export async function handleSetupRoute(
   if (url.pathname === "/api/setup") {
     if (request.method === "GET") {
       try {
-        sendJson(response, 200, readSetupState(deps));
+        sendJson(response, 200, await readSetupState(deps));
       } catch {
         sendJson(response, 503, { error: "setup_unavailable", message: "现在读不到模型设置。" });
       }
@@ -276,32 +296,66 @@ export async function handleSetupRoute(
         model = body.model;
       }
 
-      let effort: CodexEffort | undefined;
+      let effort: string | undefined;
       if (wantsEffort) {
         effort = validateEffort(body.effort);
         if (!effort) {
-          sendJson(response, 400, { error: "invalid_effort", message: `推理强度只认这几种：${EFFORTS.join(" / ")}。` });
+          sendJson(response, 400, { error: "invalid_effort", message: "推理强度必须来自当前模型的可用列表。" });
           return true;
         }
       }
 
       const targets = setupTargets(deps);
+      let models: CodexModelOption[];
+      try {
+        models = await readCodexModels(deps);
+      } catch {
+        sendJson(response, 503, { error: "codex_unavailable", message: "现在读不到本机 Codex 的可用模型列表。" });
+        return true;
+      }
+
+      const stored = readStoredCodexSettings(targets.codexPath);
+      const modelName = model ?? stored.model;
+      const modelOption = modelName
+        ? models.find((item) => item.model === modelName)
+        : models.find((item) => item.isDefault) ?? models[0];
+      if (!modelOption) {
+        sendJson(response, 400, { error: "invalid_model", message: "这个模型不在本机 Codex 当前可用列表中。" });
+        return true;
+      }
+
+      let selectedEffort = effort ?? stored.effort;
+      if (!selectedEffort) selectedEffort = modelOption.defaultReasoningEffort;
+      const supportedEfforts = modelOption.supportedReasoningEfforts.map((option) => option.reasoningEffort);
+      if (!supportedEfforts.includes(selectedEffort)) {
+        sendJson(response, 400, {
+          error: "invalid_effort",
+          message: `推理强度不在 ${modelOption.model} 当前可用列表中：${supportedEfforts.join(" / ")}`,
+        });
+        return true;
+      }
+
       const before = readFileOrEmpty(targets.codexPath);
       let after = before;
-      if (model !== undefined) after = upsertTomlTopLevel(after, CODEX_MODEL_KEY, model);
-      if (effort !== undefined) after = upsertTomlTopLevel(after, CODEX_EFFORT_KEY, effort);
+      after = upsertTomlTopLevel(after, CODEX_MODEL_KEY, modelOption.model);
+      after = upsertTomlTopLevel(after, CODEX_EFFORT_KEY, selectedEffort);
       backup(targets.codexPath);
       writeText(targets.codexPath, after);
 
       const text = readFileOrEmpty(targets.codexPath);
       sendJson(response, 200, {
         ok: true,
-        restartRequired: true,
+        restartRequired: false,
         codex: {
           model: readTomlTopLevel(text, CODEX_MODEL_KEY) ?? "",
           effort: readTomlTopLevel(text, CODEX_EFFORT_KEY) ?? "",
           configPath: targets.codexPath,
           present: existsSync(targets.codexPath),
+          catalogAvailable: true,
+          modelAvailable: true,
+          effortAvailable: true,
+          availableEfforts: modelOption.supportedReasoningEfforts,
+          models,
         },
       });
     } catch (error) {

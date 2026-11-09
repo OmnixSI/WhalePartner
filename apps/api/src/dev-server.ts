@@ -10,13 +10,11 @@ import {
   normalizeBilibiliInput,
 } from "./bilibili.ts";
 import { isBilibiliSessionValid, loadBilibiliSession } from "./bilibili-session.ts";
-import { CODEX_REASONING_EFFORT, summarizeWithCodex } from "./codex.ts";
+import { getCodexRequestSettings, summarizeWithCodex } from "./codex.ts";
 import { buildVideoSummaryPrompt } from "./prompt.ts";
 
 const appDir = resolve(import.meta.dirname, "..");
 const webFile = resolve(appDir, "web/index.html");
-const model = "gpt-6-luna";
-const reasoningEffort = CODEX_REASONING_EFFORT;
 const maxBodyBytes = 16 * 1024;
 let summaryRunning = false;
 
@@ -129,8 +127,8 @@ async function summarize(input: string) {
         imageCount: images.length,
         imageBytes: totalImageBytes,
       },
-      model,
-      reasoningEffort,
+      model: null,
+      reasoningEffort: null,
       timings: {
         sessionValidationMs,
         evidenceCollectionMs,
@@ -175,6 +173,8 @@ async function summarize(input: string) {
       return {
         ...baseResult,
         status: "summarized",
+        model: codexResult.model,
+        reasoningEffort: codexResult.reasoningEffort,
         summary: codexResult.message.trim(),
         promptText: prompt,
         usage: {
@@ -184,8 +184,8 @@ async function summarize(input: string) {
           inputTokens: codexResult.usage?.inputTokens ?? null,
           cachedInputTokens: codexResult.usage?.cachedInputTokens ?? null,
           outputTokens: codexResult.usage?.outputTokens ?? null,
-          model,
-          reasoningEffort,
+          model: codexResult.model,
+          reasoningEffort: codexResult.reasoningEffort,
         },
         timings: {
           ...baseResult.timings,
@@ -246,11 +246,12 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && requestUrl.pathname === "/api/status") {
       const session = await loadBilibiliSession();
+      const codexSettings = await getCodexRequestSettings();
       sendJson(response, 200, {
         ready: true,
         sessionConfigured: Boolean(session),
-        model,
-        reasoningEffort,
+        model: codexSettings.model,
+        reasoningEffort: codexSettings.effort,
         active: summaryRunning,
       });
       return;

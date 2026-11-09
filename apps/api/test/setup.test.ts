@@ -9,6 +9,7 @@ import { loadConfig } from "../src/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
+import type { CodexModelOption } from "../src/codex-app-server.ts";
 import { acquireSetupWrite, releaseSetupWrite } from "../src/routes/setup.ts";
 
 /**
@@ -26,6 +27,25 @@ model_reasoning_effort = "max"
 model = "gpt-6-astra"
 model_reasoning_effort = "xhigh"
 `;
+
+const CODEX_MODELS: CodexModelOption[] = [
+  {
+    model: "gpt-6-luna",
+    id: "gpt-6-luna",
+    displayName: "GPT-6 Luna",
+    defaultReasoningEffort: "medium",
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max"].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),
+    isDefault: true,
+  },
+  {
+    model: "gpt-6-luna-preview",
+    id: "gpt-6-luna-preview",
+    displayName: "GPT-6 Luna Preview",
+    defaultReasoningEffort: "low",
+    supportedReasoningEfforts: ["low", "high"].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })),
+    isDefault: false,
+  },
+];
 
 function fakeProvider(id: string, model: string): ChatProvider {
   return {
@@ -54,7 +74,7 @@ function serve(options: { env?: string; codex?: string | null } = {}): Promise<H
 
   const store = new ChatStore(":memory:");
   const provider = new FallbackChatProvider([fakeProvider("deepseek", "deepseek-flash"), fakeProvider("codex", "gpt-6-luna")]);
-  const server = createApiServer({ config: loadConfig({}), provider, store, setup: { envPath, codexPath } });
+  const server = createApiServer({ config: loadConfig({}), provider, store, setup: { envPath, codexPath }, codexModels: async () => CODEX_MODELS });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address() as AddressInfo;
@@ -91,16 +111,27 @@ test("GET /api/setup 只说配没配和后四位，绝不回明文", async () =>
 
     const body = JSON.parse(text) as {
       deepseek: { configured: boolean; masked: string | null };
-      codex: { model: string; effort: string; configPath: string; present: boolean };
+      codex: {
+        model: string;
+        effort: string;
+        configPath: string;
+        present: boolean;
+        catalogAvailable: boolean;
+        modelAvailable: boolean;
+        effortAvailable: boolean;
+        availableEfforts: CodexModelOption["supportedReasoningEfforts"];
+      };
       chain: string[];
     };
     assert.deepEqual(body.deepseek, { configured: true, masked: "sk-…abcd" });
-    assert.deepEqual(body.codex, {
-      model: "gpt-6-luna",
-      effort: "max",
-      configPath: app.codexPath,
-      present: true,
-    });
+    assert.equal(body.codex.model, "gpt-6-luna");
+    assert.equal(body.codex.effort, "max");
+    assert.equal(body.codex.configPath, app.codexPath);
+    assert.equal(body.codex.present, true);
+    assert.equal(body.codex.catalogAvailable, true);
+    assert.equal(body.codex.modelAvailable, true);
+    assert.equal(body.codex.effortAvailable, true);
+    assert.deepEqual(body.codex.availableEfforts, CODEX_MODELS[0].supportedReasoningEfforts);
     assert.deepEqual(body.chain, ["deepseek", "codex"]);
   } finally {
     app.close();
@@ -112,12 +143,13 @@ test("没配 key、config.toml 也不在时如实说没有", async () => {
   try {
     const body = (await (await fetch(`${app.base}/api/setup`)).json()) as {
       deepseek: { configured: boolean; masked: string | null };
-      codex: { model: string; effort: string; present: boolean };
+      codex: { model: string; effort: string; present: boolean; catalogAvailable: boolean };
     };
     assert.deepEqual(body.deepseek, { configured: false, masked: null });
     assert.equal(body.codex.present, false);
-    assert.equal(body.codex.model, "");
-    assert.equal(body.codex.effort, "");
+    assert.equal(body.codex.model, "gpt-6-luna");
+    assert.equal(body.codex.effort, "medium");
+    assert.equal(body.codex.catalogAvailable, true);
   } finally {
     app.close();
   }
@@ -174,12 +206,16 @@ test("PUT /api/setup/deepseek：.env 里原来写的是 export 那一行，也�
   }
 });
 
-test("PUT /api/setup/codex：effort 只认白名单，model 不许带空格", async () => {
+test("PUT /api/setup/codex：effort 只认当前模型清单，model 不许带空格", async () => {
   const app = await serve({ codex: TOML });
   try {
     const badEffort = await put(app.base, "/api/setup/codex", { effort: "turbo" });
     assert.equal(badEffort.status, 400);
     assert.equal(((await badEffort.json()) as { error: string }).error, "invalid_effort");
+
+    const unsupportedEffort = await put(app.base, "/api/setup/codex", { model: "gpt-6-luna-preview", effort: "max" });
+    assert.equal(unsupportedEffort.status, 400);
+    assert.equal(((await unsupportedEffort.json()) as { error: string }).error, "invalid_effort");
 
     for (const model of ["a", "has space", "quote\"inside", `x${"y".repeat(64)}`]) {
       const refused = await put(app.base, "/api/setup/codex", { model });
@@ -208,7 +244,7 @@ test("PUT /api/setup/codex：写下去能读回来，只动顶层同名那两行
       codex: { model: string; effort: string; present: boolean };
     };
     assert.equal(body.ok, true);
-    assert.equal(body.restartRequired, true);
+    assert.equal(body.restartRequired, false);
     assert.equal(body.codex.model, "gpt-6-luna-preview");
     assert.equal(body.codex.effort, "high");
 
