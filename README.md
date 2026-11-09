@@ -50,6 +50,7 @@ pnpm --dir apps/client run tauri build      # 首次编译 Rust 约 3 分钟；�
 - 关窗口即退出，后端随之停止。「后台继续逛」打开后，关窗口只是隐藏，托盘菜单里可以「打开鲸汐 / 退出鲸汐」。
 - 数据放在系统的应用数据目录（macOS：`~/Library/Application Support/com.omnixsi.whalepartner/`），日志放在应用日志目录的 `api.log`。模型密钥在 **设置 › 模型接入** 里填，保存在数据目录的 `.env`（打包版读它，不读仓库里的 `apps/api/.env`）。
 - macOS 本机开发包使用 ad-hoc 签名，不与其他应用共用签名身份。重建后 macOS 可能再次询问麦克风等隐私权限；首次打开可在「隐私与安全性」中手动允许。此签名只用于本机开发，不提供公证或公开分发信任；正式分发仍需 Developer ID 与公证。需要稳定的本机 TCC 身份时，按[本机 macOS 签名说明](docs/MACOS_LOCAL_SIGNING.md)为 WhalePartner 单独创建证书。请在 Node 26 下打包，后端运行时取自打包时的 Node。
+- 从 Finder 或 Dock 启动时，macOS 不会读取 shell profile；桌面后端会把 Homebrew 的 Apple Silicon (`/opt/homebrew/bin`) 和 Intel (`/usr/local/bin`) 目录加入 PATH，以解析本机 Codex CLI 等命令行工具。
 - 开发调试：`pnpm --dir apps/client run tauri dev` 会自动拉起后端，不用另开终端（后端读 `apps/api/.env`）。
 
 ### 浏览器开发模式（所有平台）
