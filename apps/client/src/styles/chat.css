@@ -400,7 +400,13 @@
   box-shadow: var(--shadow-1);
 }
 .composer__frame:focus-within { box-shadow: var(--focus-ring); }
-.composer__bar { display: flex; align-items: flex-end; gap: var(--sp-2); }
+.composer__bar { display: flex; align-items: center; gap: var(--sp-2); }
+.composer__bar:not([data-voice]) { align-items: flex-end; }
+.composer__bar[data-voice] { min-height: max(var(--hit), var(--composer-input-height, var(--hit))); }
+.composer__bar:not([data-voice]) > .composer__input { order: 1; }
+.composer__bar:not([data-voice]) > .iconbtn[aria-label="发个视频给她"] { order: 2; }
+.composer__bar:not([data-voice]) > .composer__actions { order: 3; }
+.composer__actions { display: flex; align-items: center; flex: none; gap: var(--sp-2); margin-left: auto; }
 .composer__input {
   flex: 1 1 auto;
   min-width: 0;
@@ -419,19 +425,24 @@
 .composer__input::placeholder { color: var(--ink-mute); }
 .composer__input:focus-visible { box-shadow: none; }
 .composer__send { flex: none; min-width: 88px; height: 56px; }
-.composer__voice { flex: none; width: var(--hit); height: var(--hit); }
-.composer__voice[data-active] { color: var(--accent); background: var(--accent-wash); }
-.composer__voice[data-recording] { color: var(--alert); background: var(--alert-wash); }
-.composer__voice-status {
+.composer__voice-mode { flex: none; min-height: 56px; gap: var(--sp-1); padding: 0 var(--sp-3); }
+.composer__voice-label-short { display: none; }
+.composer__text-mode { flex: none; min-width: 64px; height: 56px; padding: 0 var(--sp-2); }
+.composer__voice-state {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--hit);
   gap: var(--sp-2);
-  min-height: 30px;
-  padding: 2px var(--sp-2);
+  overflow: hidden;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-sm);
   color: var(--ink-soft);
   font-size: var(--fs-small);
 }
-.composer__voice-status[data-error] { color: var(--alert); }
+.composer__voice-state[data-error] { color: var(--alert); }
+.composer__voice-copy { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer__voice-dot {
   width: 8px;
   height: 8px;
@@ -440,10 +451,22 @@
   background: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-wash);
 }
-.composer__voice-status[data-error] .composer__voice-dot { background: var(--alert); box-shadow: none; }
-.composer__voice-progress { margin-left: auto; color: var(--ink-mute); font-family: var(--font-num); }
-.composer__voice-retry { border: 0; color: var(--accent-ink); text-decoration: underline; background: transparent; }
-.composer__voice-close { flex: none; border: 0; padding: 4px 6px; color: var(--ink-mute); font-size: var(--fs-small); background: transparent; }
+.composer__voice-state[data-error] .composer__voice-dot { background: var(--alert); box-shadow: none; }
+.composer__voice-state[data-recording] .composer__voice-dot { background: var(--alert); box-shadow: 0 0 0 3px var(--alert-wash); }
+.composer__voice-wave { display: flex; align-items: center; flex: none; height: 20px; gap: 2px; color: var(--alert); }
+.composer__voice-wave i { display: block; width: 3px; height: 7px; border-radius: 2px; background: currentColor; transform-origin: center; }
+.composer__voice-wave i:nth-child(2),
+.composer__voice-wave i:nth-child(4) { height: 13px; }
+.composer__voice-state[data-recording] .composer__voice-wave i { animation: composer-wave 700ms ease-in-out infinite alternate; }
+.composer__voice-state[data-recording] .composer__voice-wave i:nth-child(2) { animation-delay: 120ms; }
+.composer__voice-state[data-recording] .composer__voice-wave i:nth-child(3) { animation-delay: 240ms; }
+.composer__voice-state[data-recording] .composer__voice-wave i:nth-child(4) { animation-delay: 360ms; }
+.composer__cancel,
+.composer__voice-action,
+.composer__voice-retry { flex: none; min-width: 72px; height: 56px; padding: 0 var(--sp-3); }
+.composer__cancel { min-width: 64px; }
+.composer__voice-retry { min-width: 72px; }
+@keyframes composer-wave { from { transform: scaleY(.55); } to { transform: scaleY(1.35); } }
 .composer__busy { width: 20px; color: var(--accent-ink); }
 /* 寄出中：不是禁用，是加载——保持主色，只把图标位换成会自己画的墨线（§6.1） */
 .btn--primary[data-loading]:disabled {
@@ -832,6 +855,12 @@
   .dlg__float { right: var(--sp-2); bottom: calc(100% + var(--sp-2)); max-width: 88%; }
   .composer__hint { display: none; }
   .composer__send { min-width: 88px; height: 52px; }
+  .composer__voice-mode,
+  .composer__text-mode,
+  .composer__cancel,
+  .composer__voice-action,
+  .composer__voice-retry { min-height: 52px; height: 52px; }
+  .composer__voice-state { height: 52px; }
   .composer__input { min-height: max(var(--field-h), var(--hit)); }
   .suggests { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: var(--sp-1); }
   .suggests::-webkit-scrollbar { display: none; }
@@ -844,6 +873,18 @@
   .nametab { padding: var(--sp-1) var(--sp-3); row-gap: var(--sp-1); }
   .nametab::after { display: none; }
   .nametab__name { font-size: var(--fs-body); }
+}
+
+@media (max-width: 380px) {
+  .composer__bar { gap: var(--sp-1); }
+  .composer__actions { gap: var(--sp-1); }
+  .composer__voice-mode { padding: 0 var(--sp-2); }
+  .composer__voice-label { display: none; }
+  .composer__voice-label-short { display: inline; }
+  .composer__text-mode { min-width: 56px; }
+  .composer__cancel { min-width: 56px; padding: 0 var(--sp-2); }
+  .composer__send { min-width: 76px; gap: var(--sp-1); }
+  .composer__voice-state { padding: 0 var(--sp-1); gap: var(--sp-1); }
 }
 
 /* ---------------------------------------------------------------- 键盘弹起 */
@@ -889,6 +930,7 @@ html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
     animation: chat-fade var(--dur-ink) var(--ease-out) both;
   }
   .ink-in { transform: none; }
+  .composer__voice-state[data-recording] .composer__voice-wave i { animation: none; }
   html[data-kb="on"] .app,
   html[data-kb="on"] .scene { transition: none; }
 }

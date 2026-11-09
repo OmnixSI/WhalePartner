@@ -6,7 +6,7 @@ import { ComposerBar } from "./ComposerBar";
 import { Slip } from "./Slip";
 import { SuggestionChips } from "./SuggestionChips";
 import type { DialogState, Progress, Turn } from "./types";
-import type { VoiceModelStatus, VoicePhase } from "./useVoiceMode";
+import type { VoicePhase } from "./useVoiceMode";
 
 interface Props {
   name: string;
@@ -43,9 +43,9 @@ interface Props {
   voicePhase?: VoicePhase;
   voiceRecording?: boolean;
   voiceMessage?: string;
-  voiceModel?: VoiceModelStatus;
-  voiceTtsStatus?: VoiceModelStatus;
   onStartVoice?: () => void;
+  onFinishVoice?: () => void;
+  onCancelRecording?: () => void;
   onStopVoice?: () => void;
   onRetryVoice?: () => void;
 }
@@ -82,9 +82,9 @@ export function ChatTranscript({
   voicePhase,
   voiceRecording,
   voiceMessage,
-  voiceModel,
-  voiceTtsStatus,
   onStartVoice,
+  onFinishVoice,
+  onCancelRecording,
   onStopVoice,
   onRetryVoice,
 }: Props) {
@@ -143,9 +143,9 @@ export function ChatTranscript({
         voicePhase={voicePhase}
         voiceRecording={voiceRecording}
         voiceMessage={voiceMessage}
-        voiceModel={voiceModel}
-        voiceTtsStatus={voiceTtsStatus}
         onStartVoice={onStartVoice}
+        onFinishVoice={onFinishVoice}
+        onCancelRecording={onCancelRecording}
         onStopVoice={onStopVoice}
         onRetryVoice={onRetryVoice}
       />
