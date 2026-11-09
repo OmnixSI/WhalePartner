@@ -8,9 +8,13 @@ import { createServer } from "vite";
 const clientDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const apiOrigin = "http://127.0.0.1:8787";
 const sampleRate = 24_000;
-const prerollSeconds = 1.44;
+const streamingIntervalSeconds = 2;
+const speechCharactersPerChunk = 10;
+const maxAssumedTtsRtf = 1.35;
+const bufferReserveChunks = 1;
 const characterId = "deepseek";
 const emotion = "neutral";
+const interruptionText = "这一轮回答会在播放途中被用户打断。系统必须马上停止旧声音、取消剩余合成，并清除旧轮次的音频队列。随后用户立即开始新的问题，新的回答只能使用新的轮次编号，不能混入上一轮的语音内容。为了覆盖取消时仍有较长文本待生成的情况，我们继续增加一些自然的说明内容，确保服务端还在生成时就发生打断。";
 const beforeSegments = [
   "第一句话我们先把播放状态和声音生成分开观察，确认每一段真实语音什么时候到达。",
   "第二句话会继续检查缓冲是否能够支撑连续播放，以及句子之间有没有额外空白。",
@@ -29,9 +33,17 @@ const longSpeechSegments = [
   "本次记录只统计这台 Mac 上真实运行的本地模型和真实 Web Audio 播放处理结果。",
 ];
 
+function estimatePrerollSeconds(text) {
+  const speechCharacters = Array.from(text.replace(/\s/gu, "")).length;
+  const expectedSpeechChunks = Math.ceil(speechCharacters / speechCharactersPerChunk);
+  const reserveChunks = expectedSpeechChunks + bufferReserveChunks;
+  const rtfAdjustedChunks = Math.ceil(expectedSpeechChunks * maxAssumedTtsRtf);
+  return Math.max(reserveChunks, rtfAdjustedChunks) * streamingIntervalSeconds;
+}
+
 function findLocalToken() {
   const processes = execFileSync("ps", ["-axo", "pid=,command="], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
-  const row = processes.split("\n").find((line) => line.includes("whale-node") && line.includes("Resources/api/dist/server.mjs") && line.includes("WhalePartner"));
+  const row = processes.split("\n").find((line) => /whale-node/i.test(line) && /Resources\/api\/dist\/server\.mjs/i.test(line));
   const pid = row?.trim().split(/\s+/, 1)[0];
   if (!pid) return "";
   const command = execFileSync("ps", ["eww", "-p", pid, "-o", "command="], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
@@ -164,7 +176,9 @@ try {
   });
   await page.goto("http://127.0.0.1:" + address.port, { waitUntil: "domcontentloaded" });
 
-  const run = async (scenarioId, segments, finishEachSegment) => page.evaluate(async ({ scenarioId, segments, finishEachSegment, token, sampleRate, prerollSeconds, characterId, emotion }) => {
+  const run = async (scenarioId, segments, finishEachSegment) => {
+    const prerollSeconds = estimatePrerollSeconds(segments.join(""));
+    return page.evaluate(async ({ scenarioId, segments, finishEachSegment, token, sampleRate, prerollSeconds, characterId, emotion }) => {
     const context = new AudioContext({ latencyHint: "interactive", sampleRate });
     await context.resume();
     await context.audioWorklet.addModule("/src/components/chat/pcm-playback-worklet.ts");
@@ -333,7 +347,8 @@ try {
     await window.recordVoicePcm({ scenarioId, pcm16Chunks, sampleRate });
     await context.close();
     return result;
-  }, { scenarioId, segments, finishEachSegment, token, sampleRate, prerollSeconds, characterId, emotion });
+    }, { scenarioId, segments, finishEachSegment, token, sampleRate, prerollSeconds, characterId, emotion });
+  };
 
   console.log("MODEL", JSON.stringify({ model: status.model, speaker: status.speaker, state: status.state }));
   const before = await run("real-before-per-segment-finish", beforeSegments, true);
@@ -395,7 +410,7 @@ try {
   assert.ok(queuedLongDurationMs >= 60_000, "the batched real-model WAV must contain at least 60 seconds of Chinese speech");
   assert.equal(queuedLongRun.workletDrainCount, 1, "the batched sixty-second reply must drain only once at turn completion");
 
-  const interruption = await page.evaluate(async ({ token, sampleRate, prerollSeconds, characterId, emotion }) => {
+  const interruption = await page.evaluate(async ({ token, sampleRate, prerollSeconds, characterId, emotion, interruptionText }) => {
     const context = new AudioContext({ latencyHint: "interactive", sampleRate });
     await context.resume();
     await context.audioWorklet.addModule("/src/components/chat/pcm-playback-worklet.ts");
@@ -419,7 +434,7 @@ try {
       method: "POST",
       headers: Object.assign({ "content-type": "application/json" }, token ? { authorization: "Bearer " + token } : {}),
       body: JSON.stringify({
-        text: "这一轮回答会在播放途中被用户打断。系统必须马上停止旧声音、取消剩余合成，并清除旧轮次的音频队列。随后用户立即开始新的问题，新的回答只能使用新的轮次编号，不能混入上一轮的语音内容。为了覆盖取消时仍有较长文本待生成的情况，我们继续增加一些自然的说明内容，确保服务端还在生成时就发生打断。",
+        text: interruptionText,
         turnId: oldTurnId,
         segmentIndex: 0,
         characterId,
@@ -537,7 +552,7 @@ try {
     };
     await context.close();
     return result;
-  }, { token, sampleRate, prerollSeconds, characterId, emotion });
+  }, { token, sampleRate, prerollSeconds: estimatePrerollSeconds(interruptionText), characterId, emotion, interruptionText });
   assert.ok(interruption.oldAudioChunks > 0, "the old real turn must be producing audio when interrupted");
   assert.equal(interruption.stopReason, "vad-user-speech-during-playback");
   assert.equal(interruption.nextDrained, true, "the rapid next real turn must drain independently");

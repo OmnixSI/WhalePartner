@@ -11,6 +11,7 @@ const failures = [];
 let segments = 0;
 let socketCount = 0;
 let closedSockets = 0;
+let asrPcmFramesReceived = 0;
 
 function check(label, condition, detail = "") {
   if (condition) console.log(`✓ ${label}`);
@@ -147,7 +148,7 @@ try {
             const delay = message.type === "audio"
               ? ttsRequest.turnId === slowTurnId && chunkNumber === 0
                 ? 15_000
-                : chunkNumber === 1 ? 700 : 380
+              : chunkNumber === 1 ? 80 : 40
               : 0;
             timer = window.setTimeout(sendNext, delay);
           };
@@ -223,7 +224,7 @@ try {
             playbackScheduleGaps,
             outputWaveformFrames,
             nonSilentOutputWaveformFrames,
-            voiceDiagnostics: voiceDiagnostics.filter((event) => event.event === "worklet-buffer" || event.event === "worklet-started" || event.event === "worklet-drained" || event.event === "worklet-underrun-start" || event.event === "worklet-underrun-end" || event.event === "voice-interruption"),
+            voiceDiagnostics: voiceDiagnostics.filter((event) => event.event === "client-voice-stop" || event.event === "worklet-buffer" || event.event === "worklet-started" || event.event === "worklet-drained" || event.event === "worklet-stopped" || event.event === "worklet-underrun-start" || event.event === "worklet-underrun-end" || event.event === "voice-interruption" || event.event === "voice-asr-paused-during-assistant" || event.event === "voice-asr-interruption-prefill"),
             ttsStartedBeforeChatDone,
             ttsAbortRequests,
             chatAbortRequests,
@@ -316,6 +317,7 @@ try {
     let quietFrames = 0;
     socket.onMessage((message) => {
       if (typeof message === "string") return;
+      asrPcmFramesReceived += 1;
       const pcm = Buffer.isBuffer(message) ? message : Buffer.from(message);
       if (pcm.length < 2 || pcm.length % 2 !== 0) return;
       let sum = 0;
@@ -372,6 +374,13 @@ try {
   await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("大肥鱼正在回答"), null, { timeout: 10_000 });
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackPushes >= 4, null, { timeout: 10_000 });
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 1, null, { timeout: 10_000 });
+  const asrFramesAtPlayback = asrPcmFramesReceived;
+  await page.waitForTimeout(500);
+  check(
+    "AI 播放期间暂停向 X-ASR 发送麦克风帧",
+    asrPcmFramesReceived === asrFramesAtPlayback,
+    `${asrFramesAtPlayback} -> ${asrPcmFramesReceived}`,
+  );
   check(
     "第一句在 LLM 完成整轮回答前送入 TTS，并使用独立 turn ID",
     (await page.evaluate(() => window.__wpVoiceCheck.stats().ttsStartedBeforeChatDone)) > 0
@@ -408,13 +417,32 @@ try {
   check("TTS 播放产生非静音波形供 Live2D 嘴型驱动", (await page.evaluate(() => window.__wpVoiceCheck.stats().outputWaveformFrames)) > 0);
 
   const beforePlaybackInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  const asrFramesBeforeInterrupt = asrPcmFramesReceived;
+  const lastPlaybackState = [...beforePlaybackInterrupt.voiceDiagnostics].reverse().find((event) => event.event === "worklet-started" || event.event === "worklet-drained" || event.event === "worklet-stopped");
+  check("播放中断言发生在 AudioWorklet 活跃期间", lastPlaybackState?.event === "worklet-started", lastPlaybackState?.event ?? "没有播放状态事件");
   await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
-  await page.waitForFunction(() => document.querySelector(".composer__voice-status")?.textContent?.includes("已停止她当前的回答"), null, { timeout: 5_000 });
+  const interruptObserved = await page.waitForFunction(() => {
+    const diagnostics = window.__wpVoiceCheck.stats().voiceDiagnostics;
+    const voiceStopped = diagnostics.some((event) => event.event === "client-voice-stop" && event.reason === "vad-user-speech-during-playback");
+    const workletStopped = diagnostics.some((event) => event.event === "worklet-stopped" && event.reason === "vad-user-speech-during-playback");
+    return voiceStopped && workletStopped;
+  }, null, { timeout: 5_000 }).then(() => true, () => false);
   const afterPlaybackInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  if (!interruptObserved) {
+    console.error(JSON.stringify({ reason: "playback VAD did not confirm speech", pcmFrames: [asrFramesBeforeInterrupt, asrPcmFramesReceived], message: await status.innerText(), diagnostics: afterPlaybackInterrupt.voiceDiagnostics.slice(-8) }));
+    throw new Error("播放期间的 VAD 未确认用户打断。");
+  }
   check(
     "说话时立即停止正在播放的 TTS",
-    (await status.innerText()).includes("已停止她当前的回答")
-      && afterPlaybackInterrupt.pcmPlaybackStops > beforePlaybackInterrupt.pcmPlaybackStops,
+    afterPlaybackInterrupt.pcmPlaybackStops > beforePlaybackInterrupt.pcmPlaybackStops
+      && afterPlaybackInterrupt.voiceDiagnostics.some((event) => event.event === "voice-interruption" && event.reason === "vad-user-speech-during-playback" && event.assistantSpeaking),
+    JSON.stringify({ stops: [beforePlaybackInterrupt.pcmPlaybackStops, afterPlaybackInterrupt.pcmPlaybackStops], diagnostics: afterPlaybackInterrupt.voiceDiagnostics.slice(-5) }),
+  );
+  check(
+    "打断确认后把前置麦克风帧送入 X-ASR",
+    asrPcmFramesReceived >= asrFramesBeforeInterrupt + 2
+      && afterPlaybackInterrupt.voiceDiagnostics.some((event) => event.event === "voice-asr-interruption-prefill" && event.reason === "user-speech-confirmed" && event.frameCount >= 2),
+    JSON.stringify({ frames: [asrFramesBeforeInterrupt, asrPcmFramesReceived], diagnostics: afterPlaybackInterrupt.voiceDiagnostics.slice(-3) }),
   );
   await page.waitForTimeout(500);
   await page.evaluate(() => window.__wpVoiceCheck.setTone(false));

@@ -16,6 +16,7 @@ const SPEECH_RMS = 0.018;
 const SPEECH_CONFIRM_MS = 120;
 const SPEECH_RMS_DURING_PLAYBACK = 0.03;
 const SPEECH_CONFIRM_DURING_PLAYBACK_MS = 180;
+const ASR_PREROLL_FRAME_COUNT = 5;
 
 interface Props {
   assistantBusy: boolean;
@@ -55,6 +56,9 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   const interrupted = useRef(false);
   const assistantBusyRef = useRef(assistantBusy);
   const assistantSpeakingRef = useRef(false);
+  const assistantActiveDuringPreviousFrame = useRef(false);
+  const asrPrerollFrames = useRef<ArrayBuffer[]>([]);
+  const forwardingAsrDuringAssistant = useRef(false);
   const transcriptRef = useRef(onTranscript);
   const interruptRef = useRef(onInterrupt);
   const preparingRequest = useRef<AbortController | null>(null);
@@ -82,6 +86,9 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     speakingSince.current = null;
     speechPeak.current = 0;
     interrupted.current = false;
+    assistantActiveDuringPreviousFrame.current = false;
+    asrPrerollFrames.current = [];
+    forwardingAsrDuringAssistant.current = false;
     stream.current?.getTracks().forEach((track) => track.stop());
     stream.current = null;
     const audioContext = context.current;
@@ -99,8 +106,35 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   const consumeFrame = useCallback((frame: PcmFrame, token: number) => {
     if (!active.current || token !== generation.current) return;
     const now = performance.now();
-    if (!assistantBusyRef.current && !assistantSpeakingRef.current) interrupted.current = false;
+    const assistantBusyNow = assistantBusyRef.current;
     const assistantSpeakingNow = assistantSpeakingRef.current;
+    const assistantActiveNow = assistantBusyNow || assistantSpeakingNow;
+    const ws = socket.current;
+
+    if (!assistantActiveNow) {
+      if (assistantActiveDuringPreviousFrame.current && speakingSince.current !== null && !forwardingAsrDuringAssistant.current) {
+        const pendingFrames = asrPrerollFrames.current;
+        if (ws?.readyState === WebSocket.OPEN) {
+          for (const pcm of pendingFrames) ws.send(pcm);
+        }
+        logVoiceDiagnostic("voice-asr-interruption-prefill", {
+          reason: "assistant-finished-during-speech",
+          frameCount: pendingFrames.length,
+        });
+      }
+      interrupted.current = false;
+      asrPrerollFrames.current = [];
+      forwardingAsrDuringAssistant.current = false;
+    }
+
+    if (assistantActiveNow !== assistantActiveDuringPreviousFrame.current) {
+      logVoiceDiagnostic(assistantActiveNow ? "voice-asr-paused-during-assistant" : "voice-asr-resumed-after-assistant", {
+        assistantBusy: assistantBusyNow,
+        assistantSpeaking: assistantSpeakingNow,
+      });
+    }
+    assistantActiveDuringPreviousFrame.current = assistantActiveNow;
+
     const threshold = assistantSpeakingNow ? SPEECH_RMS_DURING_PLAYBACK : SPEECH_RMS;
     const confirmationMs = assistantSpeakingNow ? SPEECH_CONFIRM_DURING_PLAYBACK_MS : SPEECH_CONFIRM_MS;
     if (frame.rms >= threshold) {
@@ -130,7 +164,30 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
       speechPeak.current = 0;
     }
 
-    const ws = socket.current;
+    if (!assistantActiveNow) {
+      if (ws?.readyState === WebSocket.OPEN) ws.send(frame.pcm);
+      return;
+    }
+
+    if (!forwardingAsrDuringAssistant.current) {
+      const pendingFrames = asrPrerollFrames.current;
+      pendingFrames.push(frame.pcm.slice(0));
+      if (pendingFrames.length > ASR_PREROLL_FRAME_COUNT) pendingFrames.shift();
+
+      if (speakingSince.current !== null && now - speakingSince.current >= confirmationMs) {
+        if (ws?.readyState === WebSocket.OPEN) {
+          for (const pcm of pendingFrames) ws.send(pcm);
+        }
+        logVoiceDiagnostic("voice-asr-interruption-prefill", {
+          reason: "user-speech-confirmed",
+          frameCount: pendingFrames.length,
+        });
+        asrPrerollFrames.current = [];
+        forwardingAsrDuringAssistant.current = true;
+      }
+      return;
+    }
+
     if (ws?.readyState === WebSocket.OPEN) ws.send(frame.pcm);
   }, []);
 
@@ -264,6 +321,9 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     }
     const token = ++generation.current;
     active.current = true;
+    assistantActiveDuringPreviousFrame.current = false;
+    asrPrerollFrames.current = [];
+    forwardingAsrDuringAssistant.current = false;
     try {
       const input = await navigator.mediaDevices.getUserMedia({
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false },

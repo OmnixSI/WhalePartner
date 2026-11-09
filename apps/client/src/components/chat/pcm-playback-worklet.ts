@@ -29,7 +29,7 @@ class PcmPlaybackWorklet extends AudioWorkletProcessor {
   #chunks: PlaybackChunk[] = [];
   #chunkOffset = 0;
   #bufferedSamples = 0;
-  #prerollSamples = Math.ceil(sampleRate * 1.44);
+  #prerollSamples = Math.ceil(sampleRate * 2);
   #finished = false;
   #started = false;
   #turnId: string | null = null;
@@ -83,6 +83,7 @@ class PcmPlaybackWorklet extends AudioWorkletProcessor {
         this.#bufferedSamples = 0;
         this.#finished = false;
         this.#started = false;
+        this.#prerollSamples = Math.ceil(sampleRate * 2);
         this.#turnId = null;
         this.#segmentIndex = null;
         this.#underrunStartedAt = null;
