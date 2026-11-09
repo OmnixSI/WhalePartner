@@ -7,6 +7,7 @@ const coreTarget = resolve(clientRoot, "public/live2d/libs/live2dcubismcore.min.
 const modelSource = "https://raw.githubusercontent.com/A8Chann/dsh-pet-live2d/9b7cd8ed0d16bd23fb098bc0c4fdbac63d89de75/dsh-live2d-pet/pets/ds-whale-girl/";
 const licenseSource = "https://raw.githubusercontent.com/A8Chann/dsh-pet-live2d/9b7cd8ed0d16bd23fb098bc0c4fdbac63d89de75/dsh-live2d-pet/";
 const modelFile = "c_0120.model3.json";
+const requireCore = process.argv.includes("--require-core");
 
 function sourceUrl(base, path) {
   const encodedPath = path.split("/").map(encodeURIComponent).join("/");
@@ -68,6 +69,11 @@ try {
     } catch (error) {
       const label = runtime.target.replace(`${clientRoot}/`, "");
       if (runtime.needed) {
+        if (requireCore) {
+          throw new Error(
+            `无法获取必须的 ${label}（${error instanceof Error ? error.message : error}）。请从 Live2D 官方 Web SDK 获取并放到该路径，再重新构建。Cubism Core 遵循其独立许可，不要提交或分发该文件。`,
+          );
+        }
         console.warn(`未能获取 ${label}（${error instanceof Error ? error.message : error}）：请自行从 Live2D 官方 SDK 页面获取并放入该路径。`);
         console.warn("下载与分发须遵循 Live2D SDK 许可。https://www.live2d.com/en/sdk/download/web/");
       } else {
@@ -75,7 +81,7 @@ try {
       }
     }
   }
-  console.log("大肥鱼 Live2D 模型资源已准备好。");
+  console.log(requireCore ? "大肥鱼 Live2D 模型与 Cubism Core 已准备好。" : "大肥鱼 Live2D 模型资源已准备好。");
 } catch (error) {
   console.error(`Live2D 下载失败：${error instanceof Error ? error.message : error}`);
   process.exitCode = 1;
