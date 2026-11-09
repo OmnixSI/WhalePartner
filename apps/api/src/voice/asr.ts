@@ -43,6 +43,7 @@ export interface AsrUpdate {
 
 export interface AsrStream {
   acceptPcm(pcm: Buffer): Promise<AsrUpdate>;
+  finish(): Promise<AsrUpdate>;
   close(): Promise<void>;
 }
 
@@ -135,6 +136,11 @@ export class XAsrService implements AsrService {
         if (pcm.length === 0 || pcm.length % 2 !== 0) throw new Error("X-ASR 音频块必须是 16 kHz 单声道 PCM16。");
         const reply = await this.#request({ action: "audio", streamId: id, pcm: pcm.toString("base64") });
         return { text: reply.text ?? "", final: reply.final === true };
+      },
+      finish: async () => {
+        if (closed) throw new Error("语音识别会话已经结束。");
+        const reply = await this.#request({ action: "finish", streamId: id });
+        return { text: reply.text ?? "", final: true };
       },
       close: async () => {
         if (closed) return;

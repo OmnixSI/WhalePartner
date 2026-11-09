@@ -118,10 +118,18 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
 
     client.on("message", (data: RawData, isBinary: boolean) => {
       queue = queue.then(async () => {
-        if (!isBinary) throw new Error("X-ASR 只接收 16 kHz PCM 音频帧。");
+        if (!session) throw new Error("X-ASR 会话尚未就绪。");
+        if (!isBinary) {
+          const control = JSON.parse(toBuffer(data).toString("utf8")) as { type?: string };
+          if (control.type !== "finish") throw new Error("X-ASR 语音控制消息无效。");
+          const update = await session.finish();
+          if (update.text.trim()) send(client, { type: "final", text: update.text.trim() });
+          send(client, { type: "finished" });
+          lastHypothesis = "";
+          return;
+        }
         const pcm = toBuffer(data);
         if (pcm.length > MAX_PCM_FRAME_BYTES) throw new Error("音频帧太大，请更新 WhalePartner 后重试。");
-        if (!session) throw new Error("X-ASR 会话尚未就绪。");
         const update = await session.acceptPcm(pcm);
         if (update.final) {
           if (update.text.trim()) send(client, { type: "final", text: update.text.trim() });

@@ -27,6 +27,7 @@ type Props = {
   /** 自增即打开「给她看个视频」这个弹层（空态芯片用）。 */
   shareSignal?: number;
   voicePhase?: VoicePhase;
+  voiceRecording?: boolean;
   voiceMessage?: string;
   voiceModel?: VoiceModelStatus;
   voiceTtsStatus?: VoiceModelStatus;
@@ -46,7 +47,7 @@ function subscribePrefs(callback: () => void) {
   };
 }
 
-export function ComposerBar({ name, value, onChange, onSend, onStop, busy, online, focusSignal = 0, shareSignal = 0, voicePhase = "off", voiceMessage = "", voiceModel, voiceTtsStatus, onStartVoice, onStopVoice, onRetryVoice }: Props) {
+export function ComposerBar({ name, value, onChange, onSend, onStop, busy, online, focusSignal = 0, shareSignal = 0, voicePhase = "off", voiceRecording = false, voiceMessage = "", voiceModel, voiceTtsStatus, onStartVoice, onStopVoice, onRetryVoice }: Props) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [url, setUrl] = useState("");
@@ -57,6 +58,8 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
   // 生成中且输入框是空的：发送键就是「停」。
   const stopMode = busy && !hasText;
   const voiceActive = voicePhase !== "off" && voicePhase !== "error";
+  const voiceStarting = voicePhase === "preparing" || voicePhase === "permission";
+  const voiceFinishing = voicePhase === "recognizing" && !voiceRecording;
 
   // 52 → 160 自动增高（沿用原来的手写逻辑，不引第三方）。
   useEffect(() => {
@@ -108,10 +111,12 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             type="button"
             className="iconbtn composer__voice"
             data-active={voiceActive || undefined}
-            aria-pressed={voiceActive}
-            aria-label={voicePhase === "error" ? "重试语音模式" : voiceActive ? "结束语音模式" : "进入连续语音模式"}
-            title={voicePhase === "error" ? "重试语音模式" : voiceActive ? "结束语音模式" : "连续语音对话"}
-            onClick={voicePhase === "error" ? onRetryVoice : voiceActive ? onStopVoice : onStartVoice}
+            data-recording={voiceRecording || undefined}
+            aria-pressed={voiceRecording}
+            aria-label={voicePhase === "error" ? "重试语音模式" : voiceFinishing ? "正在完成语音识别" : voiceRecording ? "结束录音并发送" : "开始语音录音"}
+            title={voicePhase === "error" ? "重试语音模式" : voiceFinishing ? "正在完成语音识别" : voiceRecording ? "结束录音并发送" : "开始语音录音"}
+            onClick={voicePhase === "error" ? onRetryVoice : onStartVoice}
+            disabled={voiceStarting || voiceFinishing}
           >
             <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <rect x="9" y="3" width="6" height="12" rx="3" />
@@ -194,12 +199,13 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
       {(voiceActive || voicePhase === "error") && (
         <div className="composer__voice-status" role={voicePhase === "error" ? "alert" : "status"} aria-live="polite" data-error={voicePhase === "error" || undefined}>
           <span className="composer__voice-dot" aria-hidden />
-          <span>{voiceMessage || (voicePhase === "listening" ? "正在聆听，停顿后会自动发送。" : "语音模式正在准备。")}</span>
+          <span>{voiceMessage || (voiceRecording ? "正在录音；停顿不会自动发送，点击麦克风结束并提交。" : "点击麦克风开始录音。")}</span>
           {voiceModel?.state === "loading" && voiceModel.progress !== null && (
             <span className="composer__voice-progress">本地模型 {voiceModel.progress}%</span>
           )}
           {voiceTtsStatus?.state === "loading" && <span className="composer__voice-progress">正在准备语音模型</span>}
           {voicePhase === "error" && <button type="button" className="composer__voice-retry" onClick={onRetryVoice}>重试</button>}
+          {voiceActive && <button type="button" className="composer__voice-close" onClick={onStopVoice}>结束语音模式</button>}
         </div>
       )}
 

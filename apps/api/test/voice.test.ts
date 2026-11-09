@@ -29,6 +29,7 @@ function fakeAsr(): AsrService & { received: Buffer[]; setUpdate(update: AsrUpda
       await this.warm();
       return {
         async acceptPcm(pcm) { received.push(pcm); const result = next; next = { text: "", final: false }; return result; },
+        async finish() { return { text: next.text, final: true }; },
         async close() {},
       };
     },

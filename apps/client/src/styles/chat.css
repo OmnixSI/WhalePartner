@@ -421,6 +421,7 @@
 .composer__send { flex: none; min-width: 88px; height: 56px; }
 .composer__voice { flex: none; width: var(--hit); height: var(--hit); }
 .composer__voice[data-active] { color: var(--accent); background: var(--accent-wash); }
+.composer__voice[data-recording] { color: var(--alert); background: var(--alert-wash); }
 .composer__voice-status {
   display: flex;
   align-items: center;
@@ -442,6 +443,7 @@
 .composer__voice-status[data-error] .composer__voice-dot { background: var(--alert); box-shadow: none; }
 .composer__voice-progress { margin-left: auto; color: var(--ink-mute); font-family: var(--font-num); }
 .composer__voice-retry { border: 0; color: var(--accent-ink); text-decoration: underline; background: transparent; }
+.composer__voice-close { flex: none; border: 0; padding: 4px 6px; color: var(--ink-mute); font-size: var(--fs-small); background: transparent; }
 .composer__busy { width: 20px; color: var(--accent-ink); }
 /* 寄出中：不是禁用，是加载——保持主色，只把图标位换成会自己画的墨线（§6.1） */
 .btn--primary[data-loading]:disabled {
