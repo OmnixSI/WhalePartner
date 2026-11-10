@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, existsSync } from "node:fs";
-import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -50,6 +50,8 @@ export interface AsrStream {
 export interface AsrService {
   status(): AsrStatus;
   warm(): Promise<void>;
+  prewarmIfInstalled(): Promise<void>;
+  rebuild(): Promise<void>;
   createStream(): Promise<AsrStream>;
   close?(): Promise<void>;
 }
@@ -81,6 +83,7 @@ export interface XAsrOptions {
 /** Local sherpa-onnx worker for WhalePartner's 480 ms X-ASR stream and offline refinement. */
 export class XAsrService implements AsrService {
   readonly #options: XAsrOptions;
+  readonly #runtimeDirectory: string;
   readonly #modelDirectory: string;
   readonly #offlineModelDirectory: string;
   #current: AsrStatus = { state: "idle", progress: null, message: "待准备", model: XASR_MODEL, offlineRefinement: "idle" };
@@ -94,8 +97,10 @@ export class XAsrService implements AsrService {
 
   constructor(options: XAsrOptions) {
     this.#options = options;
-    this.#modelDirectory = join(resolve(options.dataDirectory), "models", STREAMING_ARCHIVE);
-    this.#offlineModelDirectory = join(resolve(options.dataDirectory), "models", OFFLINE_ARCHIVE);
+    const dataDirectory = resolve(options.dataDirectory);
+    this.#runtimeDirectory = join(dataDirectory, "runtimes", "asr-sherpa");
+    this.#modelDirectory = join(dataDirectory, "models", STREAMING_ARCHIVE);
+    this.#offlineModelDirectory = join(dataDirectory, "models", OFFLINE_ARCHIVE);
     process.once("exit", this.#processExit);
   }
 
@@ -125,6 +130,44 @@ export class XAsrService implements AsrService {
     return this.#warmPromise;
   }
 
+  async prewarmIfInstalled(): Promise<void> {
+    if (this.#current.state === "ready" && this.#worker) return;
+    const [streamingReady, offlineReady, runtimeReady] = await Promise.all([
+      this.#modelIsUsable(this.#modelDirectory, STREAMING_MODEL_FILES),
+      this.#modelIsUsable(this.#offlineModelDirectory, OFFLINE_MODEL_FILES),
+      this.#runtimeIsUsable(),
+    ]);
+    if (!streamingReady || !offlineReady || !runtimeReady) {
+      this.#current = {
+        state: "idle",
+        progress: null,
+        message: "X-ASR 环境尚未完整配置，请在设置中一键安装。",
+        model: XASR_MODEL,
+        offlineRefinement: "idle",
+      };
+      return;
+    }
+    await this.warm();
+  }
+
+  async rebuild(): Promise<void> {
+    if (this.#warmPromise) throw new Error("X-ASR 正在安装或加载，完成后再重建。");
+    await this.#stopWorker("X-ASR 环境正在重建。");
+    const dataDirectory = resolve(this.#options.dataDirectory);
+    await Promise.all([
+      rm(this.#runtimeDirectory, { recursive: true, force: true }),
+      rm(this.#modelDirectory, { recursive: true, force: true }),
+      rm(this.#offlineModelDirectory, { recursive: true, force: true }),
+    ]);
+    const modelRoot = join(dataDirectory, "models");
+    const partialPrefixes = [`${STREAMING_ARCHIVE}.install-`, `${OFFLINE_ARCHIVE}.install-`];
+    const entries = await readdir(modelRoot, { withFileTypes: true }).catch(() => []);
+    await Promise.all(entries
+      .filter((entry) => partialPrefixes.some((prefix) => entry.name.startsWith(prefix)))
+      .map((entry) => rm(join(modelRoot, entry.name), { recursive: true, force: true })));
+    await this.warm();
+  }
+
   async createStream(): Promise<AsrStream> {
     await this.warm();
     const id = randomUUID();
@@ -152,16 +195,21 @@ export class XAsrService implements AsrService {
 
   async close(): Promise<void> {
     process.removeListener("exit", this.#processExit);
+    await this.#stopWorker("本地 X-ASR 已关闭。");
+  }
+
+  async #stopWorker(reason: string): Promise<void> {
     const worker = this.#worker;
     this.#worker = null;
     this.#readyResolve = null;
     this.#readyReject = null;
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.timer);
-      pending.reject(new Error("本地 X-ASR 已关闭。"));
+      pending.reject(new Error(reason));
     }
     this.#pending.clear();
     if (!worker) return;
+    if (worker.exitCode !== null) return;
     worker.stdin.end(JSON.stringify({ action: "shutdown" }) + "\n");
     const killed = setTimeout(() => worker.kill("SIGKILL"), 1500);
     await new Promise<void>((resolveClose) => {
@@ -169,6 +217,19 @@ export class XAsrService implements AsrService {
       if (worker.exitCode !== null) resolveClose();
     });
     clearTimeout(killed);
+  }
+
+  async #runtimeIsUsable(): Promise<boolean> {
+    const binary = this.#options.workerPath ?? process.env.WP_XASR_WORKER ?? findOnPath("whale-xasr-worker");
+    if (binary && existsSync(binary)) return true;
+    const python = this.#pythonPath();
+    if (!python) return false;
+    try {
+      await execFileAsync(python, ["-c", "import numpy, sherpa_onnx"], { timeout: 10_000 });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async #prepare(): Promise<void> {

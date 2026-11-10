@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { access, chmod, mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
@@ -9,7 +9,7 @@ import WebSocket from "ws";
 import { loadConfig } from "../src/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
-import type { AsrService, AsrStatus, AsrUpdate } from "../src/voice/asr.ts";
+import { createXAsrAsrService, type AsrService, type AsrStatus, type AsrUpdate } from "../src/voice/asr.ts";
 import { COSYVOICE_MODEL_FILES, COSYVOICE_RUNTIME_FILES, cosyVoiceModelIsReady, cosyVoiceNativeRuntimeIsReady, createCosyVoiceTtsService, type TtsService, type TtsStatus, type TtsStreamContext } from "../src/voice/tts.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
@@ -28,6 +28,8 @@ function fakeAsr(): AsrService & { received: Buffer[]; setUpdate(update: AsrUpda
     received,
     status: () => current,
     async warm() { current = { ...current, state: "ready", progress: 100, message: "已就绪", offlineRefinement: "ready" }; },
+    async prewarmIfInstalled() {},
+    async rebuild() { await this.warm(); },
     async createStream() {
       await this.warm();
       return {
@@ -47,6 +49,8 @@ function fakeTts(): TtsService & { received: Array<{ text: string; context?: Tts
     received,
     status: () => current,
     async warm() { current = { ...current, state: "ready", progress: 100, message: "已就绪" }; },
+    async prewarmIfInstalled() {},
+    async rebuild() { await this.warm(); },
     async stream(text, onChunk, _signal, context) {
       received.push({ text, context });
       onChunk({ sampleRate: 24_000, pcm16: "AAABAA==" });
@@ -109,6 +113,90 @@ test("CosyVoice does not fall back to the previous raw reference instead of the 
   }
 });
 
+test("ASR rebuild removes only the speech runtime and model caches", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-asr-rebuild-"));
+  const modelRoot = join(dataDirectory, "models");
+  const streaming = join(modelRoot, "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05");
+  const offline = join(modelRoot, "sherpa-onnx-x-asr-zipformer-transducer-zh-en-punct-int8-2026-06-03");
+  const runtime = join(dataDirectory, "runtimes", "asr-sherpa");
+  const pythonPath = join(dataDirectory, "python");
+  const setupScriptPath = join(dataDirectory, "setup-xasr.sh");
+  const unrelated = [
+    join(dataDirectory, "models", "tts", "keep.txt"),
+    join(dataDirectory, "models", "memory", "keep.txt"),
+    join(dataDirectory, "runtimes", "tts-cosyvoice3-mlx-native", "keep.txt"),
+    join(dataDirectory, "voices", "big-fish", "keep.txt"),
+  ];
+  const service = createXAsrAsrService(dataDirectory, { pythonPath, setupScriptPath });
+  try {
+    for (const directory of [streaming, offline, runtime, ...unrelated.map(dirname)]) await mkdir(directory, { recursive: true });
+    for (const file of unrelated) await writeFile(file, "keep");
+    await mkdir(`${streaming}.install-interrupted`, { recursive: true });
+    await writeFile(pythonPath, "#!/bin/sh\nexit 1\n");
+    await writeFile(setupScriptPath, "#!/bin/sh\nexit 1\n");
+    await chmod(pythonPath, 0o755);
+    await chmod(setupScriptPath, 0o755);
+
+    await assert.rejects(service.rebuild());
+
+    for (const path of [streaming, offline, runtime, `${streaming}.install-interrupted`]) await assert.rejects(access(path));
+    for (const path of unrelated) await access(path);
+  } finally {
+    await service.close?.();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("CosyVoice rebuild replaces only its environment and preserves the voice profile", async (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("CosyVoice local TTS is supported on Apple Silicon macOS.");
+    return;
+  }
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-tts-rebuild-"));
+  const modelDirectory = join(dataDirectory, "models", "tts", "cosyvoice3-mlx-fp16");
+  const runtimeDirectory = join(dataDirectory, "runtimes", "tts-cosyvoice3-mlx-native");
+  const voiceFile = join(dataDirectory, "voices", "big-fish", "keep.txt");
+  const asrFile = join(dataDirectory, "models", "sherpa-onnx-x-asr-keep.txt");
+  const tts = createCosyVoiceTtsService(dataDirectory);
+  try {
+    for (const path of [modelDirectory, runtimeDirectory, dirname(voiceFile), dirname(asrFile)]) await mkdir(path, { recursive: true });
+    await writeFile(join(modelDirectory, "old-model"), "old");
+    await writeFile(join(runtimeDirectory, "old-runtime"), "old");
+    await writeFile(voiceFile, "preserve");
+    await writeFile(asrFile, "preserve");
+
+    await tts.rebuild();
+
+    await assert.rejects(access(modelDirectory));
+    await assert.rejects(access(runtimeDirectory));
+    await access(voiceFile);
+    await access(asrFile);
+    assert.equal(tts.status().state, "waiting_reference");
+  } finally {
+    await tts.close?.();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("CosyVoice uses the bundled default voice without downloading an uninstalled model on startup", async (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("CosyVoice local TTS is supported on Apple Silicon macOS.");
+    return;
+  }
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-tts-bundled-voice-"));
+  const bundledVoiceProfileDirectory = join(import.meta.dirname, "../src/voice/assets/keli_voice");
+  const tts = createCosyVoiceTtsService(dataDirectory, { bundledVoiceProfileDirectory });
+  try {
+    assert.notEqual(tts.status().state, "waiting_reference");
+    await tts.prewarmIfInstalled();
+    assert.equal(tts.status().state, "idle");
+    await assert.rejects(access(join(dataDirectory, "models", "tts", "cosyvoice3-mlx-fp16")));
+  } finally {
+    await tts.close?.();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test("voice routes stream X-ASR PCM and segmented TTS audio", async () => {
   const store = new ChatStore(":memory:");
   const asr = fakeAsr();
@@ -127,8 +215,16 @@ test("voice routes stream X-ASR PCM and segmented TTS audio", async () => {
     assert.equal(preparedStatus.state, "ready");
     assert.equal(preparedStatus.offlineRefinement, "ready");
 
+    const asrRebuilt = await fetch(`${base}/api/voice/asr/rebuild`, { method: "POST" });
+    assert.equal(asrRebuilt.status, 200);
+    assert.equal((await asrRebuilt.json() as AsrStatus).state, "ready");
+
+    const ttsRebuilt = await fetch(`${base}/api/voice/tts/rebuild`, { method: "POST" });
+    assert.equal(ttsRebuilt.status, 200);
+    assert.equal((await ttsRebuilt.json() as TtsStatus).state, "ready");
+
     const ttsStatus = await (await fetch(`${base}/api/voice/tts/status`)).json() as TtsStatus;
-    assert.equal(ttsStatus.state, "idle");
+    assert.equal(ttsStatus.state, "ready");
     const ttsResponse = await fetch(`${base}/api/voice/tts/stream`, {
       method: "POST",
       headers: { "content-type": "application/json" },

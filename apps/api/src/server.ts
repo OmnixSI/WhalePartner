@@ -101,6 +101,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
   const tts = deps.tts ?? createCosyVoiceTtsService(dataDir(), {
     runtimeSetupScriptPath: join(import.meta.dirname, "../scripts/setup-cosyvoice3-native.sh"),
     modelSetupScriptPath: join(import.meta.dirname, "../scripts/prepare-cosyvoice3-mlx-model.sh"),
+    bundledVoiceProfileDirectory: join(import.meta.dirname, "voice/assets/keli_voice"),
   });
   const presence = new PresenceRegistry();
   const devices = deps.auth?.devices ?? new DeviceRegistry(deviceFile(deps.config.dbPath));
@@ -255,6 +256,7 @@ if (import.meta.main) {
   const tts = createCosyVoiceTtsService(dataDir(), {
     runtimeSetupScriptPath: join(import.meta.dirname, "../scripts/setup-cosyvoice3-native.sh"),
     modelSetupScriptPath: join(import.meta.dirname, "../scripts/prepare-cosyvoice3-mlx-model.sh"),
+    bundledVoiceProfileDirectory: join(import.meta.dirname, "voice/assets/keli_voice"),
   });
   const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService(), auth, asr, tts, staticDir: existsSync(staticDir) ? staticDir : undefined });
   let stopDiaryScheduler = () => {};
@@ -312,8 +314,8 @@ if (import.meta.main) {
   }
 
   server.listen(config.port, host, () => {
-    void tts.warm().catch((error: unknown) => console.warn("本地语音启动预热失败：", error instanceof Error ? error.message : error));
-    void asr.warm().catch((error: unknown) => console.warn("X-ASR 启动预热失败：", error instanceof Error ? error.message : error));
+    void tts.prewarmIfInstalled().catch((error: unknown) => console.warn("本地语音启动预热失败：", error instanceof Error ? error.message : error));
+    void asr.prewarmIfInstalled().catch((error: unknown) => console.warn("X-ASR 启动预热失败：", error instanceof Error ? error.message : error));
     if (memory) void memory.warm().catch((error: unknown) => console.warn("本地记忆向量启动预热失败：", error instanceof Error ? error.message : error));
     if (config.surfEnabled) stopSurfScheduler = surf.start();
     void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));

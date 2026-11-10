@@ -5,8 +5,9 @@
 ## 识别、聊天与合成
 
 - ASR 使用 sherpa-onnx X-ASR 中文/英文 480 ms 流式模型，并对整句做离线精修。流式模型负责实时 partial，离线模型负责整句重识别。WhalePartner 的 RMS VAD 在约 700 ms 静音后收句；随后同一 worker 用离线模型重识别完整 PCM 句段。多段精修稿只在用户结束录音后合并发送。两套 ASR 权重都从 WhalePartner 自己的应用数据目录加载。
+- 设置页的「语音环境」提供一键配置和重建，分别准备 X-ASR 与 CosyVoice3 的模型权重和本机运行时。新安装默认不在启动时下载这些资源；用户启动配置后才按需获取。首次完整配置需联网下载约 2.8 GB。重建只删除这两套语音环境及其安装残留，重新下载/构建后保留音色配置和其他应用数据。Codex 的模型与运行环境不由此功能管理。
 - 大肥鱼语音回复使用 [Fun-CosyVoice3-0.5B-2512](https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512) 的 MLX FP16 检查点，由固定版本的 [SGLang-Omni 原生运行时](https://github.com/sgl-project/sglang-omni/tree/93cba1822e2be00e917206de74c23027e4cf74e7/sglang_omni_mlx/native) 在 Apple Silicon 上执行 C++ 推理。合成进程不加载 PyTorch、ONNX Runtime 或 Python。请求使用 top-p 0.8、top-k 25、语速 1.0；不注入固定语气指令。输出为 24 kHz 单声道 PCM16。原生接口在整段回答合成和声码器处理完成后返回 PCM，WhalePartner 再按 350 ms 分块排入播放队列。
-- 大肥鱼的默认预设音色读取 `voices/big-fish/keli_voice/voice.json` 中的逐字稿和同目录 `reference.wav`。原生 MLX 后端从 WAV 和逐字稿计算 CAMPPlus 说话人特征与 S3 语音 token，并在运行进程内缓存；不会读取、生成或打包 PyTorch `speaker.pt`。缺少音色配置时，TTS 状态为 `waiting_reference`，不会回退到其他音色。
+- 大肥鱼的默认预设音色由随应用提供的 `apps/api/src/voice/assets/keli_voice/voice.json` 与 `reference.wav` 配置。用户数据目录中的 `voices/big-fish/keli_voice/voice.json` 和 `reference.wav` 存在时优先使用用户版本。原生 MLX 后端从 WAV 和逐字稿计算 CAMPPlus 说话人特征与 S3 语音 token，并在运行进程内缓存；不会读取、生成或打包 PyTorch `speaker.pt`。没有可用音色配置时，TTS 状态为 `waiting_reference`，不会回退到其他音色。
 - 结构化情绪标签继续控制 Live2D 表情，嘴型由实际播放 PCM 的 RMS 振幅驱动。
 - 聊天文字继续随 LLM 输出逐步显示；语音客户端先收集本轮完整回答，等 LLM 结束后将其作为一个 TTS 请求提交，不按句子或标点拆分。单次请求上限为 1200 个字符；超出时 API 拒绝语音请求，但不影响已显示的文字回答。
 - CosyVoice 完成整段合成后返回 PCM；客户端将音频分成 350 ms 块交给 AudioWorklet，播放器预缓冲 350 ms 后连续播放本轮回答。用户打断会停止当前播放、取消聊天与 TTS 请求并清空旧队列；AudioWorklet 拒绝不匹配的 turn ID。日志记录 turn、segment、chunk、缓冲量、欠载和打断状态。
@@ -18,16 +19,16 @@
 
 - CosyVoice3 MLX FP16 模型：`models/tts/cosyvoice3-mlx-fp16/`
 - CosyVoice3 原生 MLX 运行时：`runtimes/tts-cosyvoice3-mlx-native/`
-- 大肥鱼 CosyVoice 音色配置：`voices/big-fish/keli_voice/`
+- 用户自定义的大肥鱼 CosyVoice 音色配置：`voices/big-fish/keli_voice/`；默认音色随应用打包
 - X-ASR 权重和 Python 环境继续分别保存在 `models/` 与 `runtimes/asr-sherpa/`
 
-原生运行时固定在 SGLang-Omni 提交 `93cba1822e2be00e917206de74c23027e4cf74e7`，最低支持 macOS 15。FP16 模型固定在 `18ccb7fbd7246e8cd3420d02f5dd28595cc0fcd9`，S3 tokenizer 固定在 `b143914b3e912278104824da706edc9c2d317c4e`。首次合成时，API 在 WhalePartner 专属数据目录构建 C++ 运行时并下载模型；构建工具和源代码放在临时目录，构建完成后清理。原生合成成功后，会删除旧 CosyVoice TTS 模型与运行时目录；X-ASR、聊天、记忆和导入音色文件不在清理范围内。
+原生运行时固定在 SGLang-Omni 提交 `93cba1822e2be00e917206de74c23027e4cf74e7`，最低支持 macOS 15。FP16 模型固定在 `18ccb7fbd7246e8cd3420d02f5dd28595cc0fcd9`，S3 tokenizer 固定在 `b143914b3e912278104824da706edc9c2d317c4e`。通过设置页配置语音环境，或在未配置时首次发起合成，API 会在 WhalePartner 专属数据目录构建 C++ 运行时并下载模型；构建工具和源代码放在临时目录，构建完成后清理。原生合成成功后，会删除旧 CosyVoice TTS 模型与运行时目录；X-ASR、聊天、记忆和音色文件不在清理范围内。
 
-Fun-CosyVoice3 原始模型卡声明 Apache-2.0；SGLang-Omni 原生运行时采用 Apache-2.0，许可证随本机编译运行时保存。WhalePartner 的 X-ASR 模型许可说明位于 `apps/api/src/voice/assets/`；所有模型权重和参考音频都留在本机应用数据目录，不提交到 Git。
+Fun-CosyVoice3 原始模型卡声明 Apache-2.0；SGLang-Omni 原生运行时采用 Apache-2.0，许可证随本机编译运行时保存。WhalePartner 的 X-ASR 模型许可说明位于 `apps/api/src/voice/assets/`。模型权重仍按需下载到本机应用数据目录；获准分发的大肥鱼参考音频和配置随应用安装包提供。
 
 ## 验证状态
 
-开发者提供的 CosyVoice3 说话人配置已导入为大肥鱼默认预设音色。配置文件只保存在本机应用数据目录，不进入仓库。
+大肥鱼预设音色会随应用提供。设置页可安装或重建 X-ASR 与 CosyVoice3 环境；完成后验证状态应显示「已就绪」，语音聊天可使用 X-ASR 转写与预设音色回答。CosyVoice 需要 macOS 15 或更新版本的 Apple Silicon。
 
 ### 原生 MLX RTF 实测
 

@@ -69,6 +69,8 @@ export interface TtsStreamContext {
 export interface TtsService {
   status(): TtsStatus;
   warm(): Promise<void>;
+  prewarmIfInstalled(): Promise<void>;
+  rebuild(): Promise<void>;
   stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal, context?: TtsStreamContext): Promise<void>;
   close?(): Promise<void>;
 }
@@ -80,6 +82,7 @@ export interface CosyVoiceTtsOptions {
   modelSetupScriptPath?: string;
   voiceReferencePath?: string;
   voiceMetadataPath?: string;
+  bundledVoiceProfileDirectory?: string;
 }
 
 interface VoiceProfile {
@@ -113,14 +116,23 @@ export class CosyVoiceTtsService implements TtsService {
     this.#runtimeDirectory = join(dataDirectory, "runtimes", "tts-cosyvoice3-mlx-native");
     this.#modelDirectory = join(dataDirectory, "models", "tts", "cosyvoice3-mlx-fp16");
     this.#serverPath = options.serverPath ?? join(this.#runtimeDirectory, "bin", "cosyvoice3_server");
-    this.#voiceReferencePath = resolve(options.voiceReferencePath ?? join(dataDirectory, TTS_VOICE_REFERENCE));
-    this.#voiceMetadataPath = resolve(options.voiceMetadataPath ?? join(dataDirectory, TTS_VOICE_METADATA));
+    const userVoiceMetadataPath = resolve(options.voiceMetadataPath ?? join(dataDirectory, TTS_VOICE_METADATA));
+    const bundledMetadataPath = options.bundledVoiceProfileDirectory
+      ? join(resolve(options.bundledVoiceProfileDirectory), "voice.json")
+      : null;
+    this.#voiceMetadataPath = existsSync(userVoiceMetadataPath) || !bundledMetadataPath
+      ? userVoiceMetadataPath
+      : bundledMetadataPath;
+    this.#voiceReferencePath = resolve(options.voiceReferencePath ?? join(dirname(this.#voiceMetadataPath), "reference.wav"));
     this.#deploymentTarget = macosDeploymentTarget();
     this.#supported = process.platform === "darwin" && process.arch === "arm64" && this.#deploymentTarget !== null;
+    const hasVoiceProfile = existsSync(this.#voiceReferencePath) && existsSync(this.#voiceMetadataPath);
     this.#current = {
-      state: this.#supported ? "waiting_reference" : "failed",
+      state: this.#supported ? (hasVoiceProfile ? "idle" : "waiting_reference") : "failed",
       progress: null,
-      message: this.#supported ? "等待导入大肥鱼的 CosyVoice 音色配置。" : "本地语音合成需要 macOS 15 或更新版本的 Apple Silicon Mac。",
+      message: this.#supported
+        ? (hasVoiceProfile ? "CosyVoice 环境尚未配置，请在设置中一键安装。" : "等待导入大肥鱼的 CosyVoice 音色配置。")
+        : "本地语音合成需要 macOS 15 或更新版本的 Apple Silicon Mac。",
       model: TTS_MODEL,
       speaker: "大肥鱼预设音色",
     };
@@ -133,7 +145,7 @@ export class CosyVoiceTtsService implements TtsService {
 
   warm(): Promise<void> {
     if (!this.#supported) return Promise.reject(new Error(this.#current.message));
-    if (!existsSync(this.#voiceReferencePath) || !existsSync(this.#voiceMetadataPath)) {
+    if (!this.#hasVoiceProfile()) {
       this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待导入大肥鱼的 CosyVoice 音色配置。" };
       return Promise.resolve();
     }
@@ -153,6 +165,33 @@ export class CosyVoiceTtsService implements TtsService {
       this.#warmPromise = null;
     });
     return this.#warmPromise;
+  }
+
+  async prewarmIfInstalled(): Promise<void> {
+    if (!this.#supported || !this.#hasVoiceProfile()) return;
+    if (!cosyVoiceNativeRuntimeIsReady(this.#runtimeDirectory, this.#deploymentTarget)
+      || !cosyVoiceModelIsReady(this.#modelDirectory)) {
+      this.#current = { ...this.#current, state: "idle", progress: null, message: "CosyVoice 环境尚未配置，请在设置中一键安装。" };
+      return;
+    }
+    await this.warm();
+  }
+
+  async rebuild(): Promise<void> {
+    if (!this.#supported) throw new Error(this.#current.message);
+    if (this.#warmPromise) throw new Error("CosyVoice 正在安装或加载，完成后再重建。");
+    if (this.#activeRequests.size > 0) throw new Error("语音生成正在进行，请结束语音后再重建环境。");
+    await this.#stopServer();
+    const dataDirectory = resolve(this.#options.dataDirectory);
+    const paths = [
+      this.#runtimeDirectory,
+      this.#modelDirectory,
+      join(dataDirectory, "runtimes", ".cosyvoice3-native-previous"),
+      join(dataDirectory, "runtimes", ".cosyvoice3-native-source"),
+      join(dataDirectory, "runtimes", ".cosyvoice3-native-build"),
+    ];
+    await Promise.all(paths.map((path) => rm(path, { recursive: true, force: true })));
+    await this.warm();
   }
 
   async stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal, context?: TtsStreamContext): Promise<void> {
@@ -266,6 +305,14 @@ export class CosyVoiceTtsService implements TtsService {
     process.removeListener("exit", this.#processExit);
     this.#closing = true;
     for (const controller of this.#activeRequests) controller.abort();
+    await this.#stopServer();
+  }
+
+  #hasVoiceProfile(): boolean {
+    return existsSync(this.#voiceReferencePath) && existsSync(this.#voiceMetadataPath);
+  }
+
+  async #stopServer(): Promise<void> {
     const server = this.#server;
     this.#server = null;
     this.#serverUrl = null;

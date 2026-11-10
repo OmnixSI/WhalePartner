@@ -1,0 +1,6 @@
+{
+  "id": "keli_voice",
+  "model": "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+  "transcript": "阿贝多哥哥跟可利有个秘密的约定，要是可利看到工坊门前挂着实验进行中的牌子，就要晚点再去找他。",
+  "reference_audio": "reference.wav"
+}
