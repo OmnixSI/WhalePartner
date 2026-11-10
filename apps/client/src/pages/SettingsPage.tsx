@@ -31,6 +31,7 @@ import { Toast } from "../components/settings/Toast";
 import { SendKeySetting } from "../components/settings/SendKeySetting";
 import { DevicesSetting } from "../components/settings/DevicesSetting";
 import { ConnectServerSetting } from "../components/settings/ConnectServerSetting";
+import { VoiceEnvironmentSetup } from "../components/settings/VoiceEnvironmentSetup";
 import { updateA11y, ELDER_MIN_SCALE } from "../components/settings/prefs";
 import { SurfBrowserNote } from "../components/surf/SurfBrowserNote";
 import { TagField } from "../components/surf/TagField";
@@ -466,6 +467,10 @@ export function SettingsPage() {
 
         <SettingGroup title="模型接入" id="model" note="接哪家模型、用多大强度，都在这儿改；以前只能翻 .env 和本机配置。">
           <ModelSetup offline={offline} onToast={setToast} />
+        </SettingGroup>
+
+        <SettingGroup title="语音环境" id="voice-environment" note="一键配置或重建语音转写与语音回答所需的模型和运行时。">
+          <VoiceEnvironmentSetup offline={offline} />
         </SettingGroup>
 
         <SettingGroup title="额度" id="quota">

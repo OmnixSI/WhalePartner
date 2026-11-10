@@ -622,6 +622,7 @@
   .mset__form--codex { grid-template-columns: minmax(0, 1fr); }
   .mset__save { width: 100%; }
   .set-data .btn { width: 100%; }
+  .voice-env__actions .btn { width: 100%; }
   .set-chars { grid-template-columns: minmax(0, 1fr); }
   .set-dialog { width: calc(100vw - 24px); padding: var(--sp-5) var(--sp-4); }
   .set-dialog__actions .btn { flex: 1 1 100%; }
@@ -688,3 +689,22 @@
   gap: var(--sp-2) var(--sp-3);
 }
 .set-fail .btn { min-height: var(--hit); }
+
+/* 本地语音环境 */
+.voice-env { display: flex; flex-direction: column; }
+.voice-env__state {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--hit);
+  padding: 0 var(--sp-3);
+  border: var(--stroke-1) solid var(--line-strong);
+  border-radius: var(--r-sm);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.voice-env__state[data-state="ready"] { color: var(--accent); border-color: var(--accent); }
+.voice-env__state[data-state="loading"] { color: var(--ink); border-color: var(--line-strong); }
+.voice-env__state[data-state="failed"] { color: var(--alert); border-color: var(--alert); }
+.voice-env__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-3); padding: var(--sp-3) 0; }
+.voice-env__actions .btn { min-height: var(--hit); }
+.voice-env__note { max-width: 42em; font-size: var(--fs-small); line-height: var(--lh-body); color: var(--ink-soft); }

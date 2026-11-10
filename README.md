@@ -1,6 +1,6 @@
 # WhalePartner · 鲸汐
 
-住在电脑里的鲸系 AI 角色：记得你说过的话，替你看 B 站视频、读网页，并把日常记成一本日记。当前版本 **v0.3.0**，更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+住在电脑里的鲸系 AI 角色：记得你说过的话，替你看 B 站视频、读网页，并把日常记成一本日记。当前版本 **v0.3.1**，更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 <p align="center">
   <img src="docs/redesign/shots/P1/chat-desktop.png" width="860" alt="聊天页：舞台上的她 + 对话框">
@@ -49,6 +49,7 @@ pnpm --dir apps/client run tauri build      # 首次编译 Rust 约 3 分钟；�
 - 打开 App 即可：它自己选端口、生成随机令牌、启动后端，健康检查通过后才显示窗口。**不用先启动后端，也不会弹出终端。**
 - 关窗口即退出，后端随之停止。「后台继续逛」打开后，关窗口只是隐藏，托盘菜单里可以「打开鲸汐 / 退出鲸汐」。
 - 数据放在系统的应用数据目录（macOS：`~/Library/Application Support/com.omnixsi.whalepartner/`），日志放在应用日志目录的 `api.log`。模型密钥在 **设置 › 模型接入** 里填，保存在数据目录的 `.env`（打包版读它，不读仓库里的 `apps/api/.env`）。
+- **语音模型**：在 **设置 › 语音环境** 点击「一键配置」，安装 X-ASR 转写和 CosyVoice3 语音回复所需的运行时与模型；首次需要联网下载约 2.8 GB。需要修复时点击「重建语音环境」，只重建这两套语音环境并保留其他数据。CosyVoice 需要 macOS 15 或更新版本的 Apple Silicon。大肥鱼预设音色随应用提供；Codex 配置不受影响。
 - macOS 本机开发包使用 ad-hoc 签名，不与其他应用共用签名身份。重建后 macOS 可能再次询问麦克风等隐私权限；首次打开可在「隐私与安全性」中手动允许。此签名只用于本机开发，不提供公证或公开分发信任；正式分发仍需 Developer ID 与公证。需要稳定的本机 TCC 身份时，按[本机 macOS 签名说明](docs/MACOS_LOCAL_SIGNING.md)为 WhalePartner 单独创建证书。请在 Node 26 下打包，后端运行时取自打包时的 Node。
 - 从 Finder 或 Dock 启动时，macOS 不会读取 shell profile；桌面后端会把 Homebrew 的 Apple Silicon (`/opt/homebrew/bin`) 和 Intel (`/usr/local/bin`) 目录加入 PATH，以解析本机 Codex CLI 等命令行工具。
 - 开发调试：`pnpm --dir apps/client run tauri dev` 会自动拉起后端，不用另开终端（后端读 `apps/api/.env`）。

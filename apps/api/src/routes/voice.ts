@@ -23,6 +23,15 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
     }
     return true;
   }
+  if (pathname === "/api/voice/asr/rebuild" && request.method === "POST") {
+    try {
+      await asr.rebuild();
+      sendJson(response, 200, asr.status());
+    } catch (error) {
+      sendJson(response, 503, { ...asr.status(), message: error instanceof Error ? error.message : "重建本地 X-ASR 环境失败。" });
+    }
+    return true;
+  }
   if (pathname === "/api/voice/tts/status" && request.method === "GET") {
     sendJson(response, 200, tts.status());
     return true;
@@ -33,6 +42,15 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       sendJson(response, 200, tts.status());
     } catch (error) {
       sendJson(response, 503, { ...tts.status(), message: error instanceof Error ? error.message : "本地语音模型准备失败。" });
+    }
+    return true;
+  }
+  if (pathname === "/api/voice/tts/rebuild" && request.method === "POST") {
+    try {
+      await tts.rebuild();
+      sendJson(response, 200, tts.status());
+    } catch (error) {
+      sendJson(response, 503, { ...tts.status(), message: error instanceof Error ? error.message : "重建本地语音环境失败。" });
     }
     return true;
   }
