@@ -2,7 +2,7 @@ const SENTENCE_END = /[。！？!?；;\n]/;
 const CLAUSE_END = /[，,、：:]/;
 const MIN_SEGMENT_LENGTH = 20;
 const LONG_SEGMENT_LENGTH = 72;
-const MIN_CLAUSE_LENGTH = 26;
+const MIN_CLAUSE_LENGTH = 12;
 
 export interface SpeechSegments {
   ready: string[];
@@ -19,6 +19,8 @@ export interface QueuedSpeechSegment {
 }
 
 export function takeQueuedSpeechBatch<T extends QueuedSpeechSegment>(first: T, queued: T[], maxTextLength = 180): T {
+  if (first.segmentIndex === 0) return first;
+
   const sourceSegmentIndices = first.sourceSegmentIndices ?? [first.segmentIndex];
   let text = first.text;
 
@@ -40,11 +42,11 @@ export function takeQueuedSpeechBatch<T extends QueuedSpeechSegment>(first: T, q
 
 function clauseBoundary(text: string): number | null {
   const clauses = [...text.matchAll(new RegExp(CLAUSE_END.source, "g"))];
-  const preferred = clauses.filter((match) => {
+  const preferred = clauses.find((match) => {
     const end = (match.index ?? 0) + match[0].length;
     return end >= MIN_CLAUSE_LENGTH && end <= LONG_SEGMENT_LENGTH;
   });
-  const boundary = preferred.at(-1) ?? clauses.find((match) => (match.index ?? 0) + match[0].length >= LONG_SEGMENT_LENGTH);
+  const boundary = preferred ?? clauses.find((match) => (match.index ?? 0) + match[0].length >= LONG_SEGMENT_LENGTH);
   return boundary?.index === undefined ? null : boundary.index + boundary[0].length;
 }
 
@@ -54,16 +56,16 @@ export function takeSpeechSegments(input: string, flush = false): SpeechSegments
 
   while (remainder) {
     const sentence = SENTENCE_END.exec(remainder);
+    const clauseEnd = clauseBoundary(remainder);
+    const sentenceEnd = sentence?.index === undefined ? null : sentence.index + sentence[0].length;
+    if (clauseEnd !== null && (sentenceEnd === null || clauseEnd < sentenceEnd)) {
+      ready.push(remainder.slice(0, clauseEnd).trim());
+      remainder = remainder.slice(clauseEnd).trimStart();
+      continue;
+    }
+
     if (sentence?.index !== undefined) {
       const end = sentence.index + sentence[0].length;
-      if (end > LONG_SEGMENT_LENGTH) {
-        const clauseEnd = clauseBoundary(remainder.slice(0, end));
-        if (clauseEnd !== null) {
-          ready.push(remainder.slice(0, clauseEnd).trim());
-          remainder = remainder.slice(clauseEnd).trimStart();
-          continue;
-        }
-      }
       if (end < MIN_SEGMENT_LENGTH) {
         let combinedEnd = end;
         while (combinedEnd < MIN_SEGMENT_LENGTH) {
@@ -84,14 +86,6 @@ export function takeSpeechSegments(input: string, flush = false): SpeechSegments
       continue;
     }
 
-    if (remainder.length > LONG_SEGMENT_LENGTH) {
-      const end = clauseBoundary(remainder);
-      if (end !== null) {
-        ready.push(remainder.slice(0, end).trim());
-        remainder = remainder.slice(end).trimStart();
-        continue;
-      }
-    }
     break;
   }
 
