@@ -10,8 +10,8 @@ import type { Emotion } from "../emotion.ts";
 
 const execFileAsync = promisify(execFile);
 export const TTS_MODEL = "CosyVoice3-0.5B · MPS";
-export const TTS_REFERENCE_AUDIO = "voices/big-fish/cosyvoice3-reference.wav";
-export const TTS_REFERENCE_TEXT = "voices/big-fish/cosyvoice3-reference.txt";
+export const TTS_VOICE_PROFILE = "voices/big-fish/keli_voice/speaker.pt";
+export const TTS_VOICE_METADATA = "voices/big-fish/keli_voice/voice.json";
 export const COSYVOICE_MODEL_FILES = [
   "cosyvoice3.yaml",
   "llm.pt",
@@ -95,8 +95,8 @@ export interface CosyVoiceTtsOptions {
   workerPath?: string;
   setupScriptPath?: string;
   modelSetupScriptPath?: string;
-  referenceAudioPath?: string;
-  referenceTextPath?: string;
+  voiceProfilePath?: string;
+  voiceMetadataPath?: string;
 }
 
 export class CosyVoiceTtsService implements TtsService {
@@ -104,8 +104,8 @@ export class CosyVoiceTtsService implements TtsService {
   readonly #pythonPath: string;
   readonly #modelDirectory: string;
   readonly #sourceDirectory: string;
-  readonly #referenceAudioPath: string;
-  readonly #referenceTextPath: string;
+  readonly #voiceProfilePath: string;
+  readonly #voiceMetadataPath: string;
   #current: TtsStatus;
   #warmPromise: Promise<void> | null = null;
   #legacyCleanup: Promise<void> | null = null;
@@ -123,13 +123,13 @@ export class CosyVoiceTtsService implements TtsService {
     this.#pythonPath = options.pythonPath ?? join(dataDirectory, "runtimes", "tts-cosyvoice3", "bin", "python");
     this.#modelDirectory = join(dataDirectory, "models", "tts", "cosyvoice3");
     this.#sourceDirectory = join(dataDirectory, "runtimes", "cosyvoice3-source");
-    this.#referenceAudioPath = resolve(options.referenceAudioPath ?? join(dataDirectory, TTS_REFERENCE_AUDIO));
-    this.#referenceTextPath = resolve(options.referenceTextPath ?? join(dataDirectory, TTS_REFERENCE_TEXT));
+    this.#voiceProfilePath = resolve(options.voiceProfilePath ?? join(dataDirectory, TTS_VOICE_PROFILE));
+    this.#voiceMetadataPath = resolve(options.voiceMetadataPath ?? join(dataDirectory, TTS_VOICE_METADATA));
     this.#supported = process.platform === "darwin" && process.arch === "arm64";
     this.#current = {
       state: this.#supported ? "waiting_reference" : "failed",
       progress: null,
-      message: this.#supported ? "等待大肥鱼参考音频与对应文本。" : "本地语音合成需要 Apple Silicon Mac。",
+      message: this.#supported ? "等待导入大肥鱼的 CosyVoice 音色配置。" : "本地语音合成需要 Apple Silicon Mac。",
       model: TTS_MODEL,
       speaker: "大肥鱼预设音色",
     };
@@ -147,8 +147,8 @@ export class CosyVoiceTtsService implements TtsService {
 
   #warmAfterLegacyCleanup(): Promise<void> {
     if (!this.#supported) return Promise.reject(new Error(this.#current.message));
-    if (!existsSync(this.#referenceAudioPath) || !existsSync(this.#referenceTextPath)) {
-      this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待大肥鱼参考音频与对应文本。" };
+    if (!existsSync(this.#voiceProfilePath) || !existsSync(this.#voiceMetadataPath)) {
+      this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待导入大肥鱼的 CosyVoice 音色配置。" };
       return Promise.resolve();
     }
     if (this.#worker) {
@@ -378,8 +378,8 @@ export class CosyVoiceTtsService implements TtsService {
       WP_DATA_DIR: dataDirectory,
       WP_COSYVOICE_SOURCE_DIR: this.#sourceDirectory,
       WP_COSYVOICE_MODEL_DIR: this.#modelDirectory,
-      WP_COSYVOICE_REFERENCE_AUDIO: this.#referenceAudioPath,
-      WP_COSYVOICE_REFERENCE_TEXT: this.#referenceTextPath,
+      WP_COSYVOICE_PROFILE_PATH: this.#voiceProfilePath,
+      WP_COSYVOICE_METADATA_PATH: this.#voiceMetadataPath,
       PYTHONPATH: `${join(this.#sourceDirectory, "third_party", "Matcha-TTS")}:${this.#sourceDirectory}`,
       HF_HOME: join(dataDirectory, "models", "tts", "cosyvoice3", "hf"),
       HF_HUB_DISABLE_TELEMETRY: "1",

@@ -70,21 +70,23 @@ test("CosyVoice model readiness requires every inference and tokenizer file", as
   }
 });
 
-test("CosyVoice waits for both the Big Fish reference audio and matching text", async (context) => {
+test("CosyVoice does not fall back to the previous raw reference instead of the imported profile", async (context) => {
   if (process.platform !== "darwin" || process.arch !== "arm64") {
     context.skip("CosyVoice local TTS is supported on Apple Silicon macOS.");
     return;
   }
   const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-cosyvoice-"));
-  const referenceAudioPath = join(dataDirectory, "reference.wav");
-  const tts = createCosyVoiceTtsService(dataDirectory, { referenceAudioPath });
+  const voiceDirectory = join(dataDirectory, "voices", "big-fish");
+  const tts = createCosyVoiceTtsService(dataDirectory);
   try {
-    await writeFile(referenceAudioPath, "reference audio placeholder");
+    await mkdir(voiceDirectory, { recursive: true });
+    await writeFile(join(voiceDirectory, "cosyvoice3-reference.wav"), "previous reference audio");
+    await writeFile(join(voiceDirectory, "cosyvoice3-reference.txt"), "previous reference text");
     assert.equal(tts.status().state, "waiting_reference");
     assert.match(tts.status().model, /CosyVoice3-0\.5B/);
     await tts.warm();
     assert.equal(tts.status().state, "waiting_reference");
-    await assert.rejects(tts.stream("你好。", () => {}), /等待大肥鱼参考音频/);
+    await assert.rejects(tts.stream("你好。", () => {}), /等待导入大肥鱼的 CosyVoice 音色配置/);
   } finally {
     await tts.close?.();
     await rm(dataDirectory, { recursive: true, force: true });
