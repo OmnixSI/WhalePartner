@@ -149,7 +149,7 @@ const statusResponse = await fetch(apiOrigin + "/api/voice/tts/status", { header
 assert.equal(statusResponse.status, 200, "the running local TTS service must be reachable");
 const status = await statusResponse.json();
 assert.equal(status.state, "ready", "the real local TTS model must be ready before this test starts");
-assert.match(status.model, /Qwen3-TTS/, "the playback benchmark must use the real Qwen3-TTS service");
+assert.match(status.model, /CosyVoice3/, "the playback benchmark must use the real CosyVoice3 service");
 
 const server = await createServer({
   configFile: resolve(clientDir, "vite.config.ts"),
@@ -321,7 +321,7 @@ try {
       scenarioId,
       finishEachSegment,
       segmentCount: segments.length,
-      model: "real local Qwen3-TTS service",
+      model: "real local CosyVoice3 service",
       sampleRate,
       elapsedMs: generationElapsedMs,
       wallThroughDrainMs: performance.now() - requestStartedAt,

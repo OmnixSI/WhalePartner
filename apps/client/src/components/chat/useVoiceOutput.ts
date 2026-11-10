@@ -119,6 +119,7 @@ export function useVoiceOutput() {
         const status = await response.json() as VoiceModelStatus;
         setModel(status);
         if (status.state === "ready") return;
+        if (status.state === "waiting_reference") throw new Error(status.message || "请先配置大肥鱼参考音频与对应文本。");
         if (status.state === "failed") throw new Error(status.message || "本地语音模型准备失败。");
         await new Promise((resolve) => window.setTimeout(resolve, 900));
       }

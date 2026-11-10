@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
+import { lstat, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -8,10 +9,30 @@ import { createInterface } from "node:readline";
 import type { Emotion } from "../emotion.ts";
 
 const execFileAsync = promisify(execFile);
-export const TTS_MODEL = "Qwen3-TTS 1.7B · MLX 4-bit · Serena";
+export const TTS_MODEL = "CosyVoice3-0.5B · MPS";
+export const TTS_REFERENCE_AUDIO = "voices/big-fish/cosyvoice3-reference.wav";
+export const TTS_REFERENCE_TEXT = "voices/big-fish/cosyvoice3-reference.txt";
+export const COSYVOICE_MODEL_FILES = [
+  "cosyvoice3.yaml",
+  "llm.pt",
+  "flow.pt",
+  "hift.pt",
+  "campplus.onnx",
+  "speech_tokenizer_v3.onnx",
+  "CosyVoice-BlankEN/config.json",
+  "CosyVoice-BlankEN/generation_config.json",
+  "CosyVoice-BlankEN/merges.txt",
+  "CosyVoice-BlankEN/model.safetensors",
+  "CosyVoice-BlankEN/tokenizer_config.json",
+  "CosyVoice-BlankEN/vocab.json",
+] as const;
+
+export function cosyVoiceModelIsReady(modelDirectory: string): boolean {
+  return COSYVOICE_MODEL_FILES.every((file) => existsSync(join(modelDirectory, file)));
+}
 
 export interface TtsStatus {
-  state: "idle" | "loading" | "ready" | "failed";
+  state: "idle" | "waiting_reference" | "loading" | "ready" | "failed";
   progress: number | null;
   message: string;
   model: string;
@@ -68,19 +89,26 @@ interface PendingRequest {
   textLength: number;
 }
 
-export interface MlxTtsOptions {
+export interface CosyVoiceTtsOptions {
   dataDirectory: string;
   pythonPath?: string;
   workerPath?: string;
   setupScriptPath?: string;
+  modelSetupScriptPath?: string;
+  referenceAudioPath?: string;
+  referenceTextPath?: string;
 }
 
-export class MlxTtsService implements TtsService {
-  readonly #options: MlxTtsOptions;
+export class CosyVoiceTtsService implements TtsService {
+  readonly #options: CosyVoiceTtsOptions;
   readonly #pythonPath: string;
-  readonly #modelCache: string;
+  readonly #modelDirectory: string;
+  readonly #sourceDirectory: string;
+  readonly #referenceAudioPath: string;
+  readonly #referenceTextPath: string;
   #current: TtsStatus;
   #warmPromise: Promise<void> | null = null;
+  #legacyCleanup: Promise<void> | null = null;
   #worker: ChildProcessWithoutNullStreams | null = null;
   #pending = new Map<string, PendingRequest>();
   #readyResolve: (() => void) | null = null;
@@ -89,18 +117,21 @@ export class MlxTtsService implements TtsService {
   readonly #supported: boolean;
   readonly #processExit = () => this.#worker?.kill();
 
-  constructor(options: MlxTtsOptions) {
+  constructor(options: CosyVoiceTtsOptions) {
     this.#options = options;
     const dataDirectory = resolve(options.dataDirectory);
-    this.#pythonPath = options.pythonPath ?? join(dataDirectory, "runtimes", "tts-mlx", "bin", "python");
-    this.#modelCache = join(dataDirectory, "models", "tts", "hf");
+    this.#pythonPath = options.pythonPath ?? join(dataDirectory, "runtimes", "tts-cosyvoice3", "bin", "python");
+    this.#modelDirectory = join(dataDirectory, "models", "tts", "cosyvoice3");
+    this.#sourceDirectory = join(dataDirectory, "runtimes", "cosyvoice3-source");
+    this.#referenceAudioPath = resolve(options.referenceAudioPath ?? join(dataDirectory, TTS_REFERENCE_AUDIO));
+    this.#referenceTextPath = resolve(options.referenceTextPath ?? join(dataDirectory, TTS_REFERENCE_TEXT));
     this.#supported = process.platform === "darwin" && process.arch === "arm64";
     this.#current = {
-      state: this.#supported ? "idle" : "failed",
+      state: this.#supported ? "waiting_reference" : "failed",
       progress: null,
-      message: this.#supported ? "待准备" : "本地语音合成需要 Apple Silicon Mac。",
+      message: this.#supported ? "等待大肥鱼参考音频与对应文本。" : "本地语音合成需要 Apple Silicon Mac。",
       model: TTS_MODEL,
-      speaker: "Serena",
+      speaker: "大肥鱼预设音色",
     };
     process.once("exit", this.#processExit);
   }
@@ -110,9 +141,21 @@ export class MlxTtsService implements TtsService {
   }
 
   warm(): Promise<void> {
-    if (this.#current.state === "ready" && this.#worker) return Promise.resolve();
-    if (this.#warmPromise) return this.#warmPromise;
+    if (!this.#legacyCleanup) this.#legacyCleanup = this.#removeLegacyTtsData();
+    return this.#legacyCleanup.then(() => this.#warmAfterLegacyCleanup());
+  }
+
+  #warmAfterLegacyCleanup(): Promise<void> {
     if (!this.#supported) return Promise.reject(new Error(this.#current.message));
+    if (!existsSync(this.#referenceAudioPath) || !existsSync(this.#referenceTextPath)) {
+      this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待大肥鱼参考音频与对应文本。" };
+      return Promise.resolve();
+    }
+    if (this.#worker) {
+      this.#current = { ...this.#current, state: "ready", progress: 100, message: "CosyVoice 本地语音已就绪。" };
+      return Promise.resolve();
+    }
+    if (this.#warmPromise) return this.#warmPromise;
     this.#current = { ...this.#current, state: "loading", progress: null, message: "正在准备本地语音模型。首次启动会下载模型。" };
     this.#warmPromise = this.#prepare().then(() => {
       this.#current = { ...this.#current, state: "ready", progress: 100, message: "本地语音已就绪。" };
@@ -126,10 +169,20 @@ export class MlxTtsService implements TtsService {
     return this.#warmPromise;
   }
 
+  async #removeLegacyTtsData(): Promise<void> {
+    const dataDirectory = resolve(this.#options.dataDirectory);
+    for (const relativePath of [["models", "tts", "hf"], ["runtimes", "tts-mlx"]]) {
+      const path = join(dataDirectory, ...relativePath);
+      const info = await lstat(path).catch(() => null);
+      if (info?.isDirectory() && !info.isSymbolicLink()) await rm(path, { recursive: true, force: true });
+    }
+  }
+
   async stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal, context?: TtsStreamContext): Promise<void> {
     if (signal?.aborted) throw abortError();
     await this.warm();
     if (signal?.aborted) throw abortError();
+    if (this.#current.state !== "ready") throw new Error(this.#current.message);
     const requestId = randomUUID();
     await new Promise<void>((resolveRequest, rejectRequest) => {
       const worker = this.#worker;
@@ -205,33 +258,41 @@ export class MlxTtsService implements TtsService {
     if (!existsSync(this.#pythonPath) || !(await this.#runtimeIsReady())) {
       await this.#installRuntime();
     }
+    if (!(await this.#modelIsReady())) await this.#installModel();
     await this.#startWorker();
   }
 
   async #runtimeIsReady(): Promise<boolean> {
     try {
-      await execFileAsync(this.#pythonPath, ["-c", "import mlx.core, mlx_audio.tts.utils"], { timeout: 15_000 });
+      await execFileAsync(this.#pythonPath, ["-c", "import torch, torchaudio, onnxruntime; from cosyvoice.cli.cosyvoice import CosyVoice3"], {
+        timeout: 30_000,
+        env: this.#workerEnvironment(),
+      });
       return true;
     } catch {
       return false;
     }
   }
 
+  async #modelIsReady(): Promise<boolean> {
+    return cosyVoiceModelIsReady(this.#modelDirectory);
+  }
+
   async #installRuntime(): Promise<void> {
-    const setupScript = this.#options.setupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-tts-runtime.sh", import.meta.url));
+    const setupScript = this.#options.setupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-cosyvoice3-runtime.sh", import.meta.url));
     if (!existsSync(setupScript)) throw new Error("本地语音运行环境缺少安装脚本，请重新安装 WhalePartner。");
-    this.#current = { ...this.#current, message: "正在 WhalePartner 独立运行环境中准备语音组件。" };
+    this.#current = { ...this.#current, message: "正在 WhalePartner 独立运行环境中准备 CosyVoice 组件。" };
     await new Promise<void>((resolveSetup, rejectSetup) => {
       const child = spawn("bash", [setupScript], {
         stdio: ["ignore", "ignore", "pipe"],
-        env: { ...process.env, WP_DATA_DIR: resolve(this.#options.dataDirectory) },
+        env: this.#workerEnvironment(),
       });
       let stderr = "";
       child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-2500); });
       const timeout = setTimeout(() => {
         child.kill("SIGTERM");
         rejectSetup(new Error("安装本地语音运行环境超时，请检查网络后重试。"));
-      }, 15 * 60_000);
+      }, 90 * 60_000);
       child.once("error", (error) => {
         clearTimeout(timeout);
         rejectSetup(new Error(`无法准备本地语音运行环境：${error.message}`));
@@ -239,10 +300,38 @@ export class MlxTtsService implements TtsService {
       child.once("close", (code) => {
         clearTimeout(timeout);
         if (code === 0) resolveSetup();
-        else rejectSetup(new Error(stderr.trim() || `安装本地语音运行环境失败（${code ?? "unknown"}）。`));
+        else rejectSetup(new Error(stderr.trim() || `安装 CosyVoice 运行环境失败（${code ?? "unknown"}）。`));
       });
     });
-    if (!(await this.#runtimeIsReady())) throw new Error("本地语音运行环境安装后仍无法载入 MLX-Audio。");
+    if (!(await this.#runtimeIsReady())) throw new Error("CosyVoice 运行环境安装后仍无法载入推理组件。");
+  }
+
+  async #installModel(): Promise<void> {
+    const setupScript = this.#options.modelSetupScriptPath ?? fileURLToPath(new URL("../../scripts/prepare-cosyvoice3-model.py", import.meta.url));
+    if (!existsSync(setupScript)) throw new Error("CosyVoice 模型准备脚本缺失，请重新安装 WhalePartner。");
+    this.#current = { ...this.#current, message: "正在下载 CosyVoice3-0.5B 模型。" };
+    await new Promise<void>((resolveSetup, rejectSetup) => {
+      const child = spawn(this.#pythonPath, [setupScript, this.#modelDirectory], {
+        stdio: ["ignore", "ignore", "pipe"],
+        env: this.#workerEnvironment(),
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-2500); });
+      const timeout = setTimeout(() => {
+        child.kill("SIGTERM");
+        rejectSetup(new Error("下载 CosyVoice3-0.5B 超时，请检查网络和可用空间后重试。"));
+      }, 90 * 60_000);
+      child.once("error", (error) => {
+        clearTimeout(timeout);
+        rejectSetup(new Error(`无法下载 CosyVoice 模型：${error.message}`));
+      });
+      child.once("close", (code) => {
+        clearTimeout(timeout);
+        if (code === 0) resolveSetup();
+        else rejectSetup(new Error(stderr.trim() || `下载 CosyVoice 模型失败（${code ?? "unknown"}）。`));
+      });
+    });
+    if (!(await this.#modelIsReady())) throw new Error("CosyVoice 模型下载后仍缺少推理文件。");
   }
 
   async #startWorker(): Promise<void> {
@@ -250,9 +339,7 @@ export class MlxTtsService implements TtsService {
     const worker = spawn(this.#pythonPath, ["-u", workerPath], {
       stdio: ["pipe", "pipe", "pipe"],
       env: {
-        ...process.env,
-        HF_HOME: this.#modelCache,
-        HF_HUB_CACHE: join(this.#modelCache, "hub"),
+        ...this.#workerEnvironment(),
         PYTHONUNBUFFERED: "1",
       },
     });
@@ -282,6 +369,24 @@ export class MlxTtsService implements TtsService {
       worker.kill();
       throw error;
     }
+  }
+
+  #workerEnvironment(): NodeJS.ProcessEnv {
+    const dataDirectory = resolve(this.#options.dataDirectory);
+    return {
+      ...process.env,
+      WP_DATA_DIR: dataDirectory,
+      WP_COSYVOICE_SOURCE_DIR: this.#sourceDirectory,
+      WP_COSYVOICE_MODEL_DIR: this.#modelDirectory,
+      WP_COSYVOICE_REFERENCE_AUDIO: this.#referenceAudioPath,
+      WP_COSYVOICE_REFERENCE_TEXT: this.#referenceTextPath,
+      PYTHONPATH: `${join(this.#sourceDirectory, "third_party", "Matcha-TTS")}:${this.#sourceDirectory}`,
+      HF_HOME: join(dataDirectory, "models", "tts", "cosyvoice3", "hf"),
+      HF_HUB_DISABLE_TELEMETRY: "1",
+      MODELSCOPE_CACHE: join(dataDirectory, "models", "tts", "cosyvoice3", "modelscope"),
+      PYTORCH_ENABLE_MPS_FALLBACK: "1",
+      TOKENIZERS_PARALLELISM: "false",
+    };
   }
 
   #receiveWorkerLine(line: string): void {
@@ -398,6 +503,6 @@ function abortError(): Error {
   return error;
 }
 
-export function createMlxTtsService(dataDirectory: string, options: Omit<Partial<MlxTtsOptions>, "dataDirectory"> = {}): TtsService {
-  return new MlxTtsService({ ...options, dataDirectory });
+export function createCosyVoiceTtsService(dataDirectory: string, options: Omit<Partial<CosyVoiceTtsOptions>, "dataDirectory"> = {}): TtsService {
+  return new CosyVoiceTtsService({ ...options, dataDirectory });
 }

@@ -99,7 +99,9 @@ cpSync(join(apiDir, "src/voice/xasr_worker.py"), join(distDir, "xasr_worker.py")
 cpSync(join(apiDir, "src/voice/assets"), join(distDir, "voice/assets"), { recursive: true });
 cpSync(join(apiDir, "src/voice/tts_worker.py"), join(distDir, "voice/tts_worker.py"));
 mkdirSync(join(sidecarDir, "api/scripts"), { recursive: true });
-cpSync(join(apiDir, "scripts/setup-tts-runtime.sh"), join(sidecarDir, "api/scripts/setup-tts-runtime.sh"));
+cpSync(join(apiDir, "scripts/setup-cosyvoice3-runtime.sh"), join(sidecarDir, "api/scripts/setup-cosyvoice3-runtime.sh"));
+cpSync(join(apiDir, "scripts/cosyvoice-requirements.txt"), join(sidecarDir, "api/scripts/cosyvoice-requirements.txt"));
+cpSync(join(apiDir, "scripts/prepare-cosyvoice3-model.py"), join(sidecarDir, "api/scripts/prepare-cosyvoice3-model.py"));
 cpSync(join(apiDir, "scripts/setup-xasr-runtime.sh"), join(sidecarDir, "api/scripts/setup-xasr-runtime.sh"));
 cpSync(join(apiDir, "vendor"), join(sidecarDir, "api/vendor"), { recursive: true });
 

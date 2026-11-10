@@ -277,14 +277,14 @@ try {
       return json({ state: "ready", progress: 100, message: "", model: "X-ASR 480 ms (test)", offlineRefinement: "ready" });
     }
     if (path === "/api/voice/tts/status" || path === "/api/voice/tts/warm") {
-      return json({ state: "ready", progress: 100, message: "", model: "Qwen3-TTS (test)" });
+      return json({ state: "ready", progress: 100, message: "", model: "CosyVoice3 (test)" });
     }
     if (path === "/api/voice/tts/stream") {
       const input = request.postDataJSON();
       ttsRequests.push(input);
       const duration = 0.48;
       const sampleRate = 24_000;
-      const messages = [{ type: "meta", model: "Qwen3-TTS (test)", speaker: "Serena", turnId: input.turnId, segmentIndex: input.segmentIndex }];
+      const messages = [{ type: "meta", model: "CosyVoice3 (test)", speaker: "大肥鱼参考音色", turnId: input.turnId, segmentIndex: input.segmentIndex }];
       let sampleOffset = 0;
       for (let chunk = 0; chunk < 6; chunk += 1) {
         const samples = Buffer.alloc(Math.ceil(sampleRate * duration) * 2);
