@@ -4,13 +4,10 @@ import { logVoiceDiagnostic } from "../../lib/voice-diagnostics";
 import type { CharacterId } from "../../characters";
 import type { AvatarEmotion } from "../../avatar/model.config";
 import type { VoiceModelStatus } from "./useVoiceMode";
-import { takeQueuedSpeechBatch, takeSpeechSegments, type QueuedSpeechSegment } from "./voice-segments";
+import { createSpeechSegment, type SpeechSegment } from "./voice-segments";
 import pcmPlaybackWorkletUrl from "./pcm-playback-worklet.ts?worker&url";
 
-interface Segment extends QueuedSpeechSegment {
-  emotion: AvatarEmotion;
-  characterId: CharacterId;
-}
+type Segment = SpeechSegment;
 
 interface TtsMessage {
   type: "meta" | "audio" | "done" | "error";
@@ -292,7 +289,6 @@ export function useVoiceOutput() {
     logVoiceDiagnostic("client-tts-segment-start", {
       turnId: segment.turnId,
       segmentIndex: segment.segmentIndex,
-      sourceSegmentIndices: segment.sourceSegmentIndices?.join(","),
       textLength: segment.text.length,
       emotion: segment.emotion,
       characterId: segment.characterId,
@@ -364,21 +360,7 @@ export function useVoiceOutput() {
     try {
       while (enabledRef.current && token === generation.current && queue.current.length > 0) {
         const first = queue.current.shift();
-        if (first) {
-          const segment = takeQueuedSpeechBatch(first, queue.current, 180);
-          if (segment.sourceSegmentIndices && segment.sourceSegmentIndices.length > 1) {
-            logVoiceDiagnostic("client-tts-batch", {
-              turnId: segment.turnId,
-              firstSegmentIndex: segment.sourceSegmentIndices[0],
-              lastSegmentIndex: segment.sourceSegmentIndices.at(-1),
-              sourceSegmentCount: segment.sourceSegmentIndices.length,
-              textLength: segment.text.length,
-              emotion: segment.emotion,
-              characterId: segment.characterId,
-            });
-          }
-          await synthesize(segment, token);
-        }
+        if (first) await synthesize(first, token);
       }
     } catch (error) {
       if (token === generation.current && !(error instanceof DOMException && error.name === "AbortError")) {
@@ -405,35 +387,32 @@ export function useVoiceOutput() {
     }
   }, [synthesize, updateSpeaking]);
 
-  const enqueueText = useCallback((turnId: string, text: string, flush: boolean) => {
-    if (activeTurnId.current !== turnId || !enabledRef.current || (!text && !flush)) return;
-    pendingText.current += text;
-    const segments = takeSpeechSegments(pendingText.current, flush);
-    pendingText.current = segments.remainder;
-    queue.current.push(...segments.ready.map((segment) => ({
-      text: segment,
-      turnId,
-      segmentIndex: nextSegmentIndex.current++,
-      emotion: pendingEmotion.current,
-      characterId: pendingCharacterId.current,
-    })));
-    if (segments.ready.length > 0) void pump();
-  }, [pump]);
-
   const append = useCallback((text: string, turnId: string, emotion: AvatarEmotion, characterId: CharacterId) => {
     setError((current) => current ? "" : current);
-    if (activeTurnId.current !== turnId) return;
-    if (pendingText.current && (pendingEmotion.current !== emotion || pendingCharacterId.current !== characterId)) {
-      enqueueText(turnId, "", true);
+    if (activeTurnId.current !== turnId || !enabledRef.current) return;
+    if (!pendingText.current) {
+      pendingEmotion.current = emotion;
+      pendingCharacterId.current = characterId;
     }
-    pendingEmotion.current = emotion;
-    pendingCharacterId.current = characterId;
-    enqueueText(turnId, text, false);
-  }, [enqueueText]);
+    pendingText.current += text;
+  }, []);
   const finish = useCallback((turnId: string) => {
-    if (activeTurnId.current !== turnId) return;
+    if (activeTurnId.current !== turnId || !enabledRef.current) return;
     turnFinished.current = turnId;
-    enqueueText(turnId, "", true);
+    const segment = createSpeechSegment(
+      pendingText.current,
+      turnId,
+      nextSegmentIndex.current,
+      pendingEmotion.current,
+      pendingCharacterId.current,
+    );
+    pendingText.current = "";
+    if (segment) {
+      nextSegmentIndex.current += 1;
+      queue.current.push(segment);
+      void pump();
+      return;
+    }
     if (!running.current && queue.current.length === 0 && pendingText.current.length === 0 && finishSent.current !== turnId) {
       finishSent.current = turnId;
       logVoiceDiagnostic("client-turn-playback-finish", {
@@ -443,7 +422,7 @@ export function useVoiceOutput() {
       });
       playbackNode.current?.port.postMessage({ type: "finish", turnId });
     }
-  }, [enqueueText]);
+  }, [pump, updateSpeaking]);
 
   const beginTurn = useCallback((turnId: string) => {
     stop("superseded-by-new-turn");
