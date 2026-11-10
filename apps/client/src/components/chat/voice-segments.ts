@@ -2,7 +2,7 @@ const SENTENCE_END = /[。！？!?；;\n]/;
 const CLAUSE_END = /[，,、：:]/;
 const MIN_SEGMENT_LENGTH = 20;
 const LONG_SEGMENT_LENGTH = 72;
-const MIN_CLAUSE_LENGTH = 12;
+const MIN_CLAUSE_LENGTH = 20;
 
 export interface SpeechSegments {
   ready: string[];

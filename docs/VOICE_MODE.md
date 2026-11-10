@@ -8,7 +8,7 @@
 - 大肥鱼语音回复使用 [Fun-CosyVoice3-0.5B-2512](https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512) 的 MLX FP16 检查点，由固定版本的 [SGLang-Omni 原生运行时](https://github.com/sgl-project/sglang-omni/tree/93cba1822e2be00e917206de74c23027e4cf74e7/sglang_omni_mlx/native) 在 Apple Silicon 上执行 C++ 推理。合成进程不加载 PyTorch、ONNX Runtime 或 Python。请求使用 top-p 0.8、top-k 25、语速 1.0；不注入固定语气指令。输出为 24 kHz 单声道 PCM16。原生接口在整句生成和声码器处理完成后返回 PCM，WhalePartner 再按 350 ms 分块排入播放队列。
 - 大肥鱼的默认预设音色读取 `voices/big-fish/keli_voice/voice.json` 中的逐字稿和同目录 `reference.wav`。原生 MLX 后端从 WAV 和逐字稿计算 CAMPPlus 说话人特征与 S3 语音 token，并在运行进程内缓存；不会读取、生成或打包 PyTorch `speaker.pt`。缺少音色配置时，TTS 状态为 `waiting_reference`，不会回退到其他音色。
 - 结构化情绪标签继续控制 Live2D 表情，嘴型由实际播放 PCM 的 RMS 振幅驱动。
-- 回复按自然句界进入 TTS。逗号、顿号或冒号后的短语累计至少 12 个字符时立即提交，不等整句结束；本轮第一个已就绪分段单独提交，后续已排队的分句仍可在角色与情绪一致且合计不超过 180 个字符时合并。过短句子仍会和下一句合并，长句在自然分句标点处拆分。每个 TTS 请求以 `segment-done` 标记单句完成；只有 LLM 已结束且本轮队列排空后，客户端才向 AudioWorklet 发送一次 `finish`。
+- 回复按自然句界进入 TTS。逗号、顿号或冒号后的短语累计至少 20 个字符时立即提交，不等整句结束；本轮第一个已就绪分段单独提交，后续已排队的分句仍可在角色与情绪一致且合计不超过 180 个字符时合并。过短句子仍会和下一句合并，长句在自然分句标点处拆分。每个 TTS 请求以 `segment-done` 标记单句完成；只有 LLM 已结束且本轮队列排空后，客户端才向 AudioWorklet 发送一次 `finish`。
 - 播放队列直接拼接 PCM，不在每个流式块后插入静音。首个音频块累计 350 ms 后开始播放，不按预计回复长度等待长预缓冲；本地模型慢于实时播放时仍可能出现停顿。用户打断会停止当前播放、取消聊天与 TTS 请求并清空旧队列；AudioWorklet 拒绝不匹配的 turn ID。日志记录 turn、segment、chunk、缓冲量、欠载和打断状态。
 - 麦克风请求启用系统回声消除和降噪，关闭自动增益控制（AGC）。助手播放期间用 0.03 RMS、连续 180 ms 的门槛识别用户打断；普通聆听期间使用 0.018 RMS、连续 120 ms。
 

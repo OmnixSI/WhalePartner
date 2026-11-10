@@ -9,11 +9,12 @@ test("releases a complete natural sentence without waiting for the reply to fini
   assert.equal(result.remainder, "第二句还在生成");
 });
 
-test("releases a natural clause at its comma while the sentence is still arriving", () => {
+test("waits for the next natural clause so the first request has enough context", () => {
   const firstClause = "第一句内容已经足够完整，";
-  const remainder = "而且表达了清楚的意思还在生成";
-  assert.deepEqual(takeSpeechSegments(firstClause + remainder), {
-    ready: [firstClause],
+  const firstRequest = firstClause + "而且表达了清楚的意思，";
+  const remainder = "后面内容还在生成";
+  assert.deepEqual(takeSpeechSegments(firstRequest + remainder), {
+    ready: [firstRequest],
     remainder,
   });
 });
@@ -35,10 +36,9 @@ test("splits a long sentence at a clause boundary instead of cutting at a charac
   const clause = "这是一段比较长的自然语句，它还会继续解释当前的事情，并且会再补充一些必要的背景信息，让大家理解来龙去脉，然后还会继续说明后续的内容同时补充相关背景。";
   const result = takeSpeechSegments(clause);
   assert.deepEqual(result.ready, [
-    "这是一段比较长的自然语句，",
-    "它还会继续解释当前的事情，",
-    "并且会再补充一些必要的背景信息，",
-    "让大家理解来龙去脉，然后还会继续说明后续的内容同时补充相关背景。",
+    "这是一段比较长的自然语句，它还会继续解释当前的事情，",
+    "并且会再补充一些必要的背景信息，让大家理解来龙去脉，",
+    "然后还会继续说明后续的内容同时补充相关背景。",
   ]);
   assert.equal(result.remainder, "");
 });
@@ -51,7 +51,7 @@ test("flushes the final unfinished phrase at turn completion", () => {
 });
 
 test("starts the first TTS request without batching queued sentences", () => {
-  const first = { text: "首句。", turnId: "turn-1", segmentIndex: 0, emotion: "neutral", characterId: "deepseek" };
+  const first = { text: "这是第一段已经足够完整的自然语音回复内容。", turnId: "turn-1", segmentIndex: 0, emotion: "neutral", characterId: "deepseek" };
   const queued = [
     { text: "第二句。", turnId: "turn-1", segmentIndex: 1, emotion: "neutral", characterId: "deepseek" },
     { text: "Third sentence.", turnId: "turn-1", segmentIndex: 2, emotion: "neutral", characterId: "deepseek" },
@@ -80,7 +80,7 @@ test("batches later queued clauses without crossing emotion or character boundar
 });
 
 test("keeps an early comma clause separate from queued follow-up text", () => {
-  const first = { text: "第一句内容已经足够完整，", turnId: "turn-3", segmentIndex: 0, emotion: "neutral", characterId: "deepseek" };
+  const first = { text: "第一句内容已经足够完整，而且表达了清楚的意思，", turnId: "turn-3", segmentIndex: 0, emotion: "neutral", characterId: "deepseek" };
   const queued = [
     { text: "而且表达了清楚的意思。", turnId: "turn-3", segmentIndex: 1, emotion: "neutral", characterId: "deepseek" },
   ];
