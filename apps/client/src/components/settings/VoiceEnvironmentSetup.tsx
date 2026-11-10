@@ -45,6 +45,7 @@ export function VoiceEnvironmentSetup({ offline }: Props) {
   const [statuses, setStatuses] = useState<VoiceStatuses>({ asr: null, tts: null });
   const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState("");
+  const allReady = statuses.asr?.state === "ready" && statuses.tts?.state === "ready";
 
   const load = useCallback(async () => {
     const [asr, tts] = await Promise.allSettled([readStatus("asr"), readStatus("tts")]);
@@ -95,9 +96,11 @@ export function VoiceEnvironmentSetup({ offline }: Props) {
         </span>
       </SettingRow>
       <div className="voice-env__actions">
-        <button type="button" className="btn btn--primary" disabled={offline || busy !== null} onClick={() => void run("setup")}>
-          {busy === "setup" ? "正在配置…" : "一键配置"}
-        </button>
+        {!allReady && (
+          <button type="button" className="btn btn--primary" disabled={offline || busy !== null} onClick={() => void run("setup")}>
+            {busy === "setup" ? "正在配置…" : "一键配置"}
+          </button>
+        )}
         <button type="button" className="btn btn--secondary" disabled={offline || busy !== null} onClick={() => void run("rebuild")}>
           {busy === "rebuild" ? "正在重建…" : "重建语音环境"}
         </button>
