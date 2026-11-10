@@ -1,9 +1,9 @@
 import type { ChatProvider } from "../llm/types.ts";
-import type { MemoryStore } from "./types.ts";
-import { archiveExperience } from "./archive.ts";
-import { extractUserFacts } from "./facts.ts";
-import { observeConversation } from "./observer.ts";
 import { ChatStore } from "../store.ts";
+import { archiveExperience } from "./archive.ts";
+import { distillMemoryBatch } from "./distill.ts";
+import { beginMemoryJob, endMemoryJob, isForegroundChatActive } from "./priority.ts";
+import type { MemoryStore } from "./types.ts";
 
 interface ProcessorDeps {
   store: ChatStore;
@@ -14,6 +14,7 @@ interface ProcessorDeps {
 const queues = new WeakMap<ChatStore, Promise<void>>();
 
 async function drain({ store, provider, memory }: ProcessorDeps) {
+  if (isForegroundChatActive()) return;
   if (memory?.syncPendingExperiences) {
     try {
       await memory.syncPendingExperiences();
@@ -22,32 +23,47 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
     }
   }
   for (;;) {
-    const job = store.claimMemoryJob();
-    if (!job) return;
+    if (isForegroundChatActive()) return;
+    const batch = store.claimMemoryJobBatch();
+    if (!batch) return;
+    const controller = beginMemoryJob();
+    if (!controller) {
+      for (const job of batch.jobs) store.failMemoryJob(job.id, job.attempts, "前台聊天开始，等待空闲时继续整理。");
+      return;
+    }
     try {
-      const user = store.message(job.userMessageId);
-      const assistant = store.message(job.assistantMessageId);
-      if (!user || !assistant) {
-        store.completeMemoryJob(job.id);
-        continue;
-      }
-
-      if (!job.factsDone) {
-        const candidates = await extractUserFacts(provider, user.content);
-        const { facts } = store.saveFacts(user.id, candidates);
-        const plan = facts.find((fact) => fact.kind === "plan" && fact.sources.some((source) => source.messageId === user.id));
-        if (plan) {
-          const source = plan.sources.find((item) => item.messageId === user.id);
-          if (source) store.enqueueProactiveTrigger({
-            sourceMessageId: user.id,
-            factId: plan.id,
-            sessionId: job.sessionId,
-            planText: `${plan.subject}的${plan.predicate}：${plan.value}`,
-            evidence: source.quote,
-          });
-        }
+      const needsDistillation = batch.jobs.some((job) => !job.factsDone || !job.summaryDone);
+      if (needsDistillation && batch.messages.length > 0) {
+        const sessionId = batch.jobs[0].sessionId;
+        const previousObservation = store.observation(sessionId);
+        const query = batch.messages.filter((message) => message.role === "user").map((message) => message.content).join("\n").slice(0, 12_000);
+        const context = store.memoryDistillationWorkingSet(query);
+        const inputCharacters = JSON.stringify({ messages: batch.messages, previousObservation: previousObservation?.summary, context }).length;
+        if (process.env.WP_DEBUG) console.log(`[记忆] 整理 ${batch.jobs.length} 轮聊天、${inputCharacters} 字符输入、1 次模型请求。`);
+        const result = await distillMemoryBatch(provider, {
+          messages: batch.messages,
+          previousObservation: previousObservation?.summary,
+          context,
+        }, controller.signal);
+        controller.signal.throwIfAborted();
+        const saved = store.publishMemoryDistillation(result, batch.jobs.map((job) => job.id), true, {
+          sessionId,
+          fromMessageId: batch.messages[0].id,
+          throughMessageId: batch.messages.at(-1)!.id,
+        });
         if (memory) {
-          for (const fact of facts) {
+          for (const factId of saved.supersededIds) {
+            const vectorId = store.factVectorId(factId);
+            if (vectorId) {
+              try { await memory.remove(vectorId); } catch (error) {
+                console.warn("已取代事实的语义索引清理失败：", error instanceof Error ? error.message : error);
+              }
+            }
+          }
+          const indexedFacts = new Set<number>();
+          for (const fact of saved.facts) {
+            if (fact.status !== "active" || indexedFacts.has(fact.id)) continue;
+            indexedFacts.add(fact.id);
             try {
               const indexed = await memory.addExperience({
                 kind: "fact",
@@ -61,51 +77,59 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
             }
           }
         }
-        store.markMemoryJobStep(job.id, "facts");
+        for (const fact of saved.facts) {
+          if (fact.kind !== "plan") continue;
+          const activePlan = result.facts.some((candidate) =>
+            candidate.kind === "plan" && candidate.planStatus === "active" && candidate.subject === fact.subject &&
+            candidate.predicate === fact.predicate && candidate.value === fact.value &&
+            fact.sources.some((source) => source.messageId === candidate.sourceMessageId),
+          );
+          if (!activePlan) continue;
+          const source = fact.sources.find((item) => batch.jobs.some((job) => job.userMessageId === item.messageId));
+          if (!source) continue;
+          store.enqueueProactiveTrigger({
+            sourceMessageId: source.messageId,
+            factId: fact.id,
+            sessionId: source.sessionId,
+            planText: `${fact.subject}的${fact.predicate}：${fact.value}`,
+            evidence: source.quote,
+          });
+        }
+      } else if (batch.jobs.some((job) => !job.legacyDone)) {
+        for (const job of batch.jobs) if (!job.legacyDone) store.markMemoryJobStep(job.id, "legacy");
       }
 
-      if (!job.vectorsDone) {
-        const session = store.getSession(job.sessionId);
-        const experience = {
-          kind: "chat",
-          title: session?.title ?? "聊天经历",
-          text: [`用户：${user.content}`, `角色：${assistant.content}`].join("\n").slice(0, 6000),
-          sourceId: `chat:${job.sessionId}:${user.id}`,
-          sourceSessionId: job.sessionId,
-          sourceMessageId: user.id,
-        };
-        await archiveExperience(store, memory, experience, "聊天经历");
-        store.markMemoryJobStep(job.id, "vectors");
-      }
-
-      if (!job.summaryDone) {
-        const input = store.observationInput(job.sessionId);
-        if (input) {
-          const summary = await observeConversation(provider, input);
-          if (summary) {
-            store.saveObservation(job.sessionId, summary, input.messages[0].id, input.throughMessageId);
+      for (const job of batch.jobs) {
+        controller.signal.throwIfAborted();
+        if (!job.vectorsDone) {
+          const user = store.message(job.userMessageId);
+          const assistant = store.message(job.assistantMessageId);
+          if (user && assistant) {
+            const session = store.getSession(job.sessionId);
+            await archiveExperience(store, memory, {
+              kind: "chat",
+              title: session?.title ?? "聊天经历",
+              text: [`用户：${user.content}`, `角色：${assistant.content}`].join("\n").slice(0, 6_000),
+              sourceId: `chat:${job.sessionId}:${user.id}`,
+              sourceSessionId: job.sessionId,
+              sourceMessageId: user.id,
+            }, "聊天经历");
           }
+          store.markMemoryJobStep(job.id, "vectors");
         }
-        store.markMemoryJobStep(job.id, "summary");
+        store.completeMemoryJob(job.id);
+        if (process.env.WP_DEBUG) console.log(`[记忆] 已处理批次任务 ${job.id}`);
       }
-
-      if (!job.legacyDone) {
-        if (memory) {
-          const vectorIds = await memory.remember([
-            { role: "user", content: user.content },
-            { role: "assistant", content: assistant.content },
-          ]);
-          for (const vectorId of vectorIds ?? []) store.addLegacyMemorySource(vectorId, job.sessionId);
-        }
-        store.markMemoryJobStep(job.id, "legacy");
-      }
-
-      store.completeMemoryJob(job.id);
-      if (process.env.WP_DEBUG) console.log(`[记忆] 已处理会话任务 ${job.id}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      store.failMemoryJob(job.id, job.attempts, message);
-      console.warn("本地记忆任务失败，稍后重试：", message);
+      for (const job of batch.jobs) {
+        if (controller.signal.aborted) store.pauseMemoryJob(job.id);
+        else store.failMemoryJob(job.id, job.attempts, message);
+      }
+      if (!controller.signal.aborted) console.warn("本地记忆任务失败，稍后重试：", message);
+      if (controller.signal.aborted) return;
+    } finally {
+      endMemoryJob(controller);
     }
   }
 }

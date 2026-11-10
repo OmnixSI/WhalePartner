@@ -2,6 +2,7 @@ import { openChatDatabase } from "./store/database.ts";
 import { ExperienceRepository, type ExperienceInput } from "./store/experiences.ts";
 import { FactRepository } from "./store/facts.ts";
 import { MemoryJobRepository, type MemoryQueueStatus } from "./store/jobs.ts";
+import { MemoryDistillationRepository } from "./store/memory-distillation.ts";
 import { clearChatData } from "./store/maintenance.ts";
 import { deleteChatSession, type SessionDeletion } from "./store/session-deletion.ts";
 import { listMemoryExplorer, type MemoryExplorerFilters } from "./store/explorer.ts";
@@ -13,9 +14,9 @@ import { SessionRepository } from "./store/sessions.ts";
 import { ProactiveRepository } from "./store/proactive.ts";
 import { RelationshipRepository } from "./store/relationship.ts";
 import type { DatabaseSync } from "node:sqlite";
-import type { ArchiveHit, ChatSession, FactCandidate, MemoryJob, StoredExperience, StoredFact, StoredMessage, StoredRole } from "./store/types.ts";
+import type { ArchiveHit, ChatSession, FactCandidate, MemoryDistillation, MemoryDistillationContext, MemoryJob, MemoryJobBatch, StoredExperience, StoredFact, StoredMessage, StoredRole } from "./store/types.ts";
 
-export type { ArchiveHit, ChatSession, FactCandidate, MemoryJob, StoredExperience, StoredFact, StoredMessage, StoredRole } from "./store/types.ts";
+export type { ArchiveHit, ChatSession, FactCandidate, MemoryDistillation, MemoryDistillationContext, MemoryJob, MemoryJobBatch, StoredExperience, StoredFact, StoredMessage, StoredRole } from "./store/types.ts";
 export type { ExperienceInput } from "./store/experiences.ts";
 export type { MemoryQueueStatus } from "./store/jobs.ts";
 export type { ObservationInput, StoredObservation } from "./store/observations.ts";
@@ -28,6 +29,7 @@ export class ChatStore {
   readonly #db: DatabaseSync;
   readonly #sessions: SessionRepository;
   readonly #facts: FactRepository;
+  readonly #distillation: MemoryDistillationRepository;
   readonly #experiences: ExperienceRepository;
   readonly #observations: ObservationRepository;
   readonly #jobs: MemoryJobRepository;
@@ -44,6 +46,7 @@ export class ChatStore {
     this.#db.prepare("UPDATE memory_jobs SET status = 'pending' WHERE status = 'running'").run();
     this.#sessions = new SessionRepository(this.#db);
     this.#facts = new FactRepository(this.#db);
+    this.#distillation = new MemoryDistillationRepository(this.#db, this.#facts);
     this.#experiences = new ExperienceRepository(this.#db);
     this.#observations = new ObservationRepository(this.#db);
     this.#jobs = new MemoryJobRepository(this.#db);
@@ -79,11 +82,16 @@ export class ChatStore {
   getFact(id: number) { return this.#facts.getFact(id); }
   listFacts(limit?: number) { return this.#facts.listFacts(limit); }
   searchFacts(query: string, limit?: number) { return this.#facts.searchFacts(query, limit); }
-  removeFact(id: number) { return this.#facts.removeFact(id); }
+  removeFact(id: number) { return this.#distillation.removeFact(id); }
   setFactVectorId(id: number, vectorEntryId: string | null) { return this.#facts.setFactVectorId(id, vectorEntryId); }
   factVectorId(id: number) { return this.#facts.factVectorId(id); }
   factVectorIds() { return this.#facts.factVectorIds(); }
   pendingFacts(afterId?: number, limit?: number) { return this.#facts.pendingFacts(afterId, limit); }
+  memoryDistillation(query: string) { return this.#distillation.context(query); }
+  memoryDistillationWorkingSet(query: string) { return this.#distillation.workingSet(query); }
+  publishMemoryDistillation(input: MemoryDistillation, jobIds: number[], completeFactsAndSummary: boolean, observation?: { sessionId: string; fromMessageId: number; throughMessageId: number }) {
+    return this.#distillation.publish(input, jobIds, completeFactsAndSummary, observation);
+  }
 
   companionSettings() { return this.#proactive.settings(); }
   putCompanionSettings(patch: import("./proactive/policy.ts").CompanionSettingsPatch) { return this.#proactive.putSettings(patch); }
@@ -129,9 +137,11 @@ export class ChatStore {
 
   enqueueMemoryJob(input: { sessionId: string; character: string; userMessageId: number; assistantMessageId: number }) { return this.#jobs.enqueue(input); }
   claimMemoryJob() { return this.#jobs.claim(); }
+  claimMemoryJobBatch() { return this.#jobs.claimBatch(); }
   markMemoryJobStep(id: number, step: "facts" | "vectors" | "summary" | "legacy") { return this.#jobs.markStep(id, step); }
   completeMemoryJob(id: number) { return this.#jobs.complete(id); }
   failMemoryJob(id: number, attempts: number, error: string) { return this.#jobs.fail(id, attempts, error); }
+  pauseMemoryJob(id: number) { return this.#jobs.pause(id); }
   hasPendingMemoryJobs() { return this.#jobs.hasPending(); }
   memoryQueueStatus(): MemoryQueueStatus { return this.#jobs.status(); }
 

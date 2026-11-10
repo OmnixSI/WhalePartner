@@ -81,6 +81,7 @@ export async function learnFrom(
   if (!deps.memory && !deps.store) return [];
   try {
     const learnings = await extractLearnings(deps.provider, material, signal);
+    signal?.throwIfAborted();
     for (const [index, item] of learnings.entries()) {
       const experience = { kind: "learned", title: KIND_LABEL[item.kind], text: item.text, sourceId: `learned:${sourceKey}:${index}`, sourceSessionIds };
       if (deps.store) await archiveExperience(deps.store, deps.memory, experience, "学习记录");

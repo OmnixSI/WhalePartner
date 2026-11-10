@@ -9,10 +9,12 @@ export const RECALL_TIMEOUT_MS = 1_500;
 
 export interface MemoryRecall {
   facts: string[];
+  topics: string[];
   experiences: string[];
   learned: string[];
   history: Array<{ role: "user" | "assistant"; content: string }>;
   observation?: string;
+  core?: string;
   archive: string[];
 }
 
@@ -62,6 +64,7 @@ function memoryLine(entry: MemoryEntry, store: ChatStore, query: string): { kind
   if (!matchesTimeWindow(entry.createdAt, query)) return undefined;
   const created = entry.createdAt?.slice(0, 10) ?? "日期不详";
   if (entry.kind === "fact") {
+    if (!asksAboutHistory(query)) return undefined;
     return { kind: "fact", text: `历史记忆（${created}，尚无原始消息来源）：${entry.text.slice(0, 500)}` };
   }
   const source = entry.source ?? "经历";
@@ -194,6 +197,13 @@ export async function recallChatMemory(input: {
     .filter((hit) => !recentIds.has(hit.message.id))
     .map(archiveLine);
   const observationRow = store.observation(sessionId);
+  const preparedMemory = store.memoryDistillation(query);
+  const topics = preparedMemory.topics.map((topic) =>
+    `主题记忆《${topic.title}》（来源消息 ${topic.sourceMessageIds.join("、")}）：${topic.summary.slice(0, 700)}`,
+  );
+  const core = preparedMemory.core && preparedMemory.coreSourceMessageIds.length
+    ? `核心记忆（根消息 ${preparedMemory.coreSourceMessageIds.slice(0, 8).join("、")}）：${preparedMemory.core}`
+    : undefined;
   const observation = observationRow
     ? `${store.getSession(sessionId)?.title ?? "当前会话"}（原文消息 ${observationRow.fromMessageId} 至 ${observationRow.throughMessageId}，更新于 ${observationRow.updatedAt.slice(0, 10)}）\n${observationRow.summary}`
     : undefined;
@@ -204,10 +214,12 @@ export async function recallChatMemory(input: {
   }
   return {
     facts,
+    topics,
     experiences,
     learned,
     history: messages.map((message) => ({ role: message.role, content: message.content })),
     ...(observation ? { observation } : {}),
+    ...(core ? { core } : {}),
     archive,
   };
 }

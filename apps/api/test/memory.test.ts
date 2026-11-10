@@ -27,7 +27,14 @@ function fakeMemory(overrides: Partial<MemoryStore> = {}) {
 }
 
 function scripted(seen: ChatMessage[][]): ChatProvider {
-  return { id: "fake", model: "m", async *stream(messages) { seen.push(messages); yield { text: "[emotion:happy]团子呀" }; } };
+  return { id: "fake", model: "m", async *stream(messages) {
+    seen.push(messages);
+    if (messages[0]?.content.includes("本机记忆整理器")) {
+      yield { text: JSON.stringify({ facts: [], topics: [], core: "", core_source_message_ids: [], observation: "" }) };
+    } else {
+      yield { text: "[emotion:happy]团子呀" };
+    }
+  } };
 }
 
 async function collect(events: AsyncIterable<ChatEvent>) {
@@ -38,7 +45,7 @@ async function collect(events: AsyncIterable<ChatEvent>) {
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
 
-test("chat recalls facts into the prompt without exposing recall diagnostics and remembers the turn afterwards", async () => {
+test("chat excludes unlinked legacy facts from current memory and stores the turn for background processing", async () => {
   const seen: ChatMessage[][] = [];
   const { store: memory, calls } = fakeMemory();
   const query = "我的猫叫什么？最近我们一起看过什么？";
@@ -48,10 +55,24 @@ test("chat recalls facts into the prompt without exposing recall diagnostics and
   assert.deepEqual(events.map((e) => e.type), ["emotion", "delta", "done"]);
   assert.deepEqual(calls.queries, [query]);
   const system = seen[0].filter((message) => message.role === "system").map((message) => message.content).join("\n");
-  assert.ok(system.includes("无原始消息来源") && system.includes("用户养了一只叫团子的猫"));
+  assert.equal(system.includes("用户养了一只叫团子的猫"), false);
   assert.ok(system.includes("<experience_evidence>") && system.includes("发光水母"));
   assert.equal(calls.recentLearningReads, 0);
-  assert.deepEqual(calls.remembered, [[{ role: "user", content: query }, { role: "assistant", content: "团子呀" }]]);
+  assert.deepEqual(calls.remembered, []);
+});
+
+test("unlinked legacy facts are available only for explicit history questions", async () => {
+  const store = new ChatStore(":memory:");
+  const session = store.createSession("whale");
+  const memory = fakeMemory().store;
+  try {
+    const current = await recallChatMemory({ store, memory, character: "whale", sessionId: session.id, query: "我现在养什么宠物？" });
+    const historical = await recallChatMemory({ store, memory, character: "whale", sessionId: session.id, query: "我以前养过什么宠物？" });
+    assert.equal(current.facts.length, 0);
+    assert.match(historical.facts.join("\n"), /尚无原始消息来源）：用户养了一只叫团子的猫/);
+  } finally {
+    store.close();
+  }
 });
 
 test("semantic recall adds only relevant learned material with its archived source", async () => {

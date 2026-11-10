@@ -15,6 +15,9 @@ export function clearChatData(db: DatabaseSync) {
     db.exec(`
       DELETE FROM memory_jobs;
       DELETE FROM session_observations;
+      DELETE FROM memory_topic_search;
+      DELETE FROM memory_topics;
+      DELETE FROM memory_core;
       DELETE FROM character_notes;
       DELETE FROM memory_facts;
       DELETE FROM fact_search;
