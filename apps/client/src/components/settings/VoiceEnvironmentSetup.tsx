@@ -46,6 +46,7 @@ export function VoiceEnvironmentSetup({ offline }: Props) {
   const [busy, setBusy] = useState<Action | null>(null);
   const [error, setError] = useState("");
   const allReady = statuses.asr?.state === "ready" && statuses.tts?.state === "ready";
+  const loading = statuses.asr?.state === "loading" || statuses.tts?.state === "loading";
 
   const load = useCallback(async () => {
     const [asr, tts] = await Promise.allSettled([readStatus("asr"), readStatus("tts")]);
@@ -58,10 +59,10 @@ export function VoiceEnvironmentSetup({ offline }: Props) {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!busy) return;
-    const timer = window.setInterval(() => { void load(); }, 2_000);
+    if (!busy && !allReady && !loading) return;
+    const timer = window.setInterval(() => { void load(); }, busy || loading ? 2_000 : 10_000);
     return () => window.clearInterval(timer);
-  }, [busy, load]);
+  }, [allReady, busy, load, loading]);
 
   const run = async (action: Action) => {
     if (offline || busy) return;
