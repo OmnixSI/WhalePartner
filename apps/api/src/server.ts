@@ -99,9 +99,8 @@ export function createApiServer(deps: ServerDeps): ApiServer {
     setupScriptPath: join(import.meta.dirname, "../scripts/setup-xasr-runtime.sh"),
   });
   const tts = deps.tts ?? createCosyVoiceTtsService(dataDir(), {
-    workerPath: join(import.meta.dirname, "voice/tts_worker.py"),
-    setupScriptPath: join(import.meta.dirname, "../scripts/setup-cosyvoice3-runtime.sh"),
-    modelSetupScriptPath: join(import.meta.dirname, "../scripts/prepare-cosyvoice3-model.py"),
+    runtimeSetupScriptPath: join(import.meta.dirname, "../scripts/setup-cosyvoice3-native.sh"),
+    modelSetupScriptPath: join(import.meta.dirname, "../scripts/prepare-cosyvoice3-mlx-model.sh"),
   });
   const presence = new PresenceRegistry();
   const devices = deps.auth?.devices ?? new DeviceRegistry(deviceFile(deps.config.dbPath));
@@ -254,9 +253,8 @@ if (import.meta.main) {
     setupScriptPath: join(import.meta.dirname, "../scripts/setup-xasr-runtime.sh"),
   });
   const tts = createCosyVoiceTtsService(dataDir(), {
-    workerPath: join(import.meta.dirname, "voice/tts_worker.py"),
-    setupScriptPath: join(import.meta.dirname, "../scripts/setup-cosyvoice3-runtime.sh"),
-    modelSetupScriptPath: join(import.meta.dirname, "../scripts/prepare-cosyvoice3-model.py"),
+    runtimeSetupScriptPath: join(import.meta.dirname, "../scripts/setup-cosyvoice3-native.sh"),
+    modelSetupScriptPath: join(import.meta.dirname, "../scripts/prepare-cosyvoice3-mlx-model.sh"),
   });
   const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService(), auth, asr, tts, staticDir: existsSync(staticDir) ? staticDir : undefined });
   let stopDiaryScheduler = () => {};

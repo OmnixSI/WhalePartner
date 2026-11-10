@@ -43,24 +43,7 @@ interface PlaybackMessage {
 }
 
 const PLAYBACK_SAMPLE_RATE = 24_000;
-const TTS_STREAMING_INTERVAL_SECONDS = 2;
-const MEASURED_SPEECH_SECONDS_PER_CHARACTER = 0.292;
-const STANDARD_TTS_RTF = 1.2;
-const TTS_RTF_HEADROOM = 0.15;
-const BUFFER_PLANNING_RTF = STANDARD_TTS_RTF + TTS_RTF_HEADROOM;
-const BUFFER_RESERVE_SECONDS = TTS_STREAMING_INTERVAL_SECONDS;
-
-function countSpeechCharacters(text: string): number {
-  return text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
-}
-
-function playbackStartTargetForResponse(characterCount: number): { waitSeconds: number; prerollAudioSeconds: number } {
-  const estimatedAudioSeconds = characterCount * MEASURED_SPEECH_SECONDS_PER_CHARACTER;
-  const estimatedGenerationSeconds = estimatedAudioSeconds * BUFFER_PLANNING_RTF;
-  const waitSeconds = Math.max(0, estimatedGenerationSeconds + BUFFER_RESERVE_SECONDS - estimatedAudioSeconds);
-  // The worklet measures queued PCM duration, so convert the wall-clock wait back through RTF.
-  return { waitSeconds, prerollAudioSeconds: waitSeconds / BUFFER_PLANNING_RTF };
-}
+const PLAYBACK_PREROLL_SECONDS = 0.35;
 
 export function useVoiceOutput() {
   const [enabled, setEnabledState] = useState(false);
@@ -78,8 +61,6 @@ export function useVoiceOutput() {
   const queue = useRef<Segment[]>([]);
   const pendingText = useRef("");
   const activeTurnId = useRef<string | null>(null);
-  const turnSpeechCharacters = useRef(0);
-  const playbackPrerollAudioSeconds = useRef(BUFFER_RESERVE_SECONDS / BUFFER_PLANNING_RTF);
   const pendingEmotion = useRef<AvatarEmotion>("neutral");
   const pendingCharacterId = useRef<CharacterId>("deepseek");
   const turnFinished = useRef<string | null>(null);
@@ -179,16 +160,6 @@ export function useVoiceOutput() {
     }
   }, [updateLevel]);
 
-  const updatePlaybackPreroll = useCallback(() => {
-    const context = audioContext.current;
-    const node = playbackNode.current;
-    if (!context || !node || playbackActive.current) return;
-    node.port.postMessage({
-      type: "configure",
-      prerollSamples: Math.ceil(context.sampleRate * playbackPrerollAudioSeconds.current),
-    });
-  }, []);
-
   const ensurePlayback = useCallback(async () => {
     const context = ensureAudio();
     if (playbackNode.current) return playbackNode.current;
@@ -231,7 +202,7 @@ export function useVoiceOutput() {
       };
       node.port.postMessage({
         type: "configure",
-        prerollSamples: Math.ceil(context.sampleRate * playbackPrerollAudioSeconds.current),
+        prerollSamples: Math.ceil(context.sampleRate * PLAYBACK_PREROLL_SECONDS),
       });
       node.connect(analyser.current ?? context.destination);
       playbackNode.current = node;
@@ -301,12 +272,15 @@ export function useVoiceOutput() {
     running.current = false;
     nextSegmentIndex.current = 0;
     lastSegmentDoneAt.current = null;
-    turnSpeechCharacters.current = 0;
-    playbackPrerollAudioSeconds.current = BUFFER_RESERVE_SECONDS / BUFFER_PLANNING_RTF;
     pendingEmotion.current = "neutral";
     pendingCharacterId.current = "deepseek";
     bufferedMs.current = 0;
     playbackNode.current?.port.postMessage({ type: "stop", reason });
+    const sampleRate = audioContext.current?.sampleRate ?? PLAYBACK_SAMPLE_RATE;
+    playbackNode.current?.port.postMessage({
+      type: "configure",
+      prerollSamples: Math.ceil(sampleRate * PLAYBACK_PREROLL_SECONDS),
+    });
     playbackActive.current = false;
     updateSpeaking();
   }, [updateSpeaking]);
@@ -449,29 +423,13 @@ export function useVoiceOutput() {
   const append = useCallback((text: string, turnId: string, emotion: AvatarEmotion, characterId: CharacterId) => {
     setError((current) => current ? "" : current);
     if (activeTurnId.current !== turnId) return;
-    turnSpeechCharacters.current += countSpeechCharacters(text);
-    const target = playbackStartTargetForResponse(turnSpeechCharacters.current);
-    if (target.prerollAudioSeconds !== playbackPrerollAudioSeconds.current) {
-      playbackPrerollAudioSeconds.current = target.prerollAudioSeconds;
-      updatePlaybackPreroll();
-      logVoiceDiagnostic("client-playback-buffer-target", {
-        turnId,
-        speechCharacters: turnSpeechCharacters.current,
-        planningRtf: BUFFER_PLANNING_RTF,
-        estimatedAudioMs: Math.round(turnSpeechCharacters.current * MEASURED_SPEECH_SECONDS_PER_CHARACTER * 1000),
-        estimatedGenerationMs: Math.round(turnSpeechCharacters.current * MEASURED_SPEECH_SECONDS_PER_CHARACTER * BUFFER_PLANNING_RTF * 1000),
-        targetWaitMs: Math.round(target.waitSeconds * 1000),
-        targetBufferedAudioMs: Math.round(target.prerollAudioSeconds * 1000),
-        playbackStarted: playbackActive.current,
-      });
-    }
     if (pendingText.current && (pendingEmotion.current !== emotion || pendingCharacterId.current !== characterId)) {
       enqueueText(turnId, "", true);
     }
     pendingEmotion.current = emotion;
     pendingCharacterId.current = characterId;
     enqueueText(turnId, text, false);
-  }, [enqueueText, updatePlaybackPreroll]);
+  }, [enqueueText]);
   const finish = useCallback((turnId: string) => {
     if (activeTurnId.current !== turnId) return;
     turnFinished.current = turnId;

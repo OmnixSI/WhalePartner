@@ -5,31 +5,42 @@
 ## 识别、聊天与合成
 
 - ASR 使用 sherpa-onnx X-ASR 中文/英文 480 ms 流式模型，并对整句做离线精修。流式模型负责实时 partial，离线模型负责整句重识别。WhalePartner 的 RMS VAD 在约 700 ms 静音后收句；随后同一 worker 用离线模型重识别完整 PCM 句段。多段精修稿只在用户结束录音后合并发送。两套 ASR 权重都从 WhalePartner 自己的应用数据目录加载。
-- 大肥鱼语音回复使用 [Fun-CosyVoice3-0.5B-2512](https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512)，通过固定版本的 [CosyVoice MPS 支持代码](https://github.com/ZoneTwelve/CosyVoice-MPS) 在 Apple Silicon 上推理。PyTorch MPS 承载主要模型计算；说话人嵌入和语音分词使用 ONNX CPU provider。模型权重和独立 Python 环境保存在 WhalePartner 应用数据目录。
-- 大肥鱼的默认预设音色使用 CosyVoice 说话人配置。`voices/big-fish/keli_voice/speaker.pt` 保存预计算的 prompt、语音特征与说话人嵌入；`voice.json` 记录模型和逐字稿；`reference.wav` 保留配置来源。配置在本机使用 PyTorch 安全权重加载，不上传到模型服务。缺少配置文件时，TTS 状态为 `waiting_reference`，语音合成不会回退到旧参考音频或其他音色。
-- 说话人配置沿用导入时的 prompt 与音色特征；结构化情绪标签继续控制 Live2D 表情，嘴型由实际播放 PCM 的 RMS 振幅驱动。
+- 大肥鱼语音回复使用 [Fun-CosyVoice3-0.5B-2512](https://huggingface.co/FunAudioLLM/Fun-CosyVoice3-0.5B-2512) 的 MLX FP16 检查点，由固定版本的 [SGLang-Omni 原生运行时](https://github.com/sgl-project/sglang-omni/tree/93cba1822e2be00e917206de74c23027e4cf74e7/sglang_omni_mlx/native) 在 Apple Silicon 上执行 C++ 推理。合成进程不加载 PyTorch、ONNX Runtime 或 Python。请求使用 top-p 0.8、top-k 25、语速 1.0；不注入固定语气指令。输出为 24 kHz 单声道 PCM16。原生接口在整句生成和声码器处理完成后返回 PCM，WhalePartner 再按 350 ms 分块排入播放队列。
+- 大肥鱼的默认预设音色读取 `voices/big-fish/keli_voice/voice.json` 中的逐字稿和同目录 `reference.wav`。原生 MLX 后端从 WAV 和逐字稿计算 CAMPPlus 说话人特征与 S3 语音 token，并在运行进程内缓存；不会读取、生成或打包 PyTorch `speaker.pt`。缺少音色配置时，TTS 状态为 `waiting_reference`，不会回退到其他音色。
+- 结构化情绪标签继续控制 Live2D 表情，嘴型由实际播放 PCM 的 RMS 振幅驱动。
 - 回复按自然句界进入 TTS。过短句子会和下一句合并，长句在自然分句标点处拆分；首句立即提交，已排队的后续句子在角色与情绪一致且合计不超过 180 个字符时合并。每个 TTS 请求以 `segment-done` 标记单句完成；只有 LLM 已结束且本轮队列排空后，客户端才向 AudioWorklet 发送一次 `finish`。
-- 播放队列直接拼接 PCM，不在每个流式块后插入静音。用户打断会停止当前播放、取消聊天与 TTS 请求并清空旧队列；AudioWorklet 拒绝不匹配的 turn ID。日志记录 turn、segment、chunk、缓冲量、欠载和打断状态。
+- 播放队列直接拼接 PCM，不在每个流式块后插入静音。首个音频块累计 350 ms 后开始播放，不按预计回复长度等待长预缓冲；本地模型慢于实时播放时仍可能出现停顿。用户打断会停止当前播放、取消聊天与 TTS 请求并清空旧队列；AudioWorklet 拒绝不匹配的 turn ID。日志记录 turn、segment、chunk、缓冲量、欠载和打断状态。
 - 麦克风请求启用系统回声消除和降噪，关闭自动增益控制（AGC）。助手播放期间用 0.03 RMS、连续 180 ms 的门槛识别用户打断；普通聆听期间使用 0.018 RMS、连续 120 ms。
 
 ## 数据目录与运行环境
 
 默认数据目录为 `~/Library/Application Support/com.omnixsi.whalepartner/`：
 
-- CosyVoice3 模型：`models/tts/cosyvoice3/`
-- CosyVoice3 Python 环境：`runtimes/tts-cosyvoice3/`
-- 固定版本的 MPS 推理源代码：`runtimes/cosyvoice3-source/`
+- CosyVoice3 MLX FP16 模型：`models/tts/cosyvoice3-mlx-fp16/`
+- CosyVoice3 原生 MLX 运行时：`runtimes/tts-cosyvoice3-mlx-native/`
 - 大肥鱼 CosyVoice 音色配置：`voices/big-fish/keli_voice/`
 - X-ASR 权重和 Python 环境继续分别保存在 `models/` 与 `runtimes/asr-sherpa/`
 
-CosyVoice 源代码固定在 `9060a7a641c62ac47ce179191c7cd4aea4af919a`；模型固定在 `29e01c4e8d000f4bcd70751be16fa94bf3d85a18`，只下载推理所需文件，不下载 RL 权重和 CUDA/TensorRT 加速文件。Python 依赖与 MPS 环境检查由 `apps/api/scripts/setup-cosyvoice3-runtime.sh` 管理。首次需要语音回复时，若运行环境或模型尚未准备好，API 会在 WhalePartner 专属目录中安装和下载。
+原生运行时固定在 SGLang-Omni 提交 `93cba1822e2be00e917206de74c23027e4cf74e7`，最低支持 macOS 15。FP16 模型固定在 `18ccb7fbd7246e8cd3420d02f5dd28595cc0fcd9`，S3 tokenizer 固定在 `b143914b3e912278104824da706edc9c2d317c4e`。首次合成时，API 在 WhalePartner 专属数据目录构建 C++ 运行时并下载模型；构建工具和源代码放在临时目录，构建完成后清理。原生合成成功后，会删除旧 CosyVoice TTS 模型与运行时目录；X-ASR、聊天、记忆和导入音色文件不在清理范围内。
 
-升级启动时，API 会清理 WhalePartner 原有的 `models/tts/hf/` Qwen TTS 缓存和 `runtimes/tts-mlx/` 环境；清理范围不包含 ASR、聊天、记忆或其他应用数据。
-
-模型与 CosyVoice MPS 代码采用 Apache-2.0 许可。WhalePartner 的 X-ASR 模型许可说明位于 `apps/api/src/voice/assets/`；所有模型权重和参考音频都留在本机应用数据目录，不提交到 Git。
+Fun-CosyVoice3 原始模型卡声明 Apache-2.0；SGLang-Omni 原生运行时采用 Apache-2.0，许可证随本机编译运行时保存。WhalePartner 的 X-ASR 模型许可说明位于 `apps/api/src/voice/assets/`；所有模型权重和参考音频都留在本机应用数据目录，不提交到 Git。
 
 ## 验证状态
 
 开发者提供的 CosyVoice3 说话人配置已导入为大肥鱼默认预设音色。配置文件只保存在本机应用数据目录，不进入仓库。
 
-试听与桌面应用检查结果记录在关联 Issue 和 Pull Request 中。冷启动期间，API 会在后台准备模型并预热。
+### 原生 MLX RTF 实测
+
+在 Apple M4 MacBook Air（8 核 GPU、16 GB）、macOS 26.5.2 上，用 MLX 0.32.3、固定的 FP16 检查点和大肥鱼导入音色进行单并发合成。相同 36 字中文文本使用 seed 1 连续请求 5 次，采样率 24 kHz；RTF 按合成耗时除以 PCM 时长计算。
+
+| 请求 | 合成耗时 | 音频时长 | RTF | 首个音频可用时间 |
+| --- | ---: | ---: | ---: | ---: |
+| 首次请求 | 10.76 s | 7.88 s | 1.365 | 10.76 s |
+| 后续 4 次加权值 | 10.82 s/次 | 7.88 s/次 | 1.373 | 10.82 s/次 |
+| 后续 4 次中位数 | — | — | 1.368 | — |
+
+移除应用目录中的旧 `speaker.pt` 后，从空缓存的 MLX 服务进程再次读取同一 WAV 和逐字稿，单次重新提取音色特征并合成耗时 11.61 s，生成 7.88 s 音频（RTF 1.474）。这是一条冷缓存单次样本；稳定多次请求仍以上表的连续 4 次加权值为准。
+
+这台机器实测约需 1.37 秒生成 1 秒语音，尚未达到实时速度。原生接口在整句生成及声码器完成后才返回 PCM，因此同一文本的首个可播放音频约需 10.8 秒。对照项是 SGLang-Omni 在 M4 10 核 GPU 上以 SeedTTS 中文集合测得的 RTF 0.625；该集合、参考音频和统计方法不同，不能视为同一基准的直接复测。[性能记录](https://github.com/sgl-project/sglang-omni/discussions/2158)；[原生实现及基准说明](https://github.com/sgl-project/sglang-omni/pull/3140)。
+
+模型准备在后台进行；设备、文本与实测数据也记录在关联 Issue 和 Pull Request 中。

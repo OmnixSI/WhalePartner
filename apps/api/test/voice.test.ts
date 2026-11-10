@@ -10,7 +10,7 @@ import { loadConfig } from "../src/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import type { AsrService, AsrStatus, AsrUpdate } from "../src/voice/asr.ts";
-import { COSYVOICE_MODEL_FILES, cosyVoiceModelIsReady, createCosyVoiceTtsService, type TtsService, type TtsStatus, type TtsStreamContext } from "../src/voice/tts.ts";
+import { COSYVOICE_MODEL_FILES, COSYVOICE_RUNTIME_FILES, cosyVoiceModelIsReady, cosyVoiceNativeRuntimeIsReady, createCosyVoiceTtsService, type TtsService, type TtsStatus, type TtsStreamContext } from "../src/voice/tts.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
 
@@ -63,10 +63,26 @@ test("CosyVoice model readiness requires every inference and tokenizer file", as
       await writeFile(path, "fixture");
     }
     assert.equal(cosyVoiceModelIsReady(modelDirectory), true);
-    await unlink(join(modelDirectory, "CosyVoice-BlankEN/tokenizer_config.json"));
+    await unlink(join(modelDirectory, "speech_tokenizer/model.safetensors"));
     assert.equal(cosyVoiceModelIsReady(modelDirectory), false);
   } finally {
     await rm(modelDirectory, { recursive: true, force: true });
+  }
+});
+
+test("CosyVoice native runtime readiness matches the current macOS deployment target", async () => {
+  const runtimeDirectory = await mkdtemp(join(tmpdir(), "whalepartner-cosyvoice-runtime-"));
+  try {
+    for (const file of COSYVOICE_RUNTIME_FILES) {
+      const path = join(runtimeDirectory, file);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, file === "deployment-target" ? "15.0\n" : "fixture");
+    }
+    assert.equal(cosyVoiceNativeRuntimeIsReady(runtimeDirectory, "15.0"), true);
+    await writeFile(join(runtimeDirectory, "deployment-target"), "26.0\n");
+    assert.equal(cosyVoiceNativeRuntimeIsReady(runtimeDirectory, "15.0"), false);
+  } finally {
+    await rm(runtimeDirectory, { recursive: true, force: true });
   }
 });
 
