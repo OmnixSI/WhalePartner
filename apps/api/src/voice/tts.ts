@@ -1,17 +1,50 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { lstat, readFile, rm } from "node:fs/promises";
+import { createServer } from "node:net";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { createInterface } from "node:readline";
 import type { Emotion } from "../emotion.ts";
 
-const execFileAsync = promisify(execFile);
-export const TTS_MODEL = "Qwen3-TTS 1.7B · MLX 4-bit · Serena";
+const MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512";
+const SAMPLE_RATE = 24_000;
+const REQUEST_TIMEOUT_MS = 120_000;
+export const TTS_MODEL = "CosyVoice3-0.5B · MLX";
+export const TTS_VOICE_REFERENCE = "voices/big-fish/keli_voice/reference.wav";
+export const TTS_VOICE_METADATA = "voices/big-fish/keli_voice/voice.json";
+export const COSYVOICE_MODEL_FILES = [
+  "config.json",
+  "model.safetensors",
+  "tokenizer.json",
+  "tokenizer_config.json",
+  "speech_tokenizer/config.json",
+  "speech_tokenizer/model.safetensors",
+] as const;
+export const COSYVOICE_RUNTIME_FILES = [
+  "bin/cosyvoice3_server",
+  "bin/libmlx.dylib",
+  "bin/mlx.metallib",
+  "deployment-target",
+] as const;
+
+export function cosyVoiceModelIsReady(modelDirectory: string): boolean {
+  return COSYVOICE_MODEL_FILES.every((file) => existsSync(join(modelDirectory, file)));
+}
+
+export function cosyVoiceNativeRuntimeIsReady(runtimeDirectory: string, deploymentTarget = macosDeploymentTarget()): boolean {
+  if (!deploymentTarget) return false;
+  if (!COSYVOICE_RUNTIME_FILES.every((file) => existsSync(join(runtimeDirectory, file)))) return false;
+  try {
+    return readFileSync(join(runtimeDirectory, "deployment-target"), "utf8").trim() === deploymentTarget;
+  } catch {
+    return false;
+  }
+}
 
 export interface TtsStatus {
-  state: "idle" | "loading" | "ready" | "failed";
+  state: "idle" | "waiting_reference" | "loading" | "ready" | "failed";
   progress: number | null;
   message: string;
   model: string;
@@ -40,67 +73,56 @@ export interface TtsService {
   close?(): Promise<void>;
 }
 
-interface WorkerMessage {
-  type: "ready" | "chunk" | "done" | "cancelled" | "error";
-  requestId?: string;
-  message?: string;
-  sampleRate?: number;
-  pcm16?: string;
-  chunkIndex?: number;
-  elapsedMs?: number;
-  audioDurationMs?: number;
-}
-
-interface PendingRequest {
-  onChunk(chunk: TtsAudioChunk): void;
-  resolve(): void;
-  reject(error: Error): void;
-  timer: NodeJS.Timeout;
-  signal?: AbortSignal;
-  abort?: () => void;
-  turnId?: string;
-  segmentIndex?: number;
-  emotion?: Emotion;
-  characterId?: string;
-  startedAt: number;
-  lastChunkAt?: number;
-  chunkIndex: number;
-  textLength: number;
-}
-
-export interface MlxTtsOptions {
+export interface CosyVoiceTtsOptions {
   dataDirectory: string;
-  pythonPath?: string;
-  workerPath?: string;
-  setupScriptPath?: string;
+  serverPath?: string;
+  runtimeSetupScriptPath?: string;
+  modelSetupScriptPath?: string;
+  voiceReferencePath?: string;
+  voiceMetadataPath?: string;
 }
 
-export class MlxTtsService implements TtsService {
-  readonly #options: MlxTtsOptions;
-  readonly #pythonPath: string;
-  readonly #modelCache: string;
+interface VoiceProfile {
+  referencePath: string;
+  transcript: string;
+}
+
+export class CosyVoiceTtsService implements TtsService {
+  readonly #options: CosyVoiceTtsOptions;
+  readonly #runtimeDirectory: string;
+  readonly #modelDirectory: string;
+  readonly #serverPath: string;
+  readonly #voiceReferencePath: string;
+  readonly #voiceMetadataPath: string;
+  readonly #supported: boolean;
+  readonly #deploymentTarget: string | null;
+  readonly #processExit = () => this.#server?.kill();
+  readonly #activeRequests = new Set<AbortController>();
   #current: TtsStatus;
   #warmPromise: Promise<void> | null = null;
-  #worker: ChildProcessWithoutNullStreams | null = null;
-  #pending = new Map<string, PendingRequest>();
-  #readyResolve: (() => void) | null = null;
-  #readyReject: ((error: Error) => void) | null = null;
+  #legacyCleanup: Promise<void> | null = null;
+  #server: ChildProcess | null = null;
+  #serverUrl: string | null = null;
+  #serverLog = "";
+  #voiceProfile: VoiceProfile | null = null;
   #closing = false;
-  readonly #supported: boolean;
-  readonly #processExit = () => this.#worker?.kill();
 
-  constructor(options: MlxTtsOptions) {
+  constructor(options: CosyVoiceTtsOptions) {
     this.#options = options;
     const dataDirectory = resolve(options.dataDirectory);
-    this.#pythonPath = options.pythonPath ?? join(dataDirectory, "runtimes", "tts-mlx", "bin", "python");
-    this.#modelCache = join(dataDirectory, "models", "tts", "hf");
-    this.#supported = process.platform === "darwin" && process.arch === "arm64";
+    this.#runtimeDirectory = join(dataDirectory, "runtimes", "tts-cosyvoice3-mlx-native");
+    this.#modelDirectory = join(dataDirectory, "models", "tts", "cosyvoice3-mlx-fp16");
+    this.#serverPath = options.serverPath ?? join(this.#runtimeDirectory, "bin", "cosyvoice3_server");
+    this.#voiceReferencePath = resolve(options.voiceReferencePath ?? join(dataDirectory, TTS_VOICE_REFERENCE));
+    this.#voiceMetadataPath = resolve(options.voiceMetadataPath ?? join(dataDirectory, TTS_VOICE_METADATA));
+    this.#deploymentTarget = macosDeploymentTarget();
+    this.#supported = process.platform === "darwin" && process.arch === "arm64" && this.#deploymentTarget !== null;
     this.#current = {
-      state: this.#supported ? "idle" : "failed",
+      state: this.#supported ? "waiting_reference" : "failed",
       progress: null,
-      message: this.#supported ? "待准备" : "本地语音合成需要 Apple Silicon Mac。",
+      message: this.#supported ? "等待导入大肥鱼的 CosyVoice 音色配置。" : "本地语音合成需要 macOS 15 或更新版本的 Apple Silicon Mac。",
       model: TTS_MODEL,
-      speaker: "Serena",
+      speaker: "大肥鱼预设音色",
     };
     process.once("exit", this.#processExit);
   }
@@ -110,12 +132,19 @@ export class MlxTtsService implements TtsService {
   }
 
   warm(): Promise<void> {
-    if (this.#current.state === "ready" && this.#worker) return Promise.resolve();
-    if (this.#warmPromise) return this.#warmPromise;
     if (!this.#supported) return Promise.reject(new Error(this.#current.message));
-    this.#current = { ...this.#current, state: "loading", progress: null, message: "正在准备本地语音模型。首次启动会下载模型。" };
+    if (!existsSync(this.#voiceReferencePath) || !existsSync(this.#voiceMetadataPath)) {
+      this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待导入大肥鱼的 CosyVoice 音色配置。" };
+      return Promise.resolve();
+    }
+    if (this.#server && this.#server.exitCode === null && this.#serverUrl) {
+      this.#current = { ...this.#current, state: "ready", progress: 100, message: "CosyVoice MLX 本地语音已就绪。" };
+      return Promise.resolve();
+    }
+    if (this.#warmPromise) return this.#warmPromise;
+    this.#current = { ...this.#current, state: "loading", progress: null, message: "正在准备原生 MLX 语音模型。首次启动会构建运行时并下载模型。" };
     this.#warmPromise = this.#prepare().then(() => {
-      this.#current = { ...this.#current, state: "ready", progress: 100, message: "本地语音已就绪。" };
+      this.#current = { ...this.#current, state: "ready", progress: 100, message: "CosyVoice MLX 本地语音已就绪。" };
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       this.#current = { ...this.#current, state: "failed", progress: null, message };
@@ -130,265 +159,279 @@ export class MlxTtsService implements TtsService {
     if (signal?.aborted) throw abortError();
     await this.warm();
     if (signal?.aborted) throw abortError();
+    if (this.#current.state !== "ready" || !this.#serverUrl || !this.#voiceProfile) throw new Error(this.#current.message);
+
+    const startedAt = performance.now();
     const requestId = randomUUID();
-    await new Promise<void>((resolveRequest, rejectRequest) => {
-      const worker = this.#worker;
-      if (!worker || worker.killed) {
-        rejectRequest(new Error("本地语音运行时没有启动。"));
-        return;
+    const controller = new AbortController();
+    let timedOut = false;
+    const abortRequest = () => controller.abort();
+    signal?.addEventListener("abort", abortRequest, { once: true });
+    this.#activeRequests.add(controller);
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, REQUEST_TIMEOUT_MS);
+
+    console.info("[whalepartner:voice]", JSON.stringify({
+      event: "tts-segment-start",
+      requestId,
+      turnId: context?.turnId,
+      segmentIndex: context?.segmentIndex,
+      characterId: context?.characterId,
+      textLength: text.length,
+      backend: "mlx-native-cpp",
+      at: Date.now(),
+    }));
+
+    try {
+      const response = await fetch(`${this.#serverUrl}/v1/audio/speech`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL_ID,
+          input: text,
+          ref_audio: this.#voiceProfile.referencePath,
+          ref_text: this.#voiceProfile.transcript,
+          speed: 1.0,
+          top_p: 0.8,
+          top_k: 25,
+          response_format: "pcm",
+          stream: true,
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(readNativeError(message) ?? `CosyVoice 原生服务返回错误（${response.status}）。`);
       }
-      const pending: PendingRequest = {
-        onChunk,
-        resolve: resolveRequest,
-        reject: rejectRequest,
-        timer: setTimeout(() => {
-          this.#write({ action: "cancel", targetRequestId: requestId });
-          this.#rejectRequest(requestId, new Error("本地语音生成超时，请重试。"));
-        }, 120_000),
-        signal,
+
+      const pcm = Buffer.from(await response.arrayBuffer());
+      if (pcm.length === 0 || pcm.length % 2 !== 0) throw new Error("CosyVoice 原生服务没有返回完整的 PCM16 音频。");
+      const audioDurationMs = pcm.length / 2 / SAMPLE_RATE * 1000;
+      const elapsedMs = performance.now() - startedAt;
+      const chunkSize = SAMPLE_RATE * 2 * 0.35;
+      let chunkIndex = 0;
+      for (let offset = 0; offset < pcm.length; offset += chunkSize) {
+        if (signal?.aborted) throw abortError();
+        const chunk = pcm.subarray(offset, Math.min(offset + chunkSize, pcm.length));
+        const chunkDurationMs = chunk.length / 2 / SAMPLE_RATE * 1000;
+        onChunk({
+          sampleRate: SAMPLE_RATE,
+          pcm16: chunk.toString("base64"),
+          chunkIndex,
+          elapsedMs,
+          audioDurationMs: chunkDurationMs,
+        });
+        console.info("[whalepartner:voice]", JSON.stringify({
+          event: "tts-chunk",
+          requestId,
+          turnId: context?.turnId,
+          segmentIndex: context?.segmentIndex,
+          chunkIndex,
+          elapsedMs: Math.round(elapsedMs * 10) / 10,
+          audioDurationMs: Math.round(chunkDurationMs * 10) / 10,
+          sampleRate: SAMPLE_RATE,
+        }));
+        chunkIndex += 1;
+      }
+
+      const rtf = elapsedMs / audioDurationMs;
+      console.info("[whalepartner:voice]", JSON.stringify({
+        event: "tts-segment-done",
+        requestId,
         turnId: context?.turnId,
         segmentIndex: context?.segmentIndex,
-        emotion: context?.emotion,
-        characterId: context?.characterId,
-        startedAt: performance.now(),
-        chunkIndex: 0,
+        chunkCount: chunkIndex,
         textLength: text.length,
-      };
-      pending.abort = () => {
-        if (!this.#pending.has(requestId)) return;
-        this.#write({ action: "cancel", targetRequestId: requestId });
-      };
-      signal?.addEventListener("abort", pending.abort, { once: true });
-      this.#pending.set(requestId, pending);
-      console.info("[whalepartner:voice]", JSON.stringify({
-        event: "tts-segment-start",
-        turnId: pending.turnId,
-        segmentIndex: pending.segmentIndex,
-        emotion: pending.emotion,
-        characterId: pending.characterId,
-        textLength: pending.textLength,
-        at: Date.now(),
+        elapsedMs: Math.round(elapsedMs * 10) / 10,
+        audioDurationMs: Math.round(audioDurationMs * 10) / 10,
+        rtf: Math.round(rtf * 1000) / 1000,
       }));
-      this.#write({
-        action: "synthesize",
-        requestId,
-        text,
-        turnId: pending.turnId,
-        segmentIndex: pending.segmentIndex,
-        emotion: pending.emotion,
-        characterId: pending.characterId,
-      }, (error) => {
-        if (error) this.#rejectRequest(requestId, error);
+      await this.#removeLegacyTtsData().catch((error: unknown) => {
+        console.warn("[whalepartner:voice] legacy TTS cleanup failed:", error instanceof Error ? error.message : String(error));
       });
-    });
+    } catch (error) {
+      if (signal?.aborted) throw abortError();
+      if (timedOut) throw new Error("本地语音生成超时，请重试。");
+      throw error instanceof Error ? error : new Error(String(error));
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortRequest);
+      this.#activeRequests.delete(controller);
+    }
   }
 
   async close(): Promise<void> {
     process.removeListener("exit", this.#processExit);
     this.#closing = true;
-    this.#readyResolve = null;
-    this.#readyReject = null;
-    for (const requestId of this.#pending.keys()) this.#rejectRequest(requestId, new Error("本地语音已关闭。"));
-    const worker = this.#worker;
-    this.#worker = null;
-    if (!worker) return;
-    worker.stdin.end(JSON.stringify({ action: "shutdown" }) + "\n");
-    const killed = setTimeout(() => worker.kill("SIGKILL"), 2000);
-    await new Promise<void>((resolveClose) => {
-      worker.once("close", () => resolveClose());
-      if (worker.exitCode !== null) resolveClose();
-    });
+    for (const controller of this.#activeRequests) controller.abort();
+    const server = this.#server;
+    this.#server = null;
+    this.#serverUrl = null;
+    if (!server || server.exitCode !== null) return;
+    const closed = new Promise<void>((resolveClose) => server.once("close", () => resolveClose()));
+    server.kill("SIGTERM");
+    const killed = setTimeout(() => server.kill("SIGKILL"), 2_000);
+    await closed;
     clearTimeout(killed);
   }
 
   async #prepare(): Promise<void> {
-    if (!existsSync(this.#pythonPath) || !(await this.#runtimeIsReady())) {
-      await this.#installRuntime();
-    }
-    await this.#startWorker();
+    this.#voiceProfile = await this.#readVoiceProfile();
+    if (!cosyVoiceNativeRuntimeIsReady(this.#runtimeDirectory, this.#deploymentTarget)) await this.#installRuntime();
+    if (!cosyVoiceModelIsReady(this.#modelDirectory)) await this.#installModel();
+    await this.#startNativeServer();
   }
 
-  async #runtimeIsReady(): Promise<boolean> {
+  async #readVoiceProfile(): Promise<VoiceProfile> {
+    let metadata: unknown;
     try {
-      await execFileAsync(this.#pythonPath, ["-c", "import mlx.core, mlx_audio.tts.utils"], { timeout: 15_000 });
-      return true;
+      metadata = JSON.parse(await readFile(this.#voiceMetadataPath, "utf8")) as unknown;
     } catch {
-      return false;
+      throw new Error("无法读取大肥鱼的 CosyVoice 音色配置。");
     }
+    if (!metadata || typeof metadata !== "object") throw new Error("大肥鱼的 CosyVoice 音色配置格式不正确。");
+    const profile = metadata as Record<string, unknown>;
+    if (profile.model !== MODEL_ID || typeof profile.reference_audio !== "string" || typeof profile.transcript !== "string" || !profile.transcript.trim()) {
+      throw new Error("大肥鱼的 CosyVoice 音色配置与当前模型不匹配。");
+    }
+    const referencePath = resolve(dirname(this.#voiceMetadataPath), profile.reference_audio);
+    if (!existsSync(referencePath)) throw new Error("大肥鱼的 CosyVoice 参考音频不存在。");
+    return { referencePath, transcript: profile.transcript };
   }
 
   async #installRuntime(): Promise<void> {
-    const setupScript = this.#options.setupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-tts-runtime.sh", import.meta.url));
-    if (!existsSync(setupScript)) throw new Error("本地语音运行环境缺少安装脚本，请重新安装 WhalePartner。");
-    this.#current = { ...this.#current, message: "正在 WhalePartner 独立运行环境中准备语音组件。" };
-    await new Promise<void>((resolveSetup, rejectSetup) => {
-      const child = spawn("bash", [setupScript], {
-        stdio: ["ignore", "ignore", "pipe"],
-        env: { ...process.env, WP_DATA_DIR: resolve(this.#options.dataDirectory) },
-      });
-      let stderr = "";
-      child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-2500); });
-      const timeout = setTimeout(() => {
-        child.kill("SIGTERM");
-        rejectSetup(new Error("安装本地语音运行环境超时，请检查网络后重试。"));
-      }, 15 * 60_000);
-      child.once("error", (error) => {
-        clearTimeout(timeout);
-        rejectSetup(new Error(`无法准备本地语音运行环境：${error.message}`));
-      });
-      child.once("close", (code) => {
-        clearTimeout(timeout);
-        if (code === 0) resolveSetup();
-        else rejectSetup(new Error(stderr.trim() || `安装本地语音运行环境失败（${code ?? "unknown"}）。`));
-      });
-    });
-    if (!(await this.#runtimeIsReady())) throw new Error("本地语音运行环境安装后仍无法载入 MLX-Audio。");
+    const setupScript = this.#options.runtimeSetupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-cosyvoice3-native.sh", import.meta.url));
+    this.#current = { ...this.#current, message: "正在构建 CosyVoice3 原生 MLX 运行时。" };
+    await runSetupScript(setupScript, this.#options.dataDirectory, 90 * 60_000, "构建 CosyVoice 原生运行时失败。");
+    if (!cosyVoiceNativeRuntimeIsReady(this.#runtimeDirectory, this.#deploymentTarget)) throw new Error("原生 MLX 运行时构建后仍缺少 CosyVoice 服务文件。");
   }
 
-  async #startWorker(): Promise<void> {
-    const workerPath = this.#options.workerPath ?? fileURLToPath(new URL("./tts_worker.py", import.meta.url));
-    const worker = spawn(this.#pythonPath, ["-u", workerPath], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        HF_HOME: this.#modelCache,
-        HF_HUB_CACHE: join(this.#modelCache, "hub"),
-        PYTHONUNBUFFERED: "1",
-      },
-    });
-    this.#worker = worker;
-    const ready = new Promise<void>((resolveReady, rejectReady) => {
-      const timeout = setTimeout(() => rejectReady(new Error("本地语音模型载入超时，请重试。")), 15 * 60_000);
-      this.#readyResolve = () => { clearTimeout(timeout); resolveReady(); };
-      this.#readyReject = (error) => { clearTimeout(timeout); rejectReady(error); };
-    });
-    const lines = createInterface({ input: worker.stdout });
-    lines.on("line", (line) => this.#receiveWorkerLine(line));
-    let stderr = "";
-    worker.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-4000); });
-    worker.on("error", (error) => this.#failWorker(`无法启动本地语音模型：${error.message}`));
-    worker.on("close", (code) => {
-      if (this.#worker !== worker) return;
-      this.#worker = null;
-      if (this.#closing) return;
-      const message = stderr.trim() ? `本地语音运行时已退出：${stderr.trim().slice(-600)}` : `本地语音运行时已退出（${code ?? "unknown"}）。`;
-      this.#failWorker(message);
-    });
-    worker.stdin.on("error", () => {});
-    try {
-      await ready;
-    } catch (error) {
-      if (this.#worker === worker) this.#worker = null;
-      worker.kill();
-      throw error;
-    }
+  async #installModel(): Promise<void> {
+    const setupScript = this.#options.modelSetupScriptPath ?? fileURLToPath(new URL("../../scripts/prepare-cosyvoice3-mlx-model.sh", import.meta.url));
+    this.#current = { ...this.#current, message: "正在下载 CosyVoice3 MLX FP16 模型和语音分词器。" };
+    await runSetupScript(setupScript, this.#options.dataDirectory, 90 * 60_000, "下载 CosyVoice MLX 模型失败。");
+    if (!cosyVoiceModelIsReady(this.#modelDirectory)) throw new Error("CosyVoice MLX 模型下载后仍缺少推理文件。");
   }
 
-  #receiveWorkerLine(line: string): void {
-    let reply: WorkerMessage;
-    try { reply = JSON.parse(line) as WorkerMessage; }
-    catch { return this.#failWorker("本地语音运行时返回了无法读取的响应。"); }
-    if (reply.type === "ready") {
-      this.#readyResolve?.();
-      this.#readyResolve = null;
-      this.#readyReject = null;
-      return;
-    }
-    if (reply.type === "error" && !reply.requestId) {
-      this.#failWorker(reply.message ?? "本地语音模型载入失败。");
-      return;
-    }
-    if (!reply.requestId) return;
-    const pending = this.#pending.get(reply.requestId);
-    if (!pending) return;
-    if (reply.type === "chunk" && reply.pcm16 && reply.sampleRate) {
-      const now = performance.now();
-      const audioDurationMs = reply.audioDurationMs
-        ?? Buffer.from(reply.pcm16, "base64").byteLength / 2 / reply.sampleRate * 1000;
-      console.info("[whalepartner:voice]", JSON.stringify({
-        event: "tts-chunk",
-        turnId: pending.turnId,
-        segmentIndex: pending.segmentIndex,
-        emotion: pending.emotion,
-        characterId: pending.characterId,
-        chunkIndex: reply.chunkIndex ?? pending.chunkIndex,
-        elapsedMs: Math.round((now - pending.startedAt) * 10) / 10,
-        modelElapsedMs: reply.elapsedMs,
-        interChunkMs: pending.lastChunkAt === undefined ? null : Math.round((now - pending.lastChunkAt) * 10) / 10,
-        audioDurationMs: Math.round(audioDurationMs * 10) / 10,
-        sampleRate: reply.sampleRate,
-      }));
-      pending.lastChunkAt = now;
-      pending.chunkIndex += 1;
+  async #startNativeServer(): Promise<void> {
+    if (!existsSync(this.#serverPath)) throw new Error("CosyVoice 原生服务程序不存在，请重新准备本地语音运行时。");
+    const port = await availablePort();
+    const serverUrl = `http://127.0.0.1:${port}`;
+    const server = spawn(this.#serverPath, [
+      "--model-path", this.#modelDirectory,
+      "--model-name", MODEL_ID,
+      "--host", "127.0.0.1",
+      "--port", String(port),
+      "--max-queued-requests", "1",
+      "--request-timeout-s", "120",
+      "--allowed-local-media-path", dirname(this.#voiceMetadataPath),
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    this.#server = server;
+    this.#serverUrl = serverUrl;
+    this.#serverLog = "";
+    const saveLog = (chunk: Buffer) => { this.#serverLog = (this.#serverLog + chunk.toString("utf8")).slice(-4000); };
+    server.stdout?.on("data", saveLog);
+    server.stderr?.on("data", saveLog);
+    server.on("error", (error) => this.#failServer(`无法启动 CosyVoice 原生服务：${error.message}`));
+    server.on("close", (code) => {
+      if (this.#server !== server) return;
+      this.#server = null;
+      this.#serverUrl = null;
+      if (!this.#closing) {
+        const detail = this.#serverLog.trim().slice(-600);
+        this.#failServer(detail ? `CosyVoice 原生服务已退出：${detail}` : `CosyVoice 原生服务已退出（${code ?? "unknown"}）。`);
+      }
+    });
+
+    const deadline = Date.now() + 15 * 60_000;
+    while (Date.now() < deadline) {
+      if (this.#server !== server || server.exitCode !== null) {
+        const detail = this.#serverLog.trim().slice(-800);
+        throw new Error(detail ? `CosyVoice 原生服务启动失败：${detail}` : "CosyVoice 原生服务启动失败。");
+      }
       try {
-        pending.onChunk({
-          sampleRate: reply.sampleRate,
-          pcm16: reply.pcm16,
-          chunkIndex: reply.chunkIndex ?? pending.chunkIndex - 1,
-          elapsedMs: reply.elapsedMs,
-          audioDurationMs,
-        });
+        const response = await fetch(`${serverUrl}/health`, { signal: AbortSignal.timeout(1_500) });
+        if (response.ok) {
+          await response.arrayBuffer();
+          return;
+        }
+      } catch {
+        // The native server does not accept requests until model loading completes.
       }
-      catch (error) {
-        this.#write({ action: "cancel", targetRequestId: reply.requestId });
-        this.#rejectRequest(reply.requestId, error instanceof Error ? error : new Error(String(error)));
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 300));
+    }
+    server.kill("SIGTERM");
+    throw new Error("CosyVoice 原生模型启动超时。");
+  }
+
+  async #removeLegacyTtsData(): Promise<void> {
+    if (this.#legacyCleanup) return this.#legacyCleanup;
+    const dataDirectory = resolve(this.#options.dataDirectory);
+    const paths = [
+      join(dataDirectory, "models", "tts", "cosyvoice3"),
+      join(dataDirectory, "models", "tts", "hf"),
+      join(dataDirectory, "runtimes", "tts-cosyvoice3"),
+      join(dataDirectory, "runtimes", "cosyvoice3-source"),
+      join(dataDirectory, "runtimes", "tts-mlx"),
+    ];
+    this.#legacyCleanup = (async () => {
+      for (const path of paths) {
+        const info = await lstat(path).catch(() => null);
+        if (info?.isDirectory()) await rm(path, { recursive: true, force: true });
       }
-      return;
-    }
-    if (reply.type === "done" || reply.type === "cancelled") {
-      this.#resolveRequest(reply.requestId);
-      return;
-    }
-    if (reply.type === "error") this.#rejectRequest(reply.requestId, new Error(reply.message ?? "本地语音生成失败。"));
+    })();
+    return this.#legacyCleanup;
   }
 
-  #write(message: Record<string, unknown>, callback?: (error?: Error | null) => void): void {
-    const worker = this.#worker;
-    if (!worker || worker.killed || worker.stdin.destroyed) {
-      callback?.(new Error("本地语音运行时没有启动。"));
-      return;
-    }
-    worker.stdin.write(`${JSON.stringify(message)}\n`, callback);
-  }
-
-  #resolveRequest(requestId: string): void {
-    const pending = this.#pending.get(requestId);
-    if (!pending) return;
-    this.#pending.delete(requestId);
-    this.#clearPending(pending);
-    console.info("[whalepartner:voice]", JSON.stringify({
-      event: "tts-segment-done",
-      turnId: pending.turnId,
-      segmentIndex: pending.segmentIndex,
-      emotion: pending.emotion,
-      characterId: pending.characterId,
-      chunkCount: pending.chunkIndex,
-      textLength: pending.textLength,
-      elapsedMs: Math.round((performance.now() - pending.startedAt) * 10) / 10,
-    }));
-    if (pending.signal?.aborted) pending.reject(abortError());
-    else pending.resolve();
-  }
-
-  #rejectRequest(requestId: string, error: Error): void {
-    const pending = this.#pending.get(requestId);
-    if (!pending) return;
-    this.#pending.delete(requestId);
-    this.#clearPending(pending);
-    pending.reject(error);
-  }
-
-  #clearPending(pending: PendingRequest): void {
-    clearTimeout(pending.timer);
-    if (pending.abort) pending.signal?.removeEventListener("abort", pending.abort);
-  }
-
-  #failWorker(message: string): void {
-    this.#readyReject?.(new Error(message));
-    this.#readyResolve = null;
-    this.#readyReject = null;
-    for (const requestId of this.#pending.keys()) this.#rejectRequest(requestId, new Error(message));
+  #failServer(message: string): void {
     if (!this.#closing) this.#current = { ...this.#current, state: "failed", progress: null, message };
+  }
+}
+
+async function availablePort(): Promise<number> {
+  const listener = createServer();
+  await new Promise<void>((resolveListen, rejectListen) => {
+    listener.once("error", rejectListen);
+    listener.listen(0, "127.0.0.1", resolveListen);
+  });
+  const address = listener.address();
+  if (!address || typeof address === "string") throw new Error("无法为 CosyVoice 原生服务分配本地端口。");
+  await new Promise<void>((resolveClose, rejectClose) => listener.close((error) => error ? rejectClose(error) : resolveClose()));
+  return address.port;
+}
+
+async function runSetupScript(scriptPath: string, dataDirectory: string, timeoutMs: number, failureMessage: string): Promise<void> {
+  if (!existsSync(scriptPath)) throw new Error("本地语音安装脚本缺失，请重新安装 WhalePartner。");
+  await new Promise<void>((resolveSetup, rejectSetup) => {
+    const child = spawn("bash", [scriptPath], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, WP_DATA_DIR: resolve(dataDirectory) },
+    });
+    let output = "";
+    const saveOutput = (chunk: Buffer) => { output = (output + chunk.toString("utf8")).slice(-4000); };
+    child.stdout?.on("data", saveOutput);
+    child.stderr?.on("data", saveOutput);
+    const timeout = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      rejectSetup(new Error(`${failureMessage} ${error.message}`));
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0) resolveSetup();
+      else rejectSetup(new Error(output.trim() || `${failureMessage}（${code ?? "unknown"}）。`));
+    });
+  });
+}
+
+function readNativeError(body: string): string | null {
+  try {
+    const value = JSON.parse(body) as { detail?: unknown };
+    return typeof value.detail === "string" ? value.detail : null;
+  } catch {
+    return body.trim() || null;
   }
 }
 
@@ -398,6 +441,14 @@ function abortError(): Error {
   return error;
 }
 
-export function createMlxTtsService(dataDirectory: string, options: Omit<Partial<MlxTtsOptions>, "dataDirectory"> = {}): TtsService {
-  return new MlxTtsService({ ...options, dataDirectory });
+function macosDeploymentTarget(): string | null {
+  if (process.platform !== "darwin") return null;
+  const version = execFileSync("/usr/bin/sw_vers", ["-productVersion"], { encoding: "utf8" }).trim();
+  const major = Number(version.split(".", 1)[0]);
+  if (major < 15) return null;
+  return "15.0";
+}
+
+export function createCosyVoiceTtsService(dataDirectory: string, options: Omit<Partial<CosyVoiceTtsOptions>, "dataDirectory"> = {}): TtsService {
+  return new CosyVoiceTtsService({ ...options, dataDirectory });
 }

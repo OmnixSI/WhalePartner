@@ -43,7 +43,7 @@ import type { ServerDeps } from "./server-types.ts";
 import { PresenceRegistry } from "./proactive/presence.ts";
 import { ProactiveService } from "./proactive/service.ts";
 import { createXAsrAsrService } from "./voice/asr.ts";
-import { createMlxTtsService } from "./voice/tts.ts";
+import { createCosyVoiceTtsService } from "./voice/tts.ts";
 import { attachVoiceWebSocket, handleVoiceRoute } from "./routes/voice.ts";
 import { handleRelationshipRoute } from "./routes/relationship.ts";
 import { dataDir } from "./data-dir.ts";
@@ -98,9 +98,9 @@ export function createApiServer(deps: ServerDeps): ApiServer {
     workerPath: existsSync(packagedAsrWorker) ? packagedAsrWorker : undefined,
     setupScriptPath: join(import.meta.dirname, "../scripts/setup-xasr-runtime.sh"),
   });
-  const tts = deps.tts ?? createMlxTtsService(dataDir(), {
-    workerPath: join(import.meta.dirname, "voice/tts_worker.py"),
-    setupScriptPath: join(import.meta.dirname, "../scripts/setup-tts-runtime.sh"),
+  const tts = deps.tts ?? createCosyVoiceTtsService(dataDir(), {
+    runtimeSetupScriptPath: join(import.meta.dirname, "../scripts/setup-cosyvoice3-native.sh"),
+    modelSetupScriptPath: join(import.meta.dirname, "../scripts/prepare-cosyvoice3-mlx-model.sh"),
   });
   const presence = new PresenceRegistry();
   const devices = deps.auth?.devices ?? new DeviceRegistry(deviceFile(deps.config.dbPath));
@@ -252,9 +252,9 @@ if (import.meta.main) {
     workerPath: existsSync(packagedAsrWorker) ? packagedAsrWorker : undefined,
     setupScriptPath: join(import.meta.dirname, "../scripts/setup-xasr-runtime.sh"),
   });
-  const tts = createMlxTtsService(dataDir(), {
-    workerPath: join(import.meta.dirname, "voice/tts_worker.py"),
-    setupScriptPath: join(import.meta.dirname, "../scripts/setup-tts-runtime.sh"),
+  const tts = createCosyVoiceTtsService(dataDir(), {
+    runtimeSetupScriptPath: join(import.meta.dirname, "../scripts/setup-cosyvoice3-native.sh"),
+    modelSetupScriptPath: join(import.meta.dirname, "../scripts/prepare-cosyvoice3-mlx-model.sh"),
   });
   const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService(), auth, asr, tts, staticDir: existsSync(staticDir) ? staticDir : undefined });
   let stopDiaryScheduler = () => {};

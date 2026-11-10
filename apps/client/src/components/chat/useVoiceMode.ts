@@ -5,7 +5,7 @@ import pcmWorkletUrl from "./pcm16-worklet.ts?worker&url";
 
 export type VoicePhase = "off" | "permission" | "preparing" | "ready" | "listening" | "recognizing" | "thinking" | "speaking" | "interrupted" | "error";
 export interface VoiceModelStatus {
-  state: "idle" | "loading" | "ready" | "failed";
+  state: "idle" | "waiting_reference" | "loading" | "ready" | "failed";
   progress: number | null;
   message: string;
   model?: string;

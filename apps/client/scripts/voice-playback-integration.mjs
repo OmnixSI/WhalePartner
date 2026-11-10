@@ -8,11 +8,7 @@ import { createServer } from "vite";
 const clientDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const apiOrigin = "http://127.0.0.1:8787";
 const sampleRate = 24_000;
-const measuredSpeechSecondsPerCharacter = 0.292;
-const standardTtsRtf = 1.2;
-const ttsRtfHeadroom = 0.15;
-const bufferPlanningRtf = standardTtsRtf + ttsRtfHeadroom;
-const bufferReserveSeconds = 2;
+const playbackPrerollSeconds = 0.35;
 const characterId = "deepseek";
 const emotion = "neutral";
 const interruptionText = "这一轮回答会在播放途中被用户打断。系统必须马上停止旧声音、取消剩余合成，并清除旧轮次的音频队列。随后用户立即开始新的问题，新的回答只能使用新的轮次编号，不能混入上一轮的语音内容。为了覆盖取消时仍有较长文本待生成的情况，我们继续增加一些自然的说明内容，确保服务端还在生成时就发生打断。";
@@ -33,14 +29,6 @@ const longSpeechSegments = [
   "快速开启下一轮时，新声音只会使用新的轮次编号，不会混进上一轮留下的音频。",
   "本次记录只统计这台 Mac 上真实运行的本地模型和真实 Web Audio 播放处理结果。",
 ];
-
-function estimatePrerollSeconds(text) {
-  const speechCharacters = text.match(/[\p{L}\p{N}]/gu)?.length ?? 0;
-  const estimatedAudioSeconds = speechCharacters * measuredSpeechSecondsPerCharacter;
-  const estimatedGenerationSeconds = estimatedAudioSeconds * bufferPlanningRtf;
-  const targetWaitSeconds = Math.max(0, estimatedGenerationSeconds + bufferReserveSeconds - estimatedAudioSeconds);
-  return targetWaitSeconds / bufferPlanningRtf;
-}
 
 function findLocalToken() {
   const processes = execFileSync("ps", ["-axo", "pid=,command="], { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 });
@@ -149,7 +137,7 @@ const statusResponse = await fetch(apiOrigin + "/api/voice/tts/status", { header
 assert.equal(statusResponse.status, 200, "the running local TTS service must be reachable");
 const status = await statusResponse.json();
 assert.equal(status.state, "ready", "the real local TTS model must be ready before this test starts");
-assert.match(status.model, /Qwen3-TTS/, "the playback benchmark must use the real Qwen3-TTS service");
+assert.match(status.model, /CosyVoice3/, "the playback benchmark must use the real CosyVoice3 service");
 
 const server = await createServer({
   configFile: resolve(clientDir, "vite.config.ts"),
@@ -178,7 +166,6 @@ try {
   await page.goto("http://127.0.0.1:" + address.port, { waitUntil: "domcontentloaded" });
 
   const run = async (scenarioId, segments, finishEachSegment) => {
-    const prerollSeconds = estimatePrerollSeconds(segments.join(""));
     return page.evaluate(async ({ scenarioId, segments, finishEachSegment, token, sampleRate, prerollSeconds, characterId, emotion }) => {
     const context = new AudioContext({ latencyHint: "interactive", sampleRate });
     await context.resume();
@@ -321,7 +308,7 @@ try {
       scenarioId,
       finishEachSegment,
       segmentCount: segments.length,
-      model: "real local Qwen3-TTS service",
+      model: "real local CosyVoice3 service",
       sampleRate,
       elapsedMs: generationElapsedMs,
       wallThroughDrainMs: performance.now() - requestStartedAt,
@@ -348,7 +335,7 @@ try {
     await window.recordVoicePcm({ scenarioId, pcm16Chunks, sampleRate });
     await context.close();
     return result;
-    }, { scenarioId, segments, finishEachSegment, token, sampleRate, prerollSeconds, characterId, emotion });
+    }, { scenarioId, segments, finishEachSegment, token, sampleRate, prerollSeconds: playbackPrerollSeconds, characterId, emotion });
   };
 
   console.log("MODEL", JSON.stringify({ model: status.model, speaker: status.speaker, state: status.state }));
@@ -361,6 +348,7 @@ try {
   assert.ok(after.segmentMetrics.every((segment) => segment.firstChunkElapsedMs !== null && segment.averageChunkIntervalMs !== null), "real TTS chunks must carry elapsed timestamps");
   assert.equal(after.workletDrainCount, 1, "the fixed protocol should finish and drain exactly once per turn");
   assert.equal(after.workletStartCount, 1, "the fixed protocol should preserve one continuous worklet playback start");
+  assert.ok(after.firstAudibleMs - after.firstAudioMs < 500, "playback should start promptly after the first TTS audio chunk arrives");
   assert.ok(after.nonSilentAnalyserFrames > 0, "the real AudioWorklet output must reach the playback analyser");
 
   const queuedBatchSegments = batchQueuedSentences(beforeSegments);
@@ -553,7 +541,7 @@ try {
     };
     await context.close();
     return result;
-  }, { token, sampleRate, prerollSeconds: estimatePrerollSeconds(interruptionText), characterId, emotion, interruptionText });
+  }, { token, sampleRate, prerollSeconds: playbackPrerollSeconds, characterId, emotion, interruptionText });
   assert.ok(interruption.oldAudioChunks > 0, "the old real turn must be producing audio when interrupted");
   assert.equal(interruption.stopReason, "vad-user-speech-during-playback");
   assert.equal(interruption.nextDrained, true, "the rapid next real turn must drain independently");

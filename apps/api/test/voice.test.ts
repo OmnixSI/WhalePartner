@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { once } from "node:events";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import WebSocket from "ws";
 import { loadConfig } from "../src/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import type { AsrService, AsrStatus, AsrUpdate } from "../src/voice/asr.ts";
-import type { TtsService, TtsStatus, TtsStreamContext } from "../src/voice/tts.ts";
+import { COSYVOICE_MODEL_FILES, COSYVOICE_RUNTIME_FILES, cosyVoiceModelIsReady, cosyVoiceNativeRuntimeIsReady, createCosyVoiceTtsService, type TtsService, type TtsStatus, type TtsStreamContext } from "../src/voice/tts.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store.ts";
 
@@ -50,6 +53,61 @@ function fakeTts(): TtsService & { received: Array<{ text: string; context?: Tts
     },
   };
 }
+
+test("CosyVoice model readiness requires every inference and tokenizer file", async () => {
+  const modelDirectory = await mkdtemp(join(tmpdir(), "whalepartner-cosyvoice-model-"));
+  try {
+    for (const file of COSYVOICE_MODEL_FILES) {
+      const path = join(modelDirectory, file);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, "fixture");
+    }
+    assert.equal(cosyVoiceModelIsReady(modelDirectory), true);
+    await unlink(join(modelDirectory, "speech_tokenizer/model.safetensors"));
+    assert.equal(cosyVoiceModelIsReady(modelDirectory), false);
+  } finally {
+    await rm(modelDirectory, { recursive: true, force: true });
+  }
+});
+
+test("CosyVoice native runtime readiness matches the current macOS deployment target", async () => {
+  const runtimeDirectory = await mkdtemp(join(tmpdir(), "whalepartner-cosyvoice-runtime-"));
+  try {
+    for (const file of COSYVOICE_RUNTIME_FILES) {
+      const path = join(runtimeDirectory, file);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, file === "deployment-target" ? "15.0\n" : "fixture");
+    }
+    assert.equal(cosyVoiceNativeRuntimeIsReady(runtimeDirectory, "15.0"), true);
+    await writeFile(join(runtimeDirectory, "deployment-target"), "26.0\n");
+    assert.equal(cosyVoiceNativeRuntimeIsReady(runtimeDirectory, "15.0"), false);
+  } finally {
+    await rm(runtimeDirectory, { recursive: true, force: true });
+  }
+});
+
+test("CosyVoice does not fall back to the previous raw reference instead of the imported profile", async (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("CosyVoice local TTS is supported on Apple Silicon macOS.");
+    return;
+  }
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-cosyvoice-"));
+  const voiceDirectory = join(dataDirectory, "voices", "big-fish");
+  const tts = createCosyVoiceTtsService(dataDirectory);
+  try {
+    await mkdir(voiceDirectory, { recursive: true });
+    await writeFile(join(voiceDirectory, "cosyvoice3-reference.wav"), "previous reference audio");
+    await writeFile(join(voiceDirectory, "cosyvoice3-reference.txt"), "previous reference text");
+    assert.equal(tts.status().state, "waiting_reference");
+    assert.match(tts.status().model, /CosyVoice3-0\.5B/);
+    await tts.warm();
+    assert.equal(tts.status().state, "waiting_reference");
+    await assert.rejects(tts.stream("你好。", () => {}), /等待导入大肥鱼的 CosyVoice 音色配置/);
+  } finally {
+    await tts.close?.();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
 
 test("voice routes stream X-ASR PCM and segmented TTS audio", async () => {
   const store = new ChatStore(":memory:");
