@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import type { ChatMessage, ChatProvider } from "../llm/types.ts";
 
 export interface LlmBridge {
@@ -52,7 +52,7 @@ export async function startLlmBridge(provider: ChatProvider): Promise<LlmBridge>
         usage: { prompt_tokens: usage.inputTokens, completion_tokens: usage.outputTokens, total_tokens: usage.inputTokens + usage.outputTokens },
       });
     } catch (error) {
-      sendJson(response, 502, { error: { message: error instanceof Error ? error.message : "bridge error" } });
+      sendJson(response, error instanceof RequestBodyError ? error.status : 502, { error: { message: error instanceof Error ? error.message : "bridge error" } });
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

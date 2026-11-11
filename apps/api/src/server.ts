@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./server/config.ts";
-import { applyCors, sendJson } from "./server/http.ts";
+import { applyCors, RequestBodyError, sendJson } from "./server/http.ts";
 import { authOptionsFromEnv, authorize, authRequiredFor, type AuthOptions } from "./hub/auth.ts";
 import { DeviceRegistry } from "./hub/devices.ts";
 import { hubEvents } from "./hub/events.ts";
@@ -186,6 +186,11 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       }
       sendJson(response, 404, { error: "未找到。" });
     } catch (error) {
+      if (error instanceof RequestBodyError) {
+        if (!response.headersSent) sendJson(response, error.status, { error: error.message, code: error.code });
+        else response.end();
+        return;
+      }
       console.warn("请求处理失败：", error instanceof Error ? error.stack ?? error.message : error);
       if (!response.headersSent) sendJson(response, 500, { error: "服务内部错误。" });
       else response.end();

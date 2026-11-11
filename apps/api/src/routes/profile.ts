@@ -1,7 +1,7 @@
 import { publishEvent } from "../hub/events.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import type { ServerDeps } from "../server/types.ts";
 
 /**
@@ -75,8 +75,9 @@ export async function handleProfileRoute(
     }
     sendJson(response, 405, { error: "method_not_allowed", message: "只支持 GET / PUT。" });
     return true;
-  } catch {
-    sendJson(response, 503, { error: "profile_unavailable", message: "现在拿不到，先记不了。" });
+  } catch (error) {
+    if (error instanceof RequestBodyError) sendJson(response, error.status, { error: error.code, message: error.message });
+    else sendJson(response, 503, { error: "profile_unavailable", message: "现在拿不到，先记不了。" });
     return true;
   } finally {
     db?.close();

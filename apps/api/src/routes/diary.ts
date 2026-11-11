@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError } from "../chat/service.ts";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import type { ServerDeps } from "../server/types.ts";
 import { text } from "./input.ts";
 
@@ -31,7 +31,7 @@ export async function handleDiaryRoute(deps: Pick<ServerDeps, "diary">, request:
     }
     return sendJson(response, 404, { error: "未找到。" });
   } catch (error) {
-    const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
+    const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
     return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "日记请求失败。" });
   }
 }

@@ -1,7 +1,7 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import { listCodexModels, type CodexModelOption } from "../codex/app-server.ts";
 import { codexConfigPath, readStoredCodexSettings } from "../codex/settings.ts";
 import type { ServerDeps } from "../server/types.ts";
@@ -271,7 +271,8 @@ export async function handleSetupRoute(
       writeText(targets.envPath, upsertEnvValue(readFileOrEmpty(targets.envPath), ENV_FILE_NAME, checked.key), SECRET_FILE_MODE);
       sendJson(response, 200, { ok: true, restartRequired: true, masked: maskKey(checked.key) });
     } catch (error) {
-      sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : "没写进去。" });
+      if (error instanceof RequestBodyError) sendJson(response, error.status, { error: error.code, message: error.message });
+      else sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : "没写进去。" });
     } finally {
       releaseSetupWrite();
     }
@@ -364,7 +365,8 @@ export async function handleSetupRoute(
         },
       });
     } catch (error) {
-      sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : "没写进去。" });
+      if (error instanceof RequestBodyError) sendJson(response, error.status, { error: error.code, message: error.message });
+      else sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : "没写进去。" });
     } finally {
       releaseSetupWrite();
     }

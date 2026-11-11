@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError } from "../chat/service.ts";
 import { isCharacterId } from "../persona/persona.ts";
 import type { ServerDeps } from "../server/types.ts";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import { text } from "./input.ts";
 
 export async function handleJournalsRoute(deps: Pick<ServerDeps, "journal">, request: IncomingMessage, response: ServerResponse, url: URL) {
@@ -36,7 +36,7 @@ export async function handleJournalsRoute(deps: Pick<ServerDeps, "journal">, req
     }
     return sendJson(response, 404, { error: "未找到。" });
   } catch (error) {
-    const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
+    const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
     return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "日记请求失败。" });
   }
 }

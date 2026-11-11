@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
 import { ChatInputError } from "../chat/service.ts";
 import { attachEventStream, publishEvent, type EventBus } from "../hub/events.ts";
-import { readJsonBody, sendJson, startSse } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson, startSse } from "../server/http.ts";
 import type { DeviceRegistry } from "../hub/devices.ts";
 
 export interface HubDeps {
@@ -57,8 +57,8 @@ export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, re
       sendJson(response, 200, { token: result.token, device: result.device });
       publishEvent("settings.updated", { scope: "devices" });
     } catch (error) {
-      const bad = error instanceof ChatInputError || error instanceof SyntaxError;
-      sendJson(response, bad ? 400 : 500, { error: bad ? "bad_request" : "internal", message: bad ? (error as Error).message : "配对失败。" });
+      const bad = error instanceof ChatInputError || error instanceof SyntaxError || error instanceof RequestBodyError;
+      sendJson(response, error instanceof RequestBodyError ? error.status : bad ? 400 : 500, { error: bad ? "bad_request" : "internal", message: bad ? (error as Error).message : "配对失败。" });
     }
     return true;
   }

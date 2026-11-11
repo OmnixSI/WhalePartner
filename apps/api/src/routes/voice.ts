@@ -1,7 +1,7 @@
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import { authorize, type AuthOptions, type AuthVerdict } from "../hub/auth.ts";
 import { isEmotion } from "../chat/emotion.ts";
 import type { AsrService, AsrStream } from "../voice/asr.ts";
@@ -60,7 +60,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
     try {
       body = await readJsonBody(request);
     } catch (error) {
-      sendJson(response, 400, { error: "invalid_request", message: error instanceof Error ? error.message : "请求内容无效。" });
+      sendJson(response, error instanceof RequestBodyError ? error.status : 400, { error: "invalid_request", message: error instanceof Error ? error.message : "请求内容无效。" });
       return true;
     }
     const text = typeof body.text === "string" ? body.text.trim() : "";

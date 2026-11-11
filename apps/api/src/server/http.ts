@@ -44,19 +44,48 @@ export function sendJson(response: ServerResponse, statusCode: number, body: unk
   response.end(JSON.stringify(body));
 }
 
+export type RequestBodyErrorCode = "invalid_json" | "invalid_body" | "body_too_large";
+
+/** 请求体问题带明确状态码：400 是格式/类型不对，413 是超过 64 KB。 */
+export class RequestBodyError extends Error {
+  readonly status: 400 | 413;
+  readonly code: RequestBodyErrorCode;
+
+  constructor(status: 400 | 413, code: RequestBodyErrorCode, message: string) {
+    super(message);
+    this.name = "RequestBodyError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 export async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
+  let tooLarge = false;
   for await (const chunk of request) {
     const buffer = Buffer.from(chunk);
     size += buffer.length;
-    if (size > MAX_BODY_BYTES) throw new Error("请求内容过大。");
-    chunks.push(buffer);
+    if (size > MAX_BODY_BYTES) {
+      // 继续把请求读完再回 413；中途抛错会销毁连接，客户端就收不到响应了。
+      tooLarge = true;
+      chunks.length = 0;
+    } else if (!tooLarge) {
+      chunks.push(buffer);
+    }
   }
+  if (tooLarge) throw new RequestBodyError(413, "body_too_large", "请求内容过大（最多 64 KB）。");
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw.trim()) return {};
-  const parsed: unknown = JSON.parse(raw);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("请求体必须是 JSON 对象。");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new RequestBodyError(400, "invalid_json", "请求体不是有效的 JSON。");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new RequestBodyError(400, "invalid_body", "请求体必须是 JSON 对象。");
+  }
   return parsed as Record<string, unknown>;
 }
 

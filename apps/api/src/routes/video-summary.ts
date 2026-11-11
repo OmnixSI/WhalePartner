@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError } from "../chat/service.ts";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import { archiveExperience } from "../memory/archive.ts";
 import type { ServerDeps } from "../server/types.ts";
 import { sharedParagraph, summarizeVideo, VideoError } from "../video/service.ts";
@@ -19,7 +19,7 @@ export async function handleVideoSummaryRoute(
     const remembered = true;
     return sendJson(response, 200, { video: result, remembered });
   } catch (error) {
-    const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : error instanceof VideoError ? 502 : 500;
+    const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : error instanceof VideoError ? 502 : 500;
     return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "视频处理失败。" });
   }
 }

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError } from "../chat/service.ts";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import { waitForMemoryJobs } from "../memory/jobs.ts";
 import { DEFAULT_CHARACTER, isCharacterId } from "../persona/persona.ts";
 import type { ServerDeps } from "../server/types.ts";
@@ -37,7 +37,7 @@ export async function handleChatHistoryRoute(
       const title = body.title === undefined ? "新聊天" : text(body.title, 40, "title")!;
       sendJson(response, 201, { session: deps.store.createSession(character, title) });
     } catch (error) {
-      const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
+      const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
       sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "会话请求失败。" });
     }
     return true;
@@ -55,7 +55,7 @@ export async function handleChatHistoryRoute(
       if (!session) sendJson(response, 404, { error: "没有找到这个角色的聊天会话。" });
       else sendJson(response, 200, { session });
     } catch (error) {
-      const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
+      const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
       sendJson(response, status, { error: error instanceof Error ? error.message : "修改聊天名称失败。" });
     }
     return true;
