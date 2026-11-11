@@ -292,6 +292,36 @@ test("deleting a source session removes its derived topic and core immediately",
   }
 });
 
+test("rewriting the core and a topic keeps the sources inherited from earlier sessions", () => {
+  const store = new ChatStore(":memory:");
+  const first = store.createSession("whale", "第一段记忆");
+  const sourceA = store.add("user", "我最近在学鲸鱼的声音。", null, "whale", first.id);
+  const second = store.createSession("whale", "第二段记忆");
+  const sourceB = store.add("user", "我下周有考试。", null, "whale", second.id);
+  store.publishMemoryDistillation({
+    facts: [], topics: [{ key: "ocean", title: "海洋兴趣", summary: "用户在学习鲸鱼的声音。", sourceMessageIds: [sourceA.id] }],
+    core: "用户最近在学鲸鱼的声音。", coreSourceMessageIds: [sourceA.id],
+  }, [], false);
+  // 第二次整理只看到会话 B 的消息，模型改写核心和主题时只列了新消息。
+  store.publishMemoryDistillation({
+    facts: [], topics: [{ key: "ocean", title: "海洋兴趣", summary: "用户在学习鲸鱼的声音，也在准备考试。", sourceMessageIds: [sourceB.id] }],
+    core: "用户最近在学鲸鱼的声音，也在准备考试。", coreSourceMessageIds: [sourceB.id],
+  }, [], false);
+  try {
+    const prepared = store.memoryDistillation("海洋兴趣");
+    assert.deepEqual(prepared.coreSourceMessageIds, [sourceB.id, sourceA.id]);
+    assert.deepEqual(prepared.topics[0]?.sourceMessageIds, [sourceA.id, sourceB.id]);
+
+    // 继承内容仍挂着旧来源：删掉任一来源会话，核心和主题按约定立即失效。
+    assert.equal(store.deleteSession(first.id, "whale")?.character, "whale");
+    const invalidated = store.memoryDistillation("海洋兴趣");
+    assert.equal(invalidated.core, undefined);
+    assert.equal(invalidated.topics.length, 0);
+  } finally {
+    store.close();
+  }
+});
+
 test("a batch without correction evidence keeps an older active fact", () => {
   const store = new ChatStore(":memory:");
   const session = store.createSession("whale", "保留有效事实");
