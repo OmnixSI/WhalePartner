@@ -84,7 +84,7 @@ export function createVideoService(): VideoService {
         signal?.throwIfAborted();
         const session = await loadBilibiliSession();
         signal?.throwIfAborted();
-        if (session && !(await isBilibiliSessionValid(session.sessdata))) {
+        if (session && !(await isBilibiliSessionValid(session.sessdata, signal))) {
           throw new VideoError("本机保存的 B 站登录态已失效，请重新登录后再试。");
         }
         const source = await collectBilibiliVideoEvidence(target, session?.sessdata ?? "", { framesDir: tempDir, signal });

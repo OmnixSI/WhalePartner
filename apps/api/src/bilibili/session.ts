@@ -143,13 +143,14 @@ export async function loadBilibiliSession(): Promise<BilibiliSession | undefined
   }
 }
 
-export async function isBilibiliSessionValid(sessdata: string) {
+export async function isBilibiliSessionValid(sessdata: string, signal?: AbortSignal) {
+  const timeout = AbortSignal.timeout(15_000);
   const response = await fetch(NAV_URL, {
     headers: {
       ...HEADERS,
       Cookie: `SESSDATA=${sessdata}`,
     },
-    signal: AbortSignal.timeout(15_000),
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
   const body = await readJson(response, "B 站登录状态验证");
   return body.code === 0 && body.data?.isLogin === true;

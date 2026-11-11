@@ -103,8 +103,8 @@ export function buildCodexArgs(imagePaths: string[], settings: StoredCodexSettin
   ];
 }
 
-export async function getCodexRequestSettings(configPath?: string) {
-  return resolveCodexSettings(readStoredCodexSettings(configPath), await listCodexModels());
+export async function getCodexRequestSettings(configPath?: string, signal?: AbortSignal) {
+  return resolveCodexSettings(readStoredCodexSettings(configPath), await listCodexModels(signal));
 }
 
 /** 结束 Codex 和它拉起的子进程：先 SIGTERM，宽限期后 SIGKILL。 */
@@ -184,7 +184,7 @@ export function runCodexExec(args: string[], prompt: string, signal?: AbortSigna
 
 export async function summarizeWithCodex(prompt: string, imagePaths: string[] = [], signal?: AbortSignal): Promise<CodexResult> {
   signal?.throwIfAborted();
-  const settings = await getCodexRequestSettings();
+  const settings = await getCodexRequestSettings(undefined, signal);
   const args = buildCodexArgs(imagePaths, settings);
   const { stdout, stderr, code, signal: termSignal } = await runCodexExec(args, prompt, signal);
   signal?.throwIfAborted();

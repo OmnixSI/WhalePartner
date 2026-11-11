@@ -26,12 +26,12 @@ export class CodexChatProvider implements ChatProvider {
 
   async listModels(signal?: AbortSignal) {
     signal?.throwIfAborted();
-    return (await listCodexModels()).map((model) => model.model);
+    return (await listCodexModels(signal)).map((model) => model.model);
   }
 
   async *stream(messages: ChatMessage[], options: StreamOptions = {}): AsyncGenerator<LlmDelta> {
     options.signal?.throwIfAborted();
-    const models = await listCodexModels();
+    const models = await listCodexModels(options.signal);
     const settings = resolveCodexSettings(readStoredCodexSettings(), models);
     for await (const text of streamWithCodexAppServer(buildCodexChatPrompt(messages), settings, options.signal)) {
       yield { text };

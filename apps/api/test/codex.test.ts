@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult, runCodexExec } from "../src/codex/exec.ts";
+import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult, runCodexExec, summarizeWithCodex } from "../src/codex/exec.ts";
 import {
   closeCodexAppServer,
   listCodexModels,
@@ -288,6 +288,46 @@ setInterval(() => {}, 1000);
   } finally {
     process.env.PATH = previousPath;
     delete process.env.PID_FILE;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("cancelling while the Codex model list is pending rejects within a second, for listCodexModels and the video summary alike", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "whalepartner-codex-models-abort-"));
+  const executable = join(directory, "codex");
+  const previousPath = process.env.PATH;
+
+  // 只回 initialize，model/list 永远不答。
+  await writeFile(executable, `#!${process.execPath}
+const lines = require("node:readline").createInterface({ input: process.stdin });
+lines.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.id === undefined || message.method === "model/list") return;
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\\n");
+});
+`);
+  await chmod(executable, 0o755);
+  process.env.PATH = `${directory}:${previousPath ?? ""}`;
+
+  const settleWithin = async (pending: Promise<unknown>, controller: AbortController) => {
+    const settled = pending.then(() => "resolved", (error: unknown) => error);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const abortedAt = Date.now();
+    controller.abort();
+    const outcome = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve("still waiting"), 1_000))]);
+    assert.notEqual(outcome, "still waiting", "取消 1 秒后仍在等模型列表");
+    assert.notEqual(outcome, "resolved");
+    assert.ok(Date.now() - abortedAt < 1_000);
+  };
+
+  try {
+    const listing = new AbortController();
+    await settleWithin(listCodexModels(listing.signal), listing);
+    const summary = new AbortController();
+    await settleWithin(summarizeWithCodex("prompt", [], summary.signal), summary);
+  } finally {
+    await closeCodexAppServer();
+    process.env.PATH = previousPath;
     await rm(directory, { recursive: true, force: true });
   }
 });

@@ -66,7 +66,7 @@ class CodexAppServer {
 
   async request(method: string, params: Record<string, unknown> = {}, signal?: AbortSignal): Promise<unknown> {
     throwIfAborted(signal);
-    await this.#ensureReady();
+    await abortable(this.#ensureReady(), signal);
     throwIfAborted(signal);
     return this.#sendRequest(method, params);
   }
@@ -76,11 +76,11 @@ class CodexAppServer {
     return () => this.#listeners.delete(listener);
   }
 
-  async listModels(): Promise<CodexModelOption[]> {
+  async listModels(signal?: AbortSignal): Promise<CodexModelOption[]> {
     const models: CodexModelOption[] = [];
     let cursor: string | null = null;
     do {
-      const result = await this.request("model/list", { includeHidden: false, cursor }) as {
+      const result = await abortable(this.request("model/list", { includeHidden: false, cursor }, signal), signal) as {
         data?: Array<Partial<CodexModelOption>>;
         nextCursor?: string | null;
       };
@@ -325,6 +325,17 @@ function throwIfAborted(signal?: AbortSignal) {
   if (signal?.aborted) throw new Error("Codex 对话已取消。");
 }
 
+/** 等待期间一旦中止就立刻拒绝；底层请求自己按超时清理，不会留下悬挂的等待。 */
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error("Codex 对话已取消。"));
+    if (signal.aborted) return onAbort();
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 let appServer: CodexAppServer | undefined;
 
 function getAppServer() {
@@ -332,8 +343,8 @@ function getAppServer() {
   return appServer;
 }
 
-export function listCodexModels() {
-  return getAppServer().listModels();
+export function listCodexModels(signal?: AbortSignal) {
+  return getAppServer().listModels(signal);
 }
 
 export function streamWithCodexAppServer(prompt: string, settings: StoredCodexSettings, signal?: AbortSignal) {
