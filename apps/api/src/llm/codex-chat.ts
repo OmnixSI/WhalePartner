@@ -1,4 +1,4 @@
-import { streamWithCodexAppServer, listCodexModels, resolveCodexSettings } from "../codex/app-server.ts";
+import { streamWithCodexAppServer, listCodexModels, resolveCodexModel, resolveCodexSettings } from "../codex/app-server.ts";
 import { readStoredCodexSettings } from "../codex/settings.ts";
 import type { ChatMessage, ChatProvider, LlmDelta, StreamOptions } from "./types.ts";
 
@@ -19,9 +19,20 @@ export function buildCodexChatPrompt(messages: ChatMessage[]) {
 /** 本地开发兜底：通过本机 Codex app-server 返回正文增量。正式多端服务不依赖它。 */
 export class CodexChatProvider implements ChatProvider {
   readonly id = "codex";
+  /** 最近一次按模型列表解析出的模型；没保存设置时，同步的 `model` 只能靠它报出真实默认项。 */
+  #resolved = "";
 
   get model() {
-    return readStoredCodexSettings().model || "gpt-6-luna";
+    return readStoredCodexSettings().model || this.#resolved || "Codex 默认模型";
+  }
+
+  async resolveModel(signal?: AbortSignal) {
+    const stored = readStoredCodexSettings();
+    if (stored.model) return stored.model;
+    const option = resolveCodexModel(stored, await listCodexModels(signal));
+    if (!option) throw new Error("本机 Codex 没有可用模型。");
+    this.#resolved = option.model;
+    return option.model;
   }
 
   async listModels(signal?: AbortSignal) {
@@ -33,6 +44,7 @@ export class CodexChatProvider implements ChatProvider {
     options.signal?.throwIfAborted();
     const models = await listCodexModels(options.signal);
     const settings = resolveCodexSettings(readStoredCodexSettings(), models);
+    this.#resolved = settings.model;
     for await (const text of streamWithCodexAppServer(buildCodexChatPrompt(messages), settings, options.signal)) {
       yield { text };
     }

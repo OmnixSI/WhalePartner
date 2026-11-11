@@ -85,7 +85,8 @@ async function probe({ provider }: ServerDeps) {
   if (!primary.listModels) return { checked: false as const };
   try {
     const models = await primary.listModels();
-    return { checked: true as const, modelAvailable: models.includes(primary.model) };
+    const model = primary.resolveModel ? await primary.resolveModel() : primary.model;
+    return { checked: true as const, model, modelAvailable: models.includes(model) };
   } catch (error) {
     return { checked: true as const, modelAvailable: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -137,7 +138,13 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       if (await handleHubRoute({ devices, events, port }, request, response, url)) return;
       if (request.method === "GET" && url.pathname === "/api/health") {
         const body = healthBody(deps, authRequiredFor(request, auth));
-        sendJson(response, 200, url.searchParams.get("probe") === "1" ? { ...body, probe: await probe(deps) } : body);
+        if (url.searchParams.get("probe") !== "1") {
+          sendJson(response, 200, body);
+        } else {
+          // 探测出的是推理实际会用的模型，展示也用它，不用同步兜底名。
+          const result = await probe(deps);
+          sendJson(response, 200, { ...body, ...("model" in result && result.model ? { model: result.model } : {}), probe: result });
+        }
         return;
       }
       if (await handleSetupRoute(deps, request, response, url)) return;

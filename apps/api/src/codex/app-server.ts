@@ -45,10 +45,14 @@ export function defaultEffortOf(model: CodexModelOption): string {
   return supported.includes(model.defaultReasoningEffort) ? model.defaultReasoningEffort : supported[0];
 }
 
+/** 推理实际用的模型：设置里选过就是那一个，没选就是 Codex 模型列表的默认项；推理、展示和探测都走这里。 */
+export function resolveCodexModel(stored: StoredCodexSettings, models: CodexModelOption[]): CodexModelOption | undefined {
+  if (stored.model) return models.find((model) => model.model === stored.model);
+  return models.find((model) => model.isDefault) ?? models[0];
+}
+
 export function resolveCodexSettings(stored: StoredCodexSettings, models: CodexModelOption[]): ResolvedCodexSettings {
-  let modelOption: CodexModelOption | undefined;
-  if (stored.model) modelOption = models.find((model) => model.model === stored.model);
-  else modelOption = models.find((model) => model.isDefault) ?? models[0];
+  const modelOption = resolveCodexModel(stored, models);
 
   if (!modelOption) {
     throw new Error(stored.model ? `本机 Codex 当前没有可用模型：${stored.model}` : "本机 Codex 没有可用模型。");
