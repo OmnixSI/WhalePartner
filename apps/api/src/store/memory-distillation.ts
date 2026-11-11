@@ -155,14 +155,19 @@ export class MemoryDistillationRepository {
     const key = topic.key.trim().slice(0, 80);
     const title = topic.title.trim().slice(0, 100);
     const summary = topic.summary.trim().slice(0, 1_200);
-    const sources = [...new Set(topic.sourceMessageIds)].filter((id) => this.#messageExists(id));
+    const existing = this.#db.prepare(`
+      SELECT ts.message_id AS id FROM memory_topic_sources ts
+      JOIN memory_topics t ON t.id = ts.topic_id WHERE t.topic_key = ?
+    `).all(key) as unknown as Array<{ id: number }>;
+    // 改写时合并旧来源：模型看不到全部旧来源 id，继承下来的内容不能因此丢掉出处。
+    const sources = [...new Set([...existing.map((row) => row.id), ...topic.sourceMessageIds])]
+      .filter((id) => this.#messageExists(id));
     if (!/^[a-z0-9_-]{1,80}$/u.test(key) || !title || !summary || sources.length === 0) return;
     this.#db.prepare(`
       INSERT INTO memory_topics(topic_key, title, summary, updated_at) VALUES (?, ?, ?, ?)
       ON CONFLICT(topic_key) DO UPDATE SET title = excluded.title, summary = excluded.summary, updated_at = excluded.updated_at
     `).run(key, title, summary, now);
     const row = this.#db.prepare("SELECT id FROM memory_topics WHERE topic_key = ?").get(key) as unknown as { id: number };
-    this.#db.prepare("DELETE FROM memory_topic_sources WHERE topic_id = ?").run(row.id);
     const addSource = this.#db.prepare("INSERT OR IGNORE INTO memory_topic_sources(topic_id, message_id) VALUES (?, ?)");
     for (const messageId of sources) addSource.run(row.id, messageId);
     this.#db.prepare("DELETE FROM memory_topic_search WHERE rowid = ?").run(row.id);
@@ -170,13 +175,16 @@ export class MemoryDistillationRepository {
   }
 
   #saveCore(text: string, sourceMessageIds: number[], now: string) {
-    const sources = [...new Set(sourceMessageIds)].filter((id) => this.#messageExists(id));
+    const existing = this.#db.prepare("SELECT message_id AS id FROM memory_core_sources WHERE core_id = 1")
+      .all() as unknown as Array<{ id: number }>;
+    // 同 #saveTopic：旧核心文本交给模型时不带来源 id，改写后要把旧来源并回去。
+    const sources = [...new Set([...existing.map((row) => row.id), ...sourceMessageIds])]
+      .filter((id) => this.#messageExists(id));
     if (sources.length === 0) return;
     this.#db.prepare(`
       INSERT INTO memory_core(id, text, updated_at) VALUES (1, ?, ?)
       ON CONFLICT(id) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at
     `).run(text, now);
-    this.#db.prepare("DELETE FROM memory_core_sources WHERE core_id = 1").run();
     const addSource = this.#db.prepare("INSERT OR IGNORE INTO memory_core_sources(core_id, message_id) VALUES (1, ?)");
     for (const messageId of sources) addSource.run(messageId);
   }
