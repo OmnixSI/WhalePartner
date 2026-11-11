@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./server/config.ts";
 import { applyCors, sendJson } from "./server/http.ts";
+import { closeServerAndDrain } from "./server/shutdown.ts";
 import { authOptionsFromEnv, authorize, authRequiredFor, type AuthOptions } from "./hub/auth.ts";
 import { DeviceRegistry } from "./hub/devices.ts";
 import { hubEvents } from "./hub/events.ts";
@@ -262,15 +263,25 @@ if (import.meta.main) {
   const server = createApiServer({ config, provider, store, memory, video, diary, journal, surf: surf.service, web: createWebService(), accounts: createAccountService(), auth, asr, tts, staticDir: existsSync(staticDir) ? staticDir : undefined });
   let stopDiaryScheduler = () => {};
   let stopJournalScheduler = () => {};
-  server.on("close", () => {
-    stopDiaryScheduler();
-    stopJournalScheduler();
-    void Promise.all([diary.waitForIdle(), journal.waitForIdle(), waitForMemoryJobs(store)]).finally(() => {
-      journalStore.close();
-      diaryStore.close();
-      store.close();
-    });
-  });
+  // 收尾只做一次：shutdown 主动等待它，server 的 close 事件也会触发它。
+  let drainPromise: Promise<void> | undefined;
+  const drain = () => {
+    drainPromise ??= (async () => {
+      stopDiaryScheduler();
+      stopJournalScheduler();
+      try {
+        await Promise.all([diary.waitForIdle(), journal.waitForIdle(), waitForMemoryJobs(store)]);
+      } catch (error) {
+        console.warn("退出收尾失败：", error instanceof Error ? error.message : error);
+      } finally {
+        journalStore.close();
+        diaryStore.close();
+        store.close();
+      }
+    })();
+    return drainPromise;
+  };
+  server.on("close", () => { void drain(); });
   // 收尾幂等：stopSurfScheduler / stopSurf 重复调用无副作用，shutdown 与 server.close 可各走一次。
   server.on("close", () => { stopSurfScheduler(); void stopSurf().catch(() => {}); });
   // 端口被占：打印明确原因，用固定退出码 98 退出（桌面外壳据此换端口重试）。
@@ -301,8 +312,9 @@ if (import.meta.main) {
       stopDiaryScheduler();
       stopJournalScheduler();
       server.closeVoiceConnections();
-      server.close(() => process.exit(0));
-      server.closeAllConnections();
+      // 等 HTTP 关闭，再等日记/记忆收尾和数据库关闭；超过 2.5 秒由 hardExit 兜底。
+      await closeServerAndDrain(server, drain);
+      process.exit(0);
     })();
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
