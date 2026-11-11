@@ -333,7 +333,9 @@ fn supervise(app: AppHandle) {
             first_window_shown = true;
             show_main(&app);
           }
-          let _ = app.emit("backend-ready", backend.info());
+          let info = backend.info();
+          log::info!("后端已就绪：{}", info.url);
+          let _ = app.emit("backend-ready", info);
         } else if !timed_out_reported && started.elapsed() > HEALTH_TIMEOUT {
           timed_out_reported = true;
           error_dialog(
@@ -361,6 +363,14 @@ fn supervise(app: AppHandle) {
       restarts = 0;
     }
     let will_restart = restarts < MAX_RESTARTS;
+    // 先换端口再报退出：监听 backend-exited 的界面这时查 backend_info，拿到的就是重启要用的地址。
+    // 前端恢复仍以随后带 url/token 的 backend-ready 为准。
+    if will_restart && exit_code == Some(EXIT_ADDR_IN_USE) {
+      let old = *backend.port.lock().unwrap();
+      let new = pick_port(Some(old));
+      *backend.port.lock().unwrap() = new;
+      log::info!("后端端口 {old} 被占用，改用 {new} 重启");
+    }
     let _ = app.emit("backend-exited", BackendExited { code: exit_code, will_restart });
     if !will_restart {
       error_dialog(
@@ -371,10 +381,6 @@ fn supervise(app: AppHandle) {
       return;
     }
     restarts += 1;
-    if exit_code == Some(EXIT_ADDR_IN_USE) {
-      let old = *backend.port.lock().unwrap();
-      *backend.port.lock().unwrap() = pick_port(Some(old));
-    }
     std::thread::sleep(Duration::from_millis(800));
   }
 }
