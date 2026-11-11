@@ -2,7 +2,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFile
 import { dirname, join, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, sendJson } from "../server/http.ts";
-import { listCodexModels, type CodexModelOption } from "../codex/app-server.ts";
+import { listCodexModels, supportedEffortsOf, type CodexModelOption } from "../codex/app-server.ts";
 import { codexSettingsPath, readStoredCodexSettings, writeStoredCodexSettings } from "../codex/settings.ts";
 import type { ServerDeps } from "../server/types.ts";
 
@@ -278,9 +278,9 @@ export async function handleSetupRoute(
         return true;
       }
 
+      const supportedEfforts = supportedEffortsOf(modelOption);
       let selectedEffort = effort ?? stored.effort;
-      if (!selectedEffort) selectedEffort = modelOption.defaultReasoningEffort;
-      const supportedEfforts = modelOption.supportedReasoningEfforts.map((option) => option.reasoningEffort);
+      if (!selectedEffort) selectedEffort = supportedEfforts.includes(modelOption.defaultReasoningEffort) ? modelOption.defaultReasoningEffort : supportedEfforts[0];
       if (!supportedEfforts.includes(selectedEffort)) {
         sendJson(response, 400, {
           error: "invalid_effort",

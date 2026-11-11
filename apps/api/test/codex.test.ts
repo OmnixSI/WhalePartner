@@ -9,6 +9,8 @@ import {
   closeCodexAppServer,
   listCodexModels,
   resolveCodexSettings,
+  supportedEffortsOf,
+  GENERIC_REASONING_EFFORTS,
   streamWithCodexAppServer,
   type CodexModelOption,
 } from "../src/codex/app-server.ts";
@@ -54,6 +56,13 @@ test("uses only an effort listed for the selected local Codex model", () => {
   assert.equal(resolveCodexSettings({ model: "gpt-6-luna", effort: "low" }, [model]).effort, "low");
   assert.throws(() => resolveCodexSettings({ model: "gpt-6-luna", effort: "none" }, [model]), /不在 gpt-6-luna 当前可用列表中/);
   assert.throws(() => resolveCodexSettings({ model: "custom-model", effort: "low" }, [model]), /当前没有可用模型/);
+});
+
+test("falls back to the generic effort list when Codex lists none for a model", () => {
+  const model = { model: "gpt-bare", id: "gpt-bare", displayName: "gpt-bare", defaultReasoningEffort: "", supportedReasoningEfforts: [], isDefault: true };
+  assert.deepEqual(supportedEffortsOf(model), [...GENERIC_REASONING_EFFORTS]);
+  assert.equal(resolveCodexSettings({ model: "", effort: "" }, [model]).effort, GENERIC_REASONING_EFFORTS[0]);
+  assert.equal(resolveCodexSettings({ model: "gpt-bare", effort: "high" }, [model]).effort, "high");
 });
 
 test("does not start a Codex turn when cancelled while starting its thread", async () => {

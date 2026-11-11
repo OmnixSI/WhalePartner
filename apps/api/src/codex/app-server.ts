@@ -24,6 +24,15 @@ export interface ResolvedCodexSettings extends StoredCodexSettings {
   modelOption: CodexModelOption;
 }
 
+/** Codex 没给某个模型的档位清单时可选的通用档位；客户端 `codex-model-options.ts` 用同一份。 */
+export const GENERIC_REASONING_EFFORTS: readonly string[] = ["low", "medium", "high", "xhigh"];
+
+/** 这个模型能用的推理强度：Codex 给了清单就按清单，没给就用通用档位。 */
+export function supportedEffortsOf(model: CodexModelOption): string[] {
+  const listed = model.supportedReasoningEfforts.map((option) => option.reasoningEffort);
+  return listed.length > 0 ? listed : [...GENERIC_REASONING_EFFORTS];
+}
+
 export function resolveCodexSettings(stored: StoredCodexSettings, models: CodexModelOption[]): ResolvedCodexSettings {
   let modelOption: CodexModelOption | undefined;
   if (stored.model) modelOption = models.find((model) => model.model === stored.model);
@@ -33,8 +42,9 @@ export function resolveCodexSettings(stored: StoredCodexSettings, models: CodexM
     throw new Error(stored.model ? `本机 Codex 当前没有可用模型：${stored.model}` : "本机 Codex 没有可用模型。");
   }
 
-  const effort = stored.effort || modelOption.defaultReasoningEffort;
-  const supportedEfforts = modelOption.supportedReasoningEfforts.map((option) => option.reasoningEffort);
+  const supportedEfforts = supportedEffortsOf(modelOption);
+  const fallbackEffort = supportedEfforts.includes(modelOption.defaultReasoningEffort) ? modelOption.defaultReasoningEffort : supportedEfforts[0];
+  const effort = stored.effort || fallbackEffort;
   if (!supportedEfforts.includes(effort)) {
     throw new Error(`推理强度 ${effort} 不在 ${modelOption.model} 当前可用列表中：${supportedEfforts.join(" / ")}`);
   }
