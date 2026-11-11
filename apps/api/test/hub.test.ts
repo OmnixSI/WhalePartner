@@ -192,6 +192,57 @@ test("revoking a device closes its event stream within a second and leaves other
   } finally { server.close(); server.closeAllConnections(); }
 });
 
+test("revoking a device aborts its in-flight POST /api/chat and stops the stream within a second", async () => {
+  let produced = 0;
+  let aborted = false;
+  const endless: ChatProvider = {
+    id: "fake", model: "m",
+    async *stream(_m, options) {
+      for (let i = 0; i < 40; i++) {
+        await sleep(60);
+        if (options?.signal?.aborted) { aborted = true; return; }
+        produced += 1;
+        yield { text: "字" };
+      }
+    },
+  };
+  const { base, server } = await boot({ localToken: "home-secret", provider: endless });
+  const owner = { ...json, authorization: "Bearer home-secret" };
+  try {
+    const created = await (await fetch(`${base}/api/pair/create`, { method: "POST", headers: owner, body: "{}" })).json() as { code: string };
+    const phone = await (await fetch(`${base}/api/pair/redeem`, { method: "POST", headers: json, body: JSON.stringify({ code: created.code, name: "手机" }) })).json() as { token: string; device: { id: string } };
+    const res = await fetch(`${base}/api/chat`, { method: "POST", headers: { ...json, authorization: `Bearer ${phone.token}` }, body: JSON.stringify({ message: "嗨" }) });
+    assert.equal(res.status, 200);
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let received = "";
+    while (!received.includes("event: delta")) {
+      const { done, value } = await reader.read();
+      assert.ok(!done, "撤销前流不该结束");
+      received += decoder.decode(value, { stream: true });
+    }
+
+    assert.equal((await fetch(`${base}/api/devices/${phone.device.id}`, { method: "DELETE", headers: owner })).status, 200);
+    const revokedAt = Date.now();
+    const producedAtRevoke = produced;
+    const drained = (async () => {
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) return;
+          received += decoder.decode(value, { stream: true });
+        }
+      } catch { /* 连接被直接掐断 */ }
+    })();
+    await withTimeout(drained, 1_000, "撤销设备后聊天流关闭");
+    assert.ok(Date.now() - revokedAt < 1_000);
+    // 生成也被中止了：撤销之后最多再多一帧在途的内容，不会把整段 40 个字写完。
+    await sleep(300);
+    assert.ok(aborted, "provider 应收到中止信号");
+    assert.ok(produced <= producedAtRevoke + 1, `撤销后仍在生成：${producedAtRevoke} -> ${produced}`);
+  } finally { server.close(); server.closeAllConnections(); }
+});
+
 test("pairing codes expire after 10 minutes and wrong guesses are rate limited", () => {
   let now = 1_000_000;
   const registry = new DeviceRegistry(undefined, () => now);

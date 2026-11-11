@@ -127,8 +127,8 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
       return;
     }
     sockets.handleUpgrade(request, socket, head, (client) => {
-      // 撤销设备时主动关掉这条连接；客户端重连会因 token 失效拿到 401。
-      const unregister = connections?.add(verdict.deviceId, () => client.close(1008, "device revoked"));
+      // 撤销设备时直接 terminate()：close() 要等对端回关闭帧，不回帧的客户端会拖到 ws 默认的 30 秒；重连会因 token 失效拿到 401。
+      const unregister = connections?.add(verdict.deviceId, () => client.terminate());
       if (unregister) client.on("close", unregister);
       sockets.emit("connection", client, request);
     });

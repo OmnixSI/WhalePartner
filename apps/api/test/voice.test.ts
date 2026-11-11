@@ -367,6 +367,66 @@ test("撤销设备会断开它的语音 WebSocket，重连返回 401", async () 
   }
 });
 
+test("撤销设备时用 terminate() 断开语音连接，不等不回关闭帧的客户端", async () => {
+  const store = new ChatStore(":memory:");
+  const devices = new DeviceRegistry();
+  const { code } = devices.createPairingCode();
+  const paired = devices.redeem(code, "手机");
+  assert.equal(paired.ok, true);
+  if (!paired.ok) return;
+  const server = createApiServer({
+    config: loadConfig({}),
+    provider: new FallbackChatProvider([provider]),
+    store,
+    asr: fakeAsr(),
+    tts: fakeTts(),
+    auth: { devices },
+  });
+  const base = await listen(server);
+  const raw = connect(Number(new URL(base).port), "127.0.0.1");
+  try {
+    // 手写握手，之后既不读也不回关闭帧：close() 握手会一直等到 ws 默认的 30 秒。
+    raw.write([
+      `GET /api/voice/asr/stream?token=${paired.token} HTTP/1.1`,
+      "Host: 127.0.0.1",
+      "Upgrade: websocket",
+      "Connection: Upgrade",
+      "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+      "Sec-WebSocket-Version: 13",
+      "", "",
+    ].join("\r\n"));
+    await new Promise<void>((resolve, reject) => {
+      let head = "";
+      raw.on("data", (chunk) => {
+        head += chunk.toString("latin1");
+        if (head.includes("101")) { raw.pause(); resolve(); }
+      });
+      raw.once("error", reject);
+    });
+
+    const closed = once(raw, "close");
+    assert.equal((await fetch(`${base}/api/devices/${paired.device.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${paired.token}` },
+    })).status, 200);
+    raw.resume();
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        closed,
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("撤销设备后，不回关闭帧的语音连接没有在 1 秒内断开。")), 1_000); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  } finally {
+    raw.destroy();
+    server.closeVoiceConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    store.close();
+  }
+});
+
 test("CosyVoice synthesis timeout grows with the text length and keeps the 120 s floor", () => {
   assert.equal(ttsRequestTimeoutMs(0), 120_000);
   assert.equal(ttsRequestTimeoutMs(40), 120_000);

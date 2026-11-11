@@ -185,7 +185,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       if (request.method === "POST" && url.pathname === "/api/chat") {
         if (dataMaintenanceBusy()) { sendJson(response, 409, { error: "busy", message: "正在导出或删除，稍等一下再聊。" }); return; }
         chatActivity.last = Date.now();
-        await handleChatRoute({ ...deps, events }, request, response, sessionRequests);
+        await handleChatRoute({ ...deps, events }, request, response, sessionRequests, { connections, deviceId: verdict.deviceId });
         return;
       }
       sendJson(response, 404, { error: "未找到。" });

@@ -7,6 +7,7 @@ import { readJsonBody, sendJson, sendSse, startSse } from "../server/http.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "../persona/persona.ts";
 import type { ServerDeps } from "../server/types.ts";
 import type { ChatSessionRequests } from "./chat-session-requests.ts";
+import type { DeviceConnections } from "../hub/device-connections.ts";
 
 const mutex = new SessionMutex();
 const ledger = new ClientIdLedger();
@@ -17,6 +18,7 @@ export async function handleChatRoute(
   request: IncomingMessage,
   response: ServerResponse,
   sessionRequests: ChatSessionRequests,
+  device?: { connections?: DeviceConnections; deviceId?: string },
 ) {
   let text: string;
   let character: CharacterId = DEFAULT_CHARACTER;
@@ -77,6 +79,12 @@ export async function handleChatRoute(
   response.on("close", () => {
     if (!response.writableFinished) abort.abort();
   });
+  // 撤销设备时：先中止生成，再直接掐断连接，撤销之后不会再写出任何正文。
+  const unregister = device?.connections?.add(device.deviceId, () => {
+    abort.abort();
+    response.destroy();
+  });
+  if (unregister) response.on("close", unregister);
 
   // B1：开启拦截后，额度用完直接 402，不开流也不写用户消息。
   const quota = quotaUsage(deps.config.dbPath);
