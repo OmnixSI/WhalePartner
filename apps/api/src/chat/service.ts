@@ -192,6 +192,8 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
         // 说到一半被打断 / 中途出错：已经生成的部分照常入库，并标记 interrupted。
         const saved = store.add("assistant", reply.trimEnd(), first ?? "neutral", character, session.id);
         store.markInterrupted(saved.id);
+        // 被打断的轮次也进记忆整理；部分回复带 interrupted 标记，整理时只取用户消息。
+        store.enqueueMemoryJob({ sessionId: session.id, character, userMessageId: userMessage.id, assistantMessageId: saved.id });
         bus.publish("message.created", { ...scope, streamId, message: wire(saved, { type: "interrupted" }) });
         bus.publish("message.interrupted", { ...scope, streamId, messageId: saved.id, reason: signal?.aborted ? "aborted" : "error" });
       } else {

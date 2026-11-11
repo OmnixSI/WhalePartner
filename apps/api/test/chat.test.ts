@@ -8,6 +8,7 @@ import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider } from "../src/llm/types.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store/index.ts";
+import { waitForMemoryJobs } from "../src/memory/jobs.ts";
 
 function scripted(chunks: string[], seen?: ChatMessage[][]): ChatProvider {
   return {
@@ -96,6 +97,33 @@ test("runChat keeps the partial reply (marked interrupted) when the client abort
   assert.deepEqual(saved.map((m) => m.role), ["user", "assistant"]);
   assert.equal(saved[1].content, "半句话");
   assert.deepEqual(saved[1].attachment, { type: "interrupted" });
+});
+
+test("an interrupted turn enters memory distillation with only the user message", async () => {
+  const store = new ChatStore(":memory:");
+  const abort = new AbortController();
+  let distilled: Array<{ message_id: number; speaker: string; text: string }> | undefined;
+  const provider: ChatProvider = {
+    id: "interrupted-memory",
+    model: "m",
+    async *stream(messages) {
+      if (messages[0]?.content.includes("本机记忆整理器")) {
+        const payload = JSON.parse(messages[1]!.content) as { messages: Array<{ message_id: number; speaker: string; text: string }> };
+        distilled = payload.messages;
+        yield { text: JSON.stringify({ facts: [], topics: [], core: "", core_source_message_ids: [], observation: "用户提到下周三面试。" }) };
+        return;
+      }
+      yield { text: "好的" };
+      abort.abort();
+      yield { text: "，记下了" };
+    },
+  };
+  await assert.rejects(collect(runChat({ provider, store }, "我下周三面试", abort.signal)));
+  await waitForMemoryJobs(store);
+
+  assert.ok(distilled, "被打断的轮次应该进入记忆整理");
+  assert.deepEqual(distilled?.map((message) => [message.speaker, message.text]), [["用户", "我下周三面试"]]);
+  assert.equal(store.observation(store.recent(1)[0].sessionId)?.summary, "用户提到下周三面试。");
 });
 
 test("runChat removes the user message when the model fails before any output", async () => {
