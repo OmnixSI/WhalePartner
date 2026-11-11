@@ -13,6 +13,12 @@ interface ProcessorDeps {
 
 const queues = new WeakMap<ChatStore, Promise<void>>();
 
+/** 被打断的回复带 `{ type: "interrupted" }` 附件：能确认是它，就不拿半句回复当记忆依据。 */
+function isInterrupted(message: { attachment?: unknown } | undefined): boolean {
+  const attachment = message?.attachment;
+  return Boolean(attachment && typeof attachment === "object" && (attachment as { type?: unknown }).type === "interrupted");
+}
+
 async function drain({ store, provider, memory }: ProcessorDeps) {
   if (isForegroundChatActive()) return;
   if (memory?.syncPendingExperiences) {
@@ -32,24 +38,31 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
       return;
     }
     try {
+      // 被打断的轮次只拿用户消息去整理；已生成的那半句标记为 interrupted，不作为事实依据。
+      const interruptedAssistantIds = new Set(
+        batch.jobs
+          .map((job) => job.assistantMessageId)
+          .filter((id) => isInterrupted(store.message(id))),
+      );
+      const messages = batch.messages.filter((message) => !(message.role === "assistant" && interruptedAssistantIds.has(message.id)));
       const needsDistillation = batch.jobs.some((job) => !job.factsDone || !job.summaryDone);
-      if (needsDistillation && batch.messages.length > 0) {
+      if (needsDistillation && messages.length > 0) {
         const sessionId = batch.jobs[0].sessionId;
         const previousObservation = store.observation(sessionId);
-        const query = batch.messages.filter((message) => message.role === "user").map((message) => message.content).join("\n").slice(0, 12_000);
+        const query = messages.filter((message) => message.role === "user").map((message) => message.content).join("\n").slice(0, 12_000);
         const context = store.memoryDistillationWorkingSet(query);
-        const inputCharacters = JSON.stringify({ messages: batch.messages, previousObservation: previousObservation?.summary, context }).length;
+        const inputCharacters = JSON.stringify({ messages, previousObservation: previousObservation?.summary, context }).length;
         if (process.env.WP_DEBUG) console.log(`[记忆] 整理 ${batch.jobs.length} 轮聊天、${inputCharacters} 字符输入、1 次模型请求。`);
         const result = await distillMemoryBatch(provider, {
-          messages: batch.messages,
+          messages,
           previousObservation: previousObservation?.summary,
           context,
         }, controller.signal);
         controller.signal.throwIfAborted();
         const saved = store.publishMemoryDistillation(result, batch.jobs.map((job) => job.id), true, {
           sessionId,
-          fromMessageId: batch.messages[0].id,
-          throughMessageId: batch.messages.at(-1)!.id,
+          fromMessageId: messages[0].id,
+          throughMessageId: messages.at(-1)!.id,
         });
         if (memory) {
           for (const factId of saved.supersededIds) {
@@ -108,12 +121,13 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
         if (!job.vectorsDone) {
           const user = store.message(job.userMessageId);
           const assistant = store.message(job.assistantMessageId);
-          if (user && assistant) {
+          if (user) {
             const session = store.getSession(job.sessionId);
+            const includeReply = assistant && !interruptedAssistantIds.has(assistant.id);
             await archiveExperience(store, memory, {
               kind: "chat",
               title: session?.title ?? "聊天经历",
-              text: [`用户：${user.content}`, `角色：${assistant.content}`].join("\n").slice(0, 6_000),
+              text: (includeReply ? [`用户：${user.content}`, `角色：${assistant.content}`] : [`用户：${user.content}`]).join("\n").slice(0, 6_000),
               sourceId: `chat:${job.sessionId}:${user.id}`,
               sourceSessionId: job.sessionId,
               sourceMessageId: user.id,

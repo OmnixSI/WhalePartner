@@ -129,7 +129,7 @@ export class SessionRepository {
       SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
       FROM messages WHERE id = ?
     `).get(id) as unknown as StoredMessage | undefined;
-    return row ? { ...row } : undefined;
+    return row ? mapMessage(row) : undefined;
   }
 
   /** 被打断的回复：留下已生成的部分，并在附件里打个记号（历史接口会带出去）。 */
