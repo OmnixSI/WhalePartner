@@ -160,13 +160,25 @@ export class CosyVoiceTtsService implements TtsService {
       this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待导入大肥鱼的 CosyVoice 音色配置。" };
       return Promise.resolve();
     }
+    // A rebuild in progress has already stopped or is about to stop the old server; join it before the
+    // ready short-circuit below can report the stale server as ready.
+    if (this.#warmPromise) return this.#warmPromise;
     if (this.#server && this.#server.exitCode === null && this.#serverUrl) {
       this.#current = { ...this.#current, state: "ready", progress: 100, message: "CosyVoice MLX 本地语音已就绪。" };
       return Promise.resolve();
     }
-    if (this.#warmPromise) return this.#warmPromise;
-    this.#current = { ...this.#current, state: "loading", progress: null, message: "正在准备原生 MLX 语音模型。首次启动会构建运行时并下载模型。" };
-    this.#warmPromise = this.#prepare().then(() => {
+    return this.#startWarm("正在准备原生 MLX 语音模型。首次启动会构建运行时并下载模型。", () => this.#prepare());
+  }
+
+  /**
+   * Claims #warmPromise before any work starts, so a warm-up that arrives while a rebuild or install is
+   * running joins it instead of preparing the same directories concurrently.
+   */
+  #startWarm(loadingMessage: string, work: () => Promise<void>): Promise<void> {
+    this.#current = { ...this.#current, state: "loading", progress: null, message: loadingMessage };
+    this.#warmPromise = Promise.resolve().then(work).then(() => {
+      // A rebuild without a voice profile ends in waiting_reference instead of ready.
+      if (!this.#hasVoiceProfile()) return;
       this.#current = { ...this.#current, state: "ready", progress: 100, message: "CosyVoice MLX 本地语音已就绪。" };
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -188,21 +200,27 @@ export class CosyVoiceTtsService implements TtsService {
     await this.warm();
   }
 
-  async rebuild(): Promise<void> {
-    if (!this.#supported) throw new Error(this.#current.message);
-    if (this.#warmPromise) throw new Error("CosyVoice 正在安装或加载，完成后再重建。");
-    if (this.#activeRequests.size > 0) throw new Error("语音生成正在进行，请结束语音后再重建环境。");
-    await this.#stopServer();
-    const dataDirectory = resolve(this.#options.dataDirectory);
-    const paths = [
-      this.#runtimeDirectory,
-      this.#modelDirectory,
-      join(dataDirectory, "runtimes", ".cosyvoice3-native-previous"),
-      join(dataDirectory, "runtimes", ".cosyvoice3-native-source"),
-      join(dataDirectory, "runtimes", ".cosyvoice3-native-build"),
-    ];
-    await Promise.all(paths.map((path) => rm(path, { recursive: true, force: true })));
-    await this.warm();
+  rebuild(): Promise<void> {
+    if (!this.#supported) return Promise.reject(new Error(this.#current.message));
+    if (this.#warmPromise) return Promise.reject(new Error("CosyVoice 正在安装或加载，完成后再重建。"));
+    if (this.#activeRequests.size > 0) return Promise.reject(new Error("语音生成正在进行，请结束语音后再重建环境。"));
+    return this.#startWarm("正在重建 CosyVoice 语音环境。", async () => {
+      await this.#stopServer();
+      const dataDirectory = resolve(this.#options.dataDirectory);
+      const paths = [
+        this.#runtimeDirectory,
+        this.#modelDirectory,
+        join(dataDirectory, "runtimes", ".cosyvoice3-native-previous"),
+        join(dataDirectory, "runtimes", ".cosyvoice3-native-source"),
+        join(dataDirectory, "runtimes", ".cosyvoice3-native-build"),
+      ];
+      await Promise.all(paths.map((path) => rm(path, { recursive: true, force: true })));
+      if (!this.#hasVoiceProfile()) {
+        this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待导入大肥鱼的 CosyVoice 音色配置。" };
+        return;
+      }
+      await this.#prepare();
+    });
   }
 
   async stream(text: string, onChunk: (chunk: TtsAudioChunk) => void, signal?: AbortSignal, context?: TtsStreamContext): Promise<void> {

@@ -111,8 +111,16 @@ export class XAsrService implements AsrService {
   warm(): Promise<void> {
     if (this.#current.state === "ready" && this.#worker) return Promise.resolve();
     if (this.#warmPromise) return this.#warmPromise;
-    this.#current = { state: "loading", progress: 0, message: "正在准备 X-ASR 480 ms 中英模型和整句精修。", model: XASR_MODEL, offlineRefinement: "loading" };
-    this.#warmPromise = this.#prepare().then(() => {
+    return this.#startWarm("正在准备 X-ASR 480 ms 中英模型和整句精修。", () => this.#prepare());
+  }
+
+  /**
+   * Claims #warmPromise before any work starts, so a warm-up that arrives while a rebuild or install is
+   * running joins it instead of preparing the same directories concurrently.
+   */
+  #startWarm(loadingMessage: string, work: () => Promise<void>): Promise<void> {
+    this.#current = { state: "loading", progress: 0, message: loadingMessage, model: XASR_MODEL, offlineRefinement: "loading" };
+    this.#warmPromise = Promise.resolve().then(work).then(() => {
       this.#current = {
         state: "ready",
         progress: 100,
@@ -150,17 +158,19 @@ export class XAsrService implements AsrService {
     await this.warm();
   }
 
-  async rebuild(): Promise<void> {
-    if (this.#warmPromise) throw new Error("X-ASR 正在安装或加载，完成后再重建。");
-    await this.#stopWorker("X-ASR 环境正在重建。");
-    await Promise.all([
-      rm(this.#runtimeDirectory, { recursive: true, force: true }),
-      rm(this.#modelDirectory, { recursive: true, force: true }),
-      rm(this.#offlineModelDirectory, { recursive: true, force: true }),
-      removePartialInstalls(this.#modelDirectory),
-      removePartialInstalls(this.#offlineModelDirectory),
-    ]);
-    await this.warm();
+  rebuild(): Promise<void> {
+    if (this.#warmPromise) return Promise.reject(new Error("X-ASR 正在安装或加载，完成后再重建。"));
+    return this.#startWarm("X-ASR 环境正在重建。", async () => {
+      await this.#stopWorker("X-ASR 环境正在重建。");
+      await Promise.all([
+        rm(this.#runtimeDirectory, { recursive: true, force: true }),
+        rm(this.#modelDirectory, { recursive: true, force: true }),
+        rm(this.#offlineModelDirectory, { recursive: true, force: true }),
+        removePartialInstalls(this.#modelDirectory),
+        removePartialInstalls(this.#offlineModelDirectory),
+      ]);
+      await this.#prepare();
+    });
   }
 
   async createStream(): Promise<AsrStream> {
