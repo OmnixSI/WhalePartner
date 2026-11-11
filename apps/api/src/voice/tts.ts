@@ -7,6 +7,7 @@ import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Emotion } from "../chat/emotion.ts";
+import { SetupProcessRunner } from "./setup-process.ts";
 
 const MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512";
 const SAMPLE_RATE = 24_000;
@@ -110,7 +111,11 @@ export class CosyVoiceTtsService implements TtsService {
   readonly #voiceMetadataPath: string;
   readonly #supported: boolean;
   readonly #deploymentTarget: string | null;
-  readonly #processExit = () => this.#server?.kill();
+  readonly #setupProcesses = new SetupProcessRunner();
+  readonly #processExit = () => {
+    this.#setupProcesses.killNow();
+    this.#server?.kill();
+  };
   readonly #activeRequests = new Set<AbortController>();
   #current: TtsStatus;
   #warmPromise: Promise<void> | null = null;
@@ -192,6 +197,8 @@ export class CosyVoiceTtsService implements TtsService {
     if (!this.#supported) throw new Error(this.#current.message);
     if (this.#warmPromise) throw new Error("CosyVoice 正在安装或加载，完成后再重建。");
     if (this.#activeRequests.size > 0) throw new Error("语音生成正在进行，请结束语音后再重建环境。");
+    // The rebuild deletes the directories a still-running setup script is writing to; end it first.
+    this.#setupProcesses.kill();
     await this.#stopServer();
     const dataDirectory = resolve(this.#options.dataDirectory);
     const paths = [
@@ -316,6 +323,7 @@ export class CosyVoiceTtsService implements TtsService {
     process.removeListener("exit", this.#processExit);
     this.#closing = true;
     for (const controller of this.#activeRequests) controller.abort();
+    this.#setupProcesses.close();
     await this.#stopServer();
   }
 
@@ -362,14 +370,14 @@ export class CosyVoiceTtsService implements TtsService {
   async #installRuntime(): Promise<void> {
     const setupScript = this.#options.runtimeSetupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-cosyvoice3-native.sh", import.meta.url));
     this.#current = { ...this.#current, message: "正在构建 CosyVoice3 原生 MLX 运行时。" };
-    await runSetupScript(setupScript, this.#options.dataDirectory, 90 * 60_000, "构建 CosyVoice 原生运行时失败。");
+    await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 90 * 60_000, "构建 CosyVoice 原生运行时失败。");
     if (!cosyVoiceNativeRuntimeIsReady(this.#runtimeDirectory, this.#deploymentTarget)) throw new Error("原生 MLX 运行时构建后仍缺少 CosyVoice 服务文件。");
   }
 
   async #installModel(): Promise<void> {
     const setupScript = this.#options.modelSetupScriptPath ?? fileURLToPath(new URL("../../scripts/prepare-cosyvoice3-mlx-model.sh", import.meta.url));
     this.#current = { ...this.#current, message: "正在下载 CosyVoice3 MLX FP16 模型和语音分词器。" };
-    await runSetupScript(setupScript, this.#options.dataDirectory, 90 * 60_000, "下载 CosyVoice MLX 模型失败。");
+    await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 90 * 60_000, "下载 CosyVoice MLX 模型失败。");
     if (!cosyVoiceModelIsReady(this.#modelDirectory)) throw new Error("CosyVoice MLX 模型下载后仍缺少推理文件。");
   }
 
@@ -461,30 +469,6 @@ async function availablePort(): Promise<number> {
   if (!address || typeof address === "string") throw new Error("无法为 CosyVoice 原生服务分配本地端口。");
   await new Promise<void>((resolveClose, rejectClose) => listener.close((error) => error ? rejectClose(error) : resolveClose()));
   return address.port;
-}
-
-async function runSetupScript(scriptPath: string, dataDirectory: string, timeoutMs: number, failureMessage: string): Promise<void> {
-  if (!existsSync(scriptPath)) throw new Error("本地语音安装脚本缺失，请重新安装 WhalePartner。");
-  await new Promise<void>((resolveSetup, rejectSetup) => {
-    const child = spawn("bash", [scriptPath], {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, WP_DATA_DIR: resolve(dataDirectory) },
-    });
-    let output = "";
-    const saveOutput = (chunk: Buffer) => { output = (output + chunk.toString("utf8")).slice(-4000); };
-    child.stdout?.on("data", saveOutput);
-    child.stderr?.on("data", saveOutput);
-    const timeout = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
-    child.once("error", (error) => {
-      clearTimeout(timeout);
-      rejectSetup(new Error(`${failureMessage} ${error.message}`));
-    });
-    child.once("close", (code) => {
-      clearTimeout(timeout);
-      if (code === 0) resolveSetup();
-      else rejectSetup(new Error(output.trim() || `${failureMessage}（${code ?? "unknown"}）。`));
-    });
-  });
 }
 
 function readNativeError(body: string): string | null {
