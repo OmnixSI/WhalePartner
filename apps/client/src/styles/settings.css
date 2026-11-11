@@ -301,6 +301,7 @@
 .mset__label { font-size: var(--fs-small); color: var(--ink-soft); }
 .mset__now { margin-bottom: var(--sp-2); font-size: var(--fs-body); color: var(--ink); overflow-wrap: anywhere; }
 .mset__hint { margin-top: var(--sp-2); font-size: var(--fs-small); line-height: var(--lh-body); color: var(--ink-mute); }
+.mset__error { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2); margin-top: var(--sp-2); }
 .mset__path { margin-top: var(--sp-2); font-size: var(--fs-micro); color: var(--ink-mute); overflow-wrap: anywhere; }
 .mset__probe { margin-top: var(--sp-2); font-size: var(--fs-small); line-height: var(--lh-body); color: var(--ink-soft); }
 
