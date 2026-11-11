@@ -9,6 +9,7 @@ import type { Duplex } from "node:stream";
 import { test } from "node:test";
 import WebSocket from "ws";
 import { loadConfig } from "../src/server/config.ts";
+import { SetupProcessRunner } from "../src/voice/setup-process.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import type { AuthOptions } from "../src/hub/auth.ts";
@@ -589,6 +590,116 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", (l
     await rm(dataDirectory, { recursive: true, force: true });
   }
 });
+
+test("voice setup scripts run in their own process group so a timeout ends their children", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-setup-timeout-"));
+  const script = join(dataDirectory, "setup.sh");
+  const grandchildPidPath = join(dataDirectory, "grandchild.pid");
+  const runner = new SetupProcessRunner();
+  try {
+    await writeFile(script, `#!/bin/bash
+sleep 60 &
+echo $! > "$WP_DATA_DIR/grandchild.pid"
+wait
+`);
+    await chmod(script, 0o755);
+
+    await assert.rejects(runner.run(script, dataDirectory, 300, "安装测试失败。"), /安装超时/);
+    const pid = Number((await readFile(grandchildPidPath, "utf8")).trim());
+    assert.ok(pid > 0);
+    await waitFor(() => !processExists(pid), 3_000);
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("closing the voice setup runner ends the install script and its children", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-setup-close-"));
+  const script = join(dataDirectory, "setup.sh");
+  const grandchildPidPath = join(dataDirectory, "grandchild.pid");
+  const runner = new SetupProcessRunner();
+  try {
+    await writeFile(script, `#!/bin/bash
+sleep 60 &
+echo $! > "$WP_DATA_DIR/grandchild.pid"
+wait
+`);
+    await chmod(script, 0o755);
+
+    const running = runner.run(script, dataDirectory, 60_000, "安装测试失败。");
+    await waitFor(async () => (await readFile(grandchildPidPath, "utf8").catch(() => "")).trim() !== "", 3_000);
+    runner.close();
+    await assert.rejects(running, /安装测试失败/);
+    const pid = Number((await readFile(grandchildPidPath, "utf8")).trim());
+    await waitFor(() => !processExists(pid), 3_000);
+    await assert.rejects(runner.run(script, dataDirectory, 60_000, "安装测试失败。"), /已关闭/);
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("closing the voice setup runner kills a script that ignores SIGTERM, without waiting for the grace period", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-setup-term-"));
+  const script = join(dataDirectory, "setup.sh");
+  const scriptPidPath = join(dataDirectory, "script.pid");
+  const grandchildPidPath = join(dataDirectory, "grandchild.pid");
+  const runner = new SetupProcessRunner();
+  try {
+    // 脚本和它的子进程都忽略 SIGTERM（子进程继承忽略状态），只有 SIGKILL 能结束。
+    await writeFile(script, `#!/bin/bash
+trap '' TERM
+echo $$ > "$WP_DATA_DIR/script.pid"
+sleep 60 &
+echo $! > "$WP_DATA_DIR/grandchild.pid"
+while true; do wait; done
+`);
+    await chmod(script, 0o755);
+
+    const running = runner.run(script, dataDirectory, 60_000, "安装测试失败。").then(() => null, (error: unknown) => error);
+    await waitFor(async () => (await readFile(grandchildPidPath, "utf8").catch(() => "")).trim() !== "", 3_000);
+    const scriptPid = Number((await readFile(scriptPidPath, "utf8")).trim());
+    const grandchildPid = Number((await readFile(grandchildPidPath, "utf8")).trim());
+    runner.close();
+    // 5 秒的 SIGKILL 兜底在 App 退出时来不及触发：close() 之后 1.5 秒内整个进程组必须已经没了。
+    await waitFor(() => !processExists(scriptPid) && !processExists(grandchildPid), 1_500);
+    assert.match(String(await running), /安装测试失败/);
+  } finally {
+    runner.killNow();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("voice setup runner resolves when the script exits successfully", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-setup-ok-"));
+  const script = join(dataDirectory, "setup.sh");
+  const runner = new SetupProcessRunner();
+  try {
+    await writeFile(script, "#!/bin/bash\nexit 0\n");
+    await chmod(script, 0o755);
+    await runner.run(script, dataDirectory, 60_000, "安装测试失败。");
+  } finally {
+    runner.close();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+  }
+  throw new Error("等待进程退出超时。");
+}
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function listen(server: Server): Promise<string> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));

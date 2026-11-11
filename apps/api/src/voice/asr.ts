@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { SetupProcessRunner } from "./setup-process.ts";
 
 const execFileAsync = promisify(execFile);
 
@@ -93,7 +94,11 @@ export class XAsrService implements AsrService {
   #pending = new Map<string, PendingRequest>();
   #readyResolve: (() => void) | null = null;
   #readyReject: ((error: Error) => void) | null = null;
-  readonly #processExit = () => this.#worker?.kill();
+  readonly #setupProcesses = new SetupProcessRunner();
+  readonly #processExit = () => {
+    this.#setupProcesses.killNow();
+    this.#worker?.kill();
+  };
 
   constructor(options: XAsrOptions) {
     this.#options = options;
@@ -152,6 +157,8 @@ export class XAsrService implements AsrService {
 
   async rebuild(): Promise<void> {
     if (this.#warmPromise) throw new Error("X-ASR 正在安装或加载，完成后再重建。");
+    // The rebuild deletes the directories a still-running setup script is writing to; end it first.
+    this.#setupProcesses.kill();
     await this.#stopWorker("X-ASR 环境正在重建。");
     await Promise.all([
       rm(this.#runtimeDirectory, { recursive: true, force: true }),
@@ -190,6 +197,7 @@ export class XAsrService implements AsrService {
 
   async close(): Promise<void> {
     process.removeListener("exit", this.#processExit);
+    this.#setupProcesses.close();
     await this.#stopWorker("本地 X-ASR 已关闭。");
   }
 
@@ -250,11 +258,7 @@ export class XAsrService implements AsrService {
     } catch {
       const setupScript = this.#options.setupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-xasr-runtime.sh", import.meta.url));
       if (!existsSync(setupScript)) throw new Error("X-ASR 本机运行时缺少 sherpa-onnx，且安装脚本不在应用资源中。");
-      await execFileAsync("bash", [setupScript], {
-        timeout: 20 * 60_000,
-        env: { ...process.env, WP_DATA_DIR: resolve(this.#options.dataDirectory) },
-        maxBuffer: 8 * 1024 * 1024,
-      });
+      await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 20 * 60_000, "安装 X-ASR 运行环境失败。");
     }
   }
 
