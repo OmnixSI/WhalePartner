@@ -94,7 +94,7 @@ log("server.mjs 完成");
 cpSync(join(apiDir, "src/persona/rules.md"), join(distDir, "rules.md"));
 cpSync(join(apiDir, "src/persona/style.md"), join(distDir, "style.md"));
 cpSync(join(apiDir, "src/persona/characters"), join(distDir, "characters"), { recursive: true });
-cpSync(join(apiDir, "src/prompts"), join(distDir, "prompts"), { recursive: true });
+cpSync(join(apiDir, "src/video/prompts"), join(distDir, "prompts"), { recursive: true });
 cpSync(join(apiDir, "src/voice/xasr_worker.py"), join(distDir, "xasr_worker.py"));
 cpSync(join(apiDir, "src/voice/assets"), join(distDir, "voice/assets"), { recursive: true });
 mkdirSync(join(sidecarDir, "api/scripts"), { recursive: true });

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { assertBilibiliRequestAllowed } from "../bilibili.ts";
-import { loadBilibiliSession } from "../bilibili-session.ts";
+import { assertBilibiliRequestAllowed } from "../bilibili/video.ts";
+import { loadBilibiliSession } from "../bilibili/session.ts";
 import { BiliBackoff } from "./bili-backoff.ts";
 import { classifyError, SurfError } from "./errors.ts";
-import { acquireVideoLock, sharedParagraph, type VideoService } from "../video-service.ts";
+import { acquireVideoLock, sharedParagraph, type VideoService } from "../video/service.ts";
 import type { VideoCandidate, VideoSource, WatchedVideo } from "./types.ts";
 
 /**
@@ -153,7 +153,7 @@ export function createBilibiliVideoSource(deps: BilibiliSourceDeps = {}): VideoS
 
   return {
     async search(keyword) {
-      // 两层冷却：视频摘要那边记下的限流（bilibili.ts），和冲浪自己的指数退避，任何一个在冷却都不发请求。
+      // 两层冷却：视频摘要那边记下的限流（bilibili/video.ts），和冲浪自己的指数退避，任何一个在冷却都不发请求。
       await assertBilibiliRequestAllowed();
       await backoff.assertAllowed();
       try {
@@ -178,7 +178,7 @@ export function createBilibiliVideoSource(deps: BilibiliSourceDeps = {}): VideoS
     async watch(candidate): Promise<WatchedVideo> {
       const release = acquireVideoLock();
       try {
-        const service = videoService ?? (await import("../video-service.ts")).createVideoService();
+        const service = videoService ?? (await import("../video/service.ts")).createVideoService();
         videoService = service;
         const collected = await service.collect(candidate.url);
         const summary = await service.summarize(collected);

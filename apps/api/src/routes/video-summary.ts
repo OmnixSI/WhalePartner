@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ChatInputError } from "../chat.ts";
-import { readJsonBody, sendJson } from "../http.ts";
+import { ChatInputError } from "../chat/service.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
 import { archiveExperience } from "../memory/archive.ts";
-import type { ServerDeps } from "../server-types.ts";
-import { sharedParagraph, summarizeVideo, VideoError } from "../video-service.ts";
+import type { ServerDeps } from "../server/types.ts";
+import { sharedParagraph, summarizeVideo, VideoError } from "../video/service.ts";
 import { text } from "./input.ts";
 
 export async function handleVideoSummaryRoute(

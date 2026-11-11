@@ -1,5 +1,5 @@
 import { rm } from "node:fs/promises";
-import { splitEmotionTags } from "../emotion.ts";
+import { splitEmotionTags } from "../chat/emotion.ts";
 import { join } from "node:path";
 import type { ChatProvider } from "../llm/types.ts";
 import type { MemoryStore } from "../memory/types.ts";

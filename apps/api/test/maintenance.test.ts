@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 test("clearing chat keeps independent media and marks its deleted chat source", () => {
   const store = new ChatStore(":memory:");

@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { runChat, type ChatEvent } from "../src/chat.ts";
-import { humanizeText } from "../src/humanize.ts";
-import { parseLearnings } from "../src/learning.ts";
+import { runChat, type ChatEvent } from "../src/chat/service.ts";
+import { humanizeText } from "../src/diary/humanize.ts";
+import { parseLearnings } from "../src/chat/learning.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider } from "../src/llm/types.ts";
 import type { ExperienceInput, MemoryStore } from "../src/memory/types.ts";
-import { sanitizeNote } from "../src/reflect.ts";
-import { ChatStore } from "../src/store.ts";
-import { extractWebTarget, htmlToText, isPrivateAddress, WebError, type WebService } from "../src/web-service.ts";
+import { sanitizeNote } from "../src/chat/reflect.ts";
+import { ChatStore } from "../src/store/index.ts";
+import { extractWebTarget, htmlToText, isPrivateAddress, WebError, type WebService } from "../src/webpage/service.ts";
 
 function provider(text: string, seen: ChatMessage[][] = []): ChatProvider {
   return { id: "fake", model: "m", async *stream(messages) { seen.push(messages); yield { text }; } };

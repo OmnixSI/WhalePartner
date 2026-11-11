@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { JournalSource } from "../journal-store.ts";
+import type { JournalSource } from "../diary/journal-store.ts";
 
 interface SourceRow {
   id: string;

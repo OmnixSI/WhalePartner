@@ -1,4 +1,4 @@
-import type { ChatStore, ExperienceInput } from "../store.ts";
+import type { ChatStore, ExperienceInput } from "../store/index.ts";
 import type { MemoryEntry, MemoryStore } from "./types.ts";
 
 /** SQLite 是经历原件；本地向量索引只作为可重建的检索副本。 */

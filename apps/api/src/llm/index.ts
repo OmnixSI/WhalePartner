@@ -1,4 +1,4 @@
-import type { ApiConfig } from "../config.ts";
+import type { ApiConfig } from "../server/config.ts";
 import { CodexChatProvider } from "./codex-chat.ts";
 import { createDeepSeekProvider } from "./deepseek.ts";
 import { OpenAiCompatibleProvider } from "./openai-compatible.ts";

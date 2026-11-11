@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { AddressInfo } from "node:net";
-import { DailyJournalService } from "../src/daily-journal.ts";
-import { loadConfig } from "../src/config.ts";
+import { DailyJournalService } from "../src/diary/journal.ts";
+import { loadConfig } from "../src/server/config.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
-import { JournalStore } from "../src/journal-store.ts";
+import { JournalStore } from "../src/diary/journal-store.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 function localDayRange(value: string) {
   const [year, month, day] = value.split("-").map(Number);

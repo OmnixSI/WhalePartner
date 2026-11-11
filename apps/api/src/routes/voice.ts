@@ -1,8 +1,8 @@
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
-import { readJsonBody, sendJson } from "../http.ts";
-import { authorize, type AuthOptions } from "../auth.ts";
-import { isEmotion } from "../emotion.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
+import { authorize, type AuthOptions } from "../hub/auth.ts";
+import { isEmotion } from "../chat/emotion.ts";
 import type { AsrService, AsrStream } from "../voice/asr.ts";
 import type { TtsService } from "../voice/tts.ts";
 

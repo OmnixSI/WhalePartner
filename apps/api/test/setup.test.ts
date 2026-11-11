@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ChatProvider } from "../src/llm/types.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
-import type { CodexModelOption } from "../src/codex-app-server.ts";
+import { ChatStore } from "../src/store/index.ts";
+import type { CodexModelOption } from "../src/codex/app-server.ts";
 import { acquireSetupWrite, releaseSetupWrite } from "../src/routes/setup.ts";
 
 /**

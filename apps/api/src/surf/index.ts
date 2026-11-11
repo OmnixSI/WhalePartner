@@ -1,4 +1,4 @@
-import type { ApiConfig } from "../config.ts";
+import type { ApiConfig } from "../server/config.ts";
 import type { ChatProvider } from "../llm/types.ts";
 import type { MemoryStore } from "../memory/types.ts";
 import { createBilibiliVideoSource } from "./bilibili-source.ts";

@@ -1,5 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { Emotion } from "../emotion.ts";
+import type { Emotion } from "../chat/emotion.ts";
 import { AFFINITY_DAILY_LIMIT, AFFINITY_PER_COMPLETED_DEEPSEEK_TURN, recoverMood, relationshipSnapshot, type RelationshipSnapshot } from "../relationship/policy.ts";
 
 const RELATIONSHIP_EMOTION_INTENSITY = 100;

@@ -1,20 +1,29 @@
-.DS_Store
-.aris/
+# 依赖与包管理器缓存
+node_modules/
+.pnpm-store/
+.venv/
+
+# 构建产物（打包时自动重新生成）
+dist/
+build/
+target/
+apps/client/.font-build/
+apps/client/src-tauri/gen/schemas/
+apps/client/src-tauri/sidecar/
+apps/client/src-tauri/binaries/
+
+# 检查脚本输出的截图与报告
+test-results/
+
+# 本地数据与密钥（密钥只放 .env，模板见 apps/api/.env.example）
 .env
 .env.*
 !.env.example
 .local/
-implement-stage/SILENT_ASSUMPTION_SWEEP.json
-node_modules/
-.pnpm-store/
-dist/
-build/
-target/
-.venv/
 
-apps/client/public/live2d/whale-maid/
-apps/client/public/live2d/libs/live2dcubismcore.min.js
+# 不入库的第三方素材，用 `pnpm --dir apps/client run fetch-live2d` 获取
+apps/client/public/live2d/
 
-# 打包用的后端 sidecar 暂存目录（由 build-sidecar 生成）
-apps/client/src-tauri/sidecar/
-apps/client/src-tauri/binaries/
+# 系统与本机工具
+.DS_Store
+.aris/

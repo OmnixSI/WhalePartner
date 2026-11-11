@@ -1,13 +1,13 @@
-import { EmotionFilter } from "../emotion.ts";
-import { hubEvents, type EventBus } from "../events.ts";
-import { FIRST_TOKEN_TIMEOUT_MS } from "../chat.ts";
+import { EmotionFilter } from "../chat/emotion.ts";
+import { hubEvents, type EventBus } from "../hub/events.ts";
+import { FIRST_TOKEN_TIMEOUT_MS } from "../chat/service.ts";
 import type { ChatProvider } from "../llm/types.ts";
 import type { MemoryStore } from "../memory/types.ts";
 import { buildChatContext } from "../memory/context.ts";
 import { recallChatMemory } from "../memory/recall.ts";
 import { buildPersonaCore, withUserName } from "../persona/persona.ts";
-import type { ChatStore } from "../store.ts";
-import type { ApiConfig } from "../config.ts";
+import type { ChatStore } from "../store/index.ts";
+import type { ApiConfig } from "../server/config.ts";
 import { readUserName } from "../routes/profile.ts";
 import type { ChatSessionRequests } from "../routes/chat-session-requests.ts";
 import { PresenceRegistry } from "./presence.ts";

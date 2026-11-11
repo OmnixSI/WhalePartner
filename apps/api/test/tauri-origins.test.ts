@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { IncomingMessage } from "node:http";
-import { originAllowed } from "../src/auth.ts";
+import { originAllowed } from "../src/hub/auth.ts";
 
 const request = (origin: string | undefined, host = "127.0.0.1:51234") =>
   ({ headers: { origin, host } }) as unknown as IncomingMessage;

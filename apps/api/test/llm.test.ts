@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { buildCodexChatPrompt } from "../src/llm/codex-chat.ts";
 import { OpenAiCompatibleProvider, ProviderError, readSseData } from "../src/llm/openai-compatible.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider, LlmDelta } from "../src/llm/types.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 const SECRET = "sk-test-secret-123";
 const MESSAGES = [{ role: "user" as const, content: "你好" }];

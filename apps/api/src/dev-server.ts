@@ -8,10 +8,10 @@ import {
   assertBilibiliRequestAllowed,
   collectBilibiliVideoEvidence,
   normalizeBilibiliInput,
-} from "./bilibili.ts";
-import { isBilibiliSessionValid, loadBilibiliSession } from "./bilibili-session.ts";
-import { getCodexRequestSettings, summarizeWithCodex } from "./codex.ts";
-import { buildVideoSummaryPrompt } from "./prompt.ts";
+} from "./bilibili/video.ts";
+import { isBilibiliSessionValid, loadBilibiliSession } from "./bilibili/session.ts";
+import { getCodexRequestSettings, summarizeWithCodex } from "./codex/exec.ts";
+import { buildVideoSummaryPrompt } from "./video/prompt.ts";
 
 const appDir = resolve(import.meta.dirname, "..");
 const webFile = resolve(appDir, "web/index.html");

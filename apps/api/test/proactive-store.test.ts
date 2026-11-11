@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 const fixedNow = new Date("2026-06-18T12:00:00.000Z");
 

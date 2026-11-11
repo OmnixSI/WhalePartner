@@ -1,4 +1,4 @@
-import { ChatInputError } from "../chat.ts";
+import { ChatInputError } from "../chat/service.ts";
 
 export function text(value: unknown, max: number, field: string, required = true): string | undefined {
   if (value === undefined || value === null || value === "") {

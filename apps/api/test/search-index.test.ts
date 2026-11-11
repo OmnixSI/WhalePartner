@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { openChatDatabase } from "../src/store/database.ts";
 import { rebuildSearchIndexes } from "../src/store/search-index.ts";
 import { SessionRepository } from "../src/store/sessions.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 test("startup repairs FTS rows and markers left out of sync", () => {
   const db = openChatDatabase(":memory:");

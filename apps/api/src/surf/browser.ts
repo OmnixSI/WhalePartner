@@ -3,8 +3,8 @@ import { lookup } from "node:dns/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { browsersDir } from "../data-dir.ts";
-import { isPrivateAddress } from "../web-service.ts";
+import { browsersDir } from "../server/data-dir.ts";
+import { isPrivateAddress } from "../webpage/service.ts";
 import { classifyError, SurfError } from "./errors.ts";
 
 /**

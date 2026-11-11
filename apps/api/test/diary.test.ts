@@ -4,18 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
-import { ChatStore } from "../src/store.ts";
-import { DiaryStore, type DiaryItem } from "../src/diary-store.ts";
-import { DiaryService, type DiaryServiceDeps } from "../src/diary-service.ts";
-import { startDiaryScheduler } from "../src/diary-scheduler.ts";
-import { acquireVideoLock, type CollectedVideo, type VideoService, type VideoSummary } from "../src/video-service.ts";
+import { ChatStore } from "../src/store/index.ts";
+import { DiaryStore, type DiaryItem } from "../src/diary/store.ts";
+import { DiaryService, type DiaryServiceDeps } from "../src/diary/service.ts";
+import { startDiaryScheduler } from "../src/diary/scheduler.ts";
+import { acquireVideoLock, type CollectedVideo, type VideoService, type VideoSummary } from "../src/video/service.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider, LlmDelta } from "../src/llm/types.ts";
 import { waitForMemoryJobs } from "../src/memory/jobs.ts";
 import type { ExperienceInput, MemoryEntry, MemoryStore } from "../src/memory/types.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { createApiServer } from "../src/server.ts";
-import { runChat } from "../src/chat.ts";
+import { runChat } from "../src/chat/service.ts";
 
 const SUMMARY = "# 分享给你\n\n这支视频讲了鲸鱼如何用声音寻找同伴。\n\n# 来源与依据\n\n字幕完整，画面抽样有限。";
 const VIDEO: VideoSummary = {

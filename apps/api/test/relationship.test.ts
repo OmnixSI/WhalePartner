@@ -5,11 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 import { relationshipSnapshot } from "../src/relationship/policy.ts";
 
 function recordTurn(store: ChatStore, character: string, at: Date, emotion: "neutral" | "happy" = "neutral") {

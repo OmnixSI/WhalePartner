@@ -4,7 +4,7 @@ import type { ChatProvider } from "../src/llm/types.ts";
 import { distillMemoryBatch } from "../src/memory/distill.ts";
 import { scheduleMemoryJobs } from "../src/memory/jobs.ts";
 import { beginForegroundChat } from "../src/memory/priority.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 function scripted(response: (messages: Array<{ role: string; content: string }>) => string | Promise<string>, onCall?: () => void): ChatProvider {
   return {

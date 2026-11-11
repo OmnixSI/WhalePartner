@@ -1,5 +1,5 @@
 import type { ChatProvider } from "../llm/types.ts";
-import { ChatStore } from "../store.ts";
+import { ChatStore } from "../store/index.ts";
 import { archiveExperience } from "./archive.ts";
 import { distillMemoryBatch } from "./distill.ts";
 import { beginMemoryJob, endMemoryJob, isForegroundChatActive } from "./priority.ts";

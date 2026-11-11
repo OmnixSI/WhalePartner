@@ -6,7 +6,7 @@ import { lstat, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Emotion } from "../emotion.ts";
+import type { Emotion } from "../chat/emotion.ts";
 
 const MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512";
 const SAMPLE_RATE = 24_000;

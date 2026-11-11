@@ -4,7 +4,7 @@
 
 WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定人格和长期记忆，定时处理用户添加或授权的内容，生成摘要和日记，并能在后续聊天中回忆相关经历。
 
-完整产品方向和研究资料见 [Notion 开发台](https://app.notion.com/p/40db6ca756bc816cb187f164caf87fa4) 及 `ProjectMaterials/` 中的调研计划 PDF。第一周 MVP 是早期交付基线；当前范围以 GitHub [总 Issue #91](https://github.com/OmnixSI/WhalePartner/issues/91) 和它拆分的任务为准。
+完整产品方向和研究资料见 [Notion 开发台](https://app.notion.com/p/40db6ca756bc816cb187f164caf87fa4)。第一周 MVP 是早期交付基线；当前范围以 GitHub [总 Issue #91](https://github.com/OmnixSI/WhalePartner/issues/91) 和它拆分的任务为准。
 
 ## 本轮明确扩展范围（2026-11）
 
@@ -34,13 +34,13 @@ WhalePartner 是手机优先的原创鲸系 AI 陪伴产品。角色具有固定
 |---|---|
 | A1 应用壳 | 完成：Tauri 2 + React 单页应用，桌面和手机共用界面（[PR #17](https://github.com/OmnixSI/WhalePartner/pull/17)）。 |
 | A2 DeepSeek 后端 | 代码完成：流式聊天、DeepSeek → 备用 → 本机 Codex 回退链（[PR #18](https://github.com/OmnixSI/WhalePartner/pull/18)）。本机聊天兜底通过 Codex app-server 流式返回，模型设置来自本机可用清单。真实 DeepSeek 请求待验证，跟踪于 [Issue #2](https://github.com/OmnixSI/WhalePartner/issues/2)。 |
-| B1 聊天与形象 | 完成：自写 React 聊天，大肥鱼使用唯一实际可用的 Live2D 模型；其余人格以原创贴纸为默认形象。形象归属调整见 [Issue #84](https://github.com/OmnixSI/WhalePartner/issues/84)，Live2D 选型依据见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) 和 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。 |
+| B1 聊天与形象 | 完成：自写 React 聊天，大肥鱼使用唯一实际可用的 Live2D 模型；其余人格以原创贴纸为默认形象。形象归属调整见 [Issue #84](https://github.com/OmnixSI/WhalePartner/issues/84)，Live2D 选型依据见 [Issue #3](https://github.com/OmnixSI/WhalePartner/issues/3) 和 [`LIVE2D.md`](LIVE2D.md)。 |
 | B2 人格 | 完成：每个角色一份身份和脾气文件 + 共用的说话方式和底线规则，四个角色的 13 项回归问卷在 DeepSeek 上都是 13/13。 |
 | 成长（人格延伸） | 完成：从看过的视频、读过的网页和用户的话里学新梗和新知识（自动入库，用户可删），定期写“近况小记”，记忆按清晰度衰减，聊天里发网页链接会读。设计与参考见 [`PERSONALITY.md`](PERSONALITY.md)。 |
 | B3 记忆 | 完成：mem0 + 本地中文向量模型，写入、重启、召回已验证。 |
 | B4 本地长期记忆与长会话上下文 | 已实现（[PR #32](https://github.com/OmnixSI/WhalePartner/pull/32)，[Issue #31](https://github.com/OmnixSI/WhalePartner/issues/31)）：本地 SQLite 原文档案、事实来源与时间版本、滚动会话观察、FTS5/向量/时间范围混合召回、上下文预算和可恢复任务队列。只做本机存储，不做云同步。 |
 | C1/C2 视频链路 | 完成（Spdor）；已接入聊天：发 B 站链接，角色看完再讲并记住。 |
-| 十条视频成本与质量基准 | 已记录 token 和阶段耗时（见 [构建记录](../implement-stage/BUILD_NOTE.md)）。人工评分和美元费用仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。 |
+| 十条视频成本与质量基准 | 已记录 token 和阶段耗时（见 [PR #16](https://github.com/OmnixSI/WhalePartner/pull/16)）。人工评分和美元费用仍待完成，见 [Issue #12](https://github.com/OmnixSI/WhalePartner/issues/12)。 |
 | 主应用界面与日记管理 | 基础界面与 Live2D 已随 [PR #40](https://github.com/OmnixSI/WhalePartner/pull/40) 合并；本轮验收修复随 [Issue #78](https://github.com/OmnixSI/WhalePartner/issues/78) / [PR #79](https://github.com/OmnixSI/WhalePartner/pull/79) 合并，并发布 [v0.2.6](https://github.com/OmnixSI/WhalePartner/releases/tag/v0.2.6)。切换角色只更换人格，聊天、记忆、日记和见闻共享；日记按周/月/年展示共享综合日记和旧视频日记；Live2D 点击动作结束后恢复待机；见闻来源链接打开系统默认浏览器。保留既有数据库和配置。Live2D 模型为 CC BY-NC-SA 4.0 非商业素材；Cubism Core 须由开发者从官方 SDK 获取，Release 不附包含本机 Core 的 `.app`。 |
 | D1 定时日记、D2 日记页与添加链接入口 | 已实现：B 站链接进入 SQLite 待看队列，计划任务每次处理一条，页面展示队列和生成的摘要/日记；日记经历写入共享 mem0。接口见 [`API.md`](API.md)。 |
 | E1 端到端联调 | 聊天 → 视频 → 记忆 → 再聊已跑通；日记链路的真实视频联调见本分支 PR 验证记录。 |
@@ -55,7 +55,7 @@ PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不
 
 ## 演示角色与形象（内部展示，不是产品定稿）
 
-首页保留大肥鱼（默认）、小克、小智和鲸汐四个人格；每个人格固定使用一个默认形象。当前只有大肥鱼具备实际 Live2D 模型资源，归属大肥鱼且只在该人格下加载；小克、小智和鲸汐使用矢量徽记（CharacterMark）。GPT/Claude 专属 Live2D 模型仍待有可核验的完成模型文件和适用授权后接入；不以示例模型或概念图代替。没有实际模型文件的 VRM 示例形象、清单、下载脚本和 three-vrm 渲染依赖已移除。大肥鱼模型由 A8Chann 发布，角色形象源自上善无形，DeepSeek 女仆设计由 ZipZipPipe 完成，Live2D 绑定由氵六青完成；模型素材许可为 CC BY-NC-SA 4.0，仅限非商业用途，改编素材须以相同许可共享；商业使用前须取得各权利人授权。运行模型需要 Cubism Core；它是 Live2D 专有组件，开发者须从官方 SDK 单独获取并遵循适用许可，不随仓库分发。三个同人角色的人格设定明确写明其粉丝创作属性。完整 Live2D 来源和运行方式见 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。
+首页保留大肥鱼（默认）、小克、小智和鲸汐四个人格；每个人格固定使用一个默认形象。当前只有大肥鱼具备实际 Live2D 模型资源，归属大肥鱼且只在该人格下加载；小克、小智和鲸汐使用矢量徽记（CharacterMark）。GPT/Claude 专属 Live2D 模型仍待有可核验的完成模型文件和适用授权后接入；不以示例模型或概念图代替。没有实际模型文件的 VRM 示例形象、清单、下载脚本和 three-vrm 渲染依赖已移除。大肥鱼模型由 A8Chann 发布，角色形象源自上善无形，DeepSeek 女仆设计由 ZipZipPipe 完成，Live2D 绑定由氵六青完成；模型素材许可为 CC BY-NC-SA 4.0，仅限非商业用途，改编素材须以相同许可共享；商业使用前须取得各权利人授权。运行模型需要 Cubism Core；它是 Live2D 专有组件，开发者须从官方 SDK 单独获取并遵循适用许可，不随仓库分发。三个同人角色的人格设定明确写明其粉丝创作属性。完整 Live2D 来源和运行方式见 [`LIVE2D.md`](LIVE2D.md)。
 
 好感度属于跨人格共享关系状态，由大肥鱼成功完成的对话增长；短期情绪按人格保存并自然恢复。四档卡面在 0、25、100、250 点解锁基础、立体、动态和专属效果，不影响角色选择或正常聊天。卡面只显示人物图像与等级特效；角色名、好感度和模型信息保留在卡外与辅助标签中。详细规则见 [`RELATIONSHIP.md`](RELATIONSHIP.md)。
 
@@ -76,9 +76,7 @@ PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不
 
 `pnpm --dir apps/api run summarize -- <Bilibili 链接或 BV 号>` 会依次解析视频、读取字幕/转写和辅助文字资料、从播放流抽取最多 8 张关键帧，再调用本机 Codex CLI 生成整条视频的连贯中文摘要。CLI 使用本机 Codex 当前可用的模型和推理强度；帧图缩至 768 像素宽，完整视频不保存到本地。CLI 将摘要、来源证据、帧图和模型 token 用量写入 `.local/video-summaries/<BV号>/`。
 
-仓库根目录的 `启动视频摘要测试.command` 会启动本地网页测试台，复用同一采集与摘要流程，并展示阶段耗时、实际模型输入文字和帧图、token 用量及摘要。网页模式将结果保留在本次页面响应中，关键帧放在临时目录并在处理结束后删除；Bilibili 限流冷却状态仍由服务记录。两种本地模式都不写入长期记忆，也不代替用户在 B 站发布内容。
-
-技术栈细节和官方平台构建要求见 [`TECH_STACK_PROPOSAL.md`](TECH_STACK_PROPOSAL.md)。
+`pnpm --dir apps/api run web` 会启动本地网页测试台，复用同一采集与摘要流程，并展示阶段耗时、实际模型输入文字和帧图、token 用量及摘要。网页模式将结果保留在本次页面响应中，关键帧放在临时目录并在处理结束后删除；Bilibili 限流冷却状态仍由服务记录。两种本地模式都不写入长期记忆，也不代替用户在 B 站发布内容。
 
 ## 本轮仍不包含
 

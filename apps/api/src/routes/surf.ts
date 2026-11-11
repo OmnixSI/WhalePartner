@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendJson, readJsonBody, sendSse, startSse } from "../http.ts";
+import { sendJson, readJsonBody, sendSse, startSse } from "../server/http.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "../persona/persona.ts";
 import { validateSettingsPatch } from "../surf/settings.ts";
 import type { SurfService } from "../surf/service.ts";

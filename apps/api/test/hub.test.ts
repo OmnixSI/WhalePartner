@@ -4,15 +4,15 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { loadConfig } from "../src/config.ts";
-import { DeviceRegistry } from "../src/devices.ts";
-import { EmotionFilter, splitEmotionTags } from "../src/emotion.ts";
-import { EventBus } from "../src/events.ts";
+import { loadConfig } from "../src/server/config.ts";
+import { DeviceRegistry } from "../src/hub/devices.ts";
+import { EmotionFilter, splitEmotionTags } from "../src/chat/emotion.ts";
+import { EventBus } from "../src/hub/events.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import { SessionMutex } from "../src/routes/session-lock.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 const json = { "content-type": "application/json" };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -233,7 +233,7 @@ test("chat: clientId is idempotent, aborted replies are kept as interrupted, SSE
 
 test("chat: no first token within the limit gives a clear timeout error", async () => {
   const hang: ChatProvider = { id: "hang", model: "m", async *stream(_m, o) { await new Promise((_, reject) => o?.signal?.addEventListener("abort", () => reject(new Error("aborted")))); yield { text: "" }; } };
-  const { runChat } = await import("../src/chat.ts");
+  const { runChat } = await import("../src/chat/service.ts");
   const store = new ChatStore(":memory:");
   const run = async () => { for await (const _ of runChat({ provider: new FallbackChatProvider([hang]), store, firstTokenTimeoutMs: 60, bus: new EventBus() }, "喂")) { /* drain */ } };
   await assert.rejects(run(), (error: Error & { code?: string }) => error.code === "timeout" && /没有回音/.test(error.message));

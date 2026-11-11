@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { splitEmotionTags, stripEmotionTags, EmotionFilter } from "../src/emotion.ts";
+import { splitEmotionTags, stripEmotionTags, EmotionFilter } from "../src/chat/emotion.ts";
 
 test("整段剥离：开头、中间、结尾的标签都算", () => {
   assert.deepEqual(splitEmotionTags("[emotion:happy]今天真好"), { text: "今天真好", emotions: ["happy"] });

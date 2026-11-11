@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { EventBus } from "../src/events.ts";
+import { EventBus } from "../src/hub/events.ts";
 import type { ChatMessage, ChatProvider } from "../src/llm/types.ts";
 import { PresenceRegistry } from "../src/proactive/presence.ts";
 import { ProactiveService } from "../src/proactive/service.ts";
 import { ChatSessionRequests } from "../src/routes/chat-session-requests.ts";
-import { loadConfig } from "../src/config.ts";
-import { ChatStore } from "../src/store.ts";
+import { loadConfig } from "../src/server/config.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 const fixedNow = new Date("2026-06-18T12:00:00.000Z");
 

@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ChatFailure, ChatInputError, runChat, validateUserMessage } from "../chat.ts";
+import { ChatFailure, ChatInputError, runChat, validateUserMessage } from "../chat/service.ts";
 import { ClientIdLedger, SessionMutex } from "./session-lock.ts";
 import { readUserName } from "./profile.ts";
 import { quotaUsage } from "./quota.ts";
-import { readJsonBody, sendJson, sendSse, startSse } from "../http.ts";
+import { readJsonBody, sendJson, sendSse, startSse } from "../server/http.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "../persona/persona.ts";
-import type { ServerDeps } from "../server-types.ts";
+import type { ServerDeps } from "../server/types.ts";
 import type { ChatSessionRequests } from "./chat-session-requests.ts";
 
 const mutex = new SessionMutex();

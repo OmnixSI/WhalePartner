@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendJson } from "../http.ts";
-import type { ServerDeps } from "../server-types.ts";
+import { sendJson } from "../server/http.ts";
+import type { ServerDeps } from "../server/types.ts";
 
 /**
  * 额度（用量透明表，规范 §10.5 B1）——从 P-B 分支移植到 main 的新路由结构。

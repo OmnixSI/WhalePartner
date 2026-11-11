@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ChatInputError } from "../chat.ts";
-import { readJsonBody, sendJson } from "../http.ts";
-import type { ServerDeps } from "../server-types.ts";
+import { ChatInputError } from "../chat/service.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
+import type { ServerDeps } from "../server/types.ts";
 import { text } from "./input.ts";
 
 export async function handleDiaryRoute(deps: Pick<ServerDeps, "diary">, request: IncomingMessage, response: ServerResponse, url: URL) {

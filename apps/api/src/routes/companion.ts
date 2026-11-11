@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendJson, readJsonBody } from "../http.ts";
+import { sendJson, readJsonBody } from "../server/http.ts";
 import { isCharacterId } from "../persona/persona.ts";
-import type { EventBus } from "../events.ts";
-import type { ChatStore } from "../store.ts";
+import type { EventBus } from "../hub/events.ts";
+import type { ChatStore } from "../store/index.ts";
 import type { PresenceRegistry } from "../proactive/presence.ts";
 import { CompanionSettingsError, validateCompanionSettingsPatch } from "../proactive/policy.ts";
 

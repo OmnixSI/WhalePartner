@@ -3,7 +3,7 @@
 住在电脑里的鲸系 AI 角色：记得你说过的话，替你看 B 站视频、读网页，并把日常记成一本日记。当前版本 **v0.3.1**，更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 <p align="center">
-  <img src="docs/redesign/shots/P1/chat-desktop.png" width="860" alt="聊天页：舞台上的她 + 对话框">
+  <img src="docs/images/chat.png" width="860" alt="聊天页：舞台上的大肥鱼 + 对话框">
 </p>
 
 **结构**：界面（`apps/client`，Tauri 2 + React 19）+ 后端（`apps/api`，Node 26）。**桌面 App 自带后端**：双击打开就能用，不需要另开终端；**关掉窗口就是退出**，后端一起停。想让她在你关窗后继续去逛，在设置里打开「后台继续逛」。同一个用户的所有设备连同一个「家」后端，内容实时同步，手机和别的电脑可以用网页端扫码配对。界面只管显示，模型调用与数据都在后端。
@@ -139,7 +139,7 @@ Tauri 桌面构建会在打包前自动准备大肥鱼模型和 Cubism Core；�
 | 桌面窗口开发（自动拉起后端） | `pnpm --dir apps/client run tauri dev` |
 | 类型检查 | `pnpm --dir apps/api run typecheck && pnpm --dir apps/client run typecheck` |
 | 测试 | `pnpm --dir apps/api test && pnpm --dir apps/client test` |
-| 界面验收 | `node scripts/redesign/check.mjs`（`--static` 跳过浏览器，`--shots` 拍照） |
+| 界面验收 | `pnpm --dir apps/client run ui:check`（`--static` 跳过浏览器，`--shots` 拍照到 `apps/client/test-results/`） |
 | 构建 | `pnpm --dir apps/client run build`（Web）；`pnpm --dir apps/client run tauri build`（桌面包） |
 | 发布 | 无自动化。需同时改 `apps/client/package.json`、`apps/client/src-tauri/tauri.conf.json`、`apps/client/src-tauri/Cargo.toml` 的版本并更新 `CHANGELOG.md`；发布本身需开发者授权 |
 | 模型连通 / 人格回归 | `pnpm --dir apps/api run llm:ping` / `pnpm --dir apps/api run persona:eval` |
@@ -147,20 +147,41 @@ Tauri 桌面构建会在打包前自动准备大肥鱼模型和 Cubism Core；�
 仓库地图：
 
 ```
-apps/api/            Node 后端（node:http + node:sqlite）
-  src/routes/        HTTP 路由分发
-  src/store/         数据仓储
-  src/surf/          自主冲浪（Playwright）
-  src/persona/       人格核心（身份、口吻、规则）
-  test/              node:test 用例
-apps/client/         React 19 + Vite + Tauri 2
-  src/               界面；styles/tokens.css 是色彩与尺寸唯一来源
-  src-tauri/         桌面壳（tauri.conf.json、Cargo.toml、entitlements.plist）
-  scripts/           字体、模型下载、e2e 冒烟
-docs/                产品、接口、设计文档；docs/redesign 为界面规范与验收记录
-scripts/redesign/    界面验收脚本
-implement-stage/     实施阶段的规格与假设记录
-启动鲸汐.command      macOS 启动器（后端 + App）
+apps/
+  api/                    Node 后端（node:http + node:sqlite）
+    src/
+      server.ts           HTTP 服务入口（serve，也是桌面 App 的打包入口）
+      cli.ts              命令行：B 站登录、视频摘要
+      dev-server.ts       视频摘要网页测试台（pnpm run web）
+      llm-ping.ts         模型连通检查（pnpm run llm:ping）
+      paths.ts            源码与打包两种运行方式共用的路径锚点
+      server/             配置、数据目录、HTTP 工具、静态托管、导出 zip
+      hub/                多设备：鉴权、设备配对、实时事件
+      routes/             HTTP 路由
+      chat/               聊天主流程、情绪标签、资料、学习与反思
+      llm/                模型提供方与路由
+      codex/              本机 Codex CLI 集成
+      memory/             记忆召回、整理与向量索引
+      store/              SQLite 仓储（index.ts 是门面）
+      persona/            人格核心（身份、口吻、规则）
+      diary/              视频日记队列与每日综合日记
+      bilibili/           B 站接口、登录态与账号
+      video/              视频理解与摘要提示词
+      webpage/            网页正文读取
+      surf/               她自己去逛（Playwright）
+      proactive/          主动陪伴
+      relationship/       好感度
+      voice/              语音识别与合成
+    test/                 node:test 用例
+    scripts/              sidecar 打包、语音环境、评测
+    vendor/               第三方 MIT 代码（dsh-bilibili、shuorenhua）
+    tools/ · web/         B 站二维码工具 · 视频摘要测试台页面
+  client/                 React 19 + Vite + Tauri 2
+    src/                  界面；styles/tokens.css 是色彩与尺寸唯一来源
+    src-tauri/            桌面壳（tauri.conf.json、Cargo.toml、entitlements.plist）
+    scripts/              字体、Live2D 下载、界面验收与 e2e 检查
+    test/                 node:test 用例
+docs/                     产品、接口、设计等现行文档
 ```
 
 规则：
@@ -168,28 +189,28 @@ implement-stage/     实施阶段的规格与假设记录
 - 不直接推 `main`，不合并自己的 PR；从最新 `main` 建分支 `feat|fix|docs/<issue>-<topic>`，一个 PR 对应一个 Issue，正文写 `Closes #N`。
 - 提交前缀：`feat: fix: docs: refactor: test: chore:`。
 - 不提交 `.env`、密钥、`node_modules`、构建产物；密钥只在后端读取。
-- 规格位置：产品范围在 Notion 开发台和 `docs/PRODUCT_SCOPE.md`；界面规范在 `docs/redesign/spec/`；接口在 `docs/API.md`；执行进度以 GitHub Issue/PR 为准。
+- 规格位置：产品范围在 Notion 开发台和 `docs/PRODUCT_SCOPE.md`；界面规范在 `docs/DESIGN.md`（实现现状）与 `docs/UI_SPEC.md`（重设计规范）；接口在 `docs/API.md`；执行进度以 GitHub Issue/PR 为准。
 - 结束会话前按 [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) 在 Issue/PR 留交接记录。
 
 ---
 
 ## 文档索引
 
-> 最新体验审查与修复清单：[docs/review/2026-11-08-体验审查.md](docs/review/2026-11-08-体验审查.md)
-
 | 想了解 | 文档 |
 |---|---|
-| 协作流程、分支、PR | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) |
+| 协作流程、分支、PR、交接 | [CONTRIBUTING.md](CONTRIBUTING.md) · [AGENTS.md](AGENTS.md) · [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) |
 | 产品边界 | [docs/PRODUCT_SCOPE.md](docs/PRODUCT_SCOPE.md) |
 | 接口 | [docs/API.md](docs/API.md) |
-| 关系成长 | [docs/RELATIONSHIP.md](docs/RELATIONSHIP.md) |
-| 界面设计与规范 | [docs/DESIGN.md](docs/DESIGN.md) · [docs/redesign/spec/](docs/redesign/spec/WhalePartner_UI重设计规范.md) |
+| 部署「家」后端 | [docs/DEPLOY.md](docs/DEPLOY.md) |
+| 界面设计与规范 | [docs/DESIGN.md](docs/DESIGN.md) · [docs/UI_SPEC.md](docs/UI_SPEC.md) |
+| 角色闪卡预览 | [docs/CHARACTER_CARDS.md](docs/CHARACTER_CARDS.md) |
 | 人格与成长 | [docs/PERSONALITY.md](docs/PERSONALITY.md) |
-| 记忆 | [docs/MEMORY_ARCHITECTURE.md](docs/MEMORY_ARCHITECTURE.md) · [docs/MEMORY_RESEARCH.md](docs/MEMORY_RESEARCH.md) |
+| 关系成长 | [docs/RELATIONSHIP.md](docs/RELATIONSHIP.md) |
+| 记忆 | [docs/MEMORY_ARCHITECTURE.md](docs/MEMORY_ARCHITECTURE.md) |
 | 日记与定时 | [docs/DAILY_JOURNAL.md](docs/DAILY_JOURNAL.md) |
-| 技术选型 / Live2D 评估 | [docs/TECH_STACK_PROPOSAL.md](docs/TECH_STACK_PROPOSAL.md) · [docs/LIVE2D_ASSESSMENT.md](docs/LIVE2D_ASSESSMENT.md) |
-| 连续语音与情绪语音 | [docs/VOICE_MODE.md](docs/VOICE_MODE.md) |
-| 会话交接 | [docs/SESSION_HANDOFF.md](docs/SESSION_HANDOFF.md) · [docs/handoffs/](docs/handoffs/) |
+| 语音输入与语音回复 | [docs/VOICE_MODE.md](docs/VOICE_MODE.md) |
+| Live2D 模型来源与许可 | [docs/LIVE2D.md](docs/LIVE2D.md) |
+| macOS 本机签名 | [docs/MACOS_LOCAL_SIGNING.md](docs/MACOS_LOCAL_SIGNING.md) |
 
 ## 许可与第三方
 

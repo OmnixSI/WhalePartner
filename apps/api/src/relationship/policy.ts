@@ -1,4 +1,4 @@
-import type { Emotion } from "../emotion.ts";
+import type { Emotion } from "../chat/emotion.ts";
 
 export const AFFINITY_PER_COMPLETED_DEEPSEEK_TURN = 1;
 export const AFFINITY_DAILY_LIMIT = 10;

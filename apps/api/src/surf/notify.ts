@@ -1,4 +1,4 @@
-import { publishEvent } from "../events.ts";
+import { publishEvent } from "../hub/events.ts";
 import type { SurfFeedItem } from "./types.ts";
 
 /** 实时通知：每条新见闻都通过 `publishEvent("surf.item", item)` 推给所有已连接的设备。 */

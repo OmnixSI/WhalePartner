@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
-import { runChat, validateUserMessage, ChatInputError, type ChatEvent } from "../src/chat.ts";
-import { loadConfig } from "../src/config.ts";
-import { EmotionFilter } from "../src/emotion.ts";
+import { runChat, validateUserMessage, ChatInputError, type ChatEvent } from "../src/chat/service.ts";
+import { loadConfig } from "../src/server/config.ts";
+import { EmotionFilter } from "../src/chat/emotion.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider } from "../src/llm/types.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 function scripted(chunks: string[], seen?: ChatMessage[][]): ChatProvider {
   return {

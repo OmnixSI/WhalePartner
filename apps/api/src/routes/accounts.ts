@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { AccountError } from "../accounts.ts";
-import { sendJson } from "../http.ts";
-import type { ServerDeps } from "../server-types.ts";
+import { AccountError } from "../bilibili/accounts.ts";
+import { sendJson } from "../server/http.ts";
+import type { ServerDeps } from "../server/types.ts";
 
 export async function handleAccountsRoute(deps: Pick<ServerDeps, "accounts">, request: IncomingMessage, response: ServerResponse, url: URL) {
   const accounts = deps.accounts;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DiaryStore } from "../src/diary-store.ts";
-import { inferMoodWeather } from "../src/diary-service.ts";
+import { DiaryStore } from "../src/diary/store.ts";
+import { inferMoodWeather } from "../src/diary/service.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 
 /** B3：心情 / 天气的落库与解析。 */

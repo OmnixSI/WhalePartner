@@ -1,10 +1,10 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readJsonBody, sendJson } from "../http.ts";
-import { listCodexModels, type CodexModelOption } from "../codex-app-server.ts";
-import { codexConfigPath, readStoredCodexSettings } from "../codex-settings.ts";
-import type { ServerDeps } from "../server-types.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
+import { listCodexModels, type CodexModelOption } from "../codex/app-server.ts";
+import { codexConfigPath, readStoredCodexSettings } from "../codex/settings.ts";
+import type { ServerDeps } from "../server/types.ts";
 
 /**
  * 模型接入（设置 › 模型接入）：把「接 DeepSeek 的 key」和「调 Codex 的模型和推理强度」

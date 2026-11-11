@@ -1,5 +1,5 @@
-import { streamWithCodexAppServer, listCodexModels, resolveCodexSettings } from "../codex-app-server.ts";
-import { readStoredCodexSettings } from "../codex-settings.ts";
+import { streamWithCodexAppServer, listCodexModels, resolveCodexSettings } from "../codex/app-server.ts";
+import { readStoredCodexSettings } from "../codex/settings.ts";
 import type { ChatMessage, ChatProvider, LlmDelta, StreamOptions } from "./types.ts";
 
 const ROLE_LABEL = { system: "设定", user: "用户", assistant: "你" } as const;

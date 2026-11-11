@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ApiConfig } from "../src/config.ts";
+import type { ApiConfig } from "../src/server/config.ts";
 import type { ChatMessage, ChatProvider, LlmDelta, StreamOptions } from "../src/llm/types.ts";
 import type { ExperienceInput, MemoryEntry, MemoryStore } from "../src/memory/types.ts";
 import { SurfRepository } from "../src/surf/store.ts";

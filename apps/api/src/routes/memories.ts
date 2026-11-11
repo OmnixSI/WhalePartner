@@ -1,11 +1,11 @@
-import { publishEvent } from "../events.ts";
+import { publishEvent } from "../hub/events.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ChatInputError } from "../chat.ts";
-import { readJsonBody, sendJson } from "../http.ts";
+import { ChatInputError } from "../chat/service.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
 import { archiveExperience } from "../memory/archive.ts";
 import type { MemoryStore } from "../memory/types.ts";
 import { DatabaseSync } from "node:sqlite";
-import type { ServerDeps } from "../server-types.ts";
+import type { ServerDeps } from "../server/types.ts";
 import { text } from "./input.ts";
 import { isCharacterId } from "../persona/persona.ts";
 import type { MemoryCategory, MemoryExplorerFilters, MemoryStatusFilter } from "../store/explorer.ts";

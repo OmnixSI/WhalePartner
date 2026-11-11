@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { after, before, test } from "node:test";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 import { SurfService } from "../src/surf/service.ts";
 import type { Server } from "node:http";
 import { baseConfig, fakeMemory, fakeProvider, fakeVideo, fakeWeb, makeStore, messageSink, tempDb } from "./surf-fakes.ts";

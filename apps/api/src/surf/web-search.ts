@@ -1,4 +1,4 @@
-import { isPrivateAddress } from "../web-service.ts";
+import { isPrivateAddress } from "../webpage/service.ts";
 import { lookup } from "node:dns/promises";
 import type { WebPageText, WebResult, WebSource } from "./types.ts";
 import { withRetry } from "./errors.ts";

@@ -1,6 +1,6 @@
 import type { MemoryEntry, MemoryStore } from "./types.ts";
 import { clarityOf, decayForPrompt } from "./decay.ts";
-import { matchesTimeWindow, overlapsFactTimeWindow, type ChatStore } from "../store.ts";
+import { matchesTimeWindow, overlapsFactTimeWindow, type ChatStore } from "../store/index.ts";
 import type { ArchiveHit, StoredExperience, StoredFact } from "../store/types.ts";
 import type { CharacterId } from "../persona/persona.ts";
 

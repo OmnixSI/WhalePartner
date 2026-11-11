@@ -7,7 +7,7 @@
  * `tauri://localhost`，跨源预检被拦，fetch 直接失败。
  *
  * 所以这里的第 2 个测试不看服务端写了什么，而是**扫前端源码**里出现的每一个
- * `method: "X"`，要求方法表全覆盖。以后前端加一个方法、忘了改 http.ts，测试就红。
+ * `method: "X"`，要求方法表全覆盖。以后前端加一个方法、忘了改 server/http.ts，测试就红。
  */
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
@@ -15,10 +15,10 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { CORS_ALLOWED_METHODS, CORS_ALLOWED_ORIGINS } from "../src/http.ts";
+import { CORS_ALLOWED_METHODS, CORS_ALLOWED_ORIGINS } from "../src/server/http.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 import { SurfService } from "../src/surf/service.ts";
 import { baseConfig, fakeMemory, fakeProvider, fakeVideo, fakeWeb, makeStore, messageSink, tempDb } from "./surf-fakes.ts";
 

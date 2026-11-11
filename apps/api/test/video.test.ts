@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
-import { runChat, type ChatEvent } from "../src/chat.ts";
+import { runChat, type ChatEvent } from "../src/chat/service.ts";
 import { waitForMemoryJobs } from "../src/memory/jobs.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider } from "../src/llm/types.ts";
 import type { ExperienceInput, MemoryStore } from "../src/memory/types.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
-import { acquireVideoLock, extractVideoTarget, sharedParagraph, VideoError, type CollectedVideo, type VideoService, type VideoSummary } from "../src/video-service.ts";
+import { ChatStore } from "../src/store/index.ts";
+import { acquireVideoLock, extractVideoTarget, sharedParagraph, VideoError, type CollectedVideo, type VideoService, type VideoSummary } from "../src/video/service.ts";
 
 const SUMMARY = "# 分享给你\n\n这是一支讲深海发光水母的纪录片，画面很美。\n\n# 来源与依据\n\n- 标题：深海纪录片";
 

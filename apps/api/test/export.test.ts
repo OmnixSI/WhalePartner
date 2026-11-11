@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
 import type { ChatProvider } from "../src/llm/types.ts";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 
 /** B2：导出与删除全部的契约。 */

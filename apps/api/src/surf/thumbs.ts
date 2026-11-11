@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { isPrivateAddress } from "../web-service.ts";
+import { isPrivateAddress } from "../webpage/service.ts";
 import { lookup } from "node:dns/promises";
 import type { SurfRepository } from "./store.ts";
 

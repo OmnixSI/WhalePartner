@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 test("persona switching reads shared chat, facts, experiences, and diary sources", () => {
   const store = new ChatStore(":memory:");

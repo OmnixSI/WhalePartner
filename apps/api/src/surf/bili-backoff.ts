@@ -1,13 +1,13 @@
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { bilibiliBackoffPath } from "../data-dir.ts";
+import { bilibiliBackoffPath } from "../server/data-dir.ts";
 import { SurfError } from "./errors.ts";
 
 /**
  * 冲浪这一侧对 B 站的指数退避。
  * B 站每次限流（412 / -352 / -799 / 429）都让冷却翻倍：10 分钟 → 20 → 40 … 最长 6 小时；
  * 一次成功就清零。状态写在数据目录里，重启后端也不会马上又去撞。
- * （视频摘要那条线自己的冷却文件是 bilibili.ts 的 bilibili-rate-limit.json，同样在数据目录。）
+ * （视频摘要那条线自己的冷却文件是 bilibili/video.ts 的 bilibili-rate-limit.json，同样在数据目录。）
  */
 
 export const BACKOFF_BASE_MS = 10 * 60_000;

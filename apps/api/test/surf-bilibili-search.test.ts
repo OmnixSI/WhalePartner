@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { bilibiliCooldownPath } from "../src/data-dir.ts";
+import { bilibiliCooldownPath } from "../src/server/data-dir.ts";
 import { createBilibiliVideoSource, durationSeconds, mixinKey, parseSearchPayload, signWbi } from "../src/surf/bilibili-source.ts";
 
 /** 录下来的搜索返回（裁剪成最小结构，字段名与线上一致）。 */

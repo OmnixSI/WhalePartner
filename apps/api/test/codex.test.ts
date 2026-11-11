@@ -4,14 +4,14 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult } from "../src/codex.ts";
+import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult } from "../src/codex/exec.ts";
 import {
   closeCodexAppServer,
   resolveCodexSettings,
   streamWithCodexAppServer,
   type CodexModelOption,
-} from "../src/codex-app-server.ts";
-import { buildVideoSummaryPrompt } from "../src/prompt.ts";
+} from "../src/codex/app-server.ts";
+import { buildVideoSummaryPrompt } from "../src/video/prompt.ts";
 
 test("builds a whole-video multimodal summary prompt", () => {
   const prompt = buildVideoSummaryPrompt(

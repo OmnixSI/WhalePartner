@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
-import { AccountError, type AccountService, type LoginState } from "../src/accounts.ts";
-import { loadConfig } from "../src/config.ts";
+import { AccountError, type AccountService, type LoginState } from "../src/bilibili/accounts.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 const KEY = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
 

@@ -1,10 +1,10 @@
 /** hub 路由：实时事件流、设备配对、设备管理。 */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
-import { ChatInputError } from "../chat.ts";
-import { attachEventStream, publishEvent, type EventBus } from "../events.ts";
-import { readJsonBody, sendJson, startSse } from "../http.ts";
-import type { DeviceRegistry } from "../devices.ts";
+import { ChatInputError } from "../chat/service.ts";
+import { attachEventStream, publishEvent, type EventBus } from "../hub/events.ts";
+import { readJsonBody, sendJson, startSse } from "../server/http.ts";
+import type { DeviceRegistry } from "../hub/devices.ts";
 
 export interface HubDeps {
   devices: DeviceRegistry;

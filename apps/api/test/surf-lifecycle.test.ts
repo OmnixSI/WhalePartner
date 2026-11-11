@@ -8,7 +8,7 @@ import { createBilibiliVideoSource } from "../src/surf/bilibili-source.ts";
 import { classifyError, SurfError, withRetry } from "../src/surf/errors.ts";
 import type { SurfEventName } from "../src/surf/events.ts";
 import { notifySurfItem } from "../src/surf/notify.ts";
-import { hubEvents } from "../src/events.ts";
+import { hubEvents } from "../src/hub/events.ts";
 import { SurfScheduler } from "../src/surf/scheduler.ts";
 import { MAX_ITEMS_PER_SESSION, SurfService } from "../src/surf/service.ts";
 import { summaryPrompt } from "../src/surf/summary.ts";

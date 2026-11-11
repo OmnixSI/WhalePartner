@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { readJsonBody, sendJson } from "../http.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
 import type { ChatMessage, ChatProvider } from "../llm/types.ts";
 
 export interface LlmBridge {

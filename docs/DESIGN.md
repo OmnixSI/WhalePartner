@@ -2,9 +2,9 @@
 
 客户端（`apps/client`）的视觉方向叫“潮汐手帐”：一本放在海边的手帐，纸、墨、一条海平线，角色是页面上唯一鲜艳的东西。
 
-- **唯一来源**：`docs/redesign/spec/WhalePartner_UI重设计规范.md`（下称“规范”）。本文件是**实现镜像**：只写代码里现在是这样，不写打算这样。
+- **唯一来源**：[`UI_SPEC.md`](UI_SPEC.md)（下称“规范”）。本文件是**实现镜像**：只写代码里现在是这样，不写打算这样。
 - **唯一真相**：颜色/圆角/字号/间距/时长在 `apps/client/src/styles/tokens.css`；弹簧参数在 `apps/client/src/motion/tokens.ts`。
-- 任何“页面级”硬编码（色值、px 圆角、ms 时长、stiffness）都算缺陷，`scripts/redesign/check.mjs` 会拦。
+- 任何“页面级”硬编码（色值、px 圆角、ms 时长、stiffness）都算缺陷，`pnpm --dir apps/client run ui:check` 会拦。
 
 ## 取舍
 
@@ -84,7 +84,7 @@
 ## 适老与无障碍
 
 - 老人模式：根字号 `16px × --scale`，且 `--scale ≥ 1.25`（=20px）；`--hit 56`；`--ink-mute = --ink-soft`（取消最浅灰）；`--line-strong = --ink-mute`；记忆从「设置 › 她记得的事」进，聊天、日记、见闻和设置保留在导航；`--r-md 16`；动效进 calm。
-- 对比度：正文 ≥7:1，任何文字 ≥4.5:1，控件边界 ≥3:1。`scripts/redesign/check-contrast.mjs` 对 90 组（亮/暗 × 4 角色）逐对验算。
+- 对比度：正文 ≥7:1，任何文字 ≥4.5:1，控件边界 ≥3:1。`apps/client/scripts/contrast-check.mjs` 对 90 组（亮/暗 × 4 角色）逐对验算。
 - 焦点：`:focus-visible` 双环 `--focus-ring`（纸 + 强调色），任何底色上都可见。
 - 语义：图标一律 `aria-hidden`，认路靠文字；装饰（浪、纸纹）`aria-hidden` + `pointer-events:none`；`<time>` 不用 `aria-label`（ARIA 禁止），改用 `sr-only` 文本。
 - 确认：所有破坏性操作走 `ConfirmDialog`（先讲后果，再给动作），**全站零 `window.confirm/alert`**。
@@ -120,14 +120,14 @@
 ## 机器检查（交付闸门）
 
 ```bash
-node scripts/redesign/check.mjs            # 全跑：源码 + 浏览器（会自己起 vite，跑完关掉）
-node scripts/redesign/check.mjs --static   # 只跑源码检查
-node scripts/redesign/check.mjs --shots    # 另外拍 docs/redesign/shots/P4/ 的 4 页 × 亮/暗（1440×900）
-node scripts/redesign/check-contrast.mjs   # 只跑 90 组对比度，逐对打印比值
+pnpm --dir apps/client run ui:check            # 全跑：源码 + 浏览器（会自己起 vite，跑完关掉）
+pnpm --dir apps/client run ui:check --static   # 只跑源码检查
+pnpm --dir apps/client run ui:check --shots    # 另外拍 4 页 × 亮/暗（1440×900），存到 apps/client/test-results/ui-check/
+pnpm --dir apps/client run contrast:check      # 只跑 90 组对比度，逐对打印比值
 ```
 
 十项：对比度 90 组、淘汰 token、gradient/backdrop-filter、`window.confirm/alert`、珊瑚色作文字、圆角只允许 `--r-*`、动效参数只在 tokens、触控 ≥44（老人 ≥56）、横向滚动（380px 与 `--scale=2`）、axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）。任何一项失败退出码为 1。
 
 ## 角色形象
 
-大肥鱼（DeepSeek）的聊天舞台使用唯一现有的 Live2D 模型；其余人格保留 AI 人格与聊天能力，默认形象是各自固定的矢量徽记 `CharacterMark`（平涂、无渐变），不会共用大肥鱼的 Live2D 模型。形象加载中只显示一条海平线和角色名（`Horizon`），失败时舞台底部给一张「再试一次」纸条；任何情况下都不画手绘形象。已不再有 VRM：示例清单、下载脚本和渲染器已移除。模型许可、来源和 Cubism Core 获取方式见 [`LIVE2D_ASSESSMENT.md`](LIVE2D_ASSESSMENT.md)。
+大肥鱼（DeepSeek）的聊天舞台使用唯一现有的 Live2D 模型；其余人格保留 AI 人格与聊天能力，默认形象是各自固定的矢量徽记 `CharacterMark`（平涂、无渐变），不会共用大肥鱼的 Live2D 模型。形象加载中只显示一条海平线和角色名（`Horizon`），失败时舞台底部给一张「再试一次」纸条；任何情况下都不画手绘形象。已不再有 VRM：示例清单、下载脚本和渲染器已移除。模型许可、来源和 Cubism Core 获取方式见 [`LIVE2D.md`](LIVE2D.md)。

@@ -34,7 +34,7 @@ export function describeNetError(error: unknown, what = "没存上"): string {
     return "已取消。";
   }
   if (isNetworkFailure(error)) {
-    return `${what}：连不上本机后端（${LOCAL_API}）。按「再试一次」；还不行就双击项目里的「启动鲸汐.command」，等服务起来再点。`;
+    return `${what}：连不上本机后端（${LOCAL_API}）。按「再试一次」；还不行就退出并重新打开鲸汐。`;
   }
   const raw = error instanceof Error ? error.message.trim() : String(error ?? "").trim();
   return raw || `${what}，待会儿再试。`;

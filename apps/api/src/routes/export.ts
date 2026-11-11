@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { readJsonBody, sendJson } from "../http.ts";
-import { createZip, type ZipEntry } from "../zip.ts";
-import type { ServerDeps } from "../server-types.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
+import { createZip, type ZipEntry } from "../server/zip.ts";
+import type { ServerDeps } from "../server/types.ts";
 
 /**
  * 导出与「删除全部」（规范 §10.5 B2）——按 main 的 routes/* 结构实现。

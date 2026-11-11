@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { startDailyJournalScheduler } from "../src/daily-journal-scheduler.ts";
-import type { DailyJournalService } from "../src/daily-journal.ts";
+import { startDailyJournalScheduler } from "../src/diary/journal-scheduler.ts";
+import type { DailyJournalService } from "../src/diary/journal.ts";
 
 test("startup catches up the scheduled local day and avoids a duplicate before today's next run", () => {
   let missedRuns = 0;

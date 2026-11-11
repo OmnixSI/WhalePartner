@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Memory } from "mem0ai/oss";
 import type { ChatProvider } from "../llm/types.ts";
-import type { ChatStore } from "../store.ts";
+import type { ChatStore } from "../store/index.ts";
 import { startLlmBridge } from "./llm-bridge.ts";
 import { EMBEDDING_DIMENSION, LocalEmbedder } from "./local-embedder.ts";
 import { createMem0Store, EXTRACTION_HINT } from "./mem0-store.ts";

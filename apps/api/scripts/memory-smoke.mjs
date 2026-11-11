@@ -4,7 +4,7 @@
 import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { loadConfig } from "../src/config.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { createChatProvider } from "../src/llm/index.ts";
 import { estimateTokens } from "../src/memory/context.ts";
 import { LazyMemoryStore } from "../src/memory/mem0.ts";

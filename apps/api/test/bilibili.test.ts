@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { formatBilibiliEvidence, normalizeBilibiliInput } from "../src/bilibili.ts";
+import { formatBilibiliEvidence, normalizeBilibiliInput } from "../src/bilibili/video.ts";
 
 const bvid = "BV1d8pU6xEZX";
 

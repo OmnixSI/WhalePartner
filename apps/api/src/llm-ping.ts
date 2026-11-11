@@ -1,4 +1,4 @@
-import { loadConfig } from "./config.ts";
+import { loadConfig } from "./server/config.ts";
 import { createChatProvider } from "./llm/index.ts";
 
 /** 发一次真实文本请求，确认模型链可用，并打印所用提供方和 token 用量。 */

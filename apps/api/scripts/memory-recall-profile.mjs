@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import { buildChatContext, estimateTokens } from "../src/memory/context.ts";
 import { decayForPrompt } from "../src/memory/decay.ts";
 import { recallChatMemory } from "../src/memory/recall.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 import { openChatDatabase } from "../src/store/database.ts";
 import { ExperienceRepository } from "../src/store/experiences.ts";
 

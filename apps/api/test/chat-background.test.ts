@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
-import { loadConfig } from "../src/config.ts";
-import { pauseBackgroundJobs, queueLearning, queueReflection, waitForBackgroundJobs } from "../src/chat-background.ts";
+import { loadConfig } from "../src/server/config.ts";
+import { pauseBackgroundJobs, queueLearning, queueReflection, waitForBackgroundJobs } from "../src/chat/background.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatProvider } from "../src/llm/types.ts";
 import type { MemoryStore } from "../src/memory/types.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 test("reflection reads recent learned material from the shared archive", async () => {
   await waitForBackgroundJobs();

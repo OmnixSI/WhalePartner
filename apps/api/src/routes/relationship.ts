@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { isCharacterId } from "../persona/persona.ts";
-import type { ServerDeps } from "../server-types.ts";
-import { sendJson } from "../http.ts";
+import type { ServerDeps } from "../server/types.ts";
+import { sendJson } from "../server/http.ts";
 
 export function handleRelationshipRoute(deps: Pick<ServerDeps, "store">, request: IncomingMessage, response: ServerResponse, url: URL): boolean {
   if (url.pathname !== "/api/relationship") return false;

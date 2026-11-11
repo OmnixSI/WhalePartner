@@ -1,8 +1,8 @@
-import { publishEvent } from "../events.ts";
+import { publishEvent } from "../hub/events.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readJsonBody, sendJson } from "../http.ts";
-import type { ServerDeps } from "../server-types.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
+import type { ServerDeps } from "../server/types.ts";
 
 /**
  * 昵称（规范 §10.5 B5）——从 P-B 分支移植到 main 的新路由结构。

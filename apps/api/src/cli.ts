@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { performance } from "node:perf_hooks";
-import { assertBilibiliRequestAllowed, collectBilibiliVideoEvidence } from "./bilibili.ts";
+import { assertBilibiliRequestAllowed, collectBilibiliVideoEvidence } from "./bilibili/video.ts";
 import {
   bilibiliSessionPath,
   isBilibiliSessionValid,
@@ -10,9 +10,9 @@ import {
   logoutFromBilibili,
   startBilibiliLogin,
   waitForBilibiliLogin,
-} from "./bilibili-session.ts";
-import { summarizeWithCodex } from "./codex.ts";
-import { buildVideoSummaryPrompt } from "./prompt.ts";
+} from "./bilibili/session.ts";
+import { summarizeWithCodex } from "./codex/exec.ts";
+import { buildVideoSummaryPrompt } from "./video/prompt.ts";
 
 const appDir = resolve(import.meta.dirname, "..");
 const repoDir = resolve(appDir, "../..");

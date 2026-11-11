@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
-import { runChat, type ChatEvent } from "../src/chat.ts";
-import { loadConfig } from "../src/config.ts";
+import { runChat, type ChatEvent } from "../src/chat/service.ts";
+import { loadConfig } from "../src/server/config.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
 import type { ChatMessage, ChatProvider } from "../src/llm/types.ts";
 import { startLlmBridge } from "../src/memory/llm-bridge.ts";
 import { recallChatMemory } from "../src/memory/recall.ts";
 import type { ConversationTurn, ExperienceInput, MemoryEntry, MemoryStore } from "../src/memory/types.ts";
 import { createApiServer } from "../src/server.ts";
-import { ChatStore } from "../src/store.ts";
+import { ChatStore } from "../src/store/index.ts";
 
 function fakeMemory(overrides: Partial<MemoryStore> = {}) {
   const calls = { remembered: [] as ConversationTurn[][], experiences: [] as ExperienceInput[], removed: [] as string[], queries: [] as string[], recentLearningReads: 0, recentExperienceReads: 0 };

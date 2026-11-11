@@ -1,12 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ChatInputError } from "../chat.ts";
-import { readJsonBody, sendJson } from "../http.ts";
+import { ChatInputError } from "../chat/service.ts";
+import { readJsonBody, sendJson } from "../server/http.ts";
 import { waitForMemoryJobs } from "../memory/jobs.ts";
 import { DEFAULT_CHARACTER, isCharacterId } from "../persona/persona.ts";
-import type { ServerDeps } from "../server-types.ts";
+import type { ServerDeps } from "../server/types.ts";
 import { text } from "./input.ts";
 import type { ChatSessionRequests } from "./chat-session-requests.ts";
-import { pauseBackgroundJobs, queueReflection } from "../chat-background.ts";
+import { pauseBackgroundJobs, queueReflection } from "../chat/background.ts";
 import type { CharacterId } from "../persona/persona.ts";
 
 export async function handleChatHistoryRoute(

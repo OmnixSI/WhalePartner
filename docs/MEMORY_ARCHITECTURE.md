@@ -61,19 +61,17 @@ WhalePartner 的记忆数据保存在用户本机。现有 TypeScript/Node 服�
 
 | 模块 | 职责 |
 |---|---|
-| `apps/api/src/store.ts` | 对聊天服务提供稳定存储门面 |
+| `apps/api/src/store/index.ts` | 对聊天服务提供稳定存储门面 |
 | `apps/api/src/store/` | SQLite 建库/旧消息迁移、会话、事实、经历、观察、任务和 FTS 索引仓库 |
 | `apps/api/src/memory/facts.ts`、`distill.ts`、`jobs.ts`、`priority.ts` | 有界批次整理、前台优先取消与可恢复任务处理 |
 | `apps/api/src/store/memory-distillation.ts` | 事实、主题、核心入口和观察的事务发布与来源失效 |
 | `apps/api/src/memory/archive.ts` | 经历先写 SQLite，再尽力更新可重建的向量索引 |
 | `apps/api/src/memory/recall.ts`、`context.ts` | 本地混合召回、来源核对、预算估算和上下文打包 |
 | `apps/api/src/memory/mem0-store.ts`、`mem0.ts` | 本地向量存储适配及启动预热 |
-| `apps/api/src/chat-materials.ts`、`chat-background.ts` | 视频/网页经历写入、角色学习和近况反思 |
+| `apps/api/src/chat/materials.ts`、`background.ts` | 视频/网页经历写入、角色学习和近况反思 |
 | `apps/api/src/routes/` | 按聊天、历史、记忆、视频、日记和账号分开的 HTTP 入口 |
 
 公共存储由小型门面组合领域仓库；记忆检索、上下文构建和 HTTP 路由分开维护，避免将数据访问和流程逻辑堆入单一文件。
-
-DeepSeek SuperAgent 的研究结论、源码版本、采用取舍和隔离基准见 [`MEMORY_RESEARCH.md`](MEMORY_RESEARCH.md)。
 
 ## 查看与删除
 
