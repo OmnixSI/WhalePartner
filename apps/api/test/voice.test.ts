@@ -527,6 +527,37 @@ wait
   }
 });
 
+test("closing the voice setup runner kills a script that ignores SIGTERM, without waiting for the grace period", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-setup-term-"));
+  const script = join(dataDirectory, "setup.sh");
+  const scriptPidPath = join(dataDirectory, "script.pid");
+  const grandchildPidPath = join(dataDirectory, "grandchild.pid");
+  const runner = new SetupProcessRunner();
+  try {
+    // 脚本和它的子进程都忽略 SIGTERM（子进程继承忽略状态），只有 SIGKILL 能结束。
+    await writeFile(script, `#!/bin/bash
+trap '' TERM
+echo $$ > "$WP_DATA_DIR/script.pid"
+sleep 60 &
+echo $! > "$WP_DATA_DIR/grandchild.pid"
+while true; do wait; done
+`);
+    await chmod(script, 0o755);
+
+    const running = runner.run(script, dataDirectory, 60_000, "安装测试失败。").then(() => null, (error: unknown) => error);
+    await waitFor(async () => (await readFile(grandchildPidPath, "utf8").catch(() => "")).trim() !== "", 3_000);
+    const scriptPid = Number((await readFile(scriptPidPath, "utf8")).trim());
+    const grandchildPid = Number((await readFile(grandchildPidPath, "utf8")).trim());
+    runner.close();
+    // 5 秒的 SIGKILL 兜底在 App 退出时来不及触发：close() 之后 1.5 秒内整个进程组必须已经没了。
+    await waitFor(() => !processExists(scriptPid) && !processExists(grandchildPid), 1_500);
+    assert.match(String(await running), /安装测试失败/);
+  } finally {
+    runner.killNow();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 test("voice setup runner resolves when the script exits successfully", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-setup-ok-"));
   const script = join(dataDirectory, "setup.sh");

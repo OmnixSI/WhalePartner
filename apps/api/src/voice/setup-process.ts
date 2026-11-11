@@ -66,15 +66,19 @@ export class SetupProcessRunner {
     force.unref();
   }
 
-  /** Ends running setup scripts for good; used when the app exits and there is no event loop left to wait on. */
+  /** Ends running setup scripts for good with SIGKILL on the whole process group; no grace period. */
   killNow(): void {
     for (const child of this.#active) killTree(child, "SIGKILL");
   }
 
-  /** Stops the runner for good: running scripts are killed and new ones are refused. */
+  /**
+   * Stops the runner for good: running scripts are killed and new ones are refused.
+   * Closing happens on app exit, where a SIGTERM grace period would outlive the process (the SIGKILL timer is unref'd
+   * and shutdown calls process.exit), so the whole group gets SIGKILL straight away.
+   */
   close(): void {
     this.#closed = true;
-    this.kill();
+    this.killNow();
   }
 }
 
