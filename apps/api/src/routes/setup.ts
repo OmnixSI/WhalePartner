@@ -203,7 +203,8 @@ export async function handleSetupRoute(
     try {
       sendJson(response, 200, { models: await readCodexModels(deps) });
     } catch (error) {
-      sendJson(response, 503, { error: "codex_unavailable", message: codexUnavailableMessage(error) });
+      // kind=binary：找不到可用的 Codex 可执行文件，界面要说清楚聊天和视频摘要都跑不了。
+      sendJson(response, 503, { error: "codex_unavailable", message: codexUnavailableMessage(error), ...(error instanceof CodexBinaryError ? { kind: "binary" } : {}) });
     }
     return true;
   }

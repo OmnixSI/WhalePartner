@@ -157,7 +157,7 @@ test("只找到改参数的包装脚本时，模型列表和保存都返回 503 
   try {
     const models = await fetch(`${app.base}/api/setup/codex/models`);
     assert.equal(models.status, 503);
-    assert.deepEqual(await models.json(), { error: "codex_unavailable", message: reason });
+    assert.deepEqual(await models.json(), { error: "codex_unavailable", message: reason, kind: "binary" });
 
     const saved = await fetch(`${app.base}/api/setup/codex`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "gpt-6-luna", effort: "high" }) });
     assert.equal(saved.status, 503);

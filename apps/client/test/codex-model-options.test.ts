@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  catalogFailureHint,
   defaultEffort,
   defaultModel,
   effortAfterModelChange,
@@ -131,4 +132,14 @@ test("档位下拉：已保存的档位不在所选模型的清单里时保留�
   );
   // 模型本身也不在列表里时，已保存的档位仍然看得见
   assert.deepEqual(effortChoices(undefined, "high", label), [{ value: "high", label: "高（不在当前列表）", missing: true }]);
+});
+
+test("模型列表失败：找不到可用 Codex 时提示聊天和视频摘要跑不了，其他错误保持原文案", () => {
+  const binary = catalogFailureHint("binary");
+  assert.match(binary, /已保存的选择不会被清空/);
+  assert.match(binary, /聊天和视频摘要暂时无法运行/);
+  assert.match(binary, /WP_CODEX_BIN/);
+  assert.doesNotMatch(binary, /照常使用/);
+  assert.equal(catalogFailureHint(undefined), "已保存的设置不受影响，照常使用。");
+  assert.equal(catalogFailureHint("other"), "已保存的设置不受影响，照常使用。");
 });

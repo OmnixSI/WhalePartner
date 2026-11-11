@@ -121,3 +121,10 @@ export function effortChoices(
   }
   return choices;
 }
+
+/** 模型列表读不到时，错误下面那行提示。`kind` 是 `/api/setup/codex/models` 失败时带的 `kind`。 */
+export function catalogFailureHint(kind: string | undefined): string {
+  return kind === "binary"
+    ? "已保存的选择不会被清空；但找不到可用的 Codex，聊天和视频摘要暂时无法运行。装好 Codex 或设置 WP_CODEX_BIN 后重启大肥鱼。"
+    : "已保存的设置不受影响，照常使用。";
+}

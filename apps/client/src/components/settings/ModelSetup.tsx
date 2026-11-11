@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
 import {
+  catalogFailureHint,
   defaultEffort,
   defaultModel,
   effortAfterModelChange,
@@ -50,7 +51,7 @@ interface SetupState {
 type Phase = { phase: "loading" } | { phase: "ok"; data: SetupState } | { phase: "down" };
 
 /** 模型列表单独拉：要先拉起本机 Codex，可能慢也可能失败，不能拖住已保存的值。 */
-type Catalog = { phase: "loading" } | { phase: "ok"; models: CodexModelOption[] } | { phase: "failed"; message: string };
+type Catalog = { phase: "loading" } | { phase: "ok"; models: CodexModelOption[] } | { phase: "failed"; message: string; hint: string };
 
 type Probe =
   | { phase: "idle" }
@@ -130,11 +131,16 @@ export function ModelSetup({ offline, onToast }: Props) {
     setCatalog({ phase: "loading" });
     try {
       const response = await fetch(`${API_BASE}/api/setup/codex/models`);
-      if (!response.ok) throw new Error(await errorText(response));
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string; error?: string; kind?: string };
+        const message = body.message ?? body.error ?? `请求失败（HTTP ${response.status}）`;
+        if (alive.current) setCatalog({ phase: "failed", message, hint: catalogFailureHint(body.kind) });
+        return;
+      }
       const models = parseCodexModels(await response.json());
       if (alive.current) setCatalog({ phase: "ok", models });
     } catch (error) {
-      if (alive.current) setCatalog({ phase: "failed", message: describeNetError(error, "读不到本机 Codex 的模型列表") });
+      if (alive.current) setCatalog({ phase: "failed", message: describeNetError(error, "读不到本机 Codex 的模型列表"), hint: catalogFailureHint(undefined) });
     }
   }, []);
 
@@ -445,7 +451,7 @@ export function ModelSetup({ offline, onToast }: Props) {
         {catalog.phase === "failed" && (
           <div className="mset__error" role="alert">
             <p className="set-row__bad">{catalog.message}</p>
-            <p className="mset__hint">已保存的设置不受影响，照常使用。</p>
+            <p className="mset__hint">{catalog.hint}</p>
             <button type="button" className="btn btn--secondary" disabled={offline} onClick={() => void loadCatalog()}>
               重试
             </button>
