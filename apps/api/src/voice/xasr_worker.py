@@ -120,12 +120,13 @@ def decode_ready(recognizer, stream):
         recognizer.decode_stream(stream)
 
 
-def refine_utterance(offline_recognizer, chunks, streaming_text):
+def refine_utterance(offline_recognizer, chunks, streaming_text, speech_samples):
     if offline_recognizer is None:
         return streaming_text
     try:
         samples = np.concatenate(chunks) if chunks else np.empty(0, dtype=np.int16)
-        if samples.size < MIN_SPEECH_SAMPLES:
+        # 用真正的语音采样数判断长短：句末静音会把 chunks 撑过 0.5 秒，不能拿它当依据。
+        if speech_samples < MIN_SPEECH_SAMPLES:
             return streaming_text
         audio = samples.astype(np.float32) / 32768.0
         audio = np.concatenate((audio, np.zeros(OFFLINE_TAIL_PADDING_SAMPLES, dtype=np.float32)))
@@ -146,9 +147,9 @@ def finish_utterance(recognizer, offline_recognizer, state):
     stream.input_finished()
     decode_ready(recognizer, stream)
     streaming_text = normalize_text(recognizer.get_result(stream))
-    utterance_text = ""
-    if state["speech_samples"] >= MIN_SPEECH_SAMPLES:
-        utterance_text = refine_utterance(offline_recognizer, state["audio"], streaming_text)
+    # 短语音（< MIN_SPEECH_SAMPLES）也要交回流式结果：refine_utterance 只跳过整句精修，
+    # 不再把已经识别出的文本丢掉。
+    utterance_text = refine_utterance(offline_recognizer, state["audio"], streaming_text, state["speech_samples"])
     state["stream"] = recognizer.create_stream()
     state["active"] = False
     state["pre_roll"] = np.concatenate(state["audio"])[-PRE_ROLL_SAMPLES:] if state["audio"] else np.empty(0, dtype=np.int16)
@@ -199,7 +200,8 @@ def main():
                 final = False
                 if ended:
                     final = True
-                    if state["speech_samples"] >= MIN_SPEECH_SAMPLES:
+                    if state["speech_samples"] > 0:
+                        # 只要有过语音就交回结果；短语音由 refine_utterance 直接回流式文本。
                         text = finish_utterance(recognizer, offline_recognizer, state)
                     else:
                         state["stream"].input_finished()
