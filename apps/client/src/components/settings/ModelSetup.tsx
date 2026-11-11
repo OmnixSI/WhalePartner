@@ -59,11 +59,14 @@ type Probe =
   | { phase: "failed"; note: string };
 
 const REASONING_EFFORT_LABELS: Record<string, string> = {
+  none: "无",
+  minimal: "最少",
   low: "低",
   medium: "中",
   high: "高",
   xhigh: "超高",
   max: "最高",
+  ultra: "极高",
 };
 
 function reasoningEffortLabel(effort: string): string {
