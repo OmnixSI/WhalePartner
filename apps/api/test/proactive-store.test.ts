@@ -93,3 +93,30 @@ test("opening an older chat database preserves its messages and adds companion s
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("deleting a chat does not reset the daily proactive count or cooldown", () => {
+  const store = new ChatStore(":memory:");
+  // 悉尼时间 10:30，后面几次操作都还在同一个本地日。
+  const morning = new Date("2026-06-18T00:30:00.000Z");
+  enable(store);
+  store.putCompanionSettings({ frequency: "normal" });
+  const first = setupTrigger(store, morning);
+  store.claimProactiveTrigger(first.triggerId, morning);
+  assert.equal(store.deliverProactiveMessage(first.triggerId, "记得周五要看牙医。", "neutral", morning)?.kind, "sent");
+
+  // normal 频次每天 2 条、冷却 6 小时；删掉会话后冷却还在。
+  assert.ok(store.deleteSession(first.sessionId, "whale"));
+  assert.equal(store.proactiveSendCheck("normal", new Date(morning.getTime() + 60 * 60_000)).allowed, false);
+
+  // 冷却过后发第二条，再删会话：当天额度用完了，不能重新计数。
+  const secondAt = new Date(morning.getTime() + 7 * 60 * 60_000);
+  const second = setupTrigger(store, secondAt);
+  store.claimProactiveTrigger(second.triggerId, secondAt);
+  assert.equal(store.deliverProactiveMessage(second.triggerId, "牙齿复查别忘了。", "neutral", secondAt)?.kind, "sent");
+  assert.ok(store.deleteSession(second.sessionId, "whale"));
+  const capped = store.proactiveSendCheck("normal", new Date(secondAt.getTime() + 6 * 60 * 60_000));
+  assert.equal(capped.allowed, false);
+  // 被日上限挡住时，nextAt 是下一个本地零点（不是冷却结束时间）。
+  assert.equal(new Date(capped.nextAt!).getHours(), 0);
+  store.close();
+});

@@ -36,6 +36,7 @@ const USER_DATA_TABLES = [
   "relationship_events",
   "relationship_state",
   "proactive_triggers",
+  "daily_counters",
   "message_search",
   "message_search_indexed",
   "messages",

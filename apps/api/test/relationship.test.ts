@@ -126,3 +126,25 @@ test("completed chats update the API once and invalid personas are rejected", as
     store.close();
   }
 });
+
+test("deleting a chat does not reset the daily affinity cap", () => {
+  const store = new ChatStore(":memory:");
+  try {
+    const day = new Date("2026-10-05T12:00:00.000Z");
+    const session = store.getOrCreateSession("deepseek");
+    for (let turn = 0; turn < 10; turn += 1) recordTurn(store, "deepseek", new Date(day.getTime() + turn * 1000));
+    assert.equal(store.relationshipSnapshot("deepseek", day).points, 10);
+
+    // 删掉当天聊满上限的会话：事件行级联删除，但按天记账保留，同一天不该再涨。
+    assert.ok(store.deleteSession(session.id, "deepseek"));
+    const after = recordTurn(store, "deepseek", new Date(day.getTime() + 60_000));
+    assert.equal(after.recorded, true);
+    assert.equal(store.relationshipSnapshot("deepseek", day).points, 10);
+
+    // 第二天重新有 10 点。
+    for (let turn = 0; turn < 10; turn += 1) recordTurn(store, "deepseek", new Date(day.getTime() + 86_400_000 + turn * 1000));
+    assert.equal(store.relationshipSnapshot("deepseek", new Date(day.getTime() + 86_400_000)).points, 20);
+  } finally {
+    store.close();
+  }
+});

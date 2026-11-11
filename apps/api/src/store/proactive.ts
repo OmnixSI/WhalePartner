@@ -3,6 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { frequencyLimit, nextLocalDay, normalizedProactiveText, PROACTIVE_DELAY_MS, PROACTIVE_EXPIRY_MS, type CompanionFrequency, type CompanionSettings, type CompanionSettingsPatch } from "../proactive/policy.ts";
 import type { StoredMessage } from "./types.ts";
 import { SessionRepository } from "./sessions.ts";
+import { DailyCounters } from "./daily-counters.ts";
 
 interface ProactiveRow {
   id: string;
@@ -26,10 +27,13 @@ interface SendCheck {
 export class ProactiveRepository {
   readonly #db: DatabaseSync;
   readonly #sessions: SessionRepository;
+  /** 已发的主动消息记在独立账本里：删会话不会让当天的次数和冷却清零。 */
+  readonly #counters: DailyCounters;
 
   constructor(db: DatabaseSync, sessions: SessionRepository) {
     this.#db = db;
     this.#sessions = sessions;
+    this.#counters = new DailyCounters(db);
   }
 
   settings(): CompanionSettings {
@@ -143,16 +147,12 @@ export class ProactiveRepository {
   }
 
   sendCheck(frequency: CompanionFrequency, now = new Date()): SendCheck {
-    const start = new Date(now);
-    start.setHours(0, 0, 0, 0);
-    const count = this.#db.prepare("SELECT COUNT(*) AS count FROM proactive_triggers WHERE status = 'sent' AND sent_at >= ?")
-      .get(start.toISOString()) as { count: number };
-    const last = this.#db.prepare("SELECT sent_at AS sentAt FROM proactive_triggers WHERE status = 'sent' ORDER BY sent_at DESC LIMIT 1")
-      .get() as { sentAt: string } | undefined;
+    const count = this.#counters.value("proactive_sent", "", now);
+    const last = this.#counters.lastAt("proactive_sent");
     const limit = frequencyLimit(frequency);
-    if (Number(count.count) >= limit.daily) return { allowed: false, nextAt: nextLocalDay(now).toISOString() };
+    if (count >= limit.daily) return { allowed: false, nextAt: nextLocalDay(now).toISOString() };
     if (last) {
-      const next = new Date(Date.parse(last.sentAt) + limit.cooldownMs);
+      const next = new Date(last.getTime() + limit.cooldownMs);
       if (next.getTime() > now.getTime()) return { allowed: false, nextAt: next.toISOString() };
     }
     return { allowed: true };
@@ -197,6 +197,7 @@ export class ProactiveRepository {
       const message = this.#sessions.add("assistant", content, emotion, "deepseek", trigger.sessionId, attachment);
       this.#db.prepare("UPDATE proactive_triggers SET status = 'sent', message_id = ?, content = ?, sent_at = ?, updated_at = ? WHERE id = ? AND status = 'generating'")
         .run(message.id, content, now.toISOString(), now.toISOString(), id);
+      this.#counters.add("proactive_sent", "", 1, now);
       this.#db.exec("COMMIT");
       return { kind: "sent", message: { ...message, attachment } };
     } catch (error) {
