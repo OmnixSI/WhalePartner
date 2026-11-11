@@ -4,7 +4,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { IncomingMessage } from "node:http";
 import { loadConfig } from "../src/server/config.ts";
+import { clientAddress } from "../src/hub/auth.ts";
 import { DeviceRegistry } from "../src/hub/devices.ts";
 import { EmotionFilter, splitEmotionTags } from "../src/chat/emotion.ts";
 import { EventBus } from "../src/hub/events.ts";
@@ -208,6 +210,54 @@ test("pairing rate limit follows the forwarded source address", async () => {
     });
     assert.equal(other.status, 200);
   } finally { server.close(); server.closeAllConnections(); }
+});
+
+/** 假的请求：只有限流用得到的 headers 和 socket.remoteAddress。 */
+function sourceRequest(remoteAddress: string | undefined, headers: Record<string, string> = {}): IncomingMessage {
+  return { headers, socket: { remoteAddress } } as unknown as IncomingMessage;
+}
+
+test("直连伪造 X-Forwarded-For 不会产生新的来源桶", () => {
+  // 公网直连：对端不是代理，转发头一律不采信。
+  const forged: Array<Record<string, string>> = [
+    { "x-forwarded-for": "203.0.113.1" },
+    { "x-forwarded-for": "203.0.113.2, 10.0.0.1" },
+    { "cf-connecting-ip": "203.0.113.3" },
+    { "x-real-ip": "203.0.113.4" },
+    { "x-forwarded-for": "203.0.113.5", "cf-connecting-ip": "203.0.113.6" },
+  ];
+  const sources = new Set(forged.map((headers) => clientAddress(sourceRequest("198.51.100.7", headers))));
+  assert.deepEqual([...sources], ["198.51.100.7"], "换着伪造头也只有一个来源");
+  assert.equal(clientAddress(sourceRequest("::ffff:198.51.100.7", { "x-forwarded-for": "203.0.113.1" })), "198.51.100.7");
+
+  // 连着输错 20 次，全部记在真实地址上：8 次后这个来源被限流，其他来源不受影响。
+  const registry = new DeviceRegistry(undefined, () => 1_000_000);
+  const { code } = registry.createPairingCode();
+  const wrong = code === "000000" ? "111111" : "000000";
+  for (let i = 0; i < 20; i += 1) {
+    registry.redeem(wrong, "x", clientAddress(sourceRequest("198.51.100.7", { "x-forwarded-for": `203.0.113.${i}` })));
+  }
+  assert.deepEqual(registry.redeem(code, "手机", "198.51.100.7"), { ok: false, reason: "rate_limited" });
+  assert.equal(registry.redeem(code, "手机", "198.51.100.8").ok, true);
+});
+
+test("可信代理后面才看转发头：cf-connecting-ip 优先，XFF 从右往左挑第一个不可信地址", () => {
+  // 本机反代（回环）写入的转发头可信。
+  assert.equal(clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "203.0.113.7" })), "203.0.113.7");
+  assert.equal(clientAddress(sourceRequest("::1", { "x-forwarded-for": "203.0.113.7" })), "203.0.113.7");
+  assert.equal(
+    clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "203.0.113.5", "cf-connecting-ip": "198.51.100.9" })),
+    "198.51.100.9",
+    "cf 是边缘写入的，优先于 XFF",
+  );
+  // 多级代理：右边的值是最近的代理追加的，跳过可信代理网段后取到真实客户端。
+  assert.equal(
+    clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "203.0.113.5, 10.0.0.2" }), ["10.0.0.0/8"]),
+    "203.0.113.5",
+  );
+  // 配置的代理网段同样可信；没配置时按真实对端算。
+  assert.equal(clientAddress(sourceRequest("10.1.2.3", { "x-forwarded-for": "6.6.6.6" }), ["10.0.0.0/8"]), "6.6.6.6");
+  assert.equal(clientAddress(sourceRequest("10.1.2.3", { "x-forwarded-for": "6.6.6.6" })), "10.1.2.3");
 });
 
 test("auth: cross-site origin, text/plain, wrong token, proxied requests and --lan are rejected", async () => {

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./server/config.ts";
 import { applyCors, sendJson } from "./server/http.ts";
-import { authOptionsFromEnv, authorize, authRequiredFor, type AuthOptions } from "./hub/auth.ts";
+import { authOptionsFromEnv, authorize, authRequiredFor, trustedProxiesFromEnv, type AuthOptions } from "./hub/auth.ts";
 import { DeviceRegistry } from "./hub/devices.ts";
 import { hubEvents } from "./hub/events.ts";
 import { handleHubRoute } from "./routes/hub.ts";
@@ -118,6 +118,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
     lastChatActivity: () => chatActivity.last,
   });
   let port = deps.config.port;
+  const trustedProxies = trustedProxiesFromEnv();
   const server = createServer(async (request, response) => {
     applyCors(request, response, auth.extraOrigins);
     try {
@@ -134,7 +135,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       if (serveStatic(deps.staticDir, request, response, url.pathname)) return;
       const address = server.address();
       if (address && typeof address === "object") port = address.port;
-      if (await handleHubRoute({ devices, events, port }, request, response, url)) return;
+      if (await handleHubRoute({ devices, events, port, trustedProxies }, request, response, url)) return;
       if (request.method === "GET" && url.pathname === "/api/health") {
         const body = healthBody(deps, authRequiredFor(request, auth));
         sendJson(response, 200, url.searchParams.get("probe") === "1" ? { ...body, probe: await probe(deps) } : body);
