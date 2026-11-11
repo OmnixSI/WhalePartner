@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult } from "../src/codex/exec.ts";
+import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult, runCodexExec } from "../src/codex/exec.ts";
 import {
   closeCodexAppServer,
   listCodexModels,
@@ -243,4 +243,51 @@ test("extracts the API error Codex reports on stdout", () => {
   ].join("\n");
   assert.equal(codexErrorFromEvents(output), "Unsupported value: 'minimal'");
   assert.equal(codexErrorFromEvents("not json"), "");
+});
+
+test("kills the Codex process group when the video summary is aborted", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "whalepartner-codex-exec-abort-"));
+  const executable = join(directory, "codex");
+  const pidFile = join(directory, "pids");
+  const previousPath = process.env.PATH;
+
+  await writeFile(executable, `#!${process.execPath}
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const child = spawn("sleep", ["60"], { stdio: "ignore" });
+fs.writeFileSync(process.env.PID_FILE, process.pid + " " + child.pid);
+process.stdin.resume();
+setInterval(() => {}, 1000);
+`);
+  await chmod(executable, 0o755);
+  process.env.PATH = `${directory}:${previousPath ?? ""}`;
+  process.env.PID_FILE = pidFile;
+
+  try {
+    const controller = new AbortController();
+    const running = runCodexExec(["exec"], "", controller.signal);
+    const deadline = Date.now() + 5000;
+    while (!existsSync(pidFile)) {
+      if (Date.now() >= deadline) throw new Error("Fake Codex 没有启动。");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const [parentPid, childPid] = (await readFile(pidFile, "utf8")).trim().split(" ").map(Number);
+
+    controller.abort(new Error("用户按了停止"));
+    await assert.rejects(running, /用户按了停止/);
+
+    // 子进程组里的 Codex 和它拉起的 sleep 都要在几秒内结束。
+    const gone = (pid: number) => {
+      try { process.kill(pid, 0); return false; } catch { return true; }
+    };
+    const stop = Date.now() + 5000;
+    while (!gone(parentPid) || !gone(childPid)) {
+      if (Date.now() >= stop) throw new Error("中止后 Codex 或它的子进程还在跑。");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  } finally {
+    process.env.PATH = previousPath;
+    delete process.env.PID_FILE;
+    await rm(directory, { recursive: true, force: true });
+  }
 });

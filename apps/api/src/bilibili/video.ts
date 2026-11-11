@@ -249,8 +249,9 @@ export function formatBilibiliEvidence(input: {
 export async function collectBilibiliVideoEvidence(
   input: string,
   sessdata = "",
-  options: { framesDir?: string } = {},
+  options: { framesDir?: string; signal?: AbortSignal } = {},
 ) {
+  options.signal?.throwIfAborted();
   await assertBilibiliRequestAllowed();
   const url = normalizeBilibiliInput(input);
   const raw = await extractAll({
@@ -264,6 +265,7 @@ export async function collectBilibiliVideoEvidence(
     asrProvider: "bcut",
     visionProvider: "none",
     sessdata,
+    signal: options.signal,
   }) as ExtractedVideo;
 
   const rateLimit = raw.rateLimit ?? { limited: false, status: null, retryAt: null };

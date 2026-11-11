@@ -36,8 +36,8 @@ export interface VideoSummary {
 
 /** 视频流程拆成“采集资料”和“摘要”两步，聊天可以在两步之间告诉用户进度。 */
 export interface VideoService {
-  collect(input: string): Promise<CollectedVideo>;
-  summarize(collected: CollectedVideo): Promise<VideoSummary>;
+  collect(input: string, signal?: AbortSignal): Promise<CollectedVideo>;
+  summarize(collected: CollectedVideo, signal?: AbortSignal): Promise<VideoSummary>;
 }
 
 export class VideoError extends Error {}
@@ -74,17 +74,21 @@ export function sharedParagraph(summary: string): string {
 
 export function createVideoService(): VideoService {
   return {
-    async collect(input) {
+    async collect(input, signal) {
+      signal?.throwIfAborted();
       const target = normalizeBilibiliInput(input);
       const tempDir = await mkdtemp(join(tmpdir(), "whalepartner-video-"));
       const dispose = () => rm(tempDir, { recursive: true, force: true });
       try {
         await assertBilibiliRequestAllowed();
+        signal?.throwIfAborted();
         const session = await loadBilibiliSession();
+        signal?.throwIfAborted();
         if (session && !(await isBilibiliSessionValid(session.sessdata))) {
           throw new VideoError("本机保存的 B 站登录态已失效，请重新登录后再试。");
         }
-        const source = await collectBilibiliVideoEvidence(target, session?.sessdata ?? "", { framesDir: tempDir });
+        const source = await collectBilibiliVideoEvidence(target, session?.sessdata ?? "", { framesDir: tempDir, signal });
+        signal?.throwIfAborted();
         if (source.rateLimit.limited) throw new VideoError("B 站触发了限流保护，稍后再试。");
         const hasTranscript = Boolean(source.transcript.text?.trim());
         if (!hasTranscript && source.frameImages.length === 0) throw new VideoError("没有取得字幕或关键帧，无法看这个视频。");
@@ -102,13 +106,15 @@ export function createVideoService(): VideoService {
         };
       } catch (error) {
         await dispose();
+        signal?.throwIfAborted(); // 中止就抛出中止原因，不伪装成视频错误
         throw error instanceof VideoError ? error : new VideoError(scrub(error instanceof Error ? error.message : String(error)));
       }
     },
 
-    async summarize(collected) {
+    async summarize(collected, signal) {
       try {
-        const result = await summarizeWithCodex(collected.prompt, collected.framePaths);
+        signal?.throwIfAborted();
+        const result = await summarizeWithCodex(collected.prompt, collected.framePaths, signal);
         return {
           bvid: collected.bvid,
           title: collected.title,
@@ -120,6 +126,7 @@ export function createVideoService(): VideoService {
           frameCount: collected.frameCount,
         };
       } catch (error) {
+        signal?.throwIfAborted();
         throw new VideoError(scrub(error instanceof Error ? error.message : String(error)));
       } finally {
         await collected.dispose();

@@ -116,7 +116,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
     const videoTarget = deps.video ? extractVideoTarget(userText) : undefined;
     const webTarget = deps.web && !videoTarget ? extractWebTarget(userText) : undefined;
     if (deps.video && videoTarget) {
-      situation = yield* watchVideo(deps, character, deps.video, videoTarget, session.id, userMessage.id);
+      situation = yield* watchVideo(deps, character, deps.video, videoTarget, session.id, userMessage.id, signal);
     } else if (deps.web && webTarget) {
       situation = yield* readWeb(deps, character, deps.web, webTarget, session.id, userMessage.id);
     }

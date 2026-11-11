@@ -137,7 +137,7 @@ export interface WatchedVideo {
 
 export interface VideoSource {
   search(keyword: string): Promise<VideoCandidate[]>;
-  watch(candidate: VideoCandidate): Promise<WatchedVideo>;
+  watch(candidate: VideoCandidate, options?: { signal?: AbortSignal }): Promise<WatchedVideo>;
 }
 
 /** 网页搜索的一条结果（§10.6.8 B.1）。 */

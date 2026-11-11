@@ -16,19 +16,23 @@ function videoMaterial(video: { title: string; uploader: string; durationSeconds
   return ["## 这一轮的情况", SHARE_INSTRUCTIONS, "<video_material>", `标题：${video.title}`, `作者：${video.uploader}`, `时长：${minutes}`, summary, "</video_material>"].join("\n");
 }
 
-export async function* watchVideo(deps: ChatDeps, character: CharacterId, service: VideoService, target: string, sourceSessionId: string, sourceMessageId: number): AsyncGenerator<ChatEvent, string> {
+export async function* watchVideo(deps: ChatDeps, character: CharacterId, service: VideoService, target: string, sourceSessionId: string, sourceMessageId: number, signal?: AbortSignal): AsyncGenerator<ChatEvent, string> {
   yield { type: "video", stage: "reading", message: "正在读这个视频的资料…" };
   let release: (() => void) | undefined;
   try {
     release = acquireVideoLock();
-    const collected = await service.collect(target);
+    signal?.throwIfAborted();
+    const collected = await service.collect(target, signal);
     yield { type: "video", stage: "watching", message: `正在看《${collected.title}》…`, title: collected.title };
-    const summary = await service.summarize(collected);
+    // 读和摘要都被中止时上面就会抛错，走不到这里：被中止的轮次不会存档经历。
+    const summary = await service.summarize(collected, signal);
     const shared = sharedParagraph(summary.summary);
     await archiveExperience(deps.store, deps.memory, { kind: "video", title: summary.title, text: shared, url: summary.url, sourceId: summary.bvid, sourceSessionId, sourceMessageId }, "视频经历");
     queueLearning(deps, character, { title: summary.title, text: summary.summary }, summary.bvid, [sourceSessionId]);
     return videoMaterial(summary, shared);
   } catch (error) {
+    // 中止不是失败：安静地结束这一轮，交给上面收尾（撤消息、清理）。
+    if (signal?.aborted) throw signal.reason ?? new Error("已中止");
     const reason = error instanceof VideoError ? error.message : "处理视频时出了点问题。";
     yield { type: "video", stage: "failed", message: reason };
     return `## 这一轮的情况\n用户发来了一个 B 站视频，但你没能看成，原因：${reason}\n如实告诉用户没看成和大致原因，不要编造视频内容，并说可以稍后再试。`;

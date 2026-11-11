@@ -175,18 +175,24 @@ export function createBilibiliVideoSource(deps: BilibiliSourceDeps = {}): VideoS
       }
     },
 
-    async watch(candidate): Promise<WatchedVideo> {
+    async watch(candidate, options = {}): Promise<WatchedVideo> {
+      const signal = options.signal;
       const release = acquireVideoLock();
       try {
+        signal?.throwIfAborted();
         const service = videoService ?? (await import("../video/service.ts")).createVideoService();
         videoService = service;
-        const collected = await service.collect(candidate.url);
-        const summary = await service.summarize(collected);
+        signal?.throwIfAborted();
+        const collected = await service.collect(candidate.url, signal);
+        signal?.throwIfAborted();
+        const summary = await service.summarize(collected, signal);
+        signal?.throwIfAborted();
         const text = sharedParagraph(summary.summary);
         if (!text.trim()) throw new Error("看完视频没读到内容。");
         await backoff.recordSuccess();
         return { bvid: candidate.bvid, title: summary.title || candidate.title, url: summary.url || candidate.url, text };
       } catch (error) {
+        if (signal?.aborted) throw signal.reason ?? new Error("已中止");
         if (classifyError(error) === "rate_limit") await backoff.recordFailure(error instanceof Error ? error.message : String(error)).catch(() => undefined);
         throw error;
       } finally {
