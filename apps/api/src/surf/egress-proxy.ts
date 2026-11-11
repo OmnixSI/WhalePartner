@@ -127,6 +127,11 @@ export async function startEgressProxy(options: EgressProxyOptions = {}): Promis
           const responseHeaders = Object.fromEntries(Object.entries(response.headers).filter(([key]) => !HOP_BY_HOP.has(key)));
           clientResponse.writeHead(response.statusCode ?? 502, responseHeaders);
           response.pipe(clientResponse);
+          // 上游发了一部分正文就断开：pipe 不会替我们收尾，下游得跟着中断，浏览器才知道响应不完整。
+          response.once("error", () => clientResponse.destroy());
+          response.once("close", () => {
+            if (!response.complete) clientResponse.destroy();
+          });
         });
         forward.setTimeout(CONNECT_TIMEOUT_MS * 3, () => forward.destroy());
         forward.once("error", () => {

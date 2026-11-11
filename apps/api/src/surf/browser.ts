@@ -380,8 +380,14 @@ export class BrowserManager {
       const base: Record<string, unknown> = { headless: true };
       if (this.#options.chromiumPath) base.executablePath = this.#options.chromiumPath;
       // Chromium 默认不代理回环地址；<-loopback> 取消这条隐式绕过，127.0.0.1 / localhost 也要过代理。
+      // WebRTC 的 UDP 不走 HTTP 代理，页面把 STUN 指到本机/内网就能绕过出口代理；这个策略只允许经代理的流量。
       // 容器里还必须关 sandbox；普通桌面不加那个参数。
-      base.args = [`--proxy-server=${proxy.url}`, "--proxy-bypass-list=<-loopback>", ...(inContainer() ? ["--no-sandbox"] : [])];
+      base.args = [
+        `--proxy-server=${proxy.url}`,
+        "--proxy-bypass-list=<-loopback>",
+        "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+        ...(inContainer() ? ["--no-sandbox"] : []),
+      ];
       let instance: AnyBrowser;
       try {
         try {
