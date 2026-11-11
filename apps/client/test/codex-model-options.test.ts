@@ -88,6 +88,18 @@ test("换模型时档位回落：新模型支持就保留，不支持就改成�
   assert.equal(defaultEffort({ ...MODELS[1], defaultReasoningEffort: "max" }), "low");
 });
 
+test("接口没给档位清单时保留模型自己的默认档位（max、none 等），不回落到 low", () => {
+  for (const own of ["max", "none", "minimal", "ultra"]) {
+    const model = { ...MODELS[2], defaultReasoningEffort: own };
+    assert.deepEqual(effortsFor(model), [...GENERIC_REASONING_EFFORTS, own]);
+    assert.equal(defaultEffort(model), own);
+    assert.equal(effortAfterModelChange(model, "nope"), own);
+  }
+  // 默认档位本来就在通用档位里：不重复
+  assert.deepEqual(effortsFor({ ...MODELS[2], defaultReasoningEffort: "high" }), [...GENERIC_REASONING_EFFORTS]);
+  assert.equal(defaultEffort({ ...MODELS[2], defaultReasoningEffort: "high" }), "high");
+});
+
 test("没选过模型时用标了默认的那个，没有标就用第一个", () => {
   assert.equal(defaultModel(MODELS)?.model, "gpt-b");
   assert.equal(defaultModel(MODELS.map((item) => ({ ...item, isDefault: false })))?.model, "gpt-a");

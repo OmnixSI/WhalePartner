@@ -70,11 +70,16 @@ export function defaultModel(models: readonly CodexModelOption[]): CodexModelOpt
   return models.find((item) => item.isDefault) ?? models[0];
 }
 
-/** 这个模型能选的档位：接口给了清单就按清单，没给就用通用档位。 */
+/**
+ * 这个模型能选的档位：接口给了清单就按清单；没给就用通用档位，
+ * 模型自己的默认档位（比如 max、none）不在通用档位里就补上。和后端 `supportedEffortsOf` 同一规则。
+ */
 export function effortsFor(option: CodexModelOption | undefined): string[] {
   if (!option) return [];
   const listed = option.supportedReasoningEfforts.map((item) => item.reasoningEffort);
-  return listed.length > 0 ? listed : [...GENERIC_REASONING_EFFORTS];
+  if (listed.length > 0) return listed;
+  const fallback = option.defaultReasoningEffort;
+  return fallback && !GENERIC_REASONING_EFFORTS.includes(fallback) ? [...GENERIC_REASONING_EFFORTS, fallback] : [...GENERIC_REASONING_EFFORTS];
 }
 
 /** 这个模型的默认档位；默认值不在可选清单里时退到清单第一项。 */

@@ -10,6 +10,7 @@ import { FallbackChatProvider } from "../src/llm/router.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store/index.ts";
 import type { CodexModelOption } from "../src/codex/app-server.ts";
+import { CodexBinaryError } from "../src/codex/binary.ts";
 import { acquireSetupWrite, releaseSetupWrite } from "../src/routes/setup.ts";
 
 /**
@@ -145,6 +146,23 @@ test("GET /api/setup 不等 Codex 模型列表：列表读不到时已保存的�
     const models = await fetch(`${app.base}/api/setup/codex/models`);
     assert.equal(models.status, 503);
     assert.equal(((await models.json()) as { error: string }).error, "codex_unavailable");
+  } finally {
+    app.close();
+  }
+});
+
+test("只找到改参数的包装脚本时，模型列表和保存都返回 503 并说明原因，不改已保存的值", async () => {
+  const reason = "找到的 codex（/opt/homebrew/bin/codex）是会改写模型参数的包装脚本，大肥鱼不用它；没找到真实的 Codex CLI。请用环境变量 WP_CODEX_BIN 指向真实的 codex。";
+  const app = await serve({ codex: SAVED, codexModels: () => Promise.reject(new CodexBinaryError(reason)) });
+  try {
+    const models = await fetch(`${app.base}/api/setup/codex/models`);
+    assert.equal(models.status, 503);
+    assert.deepEqual(await models.json(), { error: "codex_unavailable", message: reason });
+
+    const saved = await fetch(`${app.base}/api/setup/codex`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "gpt-6-luna", effort: "high" }) });
+    assert.equal(saved.status, 503);
+    assert.equal(((await saved.json()) as { message: string }).message, reason);
+    assert.deepEqual(JSON.parse(readFileSync(app.codexPath, "utf8")), JSON.parse(SAVED));
   } finally {
     app.close();
   }

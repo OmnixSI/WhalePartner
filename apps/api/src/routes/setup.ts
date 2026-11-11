@@ -2,7 +2,8 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFile
 import { dirname, join, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, sendJson } from "../server/http.ts";
-import { listCodexModels, supportedEffortsOf, type CodexModelOption } from "../codex/app-server.ts";
+import { defaultEffortOf, listCodexModels, supportedEffortsOf, type CodexModelOption } from "../codex/app-server.ts";
+import { CodexBinaryError } from "../codex/binary.ts";
 import { codexSettingsPath, readStoredCodexSettings, writeStoredCodexSettings } from "../codex/settings.ts";
 import type { ServerDeps } from "../server/types.ts";
 
@@ -19,6 +20,11 @@ import type { ServerDeps } from "../server/types.ts";
  */
 /** 模型名的粗筛；真正的判断是它在不在 Codex 当前的模型列表里。 */
 const MODEL_PATTERN = /^\S{2,64}$/;
+
+/** 找不到真实 Codex（或只找到改参数的包装脚本）时把具体原因告诉用户，其余情况给通用说法。 */
+function codexUnavailableMessage(error: unknown) {
+  return error instanceof CodexBinaryError ? error.message : "现在读不到本机 Codex 的可用模型列表。";
+}
 /** `sk-` 前缀 + 17–197 个可打印字符 = 全长 20–200，且不可能夹换行。 */
 const KEY_PATTERN = /^sk-[\x21-\x7e]{17,197}$/;
 
@@ -196,8 +202,8 @@ export async function handleSetupRoute(
     }
     try {
       sendJson(response, 200, { models: await readCodexModels(deps) });
-    } catch {
-      sendJson(response, 503, { error: "codex_unavailable", message: "现在读不到本机 Codex 的可用模型列表。" });
+    } catch (error) {
+      sendJson(response, 503, { error: "codex_unavailable", message: codexUnavailableMessage(error) });
     }
     return true;
   }
@@ -263,8 +269,8 @@ export async function handleSetupRoute(
       let models: CodexModelOption[];
       try {
         models = await readCodexModels(deps);
-      } catch {
-        sendJson(response, 503, { error: "codex_unavailable", message: "现在读不到本机 Codex 的可用模型列表。" });
+      } catch (error) {
+        sendJson(response, 503, { error: "codex_unavailable", message: codexUnavailableMessage(error) });
         return true;
       }
 
@@ -280,7 +286,7 @@ export async function handleSetupRoute(
 
       const supportedEfforts = supportedEffortsOf(modelOption);
       let selectedEffort = effort ?? stored.effort;
-      if (!selectedEffort) selectedEffort = supportedEfforts.includes(modelOption.defaultReasoningEffort) ? modelOption.defaultReasoningEffort : supportedEfforts[0];
+      if (!selectedEffort) selectedEffort = defaultEffortOf(modelOption);
       if (!supportedEfforts.includes(selectedEffort)) {
         sendJson(response, 400, {
           error: "invalid_effort",

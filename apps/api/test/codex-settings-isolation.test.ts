@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -42,9 +42,34 @@ const fakeScript = join(import.meta.dirname, "fixtures", "fake-codex.cjs");
 writeFileSync(join(binDir, "codex"), `#!/bin/sh\nexec "${process.execPath}" "${fakeScript}" "$@"\n`, "utf8");
 chmodSync(join(binDir, "codex"), 0o755);
 
-const ENV_NAMES = ["PATH", "CODEX_HOME", "WP_DATA_DIR", "FAKE_CODEX_LOG", "FAKE_CODEX_MODELS"] as const;
+// 仿 ARIS 的 shim：放在 PATH 最前面，把 `codex exec` 的 -m / model_reasoning_effort 换成它钉死的值，
+// 其余子命令原样交给后面的 codex。大肥鱼必须绕过它，而不是按名字 spawn 到它。
+const shimDir = join(root, "shim-bin");
+const shimHits = join(root, "shim-hits.log");
+mkdirSync(shimDir, { recursive: true });
+writeFileSync(join(shimDir, "codex"), `#!${process.execPath}
+const { appendFileSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
+appendFileSync(${JSON.stringify(shimHits)}, process.argv.slice(2).join(" ") + "\\n");
+let args = process.argv.slice(2);
+if (args[0] === "exec") {
+  const out = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "-m") { i++; continue; }
+    if (args[i] === "-c" && args[i + 1].startsWith("model_reasoning_effort")) { i++; continue; }
+    out.push(args[i]);
+  }
+  args = [...out.slice(0, -1), "-m", "gpt-user-codex", "-c", "model_reasoning_effort=xhigh", "-"];
+}
+const result = spawnSync(${JSON.stringify(join(binDir, "codex"))}, args, { stdio: "inherit" });
+process.exit(result.status ?? 1);
+`, "utf8");
+chmodSync(join(shimDir, "codex"), 0o755);
+
+const ENV_NAMES = ["PATH", "WP_CODEX_BIN", "CODEX_HOME", "WP_DATA_DIR", "FAKE_CODEX_LOG", "FAKE_CODEX_MODELS"] as const;
 const savedEnv = Object.fromEntries(ENV_NAMES.map((name) => [name, process.env[name]]));
-process.env.PATH = `${binDir}${delimiter}${process.env.PATH ?? ""}`;
+process.env.PATH = `${shimDir}${delimiter}${binDir}${delimiter}${process.env.PATH ?? ""}`;
+delete process.env.WP_CODEX_BIN;
 process.env.CODEX_HOME = codexHome;
 process.env.WP_DATA_DIR = dataDir;
 process.env.FAKE_CODEX_LOG = logPath;
@@ -134,6 +159,9 @@ test("用户自己的 Codex 在用别的模型时，大肥鱼的请求仍按设�
   assert.ok(exec.args.includes("--ignore-user-config"));
   assert.equal(exec.args[exec.args.indexOf("-m") + 1], "gpt-wp-chosen");
   assert.ok(exec.args.includes(`model_reasoning_effort="high"`));
+
+  assert.ok(!exec.args.includes("gpt-user-codex"), "exec 参数不能被包装脚本改写");
+  assert.ok(!existsSync(shimHits), "聊天和视频摘要都不能经过会改写模型参数的包装脚本");
 
   // 5. 整个过程大肥鱼没有再碰用户的 config.toml。
   assert.equal(hash(userConfigPath), userChanged, "推理请求不能改用户 Codex 的 config.toml");

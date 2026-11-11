@@ -65,6 +65,18 @@ test("falls back to the generic effort list when Codex lists none for a model", 
   assert.equal(resolveCodexSettings({ model: "gpt-bare", effort: "high" }, [model]).effort, "high");
 });
 
+test("keeps the model's own default effort when Codex lists no efforts for it", () => {
+  for (const own of ["max", "none", "minimal", "ultra"]) {
+    const model = { model: "gpt-own", id: "gpt-own", displayName: "gpt-own", defaultReasoningEffort: own, supportedReasoningEfforts: [], isDefault: true };
+    assert.deepEqual(supportedEffortsOf(model), [...GENERIC_REASONING_EFFORTS, own]);
+    assert.equal(resolveCodexSettings({ model: "", effort: "" }, [model]).effort, own);
+    assert.equal(resolveCodexSettings({ model: "gpt-own", effort: "low" }, [model]).effort, "low");
+  }
+  const inGeneric = { model: "gpt-own", id: "gpt-own", displayName: "gpt-own", defaultReasoningEffort: "high", supportedReasoningEfforts: [], isDefault: true };
+  assert.deepEqual(supportedEffortsOf(inGeneric), [...GENERIC_REASONING_EFFORTS]);
+  assert.equal(resolveCodexSettings({ model: "", effort: "" }, [inGeneric]).effort, "high");
+});
+
 test("does not start a Codex turn when cancelled while starting its thread", async () => {
   const directory = await mkdtemp(join(tmpdir(), "whalepartner-codex-cancel-"));
   const executable = join(directory, "codex");
