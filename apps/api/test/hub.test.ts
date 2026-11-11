@@ -197,13 +197,16 @@ test("revoking a device closes its event stream within a second and leaves other
 test("revoking a device aborts its in-flight POST /api/chat and stops the stream within a second", async () => {
   let produced = 0;
   let aborted = false;
+  let calls = 0;
   const endless: ChatProvider = {
     id: "fake", model: "m",
     async *stream(_m, options) {
+      // 只统计第一次调用（这轮聊天）；被打断的轮次随后会进记忆整理，也会调用同一个 provider。
+      const isChat = ++calls === 1;
       for (let i = 0; i < 40; i++) {
         await sleep(60);
-        if (options?.signal?.aborted) { aborted = true; return; }
-        produced += 1;
+        if (options?.signal?.aborted) { if (isChat) aborted = true; return; }
+        if (isChat) produced += 1;
         yield { text: "字" };
       }
     },
