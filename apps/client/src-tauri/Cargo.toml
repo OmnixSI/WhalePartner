@@ -1,6 +1,6 @@
 [package]
 name = "whalepartner"
-version = "0.3.1"
+version = "0.3.2"
 description = "鲸汐 · WhalePartner 客户端外壳"
 authors = ["OmnixSI"]
 license = ""
