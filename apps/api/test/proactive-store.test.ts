@@ -120,3 +120,36 @@ test("deleting a chat does not reset the daily proactive count or cooldown", () 
   assert.equal(new Date(capped.nextAt!).getHours(), 0);
   store.close();
 });
+
+test("upgrading just after midnight keeps the cooldown of a proactive message sent before midnight", () => {
+  const dir = mkdtempSync(join(tmpdir(), "wp-proactive-midnight-migration-"));
+  const path = join(dir, "app.db");
+  try {
+    // 升级发生在今天；昨晚 23:50 刚发过一条主动消息，今天一条都没发。
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const sentAt = new Date(midnight.getTime() - 10 * 60_000);
+    const before = new ChatStore(path);
+    enable(before);
+    const { triggerId } = setupTrigger(before, sentAt);
+    before.claimProactiveTrigger(triggerId, sentAt);
+    assert.equal(before.deliverProactiveMessage(triggerId, "记得周五要看牙医，最近还好吗？", "neutral", sentAt)?.kind, "sent");
+    before.close();
+
+    // 还原成升级前的库：没有按天记账表，只有 proactive_triggers 里的记录。
+    const legacy = new DatabaseSync(path);
+    legacy.exec("DROP TABLE daily_counters");
+    legacy.close();
+
+    const after = new ChatStore(path);
+    try {
+      const check = after.proactiveSendCheck("normal", new Date(midnight.getTime() + 10 * 60_000));
+      assert.equal(check.allowed, false);
+      assert.equal(check.nextAt, new Date(sentAt.getTime() + 6 * 60 * 60_000).toISOString());
+    } finally {
+      after.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

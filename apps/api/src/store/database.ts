@@ -281,6 +281,7 @@ function migrateExperiences(db: DatabaseSync) {
  * 升级时补齐当天的按天记账：之前的上限是从 relationship_events / proactive_triggers
  * 现算的，换了记账表后先把今天已经用掉的量搬过来，免得升级当天重新计数。
  * 只补当天、只在对应记账行还不存在时补；之后删会话不会再把它们写回来。
+ * 主动消息的冷却跨天生效，所以即使今天一条都没发，也会把最近一次发送时间带过来。
  */
 function migrateDailyCounters(db: DatabaseSync) {
   const now = new Date();
@@ -299,11 +300,14 @@ function migrateDailyCounters(db: DatabaseSync) {
   }
 
   if (!exists("proactive_sent", "")) {
-    const row = db.prepare("SELECT COUNT(*) AS count, MAX(sent_at) AS lastSentAt FROM proactive_triggers WHERE status = 'sent' AND sent_at >= ?")
-      .get(start) as { count: number; lastSentAt: string | null };
-    if (Number(row.count) > 0) {
+    // 冷却看的是最近一次发送，可能在昨天 23:50、升级在 00:10：所以最后发送时间取全表，今天的次数只数今天。
+    const row = db.prepare(`
+      SELECT MAX(sent_at) AS lastSentAt, COUNT(CASE WHEN sent_at >= ? THEN 1 END) AS today
+      FROM proactive_triggers WHERE status = 'sent'
+    `).get(start) as { lastSentAt: string | null; today: number };
+    if (row.lastSentAt) {
       db.prepare("INSERT INTO daily_counters(day, name, subject, value, updated_at) VALUES (?, 'proactive_sent', '', ?, ?)")
-        .run(day, Number(row.count), row.lastSentAt ?? now.toISOString());
+        .run(day, Number(row.today), row.lastSentAt);
     }
   }
 }
