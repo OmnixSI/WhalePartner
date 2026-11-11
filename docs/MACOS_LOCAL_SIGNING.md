@@ -17,3 +17,5 @@ codesign --verify --deep --strict --verbose=2 apps/client/src-tauri/target/relea
 codesign -dv --verbose=4 apps/client/src-tauri/target/release/bundle/macos/鲸汐.app
 codesign --display -r - apps/client/src-tauri/target/release/bundle/macos/鲸汐.app
 ```
+
+X-ASR worker 是 onedir 目录（`Resources/bin/whale-xasr-worker/`），Tauri 不签 Resources 里的库，由 `apps/api/scripts/build-sidecar.mjs` 逐个签名。它用的身份和 Tauri 一致，优先级为：环境变量 `APPLE_SIGNING_IDENTITY` > `tauri.conf.json` 的 `bundle.macOS.signingIdentity` > ad-hoc（`-`）。非 ad-hoc 身份会加 hardened runtime、时间戳和 `entitlements.plist`。所以只在 `signingIdentity` 里填正式身份、不设环境变量时，worker 也会用同一个身份签。

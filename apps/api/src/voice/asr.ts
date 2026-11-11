@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createWriteStream, existsSync } from "node:fs";
+import { accessSync, constants, createWriteStream, existsSync, statSync } from "node:fs";
 import { cp, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -441,10 +441,17 @@ async function removePartialInstalls(directory: string): Promise<void> {
     .map((entry) => rm(join(parent, entry.name), { recursive: true, force: true })));
 }
 
-function findOnPath(command: string): string | null {
+/** PATH 上第一个同名的可执行文件；同名目录（如 onedir 的 `bin/whale-xasr-worker/`）和不可执行的文件都跳过。 */
+export function findOnPath(command: string): string | null {
   for (const directory of (process.env.PATH ?? "").split(":").filter(Boolean)) {
     const path = join(directory, command);
-    if (existsSync(path)) return path;
+    try {
+      if (!statSync(path).isFile()) continue;
+      accessSync(path, constants.X_OK);
+      return path;
+    } catch {
+      continue;
+    }
   }
   return null;
 }
