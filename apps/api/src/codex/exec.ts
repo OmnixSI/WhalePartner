@@ -1,9 +1,10 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { tmpdir } from "node:os";
 import { listCodexModels, resolveCodexSettings } from "./app-server.ts";
 import { readStoredCodexSettings, type StoredCodexSettings } from "./settings.ts";
 
 const CODEX_TIMEOUT_MS = 240000;
+const KILL_GRACE_MS = 3000;
 
 export interface CodexTokenUsage {
   inputTokens: number;
@@ -102,46 +103,94 @@ export function buildCodexArgs(imagePaths: string[], settings: StoredCodexSettin
   ];
 }
 
-export async function getCodexRequestSettings(configPath?: string) {
-  return resolveCodexSettings(readStoredCodexSettings(configPath), await listCodexModels());
+export async function getCodexRequestSettings(configPath?: string, signal?: AbortSignal) {
+  return resolveCodexSettings(readStoredCodexSettings(configPath), await listCodexModels(signal));
 }
 
-export async function summarizeWithCodex(prompt: string, imagePaths: string[] = []): Promise<CodexResult> {
-  const settings = await getCodexRequestSettings();
-  const args = buildCodexArgs(imagePaths, settings);
+/** 结束 Codex 和它拉起的子进程：先 SIGTERM，宽限期后 SIGKILL。 */
+function killTree(child: ChildProcess, signal: NodeJS.Signals) {
+  if (child.pid === undefined) return;
+  try {
+    if (process.platform === "win32") child.kill(signal);
+    else process.kill(-child.pid, signal);
+  } catch {
+    /* 已经退出了 */
+  }
+}
 
-  const result = await new Promise<CodexResult>((resolve, reject) => {
-    const codex = spawn("codex", args, { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
+export interface CodexExecOutput {
+  stdout: string;
+  stderr: string;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+}
+
+/**
+ * 跑一次 `codex exec`。中止时结束整个子进程组并立刻抛出中止原因，
+ * 不用等满 240 秒的超时。
+ */
+export function runCodexExec(args: string[], prompt: string, signal?: AbortSignal): Promise<CodexExecOutput> {
+  signal?.throwIfAborted();
+  return new Promise<CodexExecOutput>((resolve, reject) => {
+    // 独立进程组：Codex 自己拉起的命令也归我们管，中止时一起结束。
+    const codex = spawn("codex", args, { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    let timeout: NodeJS.Timeout;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let forced: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+
+    const settle = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", onAbort);
+      finish();
+    };
+
+    const terminate = () => {
+      killTree(codex, "SIGTERM");
+      forced = setTimeout(() => killTree(codex, "SIGKILL"), KILL_GRACE_MS);
+      forced.unref();
+    };
+
+    const onAbort = () => {
+      terminate();
+      settle(() => reject(signal?.reason ?? new Error("已中止")));
+    };
 
     codex.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     codex.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
     codex.stdin.on("error", () => {});
-    timeout = setTimeout(() => codex.kill("SIGTERM"), CODEX_TIMEOUT_MS);
+    timeout = setTimeout(terminate, CODEX_TIMEOUT_MS);
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     codex.once("error", (error) => {
-      clearTimeout(timeout);
-      reject(new Error("无法启动本机 Codex CLI：" + error.message));
+      settle(() => reject(new Error("无法启动本机 Codex CLI：" + error.message)));
     });
 
-    codex.once("close", (code, signal) => {
-      clearTimeout(timeout);
-      if (code !== 0) {
-        const detail = Buffer.concat(stderr).toString("utf8").trim() || codexErrorFromEvents(Buffer.concat(stdout).toString("utf8"));
-        reject(new Error(detail || `Codex CLI 退出，状态码 ${code ?? signal ?? "unknown"}。`));
-        return;
-      }
-
-      try {
-        resolve(parseCodexResult(Buffer.concat(stdout).toString("utf8")));
-      } catch (error) {
-        reject(error);
-      }
+    codex.once("close", (code, termSignal) => {
+      settle(() => resolve({
+        stdout: Buffer.concat(stdout).toString("utf8"),
+        stderr: Buffer.concat(stderr).toString("utf8"),
+        code,
+        signal: termSignal,
+      }));
     });
 
     codex.stdin.end(prompt);
   });
-  return { ...result, model: settings.model, reasoningEffort: settings.effort };
+}
+
+export async function summarizeWithCodex(prompt: string, imagePaths: string[] = [], signal?: AbortSignal): Promise<CodexResult> {
+  signal?.throwIfAborted();
+  const settings = await getCodexRequestSettings(undefined, signal);
+  const args = buildCodexArgs(imagePaths, settings);
+  const { stdout, stderr, code, signal: termSignal } = await runCodexExec(args, prompt, signal);
+  signal?.throwIfAborted();
+  if (code !== 0) {
+    const detail = stderr.trim() || codexErrorFromEvents(stdout);
+    throw new Error(detail || `Codex CLI 退出，状态码 ${code ?? termSignal ?? "unknown"}。`);
+  }
+  return { ...parseCodexResult(stdout), model: settings.model, reasoningEffort: settings.effort };
 }

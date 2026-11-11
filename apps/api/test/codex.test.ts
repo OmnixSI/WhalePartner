@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult } from "../src/codex/exec.ts";
+import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult, runCodexExec, summarizeWithCodex } from "../src/codex/exec.ts";
 import {
   closeCodexAppServer,
   listCodexModels,
@@ -243,4 +243,91 @@ test("extracts the API error Codex reports on stdout", () => {
   ].join("\n");
   assert.equal(codexErrorFromEvents(output), "Unsupported value: 'minimal'");
   assert.equal(codexErrorFromEvents("not json"), "");
+});
+
+test("kills the Codex process group when the video summary is aborted", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "whalepartner-codex-exec-abort-"));
+  const executable = join(directory, "codex");
+  const pidFile = join(directory, "pids");
+  const previousPath = process.env.PATH;
+
+  await writeFile(executable, `#!${process.execPath}
+const { spawn } = require("node:child_process");
+const fs = require("node:fs");
+const child = spawn("sleep", ["60"], { stdio: "ignore" });
+fs.writeFileSync(process.env.PID_FILE, process.pid + " " + child.pid);
+process.stdin.resume();
+setInterval(() => {}, 1000);
+`);
+  await chmod(executable, 0o755);
+  process.env.PATH = `${directory}:${previousPath ?? ""}`;
+  process.env.PID_FILE = pidFile;
+
+  try {
+    const controller = new AbortController();
+    const running = runCodexExec(["exec"], "", controller.signal);
+    const deadline = Date.now() + 5000;
+    while (!existsSync(pidFile)) {
+      if (Date.now() >= deadline) throw new Error("Fake Codex 没有启动。");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const [parentPid, childPid] = (await readFile(pidFile, "utf8")).trim().split(" ").map(Number);
+
+    controller.abort(new Error("用户按了停止"));
+    await assert.rejects(running, /用户按了停止/);
+
+    // 子进程组里的 Codex 和它拉起的 sleep 都要在几秒内结束。
+    const gone = (pid: number) => {
+      try { process.kill(pid, 0); return false; } catch { return true; }
+    };
+    const stop = Date.now() + 5000;
+    while (!gone(parentPid) || !gone(childPid)) {
+      if (Date.now() >= stop) throw new Error("中止后 Codex 或它的子进程还在跑。");
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  } finally {
+    process.env.PATH = previousPath;
+    delete process.env.PID_FILE;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("cancelling while the Codex model list is pending rejects within a second, for listCodexModels and the video summary alike", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "whalepartner-codex-models-abort-"));
+  const executable = join(directory, "codex");
+  const previousPath = process.env.PATH;
+
+  // 只回 initialize，model/list 永远不答。
+  await writeFile(executable, `#!${process.execPath}
+const lines = require("node:readline").createInterface({ input: process.stdin });
+lines.on("line", (line) => {
+  const message = JSON.parse(line);
+  if (message.id === undefined || message.method === "model/list") return;
+  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} }) + "\\n");
+});
+`);
+  await chmod(executable, 0o755);
+  process.env.PATH = `${directory}:${previousPath ?? ""}`;
+
+  const settleWithin = async (pending: Promise<unknown>, controller: AbortController) => {
+    const settled = pending.then(() => "resolved", (error: unknown) => error);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const abortedAt = Date.now();
+    controller.abort();
+    const outcome = await Promise.race([settled, new Promise((resolve) => setTimeout(() => resolve("still waiting"), 1_000))]);
+    assert.notEqual(outcome, "still waiting", "取消 1 秒后仍在等模型列表");
+    assert.notEqual(outcome, "resolved");
+    assert.ok(Date.now() - abortedAt < 1_000);
+  };
+
+  try {
+    const listing = new AbortController();
+    await settleWithin(listCodexModels(listing.signal), listing);
+    const summary = new AbortController();
+    await settleWithin(summarizeWithCodex("prompt", [], summary.signal), summary);
+  } finally {
+    await closeCodexAppServer();
+    process.env.PATH = previousPath;
+    await rm(directory, { recursive: true, force: true });
+  }
 });

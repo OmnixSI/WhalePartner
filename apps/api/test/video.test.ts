@@ -10,6 +10,8 @@ import type { ExperienceInput, MemoryStore } from "../src/memory/types.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store/index.ts";
 import { acquireVideoLock, extractVideoTarget, sharedParagraph, VideoError, type CollectedVideo, type VideoService, type VideoSummary } from "../src/video/service.ts";
+import { createBilibiliVideoSource } from "../src/surf/bilibili-source.ts";
+import type { VideoCandidate } from "../src/surf/types.ts";
 
 const SUMMARY = "# 分享给你\n\n这是一支讲深海发光水母的纪录片，画面很美。\n\n# 来源与依据\n\n- 标题：深海纪录片";
 
@@ -191,4 +193,111 @@ test("reading a slow video does not use up the first-token budget", async () => 
     firstTokenTimeoutMs: 30,
   }, "看看 BV1TESTTEST1"));
   assert.ok(events.some((event) => event.type === "done"), JSON.stringify(events.map((event) => event.type)));
+});
+
+async function until(predicate: () => boolean, label: string) {
+  const deadline = Date.now() + 5000;
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error(`等待超时：${label}`);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}
+
+/** 采集或摘要一直挂着，直到收到中止信号才失败；记下拿到的信号便于断言。 */
+function hangingVideo(): VideoService & { signals: { collect?: AbortSignal; summarize?: AbortSignal } } {
+  const signals: { collect?: AbortSignal; summarize?: AbortSignal } = {};
+  const hang = (signal?: AbortSignal) =>
+    new Promise<never>((_, reject) => {
+      const fail = () => reject(signal?.reason ?? new Error("已中止"));
+      if (!signal) return reject(new Error("这一轮应该带着中止信号"));
+      if (signal.aborted) return fail();
+      signal.addEventListener("abort", fail, { once: true });
+    });
+  return {
+    signals,
+    collect(_input, signal) {
+      signals.collect = signal;
+      return hang(signal);
+    },
+    summarize(_collected, signal) {
+      signals.summarize = signal;
+      return hang(signal);
+    },
+  };
+}
+
+const abortError = (error: unknown) => {
+  assert.equal((error as Error).name, "AbortError");
+  return true;
+};
+
+test("pressing stop during video collection releases the lock and does not remember the turn", async () => {
+  const { memory, experiences } = recordingMemory();
+  const store = new ChatStore(":memory:");
+  const video = hangingVideo();
+  const controller = new AbortController();
+  const events: ChatEvent[] = [];
+  const running = (async () => {
+    for await (const event of runChat({ provider: new FallbackChatProvider([scripted([])]), store, memory, video }, "看看 BV1TESTTEST1", controller.signal)) events.push(event);
+  })();
+
+  await until(() => video.signals.collect !== undefined, "开始采集");
+  assert.equal(video.signals.collect, controller.signal);
+  controller.abort();
+  await assert.rejects(running, abortError);
+
+  // 中止不是失败：不给用户弹“没看成”。
+  assert.deepEqual(events.map((event) => event.type), ["video"]);
+  assert.equal(events[0].type === "video" && events[0].stage, "reading");
+  // 这一轮不存档经历，视频锁也已经放开。
+  assert.equal(experiences.length, 0);
+  acquireVideoLock()();
+  store.close();
+});
+
+test("pressing stop during the video summary releases the lock and skips the experience", async () => {
+  const { memory, experiences } = recordingMemory();
+  const store = new ChatStore(":memory:");
+  const controller = new AbortController();
+  const video: VideoService = {
+    async collect() { return collected(); },
+    summarize(_collected, signal) {
+      assert.equal(signal, controller.signal);
+      return new Promise<never>((_, reject) => {
+        const fail = () => reject(signal?.reason ?? new Error("已中止"));
+        if (signal?.aborted) return fail();
+        signal?.addEventListener("abort", fail, { once: true });
+      });
+    },
+  };
+  const events: ChatEvent[] = [];
+  const running = (async () => {
+    for await (const event of runChat({ provider: new FallbackChatProvider([scripted([])]), store, memory, video }, "看看 BV1TESTTEST1", controller.signal)) events.push(event);
+  })();
+
+  await until(() => events.some((event) => event.type === "video" && event.stage === "watching"), "开始摘要");
+  controller.abort();
+  await assert.rejects(running, abortError);
+  assert.deepEqual(events.map((event) => event.type), ["video", "video"]);
+  assert.equal(experiences.length, 0);
+  acquireVideoLock()();
+  store.close();
+});
+
+test("surf aborts a video it is watching and releases the video lock", async () => {
+  const controller = new AbortController();
+  const video = hangingVideo();
+  const source = createBilibiliVideoSource({ video });
+  const candidate: VideoCandidate = {
+    bvid: "BV1xx411c7mD", title: "鲸歌", author: "海洋频道", durationSeconds: 300, play: 1000,
+    description: "", pic: "", url: "https://www.bilibili.com/video/BV1xx411c7mD",
+  };
+
+  const watching = source.watch(candidate, { signal: controller.signal });
+  await until(() => video.signals.collect !== undefined, "冲浪开始采集");
+  assert.equal(video.signals.collect, controller.signal);
+  controller.abort();
+  await assert.rejects(watching, abortError);
+  // 见闻停了，视频锁也要马上放开，用户自己发的视频不用再等几分钟。
+  acquireVideoLock()();
 });

@@ -598,7 +598,7 @@ export class SurfService {
     const pick = await pickVideo(this.#options.provider, character, ranked, topics, signal, recentTitles);
     const chosen = ranked[pick.index] ?? ranked[0];
     this.#stage(character, "watching", "video", `在看《${chosen.title}》`);
-    const watched = await withRetry(() => abortable(source.watch(chosen), signal), { attempts: 2, baseMs: this.#options.retryBaseMs ?? 1200, signal });
+    const watched = await withRetry(() => abortable(source.watch(chosen, { signal }), signal), { attempts: 2, baseMs: this.#options.retryBaseMs ?? 1200, signal });
     const text = watched.text;
     const fingerprint = contentFingerprint(text);
     if (this.store.hasFingerprint(character, fingerprint)) throw new SurfError("content", "这个视频的内容以前看过了。");
