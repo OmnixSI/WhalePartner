@@ -5,6 +5,9 @@ import type { MemoryJob, MemoryJobBatch, StoredMessage } from "./types.ts";
 export const MAX_MEMORY_JOB_ATTEMPTS = 8;
 /** 死信用远未来的 next_attempt_at 表示（表结构只有 pending/running/done 三态，不迁移）。 */
 const DEAD_LETTER_AT = "9999-12-31T00:00:00.000Z";
+/** 重试退避：30 分钟起每次翻倍，封顶 6 小时。8 次尝试之间的 7 次等待共 30+60+120+240+360+360+360 = 1530 分钟（约 25.5 小时），覆盖一整天的断网/模型故障。 */
+const RETRY_BASE_MS = 30 * 60_000;
+const RETRY_CAP_MS = 6 * 3_600_000;
 
 export interface MemoryQueueStatus {
   pendingJobs: number;
@@ -115,10 +118,19 @@ export class MemoryJobRepository {
   fail(id: number, attempts: number, error: string) {
     const retryAt = attempts >= MAX_MEMORY_JOB_ATTEMPTS
       ? DEAD_LETTER_AT
-      : new Date(Date.now() + Math.min(30_000 * attempts, 3_600_000)).toISOString();
+      : new Date(Date.now() + Math.min(RETRY_BASE_MS * 2 ** (attempts - 1), RETRY_CAP_MS)).toISOString();
     this.db.prepare(`
       UPDATE memory_jobs SET status = 'pending', last_error = ?, next_attempt_at = ?, updated_at = ? WHERE id = ?
     `).run(error.slice(0, 1000), retryAt, new Date().toISOString(), id);
+  }
+
+  /** 后端启动时复活死信：故障修好、重启后自动补整理（attempts 归零，立即可领取）。 */
+  reviveDead(): number {
+    const now = new Date().toISOString();
+    return Number(this.db.prepare(`
+      UPDATE memory_jobs SET attempts = 0, next_attempt_at = ?, updated_at = ?
+      WHERE status = 'pending' AND next_attempt_at >= ?
+    `).run(now, now, DEAD_LETTER_AT).changes);
   }
 
   pause(id: number) {
@@ -130,7 +142,7 @@ export class MemoryJobRepository {
   }
 
   hasPending(): boolean {
-    const row = this.db.prepare("SELECT 1 AS pending FROM memory_jobs WHERE status != 'done' LIMIT 1").get() as unknown as { pending: number } | undefined;
+    const row = this.db.prepare("SELECT 1 AS pending FROM memory_jobs WHERE status != 'done' AND next_attempt_at < ? LIMIT 1").get(DEAD_LETTER_AT) as unknown as { pending: number } | undefined;
     return Boolean(row);
   }
 

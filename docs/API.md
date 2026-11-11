@@ -9,7 +9,7 @@
 ```json
 { "ok": true, "service": "whalepartner-api", "provider": "deepseek", "model": "deepseek-flash",
   "fallbacks": ["codex"], "memory": { "enabled": true, "state": "ready" },
-  "memoryQueue": { "pendingJobs": 0, "retryingJobs": 0, "pendingVectorIndexes": 0, "pendingFactVectorIndexes": 0 },
+  "memoryQueue": { "pendingJobs": 0, "retryingJobs": 0, "deadJobs": 0, "pendingVectorIndexes": 0, "pendingFactVectorIndexes": 0 },
   "schedule": { "journalTime": "20:30" } }
 ```
 
