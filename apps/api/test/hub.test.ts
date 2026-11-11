@@ -269,6 +269,21 @@ test("可信代理后面客户端自带的 cf-connecting-ip / x-real-ip 不被�
   assert.equal(clientAddress(sourceRequest("127.0.0.1", { "cf-connecting-ip": "6.6.6.6", "x-real-ip": "7.7.7.7" })), "127.0.0.1");
 });
 
+test("Cloudflare 橙云 → Caddy：配置了 Cloudflare 网段才跳过边缘 IP，取到真实客户端", () => {
+  // Cloudflare 把真实客户端追加进 XFF，Caddy（信任 CF 网段时）再把 CF 边缘追加在后面。
+  const request = (client: string, edge: string) => sourceRequest("172.17.0.1", { "x-forwarded-for": `${client}, ${edge}` });
+  const dockerOnly = ["172.16.0.0/12"];
+  const withCloudflare = ["172.16.0.0/12", "173.245.48.0/20", "104.16.0.0/13"];
+  // 只配 Docker 网段：同一个边缘节点后面的用户共用一个桶（文档里明说不算支持）。
+  assert.equal(clientAddress(request("203.0.113.1", "173.245.48.1"), dockerOnly), "173.245.48.1");
+  assert.equal(clientAddress(request("203.0.113.2", "173.245.48.1"), dockerOnly), "173.245.48.1");
+  // 把 Cloudflare 网段加进去：按真实客户端分桶，多个边缘节点也一样。
+  assert.equal(clientAddress(request("203.0.113.1", "173.245.48.1"), withCloudflare), "203.0.113.1");
+  assert.equal(clientAddress(request("203.0.113.2", "104.16.0.9"), withCloudflare), "203.0.113.2");
+  // 客户端自己在 XFF 里塞假地址：Cloudflare 追加的是真实地址，取右边第一个不可信的，假地址排在它左边。
+  assert.equal(clientAddress(sourceRequest("172.17.0.1", { "x-forwarded-for": "6.6.6.6, 203.0.113.1, 173.245.48.1" }), withCloudflare), "203.0.113.1");
+});
+
 test("Docker 默认 bridge：对端是网关 172.17.0.1，配置代理网段后才按真实客户端分桶", () => {
   const request = (client: string) => sourceRequest("172.17.0.1", { "x-forwarded-for": client });
   // 没配 WP_TRUSTED_PROXIES：所有人都落在网关地址上（单一全局桶）。
