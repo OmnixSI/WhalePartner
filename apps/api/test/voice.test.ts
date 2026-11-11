@@ -368,6 +368,7 @@ test("撤销设备会断开它的语音 WebSocket，重连返回 401", async () 
 });
 
 test("CosyVoice synthesis timeout grows with the text length and keeps the 120 s floor", () => {
+  assert.equal(ttsRequestTimeoutMs(0), 120_000);
   assert.equal(ttsRequestTimeoutMs(40), 120_000);
   assert.ok(ttsRequestTimeoutMs(600) > 120_000);
   assert.ok(ttsRequestTimeoutMs(TTS_MAX_TEXT_LENGTH) > ttsRequestTimeoutMs(600));
