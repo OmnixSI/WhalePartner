@@ -6,6 +6,7 @@ import { loadConfig } from "./server/config.ts";
 import { applyCors, sendJson } from "./server/http.ts";
 import { authOptionsFromEnv, authorize, authRequiredFor, type AuthOptions } from "./hub/auth.ts";
 import { DeviceRegistry } from "./hub/devices.ts";
+import { DeviceConnections } from "./hub/device-connections.ts";
 import { hubEvents } from "./hub/events.ts";
 import { handleHubRoute } from "./routes/hub.ts";
 import { serveStatic } from "./server/static.ts";
@@ -106,6 +107,8 @@ export function createApiServer(deps: ServerDeps): ApiServer {
   const presence = new PresenceRegistry();
   const devices = deps.auth?.devices ?? new DeviceRegistry(deviceFile(deps.config.dbPath));
   const auth: AuthOptions = { ...deps.auth, devices };
+  // 已配对设备建立的长连接：撤销设备时按 deviceId 一次断开。
+  const connections = new DeviceConnections();
   const events = deps.events ?? hubEvents;
   const proactive = new ProactiveService({
     store: deps.store,
@@ -118,6 +121,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
     lastChatActivity: () => chatActivity.last,
   });
   let port = deps.config.port;
+  const surfDeps = { ...deps, connections };
   const server = createServer(async (request, response) => {
     applyCors(request, response, auth.extraOrigins);
     try {
@@ -134,7 +138,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       if (serveStatic(deps.staticDir, request, response, url.pathname)) return;
       const address = server.address();
       if (address && typeof address === "object") port = address.port;
-      if (await handleHubRoute({ devices, events, port }, request, response, url)) return;
+      if (await handleHubRoute({ devices, events, port, connections }, request, response, url, verdict.deviceId)) return;
       if (request.method === "GET" && url.pathname === "/api/health") {
         const body = healthBody(deps, authRequiredFor(request, auth));
         sendJson(response, 200, url.searchParams.get("probe") === "1" ? { ...body, probe: await probe(deps) } : body);
@@ -155,7 +159,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
         return sendJson(response, 200, { note: note ? { text: note.text, updatedAt: note.updatedAt } : null });
       }
       if (url.pathname === "/api/surf" || url.pathname.startsWith("/api/surf/")) {
-        await handleSurf(deps, request, response, url);
+        await handleSurf(surfDeps, request, response, url, verdict.deviceId);
         return;
       }
       if (await handleQuotaRoute(deps, request, response, url)) return;
@@ -192,7 +196,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
     }
   });
   const apiServer = server as ApiServer;
-  apiServer.closeVoiceConnections = attachVoiceWebSocket(server, asr, auth);
+  apiServer.closeVoiceConnections = attachVoiceWebSocket(server, asr, auth, connections);
   server.on("listening", () => proactive.start());
   server.on("close", () => {
     proactive.stop();

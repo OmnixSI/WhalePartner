@@ -250,3 +250,29 @@ test("设置与状态里带上浏览器安装状态；feed 支持来源和日期
   const bad = (await (await call("GET", "/api/surf/feed?character=whale&from=not-a-date")).json()) as { total: number };
   assert.ok(bad.total >= 2, "坏日期参数当作没给");
 });
+
+test("撤销设备会断开它的 /api/surf/events 流", async () => {
+  const created = (await (await call("POST", "/api/pair/create", {})).json()) as { code: string };
+  const redeemed = (await (await call("POST", "/api/pair/redeem", { code: created.code, name: "手机" })).json()) as { token: string; device: { id: string } };
+  const ctrl = new AbortController();
+  const response = await fetch(`${base}/api/surf/events?token=${redeemed.token}`, { signal: ctrl.signal });
+  assert.equal(response.status, 200);
+  const ended = (async () => {
+    const reader = response.body!.getReader();
+    for (;;) {
+      const { done } = await reader.read();
+      if (done) return;
+    }
+  })();
+  assert.equal((await call("DELETE", `/api/devices/${redeemed.device.id}`)).status, 200);
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      ended,
+      new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("撤销设备后事件流没有断开。")), 1_000); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+    ctrl.abort();
+  }
+});

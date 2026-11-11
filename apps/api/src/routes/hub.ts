@@ -5,11 +5,13 @@ import { ChatInputError } from "../chat/service.ts";
 import { attachEventStream, publishEvent, type EventBus } from "../hub/events.ts";
 import { readJsonBody, sendJson, startSse } from "../server/http.ts";
 import type { DeviceRegistry } from "../hub/devices.ts";
+import type { DeviceConnections } from "../hub/device-connections.ts";
 
 export interface HubDeps {
   devices: DeviceRegistry;
   events: EventBus;
   port: number;
+  connections?: DeviceConnections;
 }
 
 function lanAddresses(port: number): string[] {
@@ -22,7 +24,7 @@ function lanAddresses(port: number): string[] {
   return out;
 }
 
-export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, response: ServerResponse, url: URL): Promise<boolean> {
+export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, response: ServerResponse, url: URL, deviceId?: string): Promise<boolean> {
   const { pathname } = url;
 
   if (request.method === "GET" && pathname === "/api/events") {
@@ -30,7 +32,12 @@ export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, re
     const raw = (typeof header === "string" ? header : "") || url.searchParams.get("lastEventId") || "";
     const lastId = Number.parseInt(raw, 10);
     startSse(response);
-    attachEventStream(deps.events, response, Number.isFinite(lastId) && lastId > 0 ? lastId : 0);
+    const detach = attachEventStream(deps.events, response, Number.isFinite(lastId) && lastId > 0 ? lastId : 0);
+    const unregister = deps.connections?.add(deviceId, () => {
+      detach();
+      response.end();
+    });
+    if (unregister) response.on("close", unregister);
     return true;
   }
 
@@ -70,9 +77,12 @@ export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, re
 
   const match = /^\/api\/devices\/([^/]+)$/.exec(pathname);
   if (match && request.method === "DELETE") {
-    const removed = deps.devices.revoke(decodeURIComponent(match[1]));
+    const id = decodeURIComponent(match[1]);
+    const removed = deps.devices.revoke(id);
     if (!removed) sendJson(response, 404, { error: "没有这台设备。" });
     else {
+      // 已建立的长连接不会重新鉴权，撤销后要主动断开这台设备的全部事件流和 WebSocket。
+      deps.connections?.closeDevice(id);
       sendJson(response, 200, { ok: true });
       publishEvent("settings.updated", { scope: "devices" });
     }

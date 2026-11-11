@@ -53,11 +53,13 @@ async function openEvents(url: string, headers: Record<string, string> = {}) {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let markClosed = () => {};
+  const closed = new Promise<void>((resolve) => { markClosed = resolve; });
   void (async () => {
     try {
       for (;;) {
         const { done, value } = await reader.read();
-        if (done) return;
+        if (done) { markClosed(); return; }
         buffer += decoder.decode(value, { stream: true });
         let index: number;
         while ((index = buffer.indexOf("\n\n")) >= 0) {
@@ -81,7 +83,19 @@ async function openEvents(url: string, headers: Record<string, string> = {}) {
       await sleep(10);
     }
   };
-  return { res, got, waitFor, close: () => ctrl.abort() };
+  return { res, got, waitFor, closed, close: () => ctrl.abort() };
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(`${what}超时（${ms} ms）`)), ms); }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 test("two clients: A sends, B receives created, deltas and done in real time", async () => {
@@ -149,6 +163,32 @@ test("pairing: code redeems once into a device token; devices can be listed and 
     assert.equal((await fetch(`${base}/api/devices/${redeemed.device.id}`, { method: "DELETE", headers: owner })).status, 200);
     assert.equal((await fetch(`${base}/api/devices`, { headers: { authorization: `Bearer ${redeemed.token}` } })).status, 401);
     assert.equal(devices.list().length, 0);
+  } finally { server.close(); server.closeAllConnections(); }
+});
+
+test("revoking a device closes its event stream within a second and leaves other devices connected", async () => {
+  const { base, server, events } = await boot({ localToken: "home-secret" });
+  const owner = { ...json, authorization: "Bearer home-secret" };
+  const pair = async (name: string) => {
+    const created = await (await fetch(`${base}/api/pair/create`, { method: "POST", headers: owner, body: "{}" })).json() as { code: string };
+    return await (await fetch(`${base}/api/pair/redeem`, { method: "POST", headers: json, body: JSON.stringify({ code: created.code, name }) })).json() as { token: string; device: { id: string } };
+  };
+  try {
+    const phone = await pair("手机");
+    const tablet = await pair("平板");
+    const phoneStream = await openEvents(`${base}/api/events?token=${phone.token}`);
+    const tabletStream = await openEvents(`${base}/api/events?token=${tablet.token}`);
+
+    assert.equal((await fetch(`${base}/api/devices/${phone.device.id}`, { method: "DELETE", headers: owner })).status, 200);
+    await withTimeout(phoneStream.closed, 1_000, "撤销设备后关闭事件流");
+
+    events.publish("typing", { n: 1 });
+    await tabletStream.waitFor(() => tabletStream.got.some((e) => e.event === "typing"));
+    // 被撤销的设备重连时拿不到事件流。
+    assert.equal((await fetch(`${base}/api/events?token=${phone.token}`)).status, 401);
+
+    phoneStream.close();
+    tabletStream.close();
   } finally { server.close(); server.closeAllConnections(); }
 });
 

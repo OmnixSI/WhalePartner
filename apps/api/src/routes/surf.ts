@@ -6,10 +6,12 @@ import { validateSettingsPatch } from "../surf/settings.ts";
 import type { SurfService } from "../surf/service.ts";
 import type { SurfEventName } from "../surf/events.ts";
 import type { SurfItemKind } from "../surf/types.ts";
+import type { DeviceConnections } from "../hub/device-connections.ts";
 
 /** 「她自己去逛」的接口（§10.6.10）。所有 character 缺省取默认角色，非法 id → 400。 */
 export interface SurfRouteDeps {
   surf?: SurfService;
+  connections?: DeviceConnections;
 }
 
 const BAD_CHARACTER = { error: "未知的角色。" };
@@ -37,6 +39,7 @@ export async function handleSurf(
   request: IncomingMessage,
   response: ServerResponse,
   url: URL,
+  deviceId?: string,
 ): Promise<void> {
   const surf = deps.surf;
   if (!surf) {
@@ -173,6 +176,11 @@ export async function handleSurf(
     };
     response.on("close", done);
     response.on("error", done);
+    const unregister = deps.connections?.add(deviceId, () => {
+      done();
+      response.end();
+    });
+    if (unregister) response.on("close", unregister);
     return;
   }
 

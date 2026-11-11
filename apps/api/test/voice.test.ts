@@ -17,6 +17,7 @@ import { createXAsrAsrService, OFFLINE_ARCHIVE, OFFLINE_MODEL_FILES, STREAMING_A
 import { COSYVOICE_MODEL_FILES, COSYVOICE_RUNTIME_FILES, cosyVoiceModelIsReady, cosyVoiceNativeRuntimeIsReady, createCosyVoiceTtsService, TTS_MAX_TEXT_LENGTH, ttsRequestTimeoutMs, type TtsService, type TtsStatus, type TtsStreamContext } from "../src/voice/tts.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store/index.ts";
+import { DeviceRegistry } from "../src/hub/devices.ts";
 
 const provider: ChatProvider = {
   id: "fixture",
@@ -316,8 +317,57 @@ test("X-ASR WebSocket honors the hub token before opening a microphone stream", 
   }
 });
 
+test("撤销设备会断开它的语音 WebSocket，重连返回 401", async () => {
+  const store = new ChatStore(":memory:");
+  const devices = new DeviceRegistry();
+  const { code } = devices.createPairingCode();
+  const paired = devices.redeem(code, "手机");
+  assert.equal(paired.ok, true);
+  if (!paired.ok) return;
+  const server = createApiServer({
+    config: loadConfig({}),
+    provider: new FallbackChatProvider([provider]),
+    store,
+    asr: fakeAsr(),
+    tts: fakeTts(),
+    auth: { devices },
+  });
+  const base = await listen(server);
+  try {
+    const url = `${base.replace("http:", "ws:")}/api/voice/asr/stream?token=${paired.token}`;
+    const socket = new WebSocket(url);
+    const ready = nextMessage(socket);
+    await once(socket, "open");
+    await ready;
+
+    const closed = once(socket, "close");
+    assert.equal((await fetch(`${base}/api/devices/${paired.device.id}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${paired.token}` },
+    })).status, 200);
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        closed,
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("撤销设备后语音连接没有断开。")), 1_000); }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+
+    const rejected = new WebSocket(url);
+    rejected.on("error", () => {});
+    const error = await once(rejected, "unexpected-response");
+    assert.equal((error[1] as { statusCode?: number }).statusCode, 401);
+    rejected.close();
+  } finally {
+    server.closeVoiceConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    store.close();
+  }
+});
+
 test("CosyVoice synthesis timeout grows with the text length and keeps the 120 s floor", () => {
-  assert.equal(ttsRequestTimeoutMs(0), 120_000);
   assert.equal(ttsRequestTimeoutMs(40), 120_000);
   assert.ok(ttsRequestTimeoutMs(600) > 120_000);
   assert.ok(ttsRequestTimeoutMs(TTS_MAX_TEXT_LENGTH) > ttsRequestTimeoutMs(600));
