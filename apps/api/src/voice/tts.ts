@@ -10,7 +10,18 @@ import type { Emotion } from "../chat/emotion.ts";
 
 const MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512";
 const SAMPLE_RATE = 24_000;
-const REQUEST_TIMEOUT_MS = 120_000;
+/** Longest text a single /api/voice/tts/stream request may synthesize. */
+export const TTS_MAX_TEXT_LENGTH = 1200;
+const MIN_REQUEST_TIMEOUT_MS = 120_000;
+// Chinese speech runs at roughly 4 characters per second (~250 ms of audio per character). Allowing 500 ms per
+// character tolerates synthesis twice as slow as real time, so long replies still finish on slower Macs, while
+// short segments keep the 120 s floor. The longest accepted text (1200 characters) gets 10 minutes.
+const REQUEST_TIMEOUT_PER_CHARACTER_MS = 500;
+
+export function ttsRequestTimeoutMs(textLength: number): number {
+  return Math.max(MIN_REQUEST_TIMEOUT_MS, textLength * REQUEST_TIMEOUT_PER_CHARACTER_MS);
+}
+
 export const TTS_MODEL = "CosyVoice3-0.5B · MLX";
 export const TTS_VOICE_REFERENCE = "voices/big-fish/keli_voice/reference.wav";
 export const TTS_VOICE_METADATA = "voices/big-fish/keli_voice/voice.json";
@@ -210,7 +221,7 @@ export class CosyVoiceTtsService implements TtsService {
     const timeout = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, REQUEST_TIMEOUT_MS);
+    }, ttsRequestTimeoutMs(text.length));
 
     console.info("[whalepartner:voice]", JSON.stringify({
       event: "tts-segment-start",
@@ -366,13 +377,16 @@ export class CosyVoiceTtsService implements TtsService {
     if (!existsSync(this.#serverPath)) throw new Error("CosyVoice 原生服务程序不存在，请重新准备本地语音运行时。");
     const port = await availablePort();
     const serverUrl = `http://127.0.0.1:${port}`;
+    // The native server applies one timeout to every request, so size it for the longest accepted text;
+    // the per-request abort in stream() still bounds shorter texts.
+    const requestTimeoutSeconds = Math.ceil(ttsRequestTimeoutMs(TTS_MAX_TEXT_LENGTH) / 1000);
     const server = spawn(this.#serverPath, [
       "--model-path", this.#modelDirectory,
       "--model-name", MODEL_ID,
       "--host", "127.0.0.1",
       "--port", String(port),
       "--max-queued-requests", "1",
-      "--request-timeout-s", "120",
+      "--request-timeout-s", String(requestTimeoutSeconds),
       "--allowed-local-media-path", dirname(this.#voiceMetadataPath),
     ], { stdio: ["ignore", "pipe", "pipe"] });
     this.#server = server;

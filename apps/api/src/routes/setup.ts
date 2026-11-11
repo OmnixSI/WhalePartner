@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, sendJson } from "../server/http.ts";
@@ -150,16 +150,21 @@ function readFileOrEmpty(path: string): string {
   }
 }
 
-/** 写之前先备份成 `<文件名>.bak`（文件本来不存在就不写备份）。 */
-function backup(path: string): void {
+/** 写之前先备份成 `<文件名>.bak`（文件本来不存在就不写备份）。`mode` 给了就同样收紧备份的权限。 */
+function backup(path: string, mode?: number): void {
   if (!existsSync(path)) return;
   copyFileSync(path, `${path}.bak`);
+  if (mode !== undefined) chmodSync(`${path}.bak`, mode);
 }
 
-function writeText(path: string, text: string): void {
+/** `mode` 给了就按它设权限（新建和已有文件都设）：装密钥的 .env 只给自己读写。 */
+function writeText(path: string, text: string, mode?: number): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, text, "utf8");
+  writeFileSync(path, text, mode === undefined ? "utf8" : { encoding: "utf8", mode });
+  if (mode !== undefined) chmodSync(path, mode);
 }
+
+const SECRET_FILE_MODE = 0o600;
 
 /* ---------------------------------------------------------------- 读当前状态 */
 
@@ -262,8 +267,8 @@ export async function handleSetupRoute(
         return true;
       }
       const targets = setupTargets(deps);
-      backup(targets.envPath);
-      writeText(targets.envPath, upsertEnvValue(readFileOrEmpty(targets.envPath), ENV_FILE_NAME, checked.key));
+      backup(targets.envPath, SECRET_FILE_MODE);
+      writeText(targets.envPath, upsertEnvValue(readFileOrEmpty(targets.envPath), ENV_FILE_NAME, checked.key), SECRET_FILE_MODE);
       sendJson(response, 200, { ok: true, restartRequired: true, masked: maskKey(checked.key) });
     } catch (error) {
       sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : "没写进去。" });

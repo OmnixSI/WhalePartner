@@ -108,3 +108,46 @@ test("频率决定槽位：偶尔只在 11:40 / 19:20", async () => {
   assert.deepEqual((await scheduler.tick(at(11, 41))).started, ["whale"]);
   store.close();
 });
+
+test("cron 的下一次 tick 不会叠在还没逛完的那一趟上", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout", "Date"], now: new Date(2026, 10, 7, 9, 31, 0) });
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  let runs = 0;
+  let finish: () => void = () => {};
+  const unfinished = new Promise<void>((resolve) => { finish = resolve; });
+  // 只用到调度器读的那几样：09:30 的槽位一直「到点、没逛过」，run 迟迟不结束。
+  const service = {
+    enabled: true,
+    store: {
+      getSettings: () => ({ enabled: true, frequency: "normal" }),
+      hasSession: () => false,
+      retriesForSlot: () => 0,
+      sessionBySlot: () => undefined,
+      hasRecentChat: () => true,
+    },
+    async run() {
+      runs += 1;
+      await unfinished;
+      return { sessionId: null, state: "done", reason: null, items: 0 };
+    },
+  } as unknown as SurfService;
+  const scheduler = new SurfScheduler({ service, characters: ["whale"] });
+  const stop = scheduler.start("* * * * *");
+  try {
+    context.mock.timers.tick(60_000);
+    await settle();
+    assert.equal(runs, 1, "09:32 开始逛");
+    context.mock.timers.tick(60_000);
+    await settle();
+    assert.equal(runs, 1, "09:33 上一趟还没逛完，这次 tick 跳过");
+    finish();
+    await settle();
+    context.mock.timers.tick(60_000);
+    await settle();
+    assert.equal(runs, 2, "上一趟结束后照常触发");
+  } finally {
+    finish();
+    await settle();
+    stop();
+  }
+});

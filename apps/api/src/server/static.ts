@@ -2,6 +2,7 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
+import { pipeline } from "node:stream";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -49,6 +50,7 @@ export function serveStatic(staticDir: string | undefined, request: IncomingMess
     "cache-control": hashed ? "public, max-age=31536000, immutable" : "no-cache",
   });
   if (request.method === "HEAD") { response.end(); return true; }
-  createReadStream(file).pipe(response);
+  // 文件在检查之后被删（例如正在重新构建前端）时，读流会报错；用 pipeline 收尾，别让它拖垮进程。
+  pipeline(createReadStream(file), response, () => {});
   return true;
 }

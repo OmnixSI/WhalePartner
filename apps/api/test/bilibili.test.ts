@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { access, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { formatBilibiliEvidence, normalizeBilibiliInput } from "../src/bilibili/video.ts";
+import { assertBilibiliRequestAllowed, formatBilibiliEvidence, normalizeBilibiliInput, recordBilibiliCooldown } from "../src/bilibili/video.ts";
+import { bilibiliCooldownPath } from "../src/server/data-dir.ts";
 
 const bvid = "BV1d8pU6xEZX";
 
@@ -69,4 +73,29 @@ test("marks unavailable transcript and frames as evidence limits", () => {
 
   assert.match(formatted, /字幕需要登录，匿名读取受限/);
   assert.match(formatted, /没有可供模型分析的关键帧图像/);
+});
+
+test("a corrupt Bilibili cooldown file stops blocking requests, and cooldowns are written atomically", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "whalepartner-bili-cooldown-"));
+  const previous = process.env.WP_DATA_DIR;
+  process.env.WP_DATA_DIR = directory;
+  try {
+    const path = bilibiliCooldownPath();
+    assert.ok(path.startsWith(directory));
+    // 上次写到一半被打断，只留下半截 JSON。
+    await writeFile(path, '{"status": -412, "retryAt": "2099-');
+    await assertBilibiliRequestAllowed();
+    await assert.rejects(access(path));
+
+    const retryAt = new Date(Date.now() + 3_600_000).toISOString();
+    await recordBilibiliCooldown({ limited: true, status: -412, retryAt });
+    assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { status: -412, retryAt });
+    assert.equal((await stat(path)).mode & 0o777, 0o600);
+    assert.deepEqual(await readdir(directory), ["bilibili-rate-limit.json"]);
+    await assert.rejects(assertBilibiliRequestAllowed(), /暂停视频请求/);
+  } finally {
+    if (previous === undefined) delete process.env.WP_DATA_DIR;
+    else process.env.WP_DATA_DIR = previous;
+    await rm(directory, { recursive: true, force: true });
+  }
 });

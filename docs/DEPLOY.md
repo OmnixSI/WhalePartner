@@ -31,7 +31,7 @@ docker run -d --name whale --restart unless-stopped \
   whalepartner-hub
 ```
 
-镜像里已带网页端（`apps/client/dist`），打开 `https://你的域名/` 即可用，也可「添加到主屏幕」（PWA）。数据在卷 `/data`，备份它即可。
+镜像里已带网页端（`apps/client/dist`），打开 `https://你的域名/` 即可用，也可「添加到主屏幕」（PWA）。数据都在卷 `/data`（数据库、记忆、B 站登录、见闻封面，以及在「设置 › 模型接入」里保存的 `/data/.env`），备份它即可。
 
 用 Caddy 反代并自动签 HTTPS（SSE 要关缓冲，Caddy 默认就是流式的）：
 

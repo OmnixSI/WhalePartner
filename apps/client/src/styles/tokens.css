@@ -114,6 +114,7 @@
   --dur-press: 120ms; --dur-hover: 160ms; --dur-fade: 200ms; --dur-panel: 280ms; --dur-ink: 240ms; --dur-page: 520ms;
   --dur-inkline: 1800ms;   /* 思考墨线：1800ms 里画到 66.7%，剩下的停住（§8.2） */
   --dur-fold: 480ms;       /* 「忘掉」折进瓶子（§8.2：480ms --ease-inout，唯一超过 300ms 的组件动效） */
+  --dur-wave: 700ms;       /* 录音波形竖条一次起伏（循环动画，alternate 往返） */
   --ease-out: cubic-bezier(.23, 1, .32, 1);
   --ease-inout: cubic-bezier(.65, 0, .35, 1);
   /* §8.1「不用线性」的唯一例外是浪漂移；给它一个名字，源码里就不再手写 linear */

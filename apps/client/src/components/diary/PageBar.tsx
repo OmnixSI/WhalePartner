@@ -9,9 +9,10 @@ type Props = {
 
 const STEP: Record<RangeMode, { prev: string; next: string; shift: (date: Date, amount: number) => Date }> = {
   week: {
-    prev: "前一天",
-    next: "后一天",
-    shift: (date, amount) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount),
+    // 周视图一页是整周（周一到周日），所以一次翻 7 天。
+    prev: "前一周",
+    next: "后一周",
+    shift: (date, amount) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount * 7),
   },
   month: {
     prev: "上个月",

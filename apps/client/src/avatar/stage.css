@@ -10,8 +10,8 @@
   position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
 
-/* 画布：加载完成后 300ms 淡入 */
-.live2d[data-stage] { opacity: 0; transition: opacity 300ms var(--ease-out, ease-out); }
+/* 画布：加载完成后淡入 */
+.live2d[data-stage] { opacity: 0; transition: opacity var(--dur-panel) var(--ease-out); }
 .live2d[data-stage="ready"] { opacity: 1; }
 
 @media (prefers-reduced-motion: reduce) {

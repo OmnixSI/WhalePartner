@@ -12,6 +12,10 @@ interface SourceRow {
   url: string | null;
 }
 
+/** 她自己去逛（surf:*）找到的内容不是和用户一起看的，标题前加上「她自己逛到的：」，日记里才不会写成一起看过。 */
+export const SURF_SOURCE_LABEL = "她自己逛到的";
+const SOURCE_TITLE = `CASE WHEN e.source_id LIKE 'surf:%' THEN '${SURF_SOURCE_LABEL}：' || e.title ELSE e.title END AS title`;
+
 export function journalSourcesForDay(db: DatabaseSync, _character: string | undefined, from: string, to: string): JournalSource[] {
   const rows = db.prepare(`
     SELECT 'message:' || m.id AS id, 'chat' AS type,
@@ -22,7 +26,7 @@ export function journalSourcesForDay(db: DatabaseSync, _character: string | unde
     WHERE m.created_at >= ? AND m.created_at < ?
     UNION ALL
     SELECT 'experience-occurrence:' || o.id AS id,
-      e.kind AS type, e.title, e.text, o.occurred_at AS createdAt,
+      e.kind AS type, ${SOURCE_TITLE}, e.text, o.occurred_at AS createdAt,
       o.session_id AS sessionId, o.message_id AS messageId, e.url
     FROM memory_experience_occurrences o
     JOIN memory_experiences e ON e.id = o.experience_id
@@ -30,7 +34,7 @@ export function journalSourcesForDay(db: DatabaseSync, _character: string | unde
     UNION ALL
     SELECT 'experience:' || e.id AS id,
       CASE e.kind WHEN 'video' THEN 'video' WHEN 'web' THEN 'web' ELSE 'learned' END AS type,
-      e.title, e.text, e.created_at AS createdAt,
+      ${SOURCE_TITLE}, e.text, e.created_at AS createdAt,
       COALESCE(e.source_session_id, (
         SELECT es.session_id FROM memory_experience_sessions es
         WHERE es.experience_id = e.id ORDER BY es.session_id LIMIT 1

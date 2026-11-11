@@ -18,7 +18,9 @@ COPY apps/api/package.json apps/api/pnpm-lock.yaml* apps/api/pnpm-workspace.yaml
 RUN pnpm install --frozen-lockfile || pnpm install
 COPY apps/api ./
 COPY --from=client /app/apps/client/dist /app/apps/client/dist
+# 所有数据（B 站登录、见闻封面、设置里保存的密钥 .env）都放在卷 /data；数据库沿用原来的文件名。
 ENV WP_STATIC_DIR=/app/apps/client/dist \
+    WP_DATA_DIR=/data \
     APP_DB_PATH=/data/whalepartner.db \
     MEMORY_DIR=/data/memory \
     API_HOST=0.0.0.0 \
@@ -27,4 +29,4 @@ VOLUME ["/data"]
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 # 监听 0.0.0.0 且设了 WP_LOCAL_TOKEN：所有接口都要令牌；其他设备用配对码换设备 token。
-CMD ["node", "--env-file-if-exists=.env", "src/server.ts"]
+CMD ["node", "--env-file-if-exists=.env", "--env-file-if-exists=/data/.env", "src/server.ts"]

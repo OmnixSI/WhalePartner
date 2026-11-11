@@ -22,7 +22,7 @@ export function indexedMessageText(value: string): string {
 export function matchExpression(value: string): string | undefined {
   const searchable = value
     .replace(/(?:过去|最近|近)一年|前年|去年|今年|上个月|上月|本月|这个月|上周|本周|这周|前天|昨天|今天|今日/gu, " ")
-    .replace(/(?:19|20)\d{2}年?(?:\s*(?:0?[1-9]|1[0-2])月)?/gu, " ");
+    .replace(/(?:19|20)\d{2}\s*年(?:\s*(?:0?[1-9]|1[0-2])月)?/gu, " ");
   const terms = searchTerms(searchable, 24);
   return terms.length ? terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR ") : undefined;
 }
@@ -38,7 +38,8 @@ export function timeWindow(query: string, now = new Date()): TimeWindow | undefi
     const start = new Date(Number(month[1]), Number(month[2]) - 1, 1);
     return { from: start.toISOString(), to: new Date(start.getFullYear(), start.getMonth() + 1, 1).toISOString() };
   }
-  const year = query.match(/(?:^|[^\d])((?:19|20)\d{2})年?(?:[^\d]|$)/u);
+  // 必须带「年」字：「花了2000块」里的 2000 不是年份。
+  const year = query.match(/(?:^|[^\d])((?:19|20)\d{2})\s*年/u);
   if (year) {
     const start = new Date(Number(year[1]), 0, 1);
     return { from: start.toISOString(), to: new Date(start.getFullYear() + 1, 0, 1).toISOString() };

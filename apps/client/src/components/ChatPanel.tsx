@@ -54,7 +54,7 @@ export function ChatPanel({ character }: Props) {
     assistantBusy: chat.busy,
     assistantSpeaking: voiceOutput.speaking,
     onTranscript: (text) => { void chat.send(text); },
-    onInterrupt: (reason) => { voiceOutput.stop(reason); speech.reset(); chat.stop(); },
+    onInterrupt: (reason) => { voiceOutput.stop(reason); speech.reset(); chat.interrupt(); },
   });
   const {
     showOffline,

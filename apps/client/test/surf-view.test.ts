@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chatQuoteHref, dateRangeBounds, quoteText, timeOf, whenText } from "../src/lib/surf-view.ts";
+import { chatQuoteHref, dateRangeBounds, localDay, quoteText, timeOf, whenText } from "../src/lib/surf-view.ts";
 
 test("「和她聊聊这个」把标题和链接放进 ?quote=，能原样还原", () => {
   const item = { title: "鲸歌是什么？", url: "https://example.com/a?b=1&c=2#x" };
@@ -23,6 +23,18 @@ test("日期筛选：今天 / 近 7 天 / 近 30 天 / 选一天 换成本地零
     to: new Date(2026, 10, 6).toISOString(),
   });
   assert.deepEqual(dateRangeBounds("day", "", now), {}, "没选日期就不限");
+});
+
+test("「选一天」的默认值和上限用本地日历日，不是 UTC 日期", () => {
+  // 本地零点刚过、深夜最后一分钟：都还是本地的这一天（toISOString 在东八区早上 8 点前会给出昨天）。
+  assert.equal(localDay(new Date(2026, 10, 11, 0, 5)), "2026-11-11");
+  assert.equal(localDay(new Date(2026, 11, 31, 23, 59)), "2026-12-31");
+  assert.equal(localDay(new Date(2026, 0, 3, 7, 30)), "2026-01-03");
+  const now = new Date(2026, 10, 11, 0, 5);
+  assert.deepEqual(dateRangeBounds("day", localDay(now), now), {
+    from: new Date(2026, 10, 11).toISOString(),
+    to: new Date(2026, 10, 12).toISOString(),
+  });
 });
 
 test("时间文案：今天 / 昨天 / 月日", () => {

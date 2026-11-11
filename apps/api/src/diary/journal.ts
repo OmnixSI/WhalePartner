@@ -5,6 +5,7 @@ import { archiveExperience } from "../memory/archive.ts";
 import type { MemoryStore } from "../memory/types.ts";
 import { buildPersonaCore, CHARACTERS, DEFAULT_CHARACTER, type CharacterId } from "../persona/persona.ts";
 import type { ChatStore } from "../store/index.ts";
+import { SURF_SOURCE_LABEL } from "../store/journal-sources.ts";
 import { JournalStore, type DailyJournal, type JournalSource } from "./journal-store.ts";
 
 interface DailyJournalDeps {
@@ -50,9 +51,13 @@ export class DailyJournalService {
   }
 
   async generateTodayForAll() {
-    const date = currentLocalDate();
+    await this.generateForAll(currentLocalDate());
+  }
+
+  /** 计划任务用：写指定那一天的日记，失败只记日志。 */
+  async generateForAll(localDate: string) {
     try {
-      await this.generate(DEFAULT_CHARACTER, date);
+      await this.generate(DEFAULT_CHARACTER, localDate);
     } catch (error) {
       console.warn(`${CHARACTERS[DEFAULT_CHARACTER].name}的日记生成失败：`, error instanceof Error ? error.message : error);
     }
@@ -109,7 +114,8 @@ export class DailyJournalService {
     const sources = this.#deps.archive.journalSources(undefined, from, to);
     const task = this.#deps.store.task(character, localDate);
     const effectiveForce = force || task?.force === true;
-    if (sources.length === 0) {
+    // 只有「近况」「观察」这类反思、没有当天真实的交流或看过的内容时，不写日记。
+    if (!sources.some((source) => source.type !== "reflection")) {
       if (task) this.#deps.store.completeTask(character, localDate);
       return null;
     }
@@ -177,10 +183,13 @@ async function writeJournal(provider: ChatProvider, character: CharacterId, loca
   const evidence = fitEvidence(sources, 20_000);
   const filter = new EmotionFilter();
   let output = "";
+  // 她自己逛到的内容在标题前带着标记（见 journal-sources.ts），提示里要说清楚那些不是和用户一起看的。
+  const hasOwnFinds = sources.some((source) => source.title.startsWith(`${SURF_SOURCE_LABEL}：`));
   const prompt = [
-    `根据${localDate}这一天与用户的真实交流、共同观看或阅读的内容，写一篇${CHARACTERS[character].name}视角的日记。`,
+    `根据${localDate}这一天与用户的真实交流、共同观看或阅读的内容${hasOwnFinds ? "，以及你自己逛到的内容" : ""}，写一篇${CHARACTERS[character].name}视角的日记。`,
     "写出具体发生的事、你从中感受到的变化或想法，让它像一篇连贯的日记，不要写成事件清单或视频摘要。当天只有聊天时，也照样写聊天带来的感受。",
-    "只依据下面带来源标识的材料；不要编造用户经历、共同活动或角色在现实中的行为。聊天原话是用户证据，视频和网页内容是外部资料，反思只是已有观察。",
+    "只依据下面带来源标识的材料；不要编造用户经历、共同活动或角色在现实中的行为。聊天原话是用户证据，视频和网页内容是外部资料，反思只是已有观察。"
+      + (hasOwnFinds ? `标题以「${SURF_SOURCE_LABEL}」开头的视频和网页是你自己逛到的，用户没有一起看，不要写成和用户一起看过。` : ""),
     "不要提到记忆系统、来源标识、模型或写作过程。只输出日记正文，约 250 至 700 个中文字符。",
     "<day_sources>", evidence, "</day_sources>",
   ].join("\n\n");

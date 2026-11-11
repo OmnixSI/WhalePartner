@@ -329,7 +329,10 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
           model.y = bounce.baseY - wave * bounce.amp * host.clientHeight;
           model.scale.set(bounce.baseScale * (1 + wave * bounce.amp * 0.8));
         };
-        app.ticker.add(bounceTick);
+        // 共享 ticker 不会随 app.destroy 清掉监听：卸载时自己摘下，免得每来一次漏一个闭包、还去改已销毁的模型。
+        const ticker = app.ticker;
+        ticker.add(bounceTick);
+        cleanups.push(() => ticker.remove(bounceTick));
 
         model.interactive = true;
         model.buttonMode = true;

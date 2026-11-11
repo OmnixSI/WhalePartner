@@ -9,10 +9,11 @@
 ```json
 { "ok": true, "service": "whalepartner-api", "provider": "deepseek", "model": "deepseek-flash",
   "fallbacks": ["codex"], "memory": { "enabled": true, "state": "ready" },
-  "memoryQueue": { "pendingJobs": 0, "retryingJobs": 0, "pendingVectorIndexes": 0, "pendingFactVectorIndexes": 0 } }
+  "memoryQueue": { "pendingJobs": 0, "retryingJobs": 0, "pendingVectorIndexes": 0, "pendingFactVectorIndexes": 0 },
+  "schedule": { "journalTime": "20:30" } }
 ```
 
-`?probe=1` 会向主模型的 `/models` 确认模型名可用。不会返回任何密钥。
+`?probe=1` 会向主模型的 `/models` 确认模型名可用。不会返回任何密钥。`schedule.journalTime` 取自综合日记的 `JOURNAL_CRON`；不是「每天固定时刻」的写法时为 `null`。
 
 ## 聊天
 
@@ -53,7 +54,7 @@
 
 ## 账号
 
-只开放给本机，登录状态保存在 `.local/bilibili-session.json`（权限 600），任何接口都不返回它。目前只有哔哩哔哩，其它平台返回 400。
+只开放给本机，登录状态保存在数据目录的 `bilibili-session.json`（权限 600；开发时数据目录是 `apps/api/.local/`），任何接口都不返回它。目前只有哔哩哔哩，其它平台返回 400。
 
 - `GET /api/accounts` → `{ accounts: [{ platform: "bilibili", name, connected, valid, savedAt }] }`，`valid` 是登录是否还有效（离线时为 `null`）。
 - `POST /api/accounts/bilibili/login` → `{ key, url, expiresInSeconds }`：`url` 是二维码内容，界面自己画成二维码。
@@ -125,6 +126,11 @@
 - `GET /api/surf/items/:id` 返回一条共享见闻详情；`DELETE /api/surf/items/:id` 隐藏该条内容。
 - `GET /api/surf/thumb/:id` 返回本地缓存图像及其图片 MIME 类型，桌面 App 通过 loopback API 加载封面。
 - `/api/surf/settings`、`/api/surf/status` 与 `/api/surf/run` 保留当前人格参数用于设置、状态及启动阅读任务；产生的见闻条目进入共享列表。
+
+## 导出与删除全部
+
+- `POST /api/export` 打包一份 zip，返回 `{ "id": "…" }`；`GET /api/export?id=…` 在 10 分钟内可下载。包里是完整副本、不截断：会话与全部消息、事实、经历、综合日记及修订、旧版视频日记、见闻、好感度、昵称和额度记录。
+- `DELETE /api/data`，请求体必须是 `{ "confirm": "DELETE_ALL" }`。和清空聊天记录同一套锁：先停后台任务、拦住聊天和日记写入、等记忆任务收尾，再删除上面这些数据、全部向量与 mem0 的变更历史、见闻封面，并退出 B 站登录；见闻设置、陪伴设置、已配对设备和 `.env` 保留。返回 `{ "ok": true, "memoriesCleared": true }`，向量没有全部删掉时 `memoriesCleared` 为 `false`。导出或删除进行中时，聊天请求返回 409。
 
 ## 配置（`apps/api/.env`，见 `.env.example`）
 

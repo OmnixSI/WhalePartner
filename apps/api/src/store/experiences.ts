@@ -162,7 +162,7 @@ export class ExperienceRepository {
   chatDerivedExperienceVectorIds(): string[] {
     const rows = this.db.prepare(`
       SELECT vector_entry_id AS vectorEntryId FROM memory_experiences
-      WHERE vector_entry_id IS NOT NULL AND (kind = 'chat' OR source_id LIKE 'chat:%' OR source_id LIKE 'learned:chat:%')
+      WHERE vector_entry_id IS NOT NULL AND (kind = 'chat' OR source_id LIKE 'chat:%' OR source_id LIKE 'learned:chat:%' OR source_id LIKE 'journal:%')
     `).all() as unknown as Array<{ vectorEntryId: string }>;
     return rows.map((row) => row.vectorEntryId);
   }

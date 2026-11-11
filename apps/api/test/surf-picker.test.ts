@@ -119,6 +119,23 @@ test("filterWebResults：登录墙、私网、同域名每日 2 次、去重", (
   assert.deepEqual(kept.map((item) => item.url), ["https://example.com/f", "https://other.example/g"]);
 });
 
+test("filterWebResults：www. 域名和入库的 source_site 一起计每日次数", () => {
+  const results = [
+    webResult({ url: "https://www.example.com/a" }),
+    webResult({ url: "https://www.other.example/b" }),
+    webResult({ url: "https://other.example/c" }),
+    webResult({ url: "https://www.other.example/d" }),
+  ];
+  const kept = filterWebResults(results, {
+    blocked: [],
+    seen: [],
+    // 入库时 siteOf() 已经去掉了 www.
+    hostCounts: { "example.com": 2 },
+    isPublic: () => true,
+  });
+  assert.deepEqual(kept.map((item) => item.url), ["https://www.other.example/b", "https://other.example/c"]);
+});
+
 test("decode 与挑选解析：解析失败取第一个", () => {
   assert.equal(parseVideoPick('{"index":2}', 3), 2);
   assert.equal(parseVideoPick('```json\n{"index":1}\n```', 3), 1);

@@ -6,7 +6,7 @@
 // 也被 ui-check.mjs 复用：导出 contrastRows() 与 scanBannedUsage()，
 // 这样「90 组对比度」只有一份实现，CLI 行为保持不变。
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -128,8 +128,15 @@ export function contrastRows() {
 }
 
 /**
+ * 角色闪卡（src/card-preview/）的镭射、光泽和光照是产品单独确认的卡面效果（#97、#100），
+ * 允许渐变、自定义圆角和循环动效时长；这个目录以外的规则照常检查。
+ */
+const CARD_STYLE_DIR = join(CLIENT, "src", "card-preview") + sep;
+export const isCardStyleException = (path) => path.startsWith(CARD_STYLE_DIR);
+
+/**
  * 珊瑚色只能做装饰：不得作为文字色出现（§0.2-2）；
- * 不许出现 gradient / backdrop-filter（§12.3「无禁用样式」）。
+ * 不许出现 gradient / backdrop-filter（§12.3「无禁用样式」，角色闪卡除外）。
  */
 export function scanBannedUsage() {
   const banned = [];
@@ -142,7 +149,7 @@ export function scanBannedUsage() {
       const text = stripComments(readFileSync(p, "utf8"));
       const rel = p.slice(ROOT.length + 1);
       if (/color\s*:\s*var\(--coral/.test(text)) banned.push(`${rel}: color: var(--coral) —— 珊瑚色禁止做文字`);
-      if (/gradient\(|backdrop-filter/.test(text)) banned.push(`${rel}: 出现 gradient/backdrop-filter`);
+      if (!isCardStyleException(p) && /gradient\(|backdrop-filter/.test(text)) banned.push(`${rel}: 出现 gradient/backdrop-filter`);
     }
   }
   walk(join(CLIENT, "src"));

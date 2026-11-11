@@ -118,6 +118,32 @@ test("router falls back before any output, but not after output has started", as
   await assert.rejects(collect(allFail.stream(MESSAGES)), /所有模型提供方都失败了[\s\S]*a down[\s\S]*b down/);
 });
 
+test("router gives up on a stalled provider in time for the next one", async () => {
+  const stalled: ChatProvider = {
+    id: "deepseek",
+    model: "m",
+    async *stream(_messages, options) {
+      await new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+      });
+    },
+  };
+  const router = new FallbackChatProvider([stalled, fakeProvider("codex", "ok")]);
+  const total = new AbortController();
+  const timer = setTimeout(() => total.abort(new Error("first-token-timeout")), 400);
+  try {
+    const deltas = await collect(router.stream(MESSAGES, { signal: total.signal, firstTokenTimeoutMs: 200 }));
+    assert.equal(deltas[0].provider, "codex", "主线路卡住时要在总预算内换到下一条");
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const cancelled = new AbortController();
+  const pending = collect(new FallbackChatProvider([stalled, fakeProvider("codex", "ok")]).stream(MESSAGES, { signal: cancelled.signal, firstTokenTimeoutMs: 10_000 }));
+  cancelled.abort(new Error("user-cancel"));
+  await assert.rejects(pending, /user-cancel/, "调用方取消时不换线路");
+});
+
 test("health reports the model chain and never exposes a key; CORS only for app origins", async () => {
   const config = loadConfig({ DEEPSEEK_API_KEY: SECRET });
   const provider = new FallbackChatProvider([fakeProvider("deepseek", "ok"), fakeProvider("codex", "ok")]);
@@ -138,7 +164,7 @@ test("health reports the model chain and never exposes a key; CORS only for app 
       memory: { enabled: false, state: "idle" },
       memoryQueue: { pendingJobs: 0, retryingJobs: 0, pendingVectorIndexes: 0, pendingFactVectorIndexes: 0 },
       // B6.4：cron 摊成 HH:MM，界面用它显示「她一般什么时候写日记」。
-      schedule: { journalTime: "20:00" },
+      schedule: { journalTime: "20:30" },
     });
 
     const foreign = await fetch(`${base}/api/health`, { headers: { origin: "https://evil.example" } });

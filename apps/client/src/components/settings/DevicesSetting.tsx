@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useState } from "react";
 import { API_BASE } from "../../lib/api";
 import { describeNetError } from "../../lib/net";
+import { useHubRefresh } from "../../lib/useHubRefresh";
 import { SettingRow } from "./Row";
 
 interface Device { id: string; name: string; createdAt: string; lastSeenAt: string | null }
@@ -29,12 +30,12 @@ export function DevicesSetting({ offline = false }: { offline?: boolean }) {
 
   useEffect(() => {
     if (!offline) void refresh();
-    const onEvent = (event: Event) => {
-      if ((event as CustomEvent<{ type: string }>).detail?.type === "settings.updated") void refresh();
-    };
-    window.addEventListener("wp:hub-event", onEvent);
-    return () => window.removeEventListener("wp:hub-event", onEvent);
   }, [offline, refresh]);
+
+  // 别的设备配对 / 撤销时 hub 会发 settings.updated：直接订阅 hub（设置页上没有聊天面板替它转发）。
+  useHubRefresh(["settings.updated"], () => {
+    if (!offline) void refresh();
+  });
 
   useEffect(() => {
     if (!pairing) return;

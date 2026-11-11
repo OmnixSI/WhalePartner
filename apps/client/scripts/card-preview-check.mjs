@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { launchChrome } from "./browser.mjs";
 
 const base = process.env.WP_CARD_PREVIEW_URL ?? "http://127.0.0.1:1420/character-cards.html";
 const shots = fileURLToPath(new URL("../test-results/card-preview/", import.meta.url));
-const browser = await chromium.launch({ channel: "chrome" });
+const browser = await launchChrome(chromium);
 
 try {
   await mkdir(shots, { recursive: true });

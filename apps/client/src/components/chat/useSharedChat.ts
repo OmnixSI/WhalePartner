@@ -47,6 +47,8 @@ const HISTORY_LIMIT = 50;
 const STARTUP_GRACE_MS = 30_000;
 const BOOT_AT = Date.now();
 const PRESENCE_IDLE_MS = 10 * 60_000;
+/** 打断的原因：是为了接着说下一句（先停后发、语音模式按「说话」），而不是单纯按「停」。 */
+const CONTINUE = "continue";
 
 const toTurn = (message: HistoryMessage): Turn => {
   const clean = readEmotion(message.content);
@@ -103,6 +105,10 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
   const ownClientIds = useRef(new Set<string>());
   const remoteKey = useRef<string | null>(null);
   const draftRef = useRef("");
+  /** 被打断时一个字都没回的那句（服务端已经撤掉了它）：并进下一句一起发，免得丢。 */
+  const carried = useRef("");
+  /** 上一次整体重置时的人格：换人格才清空重来，重连、窗口回到前台只补齐历史。 */
+  const resetFor = useRef<CharacterId | null>(null);
   const pendingDelta = useRef<{ key: string; text: string } | null>(null);
   const raf = useRef(0);
   const busy = phase === "thinking" || phase === "streaming";
@@ -205,22 +211,28 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
   }, [characterId]);
 
   useEffect(() => {
-    abort.current?.abort();
-    speech.reset();
-    setPhase("idle");
-    setLive(null);
-    setFailure(null);
-    setRemoteTyping(false);
-    remoteKey.current = null;
-    draftRef.current = "";
-    setDraftState("");
+    // 换人格：整体重来。reloadTick（重连、窗口回到前台、后端刚起来）：只重拉并合并历史，
+    // 草稿、对话框和失败状态都留着；拉失败就保留现有的话，不清空。
+    const fresh = resetFor.current !== characterId;
+    resetFor.current = characterId;
+    if (fresh) {
+      abort.current?.abort();
+      speech.reset();
+      setPhase("idle");
+      setLive(null);
+      setFailure(null);
+      setRemoteTyping(false);
+      remoteKey.current = null;
+      draftRef.current = "";
+      setDraftState("");
+      setHistoryLoaded(false);
+    }
     const ctrl = new AbortController();
-    setHistoryLoaded(false);
     fetchHealth(ctrl.signal).then(setHealth);
     loadHistory(ctrl.signal).catch((error: unknown) => {
       if (!ctrl.signal.aborted) {
         console.warn("读取共享聊天记录失败：", error instanceof Error ? error.message : error);
-        setTurns([]);
+        if (fresh) setTurns([]);
         setHistoryLoaded(true);
       }
     });
@@ -346,13 +358,17 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
 
   /* ------------------------------------------------------------ 发送 */
   const send = async (raw: string, retryClientId?: string): Promise<void> => {
-    const message = raw.trim();
-    if (!message) return;
+    const typed = raw.trim();
+    if (!typed) return;
     if (busyRef.current) {
       // 生成中按发送：先停后发。
-      abort.current?.abort();
+      abort.current?.abort(CONTINUE);
       await inflight.current;
     }
+    // 刚被打断的那句一个字都没回（服务端已经撤掉）：和这句并成一条发，两句都不丢。
+    const earlier = retryClientId ? "" : carried.current;
+    if (earlier) carried.current = "";
+    const message = earlier ? `${earlier}\n${typed}` : typed;
     const run = (async () => {
       const meKey = nextKey();
       const herKey = nextKey();
@@ -427,9 +443,11 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
           if (gotText) {
             setTurns((prev) => updateTurn(updateTurn(prev, herKey, (turn) => ({ ...turn, status: "done", interrupted: true })), meKey, (turn) => ({ ...turn, status: "sent" })));
           } else {
-            // 一个字都没出：服务端撤掉了这条用户消息，这里同步撤掉并把话还给输入框。
+            // 一个字都没出：服务端撤掉了这条用户消息，这里同步撤掉。
             setTurns((prev) => prev.filter((turn) => turn.key !== herKey && turn.key !== meKey));
-            if (!draftRef.current) setDraft(message);
+            // 打断是为了接着说：这句并进下一句一起发；单纯按「停」：把话还给输入框。
+            if (ctrl.signal.reason === CONTINUE) carried.current = message;
+            else if (!draftRef.current) setDraft(message);
           }
           setPhase("idle");
           return;
@@ -461,6 +479,8 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
 
   const stop = () => abort.current?.abort();
   const giveUp = stop;
+  /** 语音模式按「说话」打断她：她要是一个字都没回，这句会并进接下来说的话一起发。 */
+  const interrupt = () => abort.current?.abort(CONTINUE);
 
   const retrySend = () => {
     const failed = [...turns].reverse().find((turn) => turn.role === "me" && turn.status === "failed");
@@ -485,11 +505,15 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
   };
 
   const clearAll = () => {
-    void clearHistory();
-    setTurns([]);
-    setPhase("idle");
-    setLive(null);
-    sessionIdRef.current = "";
+    void clearHistory().then(({ ok }) => {
+      // 没清成：界面上的话也留着，不装成已经清掉了。
+      if (!ok) return;
+      carried.current = "";
+      setTurns([]);
+      setPhase("idle");
+      setLive(null);
+      sessionIdRef.current = "";
+    });
   };
 
   const today = () => {
@@ -523,6 +547,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
     retryHealth,
     send,
     stop,
+    interrupt,
     giveUp,
     retrySend,
     discardSend,

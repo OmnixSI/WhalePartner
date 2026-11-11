@@ -1,5 +1,5 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { performance } from "node:perf_hooks";
 import { assertBilibiliRequestAllowed, collectBilibiliVideoEvidence } from "./bilibili/video.ts";
@@ -12,10 +12,9 @@ import {
   waitForBilibiliLogin,
 } from "./bilibili/session.ts";
 import { summarizeWithCodex } from "./codex/exec.ts";
+import { dataDir } from "./server/data-dir.ts";
 import { buildVideoSummaryPrompt } from "./video/prompt.ts";
 
-const appDir = resolve(import.meta.dirname, "..");
-const repoDir = resolve(appDir, "../..");
 const VIDEO_REQUEST_GAP_MS = 5000;
 
 function elapsedMs(startedAt: number) {
@@ -27,7 +26,7 @@ function formatSeconds(milliseconds: number) {
 }
 
 async function writeSmokeArtifact() {
-  const outPath = resolve(repoDir, ".local/PLACEHOLDER_smoke.json");
+  const outPath = join(dataDir(), "PLACEHOLDER_smoke.json");
   await mkdir(dirname(outPath), { recursive: true });
   await writeFile(outPath, JSON.stringify({ status: "PLACEHOLDER", purpose: "CLI smoke artifact only" }, null, 2) + "\n");
   process.stdout.write(outPath + "\n");
@@ -47,7 +46,7 @@ async function summarizeVideo(
   const bvid = source.bvid;
   if (!bvid) throw new Error("提取结果缺少 BV 号，无法保存摘要。");
 
-  const outDir = resolve(repoDir, ".local/video-summaries", bvid);
+  const outDir = join(dataDir(), "video-summaries", bvid);
   const setupArtifactStartedAt = performance.now();
   await mkdir(outDir, { recursive: true });
   await rm(resolve(outDir, "summary.md"), { force: true });

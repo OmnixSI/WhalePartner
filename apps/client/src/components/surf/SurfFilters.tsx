@@ -3,7 +3,7 @@
  * 全是受控的纯展示组件，状态在页面里；来源列表来自接口的 `sources`。
  */
 import type { DateRange, SurfKind, SurfSource } from "../../lib/surf";
-import { siteLabel } from "../../lib/surf";
+import { localDay, siteLabel } from "../../lib/surf";
 
 const KINDS: Array<{ value: SurfKind | "all"; label: string }> = [
   { value: "all", label: "全部" },
@@ -82,7 +82,7 @@ export function SurfFilters({ kind, site, range, day, sources, onKind, onSite, o
             type="date"
             value={day}
             aria-label="选一天"
-            max={new Date().toISOString().slice(0, 10)}
+            max={localDay()}
             onChange={(event) => onDay(event.target.value)}
           />
         )}

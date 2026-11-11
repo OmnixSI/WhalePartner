@@ -491,7 +491,7 @@
 /* ---------------------------------------------------------------- 设置里的浏览器进度 */
 .surf-browser-note { margin: calc(var(--sp-2) * -1) 0 var(--sp-2); font-size: var(--fs-micro); line-height: var(--lh-body); color: var(--ink-mute); }
 .surf-browser-note[data-state="failed"] { color: var(--alert); }
-.surf-browser-note__bar { display: block; height: 4px; margin-top: var(--sp-1); border-radius: 2px; background: var(--paper-2); overflow: hidden; }
+.surf-browser-note__bar { display: block; height: 4px; margin-top: var(--sp-1); border-radius: var(--r-round); background: var(--paper-2); overflow: hidden; }
 .surf-browser-note__bar span { display: block; height: 100%; background: var(--accent); transition: width var(--dur-hover) var(--ease-out); }
 
 @media (max-width: 767px) {

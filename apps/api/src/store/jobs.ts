@@ -132,7 +132,7 @@ export class MemoryJobRepository {
       FROM memory_jobs WHERE status = 'pending'
     `).get() as unknown as { pending: number; retrying: number | null };
     const indexes = this.db.prepare("SELECT COUNT(*) AS pending FROM memory_experiences WHERE vector_indexed = 0").get() as unknown as { pending: number };
-    const facts = this.db.prepare("SELECT COUNT(*) AS pending FROM memory_facts WHERE vector_entry_id IS NULL").get() as unknown as { pending: number };
+    const facts = this.db.prepare("SELECT COUNT(*) AS pending FROM memory_facts WHERE vector_entry_id IS NULL AND status = 'active'").get() as unknown as { pending: number };
     return {
       pendingJobs: Number(jobs.pending),
       retryingJobs: Number(jobs.retrying ?? 0),

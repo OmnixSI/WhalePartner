@@ -205,6 +205,8 @@ class CodexAppServer {
     this.#reader.on("line", (line) => this.#readLine(line));
     child.stderr.resume();
     child.once("error", (error) => this.#processExited(error, child));
+    // 服务退出后再写 stdin 会报 EPIPE；没有监听的话这个 error 会直接把 API 进程带崩。
+    child.stdin.on("error", () => this.#processExited(new Error("Codex 服务的输入通道已断开。"), child));
     child.once("exit", (code, signal) => {
       const detail = code === 0 ? "Codex 服务已关闭。" : `Codex 服务退出（${code ?? signal ?? "unknown"}）。`;
       this.#processExited(new Error(detail), child);
@@ -221,7 +223,8 @@ class CodexAppServer {
     try {
       await this.#ready;
     } catch (error) {
-      this.#ready = undefined;
+      // 初始化失败（比如超时）的进程不能再用：结束它并清掉状态，否则下一次请求会再起一个，把它留成孤儿进程。
+      this.#processExited(error instanceof Error ? error : new Error(String(error)), child);
       throw error;
     }
   }

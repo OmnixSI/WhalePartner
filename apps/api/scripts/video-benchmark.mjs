@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
-import { resolve, relative } from "node:path";
+import { join, resolve, relative } from "node:path";
+import { dataDir } from "../src/server/data-dir.ts";
 
 const appDir = resolve(import.meta.dirname, "..");
 const repoDir = resolve(appDir, "../..");
-const assetRoot = resolve(repoDir, ".local/video-summaries");
+const assetRoot = join(dataDir(), "video-summaries");
 const bvidList = [
   "BV1ENaD69Eka",
   "BV1Ngxy6vEHk",

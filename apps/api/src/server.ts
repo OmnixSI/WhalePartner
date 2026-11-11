@@ -68,15 +68,15 @@ function healthBody(deps: ServerDeps, authRequired = false) {
     fallbacks: provider.providers.slice(1).map((item) => item.id),
     memory: deps.memory?.status?.() ?? { enabled: Boolean(deps.memory), state: deps.memory ? "ready" : "idle" },
     memoryQueue: deps.store.memoryQueueStatus(),
-    // B6.4：把 cron 里的时间摊给人看（界面「她一般什么时候写日记」用它）。
-    schedule: { journalTime: cronClock(deps.config.diaryCron) },
+    // B6.4：把综合日记 cron 里的时间摊给人看（界面「她一般什么时候写日记」用它）。
+    schedule: { journalTime: cronClock(deps.config.journalCron) },
   };
 }
 
-/** `0 20 * * *` → `20:00`；解析不了就原样返回。 */
-function cronClock(cron: string): string {
-  const [minute, hour] = cron.trim().split(/\s+/);
-  if (!/^\d{1,2}$/.test(minute ?? "") || !/^\d{1,2}$/.test(hour ?? "")) return cron;
+/** `30 20 * * *` → `20:30`；不是「每天固定时刻」的写法就返回 null，界面不显示时间。 */
+function cronClock(cron: string): string | null {
+  const [minute, hour, ...rest] = cron.trim().split(/\s+/);
+  if (!/^\d{1,2}$/.test(minute ?? "") || !/^\d{1,2}$/.test(hour ?? "") || rest.join(" ") !== "* * *") return null;
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
@@ -160,7 +160,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       }
       if (await handleQuotaRoute(deps, request, response, url)) return;
       if (await handleProfileRoute(deps, request, response, url)) return;
-      if (await handleExportRoute(deps, request, response, url)) return;
+      if (await handleExportRoute(deps, request, response, url, sessionRequests)) return;
       if (await handleChatHistoryRoute(deps, request, response, url, sessionRequests)) return;
       if (url.pathname === "/api/diary" || url.pathname.startsWith("/api/diary/")) {
         await handleDiaryRoute(deps, request, response, url);
@@ -234,7 +234,8 @@ if (import.meta.main) {
     provider,
     memory,
     messages: store,
-    journal: diary,
+    // 20:30 之后逛到的东西要进今天的综合日记：来源有变化时 generate 会重写，没变化就沿用。
+    journal: { trigger: () => { void journal.generate(DEFAULT_CHARACTER).catch((error) => console.warn("重写今天的日记失败：", error instanceof Error ? error.message : error)); } },
     isUserChatting: () => chatActivity.last !== 0 && Date.now() - chatActivity.last < CHAT_RESUME_MS,
     userIdleMinutes: () => (chatActivity.last === 0 ? Number.POSITIVE_INFINITY : (Date.now() - chatActivity.last) / 60_000),
   });

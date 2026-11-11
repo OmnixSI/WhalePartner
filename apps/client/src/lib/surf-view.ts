@@ -10,6 +10,11 @@ export function timeOf(iso: string): string {
 
 export type DateRange = "all" | "today" | "week" | "month" | "day";
 
+/** 本地日历日 YYYY-MM-DD（「选一天」的默认值和上限）。不用 toISOString：那是 UTC，东八区早上 8 点前会变成昨天。 */
+export function localDay(now = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
 /** 把「今天 / 近 7 天 / 近 30 天 / 某一天」换成接口要的 [from, to)（本地时区的零点）。 */
 export function dateRangeBounds(range: DateRange, day: string, now = new Date()): { from?: string; to?: string } {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());

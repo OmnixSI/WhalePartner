@@ -102,7 +102,9 @@ function assignSeq(dbPath: string, character: string, refs: string[]): Map<strin
     db = new DatabaseSync(dbPath);
     db.exec("CREATE TABLE IF NOT EXISTS memory_seq (character TEXT NOT NULL, ref TEXT NOT NULL, seq INTEGER NOT NULL, PRIMARY KEY (character, ref))");
     db.exec("CREATE TABLE IF NOT EXISTS memory_seq_counter (character TEXT PRIMARY KEY, next INTEGER NOT NULL)");
-    db.exec("INSERT OR IGNORE INTO memory_seq_counter(character, next) VALUES (?, 1)");
+    // 早先这里用 exec 带 ? 占位符：参数没绑上，计数行从没建成，编号全成了 0。清掉那些坏数据重新分配。
+    db.exec("DELETE FROM memory_seq WHERE seq <= 0; DELETE FROM memory_seq_counter WHERE character IS NULL");
+    db.prepare("INSERT OR IGNORE INTO memory_seq_counter(character, next) VALUES (?, 1)").run(character);
     const existing = db.prepare("SELECT ref, seq FROM memory_seq WHERE character = ?").all(character) as unknown as Array<{ ref: string; seq: number }>;
     for (const row of existing) out.set(row.ref, row.seq);
     const missing = refs.filter((ref) => !out.has(ref));
@@ -178,6 +180,15 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
   });
 }
 
+/** 删向量；向量早就不在了（例如事实被取代时已经删过）也算删掉，别让这条记忆永远删不掉。 */
+async function removeVector(memory: MemoryStore, vectorId: string) {
+  try {
+    await memory.remove(vectorId);
+  } catch (error) {
+    if (!/not found/i.test(error instanceof Error ? error.message : String(error))) throw error;
+  }
+}
+
 async function deleteMemory(store: ServerDeps["store"], memory: MemoryStore | undefined, pathname: string, response: ServerResponse) {
   const id = decodeURIComponent(pathname.slice("/api/memories/".length));
   if (id.startsWith("local:")) {
@@ -186,13 +197,13 @@ async function deleteMemory(store: ServerDeps["store"], memory: MemoryStore | un
       return sendJson(response, 404, { error: "没有找到这条记忆。" });
     }
     const vectorId = store.factVectorId(factId);
-    if (vectorId && memory) await memory.remove(vectorId);
+    if (vectorId && memory) await removeVector(memory, vectorId);
     store.removeFact(factId);
   } else if (id.startsWith("local-exp:")) {
     const experienceId = Number(id.slice("local-exp:".length));
     const experience = Number.isInteger(experienceId) && experienceId > 0 ? store.getExperience(experienceId) : undefined;
     if (!experience) return sendJson(response, 404, { error: "没有找到这条记忆。" });
-    if (experience.vectorEntryId && memory) await memory.remove(experience.vectorEntryId);
+    if (experience.vectorEntryId && memory) await removeVector(memory, experience.vectorEntryId);
     store.removeExperience(experienceId);
   } else {
     if (!memory) return sendJson(response, 503, { error: "语义记忆索引未启用，无法删除该索引条目。" });

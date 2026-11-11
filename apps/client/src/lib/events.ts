@@ -67,6 +67,15 @@ async function connect() {
       if (message.lastEventId) lastId = message.lastEventId;
       let data: HubEventData = {};
       try { data = JSON.parse(message.data) as HubEventData; } catch { return; }
+      if (type === "resync") {
+        // hub 缓冲滚过头或重启过（id 又从 1 数起）：手里的旧 id 作废，换成 hub 现在的位置。
+        // 这条连接自己重连时还会带着旧的 Last-Event-ID，所以按新位置重建一次；各页面照常收到这次 resync 去整体重拉。
+        const current = Number(data.lastId);
+        lastId = Number.isInteger(current) && current > 0 ? String(current) : "";
+        disconnect();
+        hasOpened = false;
+        void connect();
+      }
       emit(type, data);
     });
   }

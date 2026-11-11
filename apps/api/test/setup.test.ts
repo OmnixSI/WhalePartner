@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -179,6 +179,8 @@ test("PUT /api/setup/deepseek：key 要 sk- 开头、20–200 长，写下去先
     assert.equal(env.includes("SURF_ENABLED=0"), true, "其它行要留着");
     assert.equal(env.includes("# 注释留着"), true, "注释要留着");
     assert.ok(existsSync(`${app.envPath}.bak`), "写之前要备份 .env.bak");
+    assert.equal(statSync(app.envPath).mode & 0o777, 0o600, ".env 装着密钥，只能自己读写");
+    assert.equal(statSync(`${app.envPath}.bak`).mode & 0o777, 0o600, "备份同样只能自己读写");
 
     const reread = (await (await fetch(`${app.base}/api/setup`)).json()) as { deepseek: { masked: string } };
     assert.equal(reread.deepseek.masked, "sk-…abcd");

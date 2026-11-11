@@ -3,7 +3,7 @@ import { ExperienceRepository, type ExperienceInput } from "./experiences.ts";
 import { FactRepository } from "./facts.ts";
 import { MemoryJobRepository, type MemoryQueueStatus } from "./jobs.ts";
 import { MemoryDistillationRepository } from "./memory-distillation.ts";
-import { clearChatData } from "./maintenance.ts";
+import { clearAllData, clearChatData, dumpUserTable, type UserDataTable } from "./maintenance.ts";
 import { deleteChatSession, type SessionDeletion } from "./session-deletion.ts";
 import { listMemoryExplorer, type MemoryExplorerFilters } from "./explorer.ts";
 import { journalSourcesForDay } from "./journal-sources.ts";
@@ -151,5 +151,9 @@ export class ChatStore {
   }
 
   clear() { clearChatData(this.#db); }
+  /** 「删除我的全部数据」：清空所有用户数据表，保留设置。 */
+  clearAll() { clearAllData(this.#db); }
+  /** 导出用：整表读出用户数据。 */
+  dumpTable(table: UserDataTable) { return dumpUserTable(this.#db, table); }
   close() { this.#db.close(); }
 }

@@ -306,3 +306,43 @@ test("journal routes generate, list, and expose prior revisions", async () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("daily journal marks her own surf finds and skips a day that only has reflections", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "whale-journal-surf-"));
+  const path = join(directory, "chat.db");
+  const archive = new ChatStore(path);
+  const journals = new JournalStore(path);
+  let calls = 0;
+  let prompt = "";
+  const provider: ChatProvider = {
+    id: "fake", model: "surf-label-test",
+    async *stream(messages) {
+      calls++;
+      prompt = messages[1].content;
+      yield { text: "今天自己逛到一篇讲鲸鱼迁徙的文章，看完总想着那片海。" };
+    },
+  };
+  const service = new DailyJournalService({ store: journals, archive, provider });
+  const today = new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  try {
+    // 只有「她的近况」这类反思：不写日记，也不调用模型。
+    archive.setNote("whale", "她最近总惦记着海边。", 3);
+    assert.equal(await service.generate("whale", today), null);
+    assert.equal(calls, 0);
+
+    archive.upsertExperience({ kind: "web", title: "鲸鱼的迁徙路线", text: "座头鲸每年往返上万公里。", url: "https://example.com/whales", sourceId: "surf:web:0123456789abcdef" });
+    archive.upsertExperience({ kind: "video", title: "蓝鲸的一天", text: "观察到蓝鲸在海面换气。", sourceId: "video:journal-surf-test" });
+    const journal = await service.generate("whale", today);
+    assert.ok(journal);
+    assert.equal(calls, 1);
+    assert.equal(journal.sources.find((source) => source.type === "web")?.title, "她自己逛到的：鲸鱼的迁徙路线");
+    assert.equal(journal.sources.find((source) => source.type === "video")?.title, "蓝鲸的一天");
+    assert.match(prompt, /她自己逛到的：鲸鱼的迁徙路线/u);
+    assert.match(prompt, /以及你自己逛到的内容/u);
+    assert.match(prompt, /用户没有一起看/u);
+  } finally {
+    journals.close();
+    archive.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

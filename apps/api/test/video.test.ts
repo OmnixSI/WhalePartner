@@ -167,3 +167,28 @@ test("POST /api/videos/summarize returns the summary, remembers it and validates
     bare.close();
   }
 });
+
+test("reading a slow video does not use up the first-token budget", async () => {
+  const slow = fakeVideo();
+  const realCollect = slow.collect.bind(slow);
+  slow.collect = async (input) => {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    return realCollect(input);
+  };
+  // 和真实的模型客户端一样：信号已经中止就立刻报错。
+  const honest: ChatProvider = {
+    id: "fake",
+    model: "m",
+    async *stream(_messages, options) {
+      options?.signal?.throwIfAborted();
+      yield { text: "[emotion:happy]我看完啦" };
+    },
+  };
+  const events = await collect(runChat({
+    provider: new FallbackChatProvider([honest]),
+    store: new ChatStore(":memory:"),
+    video: slow,
+    firstTokenTimeoutMs: 30,
+  }, "看看 BV1TESTTEST1"));
+  assert.ok(events.some((event) => event.type === "done"), JSON.stringify(events.map((event) => event.type)));
+});

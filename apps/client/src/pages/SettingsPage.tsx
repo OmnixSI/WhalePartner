@@ -93,9 +93,6 @@ export function SettingsPage() {
     void getProfile().then((profile) => {
       if (alive && profile.nickname) setNickname(profile.nickname);
     });
-    void getSurfSettings(character.id).then((settings) => {
-      if (alive) setSurf(settings);
-    });
     void getCompanionSettings().then((settings) => {
       if (alive) setCompanion(settings);
     }).catch((error: unknown) => {
@@ -105,6 +102,20 @@ export function SettingsPage() {
       alive = false;
     };
   }, []);
+
+  // 逛设置按人格存：换了人格就重拉，拉到之前不让改，免得把上一位的兴趣/屏蔽词存进这一位。
+  useEffect(() => {
+    let alive = true;
+    setSurf(null);
+    setSurfError("");
+    setSurfRetry(null);
+    void getSurfSettings(character.id).then((settings) => {
+      if (alive) setSurf(settings);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [character.id]);
 
   // 从首导第 3 步的「模型接入」入口跳进来时带 `#model`：滚到那一组，别让人自己找。
   useEffect(() => {

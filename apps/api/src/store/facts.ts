@@ -140,7 +140,8 @@ export class FactRepository {
   }
 
   pendingFacts(afterId = 0, limit = 50): StoredFact[] {
-    const rows = this.db.prepare("SELECT id FROM memory_facts WHERE vector_entry_id IS NULL AND id > ? ORDER BY id LIMIT ?").all(afterId, limit) as unknown as Array<{ id: number }>;
+    // 只给仍然有效的事实补索引；被取代的旧事实不该再被语义召回。
+    const rows = this.db.prepare("SELECT id FROM memory_facts WHERE vector_entry_id IS NULL AND status = 'active' AND id > ? ORDER BY id LIMIT ?").all(afterId, limit) as unknown as Array<{ id: number }>;
     return rows.map((row) => this.#factWithSources(row.id)).filter((row): row is StoredFact => Boolean(row));
   }
 

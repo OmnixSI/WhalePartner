@@ -74,7 +74,7 @@ PR 合并状态和任务验收以 GitHub 为准；本表用于快速交接，不
 
 ### C1/C2 本地视频摘要范围
 
-`pnpm --dir apps/api run summarize -- <Bilibili 链接或 BV 号>` 会依次解析视频、读取字幕/转写和辅助文字资料、从播放流抽取最多 8 张关键帧，再调用本机 Codex CLI 生成整条视频的连贯中文摘要。CLI 使用本机 Codex 当前可用的模型和推理强度；帧图缩至 768 像素宽，完整视频不保存到本地。CLI 将摘要、来源证据、帧图和模型 token 用量写入 `.local/video-summaries/<BV号>/`。
+`pnpm --dir apps/api run summarize -- <Bilibili 链接或 BV 号>` 会依次解析视频、读取字幕/转写和辅助文字资料、从播放流抽取最多 8 张关键帧，再调用本机 Codex CLI 生成整条视频的连贯中文摘要。CLI 使用本机 Codex 当前可用的模型和推理强度；帧图缩至 768 像素宽，完整视频不保存到本地。CLI 将摘要、来源证据、帧图和模型 token 用量写入数据目录的 `video-summaries/<BV号>/`（开发时数据目录是 `apps/api/.local/`）。
 
 `pnpm --dir apps/api run web` 会启动本地网页测试台，复用同一采集与摘要流程，并展示阶段耗时、实际模型输入文字和帧图、token 用量及摘要。网页模式将结果保留在本次页面响应中，关键帧放在临时目录并在处理结束后删除；Bilibili 限流冷却状态仍由服务记录。两种本地模式都不写入长期记忆，也不代替用户在 B 站发布内容。
 

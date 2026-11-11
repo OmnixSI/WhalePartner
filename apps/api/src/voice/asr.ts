@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createWriteStream, existsSync } from "node:fs";
 import { cp, mkdir, readdir, rename, rm, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { createInterface } from "node:readline";
@@ -12,16 +12,16 @@ import { pipeline } from "node:stream/promises";
 const execFileAsync = promisify(execFile);
 
 export const XASR_MODEL = "X-ASR Chinese-English · 480 ms streaming + offline refinement";
-const STREAMING_ARCHIVE = "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05";
-const OFFLINE_ARCHIVE = "sherpa-onnx-x-asr-zipformer-transducer-zh-en-punct-int8-2026-06-03";
+export const STREAMING_ARCHIVE = "sherpa-onnx-x-asr-480ms-streaming-zipformer-transducer-zh-en-punct-int8-2026-06-05";
+export const OFFLINE_ARCHIVE = "sherpa-onnx-x-asr-zipformer-transducer-zh-en-punct-int8-2026-06-03";
 const MODEL_RELEASES = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models";
-const STREAMING_MODEL_FILES = [
+export const STREAMING_MODEL_FILES = [
   { name: "encoder.int8.onnx", size: 155_278_641 },
   { name: "decoder.onnx", size: 11_309_084 },
   { name: "joiner.int8.onnx", size: 2_581_422 },
   { name: "tokens.txt", size: 58_806 },
 ];
-const OFFLINE_MODEL_FILES = [
+export const OFFLINE_MODEL_FILES = [
   { name: "encoder-epoch-99-avg-1.int8.onnx", size: 161_015_713 },
   { name: "decoder-epoch-99-avg-1.onnx", size: 11_309_084 },
   { name: "joiner-epoch-99-avg-1.int8.onnx", size: 2_581_422 },
@@ -153,18 +153,13 @@ export class XAsrService implements AsrService {
   async rebuild(): Promise<void> {
     if (this.#warmPromise) throw new Error("X-ASR 正在安装或加载，完成后再重建。");
     await this.#stopWorker("X-ASR 环境正在重建。");
-    const dataDirectory = resolve(this.#options.dataDirectory);
     await Promise.all([
       rm(this.#runtimeDirectory, { recursive: true, force: true }),
       rm(this.#modelDirectory, { recursive: true, force: true }),
       rm(this.#offlineModelDirectory, { recursive: true, force: true }),
+      removePartialInstalls(this.#modelDirectory),
+      removePartialInstalls(this.#offlineModelDirectory),
     ]);
-    const modelRoot = join(dataDirectory, "models");
-    const partialPrefixes = [`${STREAMING_ARCHIVE}.install-`, `${OFFLINE_ARCHIVE}.install-`];
-    const entries = await readdir(modelRoot, { withFileTypes: true }).catch(() => []);
-    await Promise.all(entries
-      .filter((entry) => partialPrefixes.some((prefix) => entry.name.startsWith(prefix)))
-      .map((entry) => rm(join(modelRoot, entry.name), { recursive: true, force: true })));
     await this.warm();
   }
 
@@ -237,7 +232,11 @@ export class XAsrService implements AsrService {
     await this.#installModel();
     await this.#installOfflineModel();
     await this.#startWorker();
-    if (!this.#offlineRefinementReady) throw new Error("X-ASR 整句精修模型载入失败。");
+    if (!this.#offlineRefinementReady) {
+      // Stop the half-ready worker; leaving it in #worker would make every later warm() skip #startWorker and fail again.
+      await this.#stopWorker("X-ASR 整句精修模型载入失败。");
+      throw new Error("X-ASR 整句精修模型载入失败。");
+    }
   }
 
   async #ensureRuntime(): Promise<void> {
@@ -271,7 +270,8 @@ export class XAsrService implements AsrService {
     if (await this.#modelIsUsable(directory, files)) return;
     const temporaryDirectory = `${directory}.install-${randomUUID()}`;
     await mkdir(dirname(directory), { recursive: true });
-    await rm(temporaryDirectory, { recursive: true, force: true });
+    // An interrupted download (app quit or crash) never reaches the catch below, so clear its leftovers first.
+    await removePartialInstalls(directory);
     await mkdir(temporaryDirectory, { recursive: true });
     try {
       await this.#downloadModel(temporaryDirectory, archiveName, files);
@@ -355,7 +355,13 @@ export class XAsrService implements AsrService {
       if (code !== 0) console.warn(message);
     });
     child.stdin.on("error", () => {});
-    await ready;
+    try {
+      await ready;
+    } catch (error) {
+      // A worker that never became ready (timeout or load error) must not stay in #worker, or later warm() calls return early.
+      await this.#stopWorker(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
   }
 
   #pythonPath(): string | null {
@@ -423,6 +429,16 @@ export class XAsrService implements AsrService {
 
 function exists(path: string): Promise<boolean> {
   return stat(path).then(() => true, () => false);
+}
+
+/** Removes `<model>.install-*` staging directories left next to a model directory. */
+async function removePartialInstalls(directory: string): Promise<void> {
+  const parent = dirname(directory);
+  const prefix = `${basename(directory)}.install-`;
+  const entries = await readdir(parent, { withFileTypes: true }).catch(() => []);
+  await Promise.all(entries
+    .filter((entry) => entry.name.startsWith(prefix))
+    .map((entry) => rm(join(parent, entry.name), { recursive: true, force: true })));
 }
 
 function findOnPath(command: string): string | null {

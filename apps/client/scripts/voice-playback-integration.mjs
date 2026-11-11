@@ -1,8 +1,12 @@
+// 真机语音播放集成检查：连接正在运行的 鲸汐.app 后端（127.0.0.1:8787，令牌取自它的进程参数），
+// 只调用 /api/voice/tts/status 与 /api/voice/tts/stream 做真实合成和播放，不发聊天、不写数据库。
+// 需要先打开桌面 App 并配置好语音环境；平时的自动检查请用 voice-mode:check（全部是模拟数据）。
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { launchChrome } from "./browser.mjs";
 import { createServer } from "vite";
 
 const clientDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -151,10 +155,9 @@ try {
   await server.listen();
   const address = server.httpServer.address();
   assert.ok(address && typeof address === "object", "Vite did not expose a local test port");
-  browser = await chromium.launch({
+  browser = await launchChrome(chromium, {
     headless: process.env.WP_VOICE_HEADFUL !== "1",
     args: ["--autoplay-policy=no-user-gesture-required"],
-    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
   });
   const page = await browser.newPage();
   page.on("pageerror", (error) => console.error("Browser error:", error.message));

@@ -26,7 +26,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { contrastRows, scanBannedUsage, stripComments } from "./contrast-check.mjs";
+import { launchChrome } from "./browser.mjs";
+import { contrastRows, isCardStyleException, scanBannedUsage, stripComments } from "./contrast-check.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "..");
@@ -107,6 +108,7 @@ const RADIUS_OK = /^(var\(--r-[\w-]+\)|0|50%)$/;
 function checkRadius() {
   const hits = [];
   for (const p of sourceFiles()) {
+    if (isCardStyleException(p)) continue;
     const code = stripComments(readFileSync(p, "utf8"));
     const isCss = p.endsWith(".css");
     // CSS：border-radius / 各角写法；TSX：只认字符串字面量（radiusToken() 走 tokens，不拦）
@@ -127,6 +129,7 @@ function checkRadius() {
 function checkMotionTokens() {
   const hits = [];
   for (const p of sourceFiles()) {
+    if (isCardStyleException(p)) continue;
     const code = stripComments(readFileSync(p, "utf8"));
     if (p.endsWith(".css")) {
       for (const m of code.matchAll(/(?:transition|animation)(?:-duration|-delay)?\s*:\s*([^;}]+)/g)) {
@@ -357,7 +360,7 @@ if (STATIC_ONLY) {
     const loaded = await ensureServer();
     server = loaded.child;
     const { chromium, AxeBuilder } = await loadPlaywright();
-    const browser = await chromium.launch(process.env.WP_CHROME ? { executablePath: process.env.WP_CHROME } : {});
+    const browser = await launchChrome(chromium);
     await checkTouch(browser);
     await checkHorizontalScroll(browser);
     await checkAxe(browser, AxeBuilder);

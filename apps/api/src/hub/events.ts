@@ -92,7 +92,8 @@ export function attachEventStream(
   write("retry: 2000\n\n");
   const backlog = bus.since(lastEventId);
   if (backlog.gap) sendSse(response, "resync", { reason: "buffer-overrun", lastId: bus.lastId });
-  let replayedThrough = lastEventId;
+  // hub 重启后 id 从 1 重新数：客户端手里的旧 id 更大，按它过滤会把重启后的新事件全丢掉。
+  let replayedThrough = Math.min(lastEventId, bus.lastId);
   for (const event of backlog.events) {
     write(frame(event));
     replayedThrough = event.id;

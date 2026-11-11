@@ -240,4 +240,4 @@ export function nextRunText(status: SurfStatus | null): string {
   return `下一次 ${timeOf(status.nextRunAt)}`;
 }
 
-export { chatQuoteHref, dateRangeBounds, quoteText, timeOf, whenText, type DateRange } from "./surf-view";
+export { chatQuoteHref, dateRangeBounds, localDay, quoteText, timeOf, whenText, type DateRange } from "./surf-view";

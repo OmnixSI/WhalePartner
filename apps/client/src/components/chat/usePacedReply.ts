@@ -28,17 +28,20 @@ export function usePacedReply(opts: { key: string | undefined; text: string; fre
   }
   if (fresh) freshRef.current = true;
 
+  // parts 每次渲染都是新数组：effect 只跟条数和上一条的文字走，免得每次重渲染都把计时器重置。
+  const count = parts.length;
+  const previous = revealed > 0 ? parts[revealed - 1] ?? "" : "";
   useEffect(() => {
     if (!enabled || !freshRef.current) {
-      if (revealed !== parts.length) setRevealed(parts.length);
+      if (revealed !== count) setRevealed(count);
       return;
     }
-    if (revealed === 0 && parts.length > 0) { setRevealed(1); return; }
-    if (parts.length > revealed && revealed > 0) {
-      const timer = setTimeout(() => setRevealed((n) => Math.min(parts.length, n + 1)), typingGap(parts[revealed - 1]));
+    if (revealed === 0 && count > 0) { setRevealed(1); return; }
+    if (count > revealed && revealed > 0) {
+      const timer = setTimeout(() => setRevealed((n) => Math.min(count, n + 1)), typingGap(previous));
       return () => clearTimeout(timer);
     }
-  }, [enabled, parts.length, revealed, parts]);
+  }, [enabled, count, revealed, previous]);
 
   return { parts, revealed: Math.min(revealed, parts.length), typing: enabled && parts.length > revealed };
 }

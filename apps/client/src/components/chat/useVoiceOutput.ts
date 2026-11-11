@@ -4,7 +4,7 @@ import { logVoiceDiagnostic } from "../../lib/voice-diagnostics";
 import type { CharacterId } from "../../characters";
 import type { AvatarEmotion } from "../../avatar/model.config";
 import type { VoiceModelStatus } from "./useVoiceMode";
-import { createSpeechSegment, type SpeechSegment } from "./voice-segments";
+import { createSpeechSegment, splitSpeechText, type SpeechSegment } from "./voice-segments";
 import pcmPlaybackWorkletUrl from "./pcm-playback-worklet.ts?worker&url";
 
 type Segment = SpeechSegment;
@@ -399,17 +399,18 @@ export function useVoiceOutput() {
   const finish = useCallback((turnId: string) => {
     if (activeTurnId.current !== turnId || !enabledRef.current) return;
     turnFinished.current = turnId;
-    const segment = createSpeechSegment(
-      pendingText.current,
+    // 服务端一次最多收 1200 字：正常长度仍是整段一次；超长才按句切成几段，依次合成播放。
+    const segments = splitSpeechText(pendingText.current).flatMap((text, offset) => createSpeechSegment(
+      text,
       turnId,
-      nextSegmentIndex.current,
+      nextSegmentIndex.current + offset,
       pendingEmotion.current,
       pendingCharacterId.current,
-    );
+    ) ?? []);
     pendingText.current = "";
-    if (segment) {
-      nextSegmentIndex.current += 1;
-      queue.current.push(segment);
+    if (segments.length > 0) {
+      nextSegmentIndex.current += segments.length;
+      queue.current.push(...segments);
       void pump();
       return;
     }

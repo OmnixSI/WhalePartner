@@ -91,8 +91,9 @@ export class SurfScheduler {
     this.stop();
     this.#job = CronJob.from({
       cronTime: expression,
-      onTick: () => {
-        void this.tick();
+      // 把 tick 的 Promise 交给 cron：waitForCompletion 才会等这一趟逛完，长会话不会和下一次 tick 叠在一起。
+      onTick: async () => {
+        await this.tick();
       },
       start: true,
       waitForCompletion: true,

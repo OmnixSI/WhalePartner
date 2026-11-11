@@ -1,7 +1,7 @@
 import { lookup as dnsLookup } from "node:dns";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 
 export interface WebPage {
   url: string;
@@ -34,17 +34,41 @@ export function extractWebTarget(text: string): string | undefined {
   return undefined;
 }
 
-/** 内网、本机、链路本地、保留地址一律拒绝，避免被链接带去访问内部服务。 */
-export function isPrivateAddress(address: string): boolean {
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
-  if (mapped) return isPrivateAddress(mapped[1]);
-  if (isIP(address) === 4) {
-    const [a, b] = address.split(".").map(Number);
-    return a === 0 || a === 10 || a === 127 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)) || a >= 224;
+/** 不许访问的 IPv4 网段：本网、私网、运营商 NAT、本机、链路本地、协议保留、基准测试、组播及以上。 */
+const PRIVATE_V4: Array<[string, number]> = [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8], ["169.254.0.0", 16],
+  ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.168.0.0", 16], ["198.18.0.0", 15], ["224.0.0.0", 3],
+];
+
+/**
+ * 用 BlockList 判断：它把 IPv4 映射地址（`::ffff:7f00:1`、`::ffff:127.0.0.1` 等各种写法）按 IPv4 规则比对，
+ * 手写的字符串匹配会漏掉 URL 解析后的十六进制写法。NAT64（64:ff9b::/96）里嵌的 IPv4 也按同样的网段拦。
+ */
+const PRIVATE = (() => {
+  const list = new BlockList();
+  const hex = (ip: string) => {
+    const [a, b, c, d] = ip.split(".").map(Number);
+    return `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  };
+  for (const [base, prefix] of PRIVATE_V4) {
+    list.addSubnet(base, prefix, "ipv4");
+    list.addSubnet(`64:ff9b::${hex(base)}`, 96 + prefix, "ipv6");
   }
-  const lower = address.toLowerCase();
-  return lower === "::" || lower === "::1" || lower.startsWith("fc") || lower.startsWith("fd") || /^fe[89ab]/.test(lower);
+  list.addSubnet("::", 96, "ipv6"); // 未指定、本机和已废弃的 IPv4 兼容地址
+  list.addSubnet("64:ff9b:1::", 48, "ipv6"); // 本地用的 NAT64
+  list.addSubnet("fc00::", 7, "ipv6"); // 唯一本地地址
+  list.addSubnet("fe80::", 10, "ipv6"); // 链路本地
+  list.addSubnet("ff00::", 8, "ipv6"); // 组播
+  return list;
+})();
+
+/** 内网、本机、链路本地、保留地址一律拒绝，避免被链接带去访问内部服务。不是 IP 的字符串返回 false。 */
+export function isPrivateAddress(address: string): boolean {
+  const bare = address.replace(/^\[|\]$/g, "").split("%")[0];
+  const family = isIP(bare);
+  if (family === 4) return PRIVATE.check(bare, "ipv4");
+  if (family === 6) return PRIVATE.check(bare, "ipv6");
+  return false;
 }
 
 /** 连接时才校验解析出的地址（不是先查再连），这样 DNS 重绑定也绕不过去。 */

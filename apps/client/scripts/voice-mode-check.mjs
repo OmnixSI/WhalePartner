@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { launchChrome } from "./browser.mjs";
 import { createServer } from "vite";
 
 const clientDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -33,10 +34,7 @@ try {
   const address = server.httpServer.address();
   assert.ok(address && typeof address === "object", "Vite did not expose a local test port");
   const baseUrl = `http://127.0.0.1:${address.port}`;
-  browser = await chromium.launch({
-    headless: true,
-    ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
-  });
+  browser = await launchChrome(chromium, { headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -63,7 +61,6 @@ try {
     let chatAbortRequests = 0;
     let ttsStartedBeforeChatDone = 0;
     let chatDone = true;
-    let slowTurnId = null;
     const chatRequests = [];
     let emotionEvents = 0;
     const audioStartChunkCounts = [];
@@ -82,7 +79,6 @@ try {
         chatRequests.push(request);
         chatDone = false;
         const turn = chatRequests.length;
-        if (turn === 2) slowTurnId = request.clientId;
         const events = [
           ["ack", { clientId: request.clientId, sessionId: "voice-check-session" }],
           ["emotion", { emotion: "happy" }],
@@ -145,11 +141,7 @@ try {
             if (message.type === "audio") ttsAudioChunksReceived += 1;
             controller.enqueue(encoder.encode(`${line}\n`));
             const chunkNumber = message.type === "audio" ? audioIndex++ : -1;
-            const delay = message.type === "audio"
-              ? ttsRequest.turnId === slowTurnId && chunkNumber === 0
-                ? 15_000
-              : chunkNumber === 1 ? 80 : 40
-              : 0;
+            const delay = message.type === "audio" ? (chunkNumber === 1 ? 80 : 40) : 0;
             timer = window.setTimeout(sendNext, delay);
           };
           sendNext();
@@ -286,7 +278,7 @@ try {
       const sampleRate = 24_000;
       const messages = [{ type: "meta", model: "CosyVoice3 (test)", speaker: "大肥鱼参考音色", turnId: input.turnId, segmentIndex: input.segmentIndex }];
       let sampleOffset = 0;
-      for (let chunk = 0; chunk < 6; chunk += 1) {
+      for (let chunk = 0; chunk < 10; chunk += 1) {
         const samples = Buffer.alloc(Math.ceil(sampleRate * duration) * 2);
         for (let i = 0; i < samples.length / 2; i += 1) {
           samples.writeInt16LE(Math.round(Math.sin(((sampleOffset + i) / sampleRate) * 2 * Math.PI * 220) * 7_500), i * 2);
@@ -480,35 +472,34 @@ try {
     `${asrFramesAtPlayback} -> ${asrPcmFramesReceived}`,
   );
   check(
-    "第一句在 LLM 完成整轮回答前送入 TTS，并使用独立 turn ID",
-    (await page.evaluate(() => window.__wpVoiceCheck.stats().ttsStartedBeforeChatDone)) > 0
+    "回答完整生成后整段只送一次 TTS，并使用本轮 turn ID",
+    (await page.evaluate(() => window.__wpVoiceCheck.stats().ttsStartedBeforeChatDone)) === 0
+      && ttsRequests.length === 1
       && ttsRequests[0]?.turnId === firstTurn?.clientId
-      && ttsRequests[0]?.text === "第1轮回答内容足够长，而且已经形成完整意思，可以先开始语音合成。",
-    JSON.stringify({ request: ttsRequests[0], turnId: firstTurn?.clientId }),
+      && ttsRequests[0]?.text === "第1轮回答内容足够长，而且已经形成完整意思，可以先开始语音合成。再说一句，也保持自然语气。",
+    JSON.stringify({ requests: ttsRequests, turnId: firstTurn?.clientId }),
   );
-  await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 2, null, { timeout: 10_000 });
   check(
-    "按句界排队合成两句话，LLM 的结构化情绪同步控制 TTS 表达与角色表情",
-    ttsRequests[1]?.text === "再说一句，也保持自然语气。"
-      && ttsRequests.every((input) => input.emotion === "happy" && input.characterId === "deepseek")
+    "LLM 的结构化情绪同步控制 TTS 表达与角色表情",
+    ttsRequests.every((input) => input.emotion === "happy" && input.characterId === "deepseek")
       && (await page.evaluate(() => window.__wpVoiceCheck.stats().emotionEvents)) > 0,
-    JSON.stringify(ttsRequests.slice(0, 2)),
+    JSON.stringify(ttsRequests),
   );
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackFinishes >= 1, null, { timeout: 10_000 });
   check(
-    "单句完成不结束整轮播放，整轮只发送一次 finish",
-    (await page.evaluate(() => window.__wpVoiceCheck.stats().pcmPlaybackSegmentDone)) >= 2
+    "整轮只发送一次 finish",
+    (await page.evaluate(() => window.__wpVoiceCheck.stats().pcmPlaybackSegmentDone)) >= 1
       && (await page.evaluate(() => window.__wpVoiceCheck.stats().pcmPlaybackFinishes)) === 1,
     JSON.stringify(await page.evaluate(() => window.__wpVoiceCheck.stats())),
   );
-  await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackPushes >= 8, null, { timeout: 10_000 });
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().pcmPlaybackPushes >= 10, null, { timeout: 10_000 });
   const playbackStats = await page.evaluate(() => window.__wpVoiceCheck.stats());
   console.log(JSON.stringify({ playback: playbackStats }));
   check(
     "流式 PCM 块进入复用的 AudioWorklet 队列，不逐块创建播放源",
     playbackStats.playbackWorklets >= 1
       && playbackStats.playbackWorklets <= 2
-      && playbackStats.pcmPlaybackPushes >= 8
+      && playbackStats.pcmPlaybackPushes >= 10
       && playbackStats.audioPlaybackStarts === 0,
     JSON.stringify({ worklets: playbackStats.playbackWorklets, pcmChunks: playbackStats.pcmPlaybackPushes, bufferSources: playbackStats.audioPlaybackStarts }),
   );
@@ -546,27 +537,20 @@ try {
   await page.waitForFunction(() => document.body.innerText.includes("第2轮回答内容足够长"), null, { timeout: 10_000 });
   const chatAfterInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests);
   check("打断后识别文本开始第二轮对话", chatAfterInterrupt.length === 2 && chatAfterInterrupt[1]?.message === speechTexts[1]);
-  check(
-    "每轮 TTS 携带对应 turn ID，LLM 情绪事件单独驱动角色表情",
-    ttsRequests.filter((input) => input.turnId === chatAfterInterrupt[1]?.clientId).length >= 1
-      && ttsRequests.every((input) => input.emotion === "happy" && input.characterId === "deepseek")
-      && (await page.evaluate(() => window.__wpVoiceCheck.stats().emotionEvents)) >= 2,
-  );
 
-  await page.waitForFunction(() => {
-    const stats = window.__wpVoiceCheck.stats();
-    return stats.ttsStreamCount >= 3 && !stats.chatDone;
-  }, null, { timeout: 10_000 });
-  const beforeSynthesisInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
-  check("用户开口时第二轮仍有未完成的聊天与 TTS 请求", beforeSynthesisInterrupt.chatRequests.length === 2);
+  const beforeAnswerInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  check(
+    "回答还没生成完时不提前合成语音",
+    !beforeAnswerInterrupt.chatDone && ttsRequests.every((input) => input.turnId !== chatAfterInterrupt[1]?.clientId),
+  );
   await page.getByRole("button", { name: "说话", exact: true }).click();
   await page.getByRole("button", { name: "结束录音并发送" }).waitFor({ state: "visible", timeout: 5_000 });
   await page.evaluate(() => window.__wpVoiceCheck.setTone(true));
-  const afterSynthesisInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
+  const afterAnswerInterrupt = await page.evaluate(() => window.__wpVoiceCheck.stats());
   check(
-    "打断同时取消当前 LLM 与 TTS 请求，并废弃旧 turn 队列",
-    afterSynthesisInterrupt.chatAbortRequests > beforeSynthesisInterrupt.chatAbortRequests
-      && afterSynthesisInterrupt.ttsAbortRequests > beforeSynthesisInterrupt.ttsAbortRequests,
+    "回答生成中开口会取消当前 LLM 请求，这一轮不再合成语音",
+    afterAnswerInterrupt.chatAbortRequests > beforeAnswerInterrupt.chatAbortRequests
+      && ttsRequests.every((input) => input.turnId !== chatAfterInterrupt[1]?.clientId),
   );
   await page.waitForTimeout(200);
   await page.evaluate(() => window.__wpVoiceCheck.setTone(false));
@@ -576,7 +560,14 @@ try {
   await page.waitForFunction(() => window.__wpVoiceCheck.stats().chatDone, null, { timeout: 5_000 });
   const allChatRequests = await page.evaluate(() => window.__wpVoiceCheck.stats().chatRequests);
   check("语音模式连续完成三轮识别与回复", allChatRequests.length === 3 && allChatRequests[2]?.message === speechTexts[2]);
-  await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 4, null, { timeout: 5_000 });
+  await page.waitForFunction(() => window.__wpVoiceCheck.stats().ttsStreamCount >= 2, null, { timeout: 5_000 });
+  check(
+    "每轮 TTS 携带对应 turn ID，LLM 情绪事件单独驱动角色表情",
+    ttsRequests.filter((input) => input.turnId === allChatRequests[2]?.clientId).length === 1
+      && ttsRequests.every((input) => input.emotion === "happy" && input.characterId === "deepseek")
+      && (await page.evaluate(() => window.__wpVoiceCheck.stats().emotionEvents)) >= 2,
+    JSON.stringify(ttsRequests.map((input) => input.turnId)),
+  );
   const ttsCountBeforeSwitch = ttsRequests.length;
   await page.evaluate(async () => {
     const { setCharacter } = await import("/src/characters.ts");

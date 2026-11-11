@@ -4,11 +4,11 @@ import { promisify } from "node:util";
 import { dirname, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { API_ROOT } from "../paths.ts";
+import { dataDir } from "../server/data-dir.ts";
 
 const APP_DIR = API_ROOT;
-const REPO_DIR = resolve(APP_DIR, "../..");
-// 桌面 App 把数据放 WP_DATA_DIR；开发时仍是仓库根的 .local。
-const LOCAL_DIR = process.env.WP_DATA_DIR?.trim() ? resolve(process.env.WP_DATA_DIR.trim()) : resolve(REPO_DIR, ".local");
+// 和其他数据一样放在数据目录：桌面 App 是 WP_DATA_DIR，开发时是 apps/api/.local。
+const LOCAL_DIR = dataDir();
 const SESSION_PATH = resolve(LOCAL_DIR, "bilibili-session.json");
 const PENDING_PATH = resolve(LOCAL_DIR, "bilibili-login-pending.json");
 const QR_PATH = resolve(LOCAL_DIR, "bilibili-login.png");

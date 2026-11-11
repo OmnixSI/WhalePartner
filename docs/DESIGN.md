@@ -126,7 +126,7 @@ pnpm --dir apps/client run ui:check --shots    # 另外拍 4 页 × 亮/暗（14
 pnpm --dir apps/client run contrast:check      # 只跑 90 组对比度，逐对打印比值
 ```
 
-十项：对比度 90 组、淘汰 token、gradient/backdrop-filter、`window.confirm/alert`、珊瑚色作文字、圆角只允许 `--r-*`、动效参数只在 tokens、触控 ≥44（老人 ≥56）、横向滚动（380px 与 `--scale=2`）、axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）。任何一项失败退出码为 1。
+十项：对比度 90 组、淘汰 token、gradient/backdrop-filter、`window.confirm/alert`、珊瑚色作文字、圆角只允许 `--r-*`、动效参数只在 tokens、触控 ≥44（老人 ≥56）、横向滚动（380px 与 `--scale=2`）、axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）。任何一项失败退出码为 1。角色闪卡（`apps/client/src/card-preview/`）的镭射、光泽和光照是单独确认的卡面效果，不受渐变、圆角和动效时长这三条限制。
 
 ## 角色形象
 

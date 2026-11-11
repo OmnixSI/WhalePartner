@@ -1,4 +1,5 @@
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { bilibiliCooldownPath, dataDir } from "../server/data-dir.ts";
 import { capTranscriptSmart } from "../../vendor/dsh-bilibili/lib/format.js";
@@ -92,24 +93,26 @@ type ExtractedVideo = {
 
 export async function assertBilibiliRequestAllowed() {
   const RATE_LIMIT_PATH = bilibiliCooldownPath();
-  let pause: { retryAt?: string; status?: number };
+  let pause: { retryAt?: string; status?: number } | null;
   try {
     pause = JSON.parse(await readFile(RATE_LIMIT_PATH, "utf8"));
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return;
-    throw error;
+    if (!(error instanceof SyntaxError)) throw error;
+    // 冷却文件损坏：当作没有冷却，走下面的过期分支删掉它，别让 B 站请求从此一直被拦住。
+    pause = null;
   }
 
-  const retryAt = Date.parse(pause.retryAt ?? "");
+  const retryAt = Date.parse(pause?.retryAt ?? "");
   if (Number.isFinite(retryAt) && retryAt > Date.now()) {
-    const status = pause.status ?? "限流";
+    const status = pause?.status ?? "限流";
     const reason = typeof status === "number" && status < 0 ? `风控码 ${status}` : `HTTP ${status}`;
     throw new Error(`B 站触发 ${reason}，本机已暂停视频请求至 ${new Date(retryAt).toLocaleString()}。`);
   }
   await rm(RATE_LIMIT_PATH, { force: true });
 }
 
-async function recordBilibiliCooldown(rateLimit: {
+export async function recordBilibiliCooldown(rateLimit: {
   limited?: boolean;
   retryAt?: string | null;
   status?: number | null;
@@ -117,10 +120,18 @@ async function recordBilibiliCooldown(rateLimit: {
   if (!rateLimit.limited || !rateLimit.retryAt) return;
   const RATE_LIMIT_PATH = bilibiliCooldownPath();
   await mkdir(resolve(RATE_LIMIT_PATH, ".."), { recursive: true, mode: 0o700 });
-  await writeFile(RATE_LIMIT_PATH, JSON.stringify({ status: rateLimit.status, retryAt: rateLimit.retryAt }, null, 2) + "\n", {
-    mode: 0o600,
-  });
-  await chmod(RATE_LIMIT_PATH, 0o600);
+  // 先写临时文件再改名：写到一半被打断也不会留下半截 JSON。
+  const temporaryPath = `${RATE_LIMIT_PATH}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, JSON.stringify({ status: rateLimit.status, retryAt: rateLimit.retryAt }, null, 2) + "\n", {
+      mode: 0o600,
+    });
+    await chmod(temporaryPath, 0o600);
+    await rename(temporaryPath, RATE_LIMIT_PATH);
+  } catch (error) {
+    await rm(temporaryPath, { force: true });
+    throw error;
+  }
 }
 
 export function normalizeBilibiliInput(input: string) {

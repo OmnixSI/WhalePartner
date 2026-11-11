@@ -100,14 +100,15 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
   let usage: LlmUsage | undefined;
   let finished = false;
 
-  // 降级链总等待上限：没有第一个字就放弃。
+  // 降级链总等待上限：模型那边迟迟没有第一个字就放弃。
+  // 计时从真正调用模型时开始；之前看视频、读网页可能要一两分钟，不算在里面。
   const inner = new AbortController();
   const onOuterAbort = () => inner.abort(signal?.reason);
   if (signal?.aborted) inner.abort(signal.reason);
   else signal?.addEventListener("abort", onOuterAbort, { once: true });
   const firstTokenMs = deps.firstTokenTimeoutMs ?? FIRST_TOKEN_TIMEOUT_MS;
   let timedOut = false;
-  const timer = setTimeout(() => { timedOut = true; inner.abort(new Error("first-token-timeout")); }, firstTokenMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const finishForegroundChat = beginForegroundChat();
 
   try {
@@ -150,8 +151,9 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
       }
     };
 
+    timer = setTimeout(() => { timedOut = true; inner.abort(new Error("first-token-timeout")); }, firstTokenMs);
     try {
-      for await (const delta of provider.stream(messages, { signal: inner.signal })) {
+      for await (const delta of provider.stream(messages, { signal: inner.signal, firstTokenTimeoutMs: firstTokenMs })) {
         if (delta.provider) usedProvider = delta.provider;
         if (delta.usage) usage = delta.usage;
         if (delta.text) {

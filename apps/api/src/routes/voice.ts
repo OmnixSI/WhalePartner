@@ -1,10 +1,11 @@
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { Duplex } from "node:stream";
 import { readJsonBody, sendJson } from "../server/http.ts";
-import { authorize, type AuthOptions } from "../hub/auth.ts";
+import { authorize, type AuthOptions, type AuthVerdict } from "../hub/auth.ts";
 import { isEmotion } from "../chat/emotion.ts";
 import type { AsrService, AsrStream } from "../voice/asr.ts";
-import type { TtsService } from "../voice/tts.ts";
+import { TTS_MAX_TEXT_LENGTH, type TtsService } from "../voice/tts.ts";
 
 const STREAM_PATH = "/api/voice/asr/stream";
 const MAX_PCM_FRAME_BYTES = 32 * 1024;
@@ -67,7 +68,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
     const segmentIndex = Number.isInteger(body.segmentIndex) ? Number(body.segmentIndex) : undefined;
     const emotion = typeof body.emotion === "string" && isEmotion(body.emotion) ? body.emotion : "neutral";
     const characterId = typeof body.characterId === "string" && body.characterId.length <= 32 ? body.characterId : undefined;
-    if (!text || text.length > 1200 || !turnId || turnId.length > 100) {
+    if (!text || text.length > TTS_MAX_TEXT_LENGTH || !turnId || turnId.length > 100) {
       sendJson(response, 400, { error: "invalid_request", message: "语音文本或对话轮次无效。" });
       return true;
     }
@@ -89,7 +90,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       if (!controller.signal.aborted && !response.destroyed) response.end(`${JSON.stringify({ type: "done", turnId, segmentIndex })}\n`);
     } catch (error) {
       if (!controller.signal.aborted && !response.destroyed) {
-        response.write(`${JSON.stringify({ type: "error", message: error instanceof Error ? error.message : "本地语音生成失败。", turnId })}\n`);
+        response.write(`${JSON.stringify({ type: "error", message: error instanceof Error ? error.message : "本地语音生成失败。", turnId, segmentIndex })}\n`);
         response.end();
       }
     } finally {
@@ -104,16 +105,24 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
   const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_PCM_FRAME_BYTES, perMessageDeflate: false });
 
   server.on("upgrade", (request, socket, head) => {
+    // upgrade 时 Node 已摘掉 socket 上的 error 监听；先挂上，客户端 RST 不会变成未处理的 ECONNRESET 把进程带崩。
+    socket.on("error", () => socket.destroy());
     let url: URL;
     try { url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`); }
     catch { socket.destroy(); return; }
     if (url.pathname !== STREAM_PATH) {
-      socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+      rejectUpgrade(socket, "404 Not Found");
       return;
     }
-    const verdict = authorize(request, url, auth);
+    let verdict: AuthVerdict;
+    try {
+      verdict = authorize(request, url, auth);
+    } catch {
+      rejectUpgrade(socket, "500 Internal Server Error");
+      return;
+    }
     if (!verdict.ok) {
-      socket.end(`HTTP/1.1 ${verdict.status} ${verdict.status === 401 ? "Unauthorized" : "Forbidden"}\r\nConnection: close\r\n\r\n`);
+      rejectUpgrade(socket, `${verdict.status} ${verdict.status === 401 ? "Unauthorized" : "Forbidden"}`);
       return;
     }
     sockets.handleUpgrade(request, socket, head, (client) => sockets.emit("connection", client, request));
@@ -124,11 +133,14 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
     let lastHypothesis = "";
     let queue = Promise.resolve();
     void service.createStream().then((created) => {
-      session = created;
-      if (client.readyState === client.OPEN) {
-        const status = service.status();
-        client.send(JSON.stringify({ type: "ready", model: status.model, offlineRefinement: status.offlineRefinement }));
+      // 会话建好前客户端已经断开：当时的 close 回调拿不到会话，这里补关，免得 X-ASR worker 里留下没人管的流。
+      if (client.readyState !== client.OPEN) {
+        void created.close().catch(() => undefined);
+        return;
       }
+      session = created;
+      const status = service.status();
+      client.send(JSON.stringify({ type: "ready", model: status.model, offlineRefinement: status.offlineRefinement }));
     }).catch((error: unknown) => {
       send(client, { type: "error", message: error instanceof Error ? error.message : "X-ASR 会话启动失败。" });
       client.close(1011, "X-ASR unavailable");
@@ -180,6 +192,12 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
   };
   server.on("close", closeConnections);
   return closeConnections;
+}
+
+/** 拒绝升级：响应写完就销毁 socket，不留半开的连接。 */
+function rejectUpgrade(socket: Duplex, status: string): void {
+  socket.once("finish", () => socket.destroy());
+  socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
 }
 
 function toBuffer(data: RawData): Buffer {

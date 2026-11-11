@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { chromium } from "playwright";
+import { launchChrome } from "./browser.mjs";
 
 const packaged = process.argv.includes("--packaged");
 const withChat = process.argv.includes("--chat");
@@ -57,7 +58,7 @@ function ok(name, cond, detail = "") {
   else { console.log(`✗ ${name} ${detail}`); fails.push(name); }
 }
 
-const browser = await chromium.launch();
+const browser = await launchChrome(chromium);
 
 async function open(path, viewport = { width: 1180, height: 752 }) {
   const page = await browser.newPage({ viewport });

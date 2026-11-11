@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { buildCodexArgs, codexErrorFromEvents, parseCodexMessage, parseCodexResult } from "../src/codex/exec.ts";
 import {
   closeCodexAppServer,
+  listCodexModels,
   resolveCodexSettings,
   streamWithCodexAppServer,
   type CodexModelOption,
@@ -148,6 +149,72 @@ lines.on("line", (line) => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("ends a Codex app-server whose initialize failed and survives writes after it closed stdin", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "whalepartner-codex-restart-"));
+  const executable = join(directory, "codex");
+  const spawnLog = join(directory, "spawns.log");
+  const previousPath = process.env.PATH;
+  const spawned = async () => (await readFile(spawnLog, "utf8")).trim().split("\n").map(Number);
+
+  // 第 1 个进程：initialize 报错但不退出；第 2 个：回应 initialize 前关掉 stdin、人还在；之后的正常工作。
+  await writeFile(executable, `#!${process.execPath}
+const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(spawnLog)}, process.pid + "\\n");
+const spawnIndex = fs.readFileSync(${JSON.stringify(spawnLog)}, "utf8").trim().split("\\n").length;
+const reply = (id, body) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, ...body }) + "\\n");
+// 保持存活，直到被结束；测试进程不在了也自己退出，不留孤儿。
+const parent = process.ppid;
+setInterval(() => { if (process.ppid !== parent) process.exit(0); }, 200);
+if (spawnIndex === 2) {
+  // 同步读完 initialize 再真正关掉 fd 0（不经过 process.stdin，否则 libuv 会 abort），父进程之后再写只会 EPIPE。
+  const buffer = Buffer.alloc(65536);
+  let data = "";
+  while (!data.includes("\\n")) {
+    const size = fs.readSync(0, buffer);
+    if (size === 0) break;
+    data += buffer.toString("utf8", 0, size);
+  }
+  fs.closeSync(0);
+  reply(JSON.parse(data.slice(0, data.indexOf("\\n"))).id, { result: {} });
+} else {
+  require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
+    const message = JSON.parse(line);
+    if (message.id === undefined) return;
+    if (message.method === "initialize") return reply(message.id, spawnIndex === 1 ? { error: { message: "初始化失败" } } : { result: {} });
+    reply(message.id, { result: { data: [{ model: "fixture-model", defaultReasoningEffort: "low", supportedReasoningEfforts: [{ reasoningEffort: "low", description: "low" }] }], nextCursor: null } });
+  });
+}
+`);
+  await chmod(executable, 0o755);
+  process.env.PATH = `${directory}:${previousPath ?? ""}`;
+
+  try {
+    await closeCodexAppServer();
+    await assert.rejects(listCodexModels(), /初始化失败/);
+    assert.equal(await processExits((await spawned())[0]), true, "初始化失败的进程要被结束，不能留成孤儿");
+
+    // 往已关闭的 stdin 写会 EPIPE：只让这次请求失败，不能把 API 进程带崩。
+    await assert.rejects(listCodexModels());
+    assert.equal(await processExits((await spawned())[1]), true);
+
+    assert.deepEqual((await listCodexModels()).map((model) => model.model), ["fixture-model"]);
+    assert.equal((await spawned()).length, 3);
+  } finally {
+    await closeCodexAppServer();
+    process.env.PATH = previousPath;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+async function processExits(pid: number, timeoutMs = 3_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try { process.kill(pid, 0); } catch { return true; }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  return false;
+}
 
 test("reads the final completed Codex agent message from JSONL events", () => {
   const output = [

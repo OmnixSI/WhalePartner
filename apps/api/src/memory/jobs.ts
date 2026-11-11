@@ -55,7 +55,11 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
           for (const factId of saved.supersededIds) {
             const vectorId = store.factVectorId(factId);
             if (vectorId) {
-              try { await memory.remove(vectorId); } catch (error) {
+              try {
+                await memory.remove(vectorId);
+                // 向量已删：清掉指向它的 id，之后在记忆页删这条旧事实时不会再去删一个不存在的向量。
+                store.setFactVectorId(factId, null);
+              } catch (error) {
                 console.warn("已取代事实的语义索引清理失败：", error instanceof Error ? error.message : error);
               }
             }

@@ -22,6 +22,11 @@ export interface StreamOptions {
   signal?: AbortSignal;
   temperature?: number;
   maxTokens?: number;
+  /**
+   * 整条降级链等第一个字的总预算。降级链把它平分给前面的线路：
+   * 某条线路到点还没出字就换下一条，最后一条由调用方自己的超时兜底。
+   */
+  firstTokenTimeoutMs?: number;
 }
 
 export interface ChatProvider {

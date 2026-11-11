@@ -4,6 +4,15 @@ import { matchesTimeWindow, overlapsFactTimeWindow, type ChatStore } from "../st
 import type { ArchiveHit, StoredExperience, StoredFact } from "../store/types.ts";
 import type { CharacterId } from "../persona/persona.ts";
 
+/** 时间串 → 本机日历日（YYYY-MM-DD）。直接截前 10 位得到的是 UTC 日期，东八区、东十一区早上会差一天。 */
+function localDay(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 /** 首字要快：记忆向量检索最多等 1.5 秒，超时这一轮就不带向量召回（本地事实/经历照常）。 */
 export const RECALL_TIMEOUT_MS = 1_500;
 
@@ -39,8 +48,8 @@ function asksAboutRecentExperiences(query: string): boolean {
 function localFactLine(fact: StoredFact): string {
   const source = fact.sources[0];
   const period = fact.status === "active"
-    ? `当前，自 ${fact.validFrom.slice(0, 10)}`
-    : `历史，${fact.validFrom.slice(0, 10)} 至 ${fact.validTo?.slice(0, 10) ?? "后来"}`;
+    ? `当前，自 ${localDay(fact.validFrom)}`
+    : `历史，${localDay(fact.validFrom)} 至 ${(fact.validTo ? localDay(fact.validTo) : "后来")}`;
   const evidence = source ? `；来源：消息 ${source.messageId}「${source.quote}」` : "";
   return `${period}，${fact.subject}的${fact.predicate}：${fact.value}${evidence}`;
 }
@@ -57,12 +66,12 @@ function memoryLine(entry: MemoryEntry, store: ChatStore, query: string): { kind
     if (!matchesTimeWindow(archived.createdAt, query)) return undefined;
     return {
       kind: "experience",
-      text: `${archived.kind}经历（${archived.createdAt.slice(0, 10)}；本机来源 ${archived.sourceId}）《${archived.title}》：${archived.text.slice(0, 700)}`,
+      text: `${archived.kind}经历（${localDay(archived.createdAt)}；本机来源 ${archived.sourceId}）《${archived.title}》：${archived.text.slice(0, 700)}`,
     };
   }
   if (entry.source === "chat" || entry.sourceId?.startsWith("chat:")) return undefined;
   if (!matchesTimeWindow(entry.createdAt, query)) return undefined;
-  const created = entry.createdAt?.slice(0, 10) ?? "日期不详";
+  const created = (entry.createdAt ? localDay(entry.createdAt) : "日期不详");
   if (entry.kind === "fact") {
     if (!asksAboutHistory(query)) return undefined;
     return { kind: "fact", text: `历史记忆（${created}，尚无原始消息来源）：${entry.text.slice(0, 500)}` };
@@ -77,7 +86,7 @@ function archivedLearnedLine(archived: StoredExperience) {
   return {
     text: archived.text.slice(0, 700),
     createdAt: archived.createdAt,
-    provenance: `外部内容提炼（${archived.createdAt.slice(0, 10)}；本机来源 ${archived.sourceId}）《${archived.title}》`,
+    provenance: `外部内容提炼（${localDay(archived.createdAt)}；本机来源 ${archived.sourceId}）《${archived.title}》`,
   };
 }
 
@@ -88,7 +97,7 @@ function learnedLine(entry: MemoryEntry, store: ChatStore, query: string): { tex
     return archivedLearnedLine(archived);
   }
   if (!matchesTimeWindow(entry.createdAt, query)) return undefined;
-  const date = entry.createdAt?.slice(0, 10) ?? "日期不详";
+  const date = (entry.createdAt ? localDay(entry.createdAt) : "日期不详");
   return {
     text: entry.text.slice(0, 700),
     createdAt: entry.createdAt,
@@ -97,12 +106,12 @@ function learnedLine(entry: MemoryEntry, store: ChatStore, query: string): { tex
 }
 
 function experienceLine(entry: ReturnType<ChatStore["searchExperiences"]>[number]): string {
-  return `${entry.kind}经历（${entry.createdAt.slice(0, 10)}；本机来源 ${entry.sourceId}）《${entry.title}》：${entry.text.slice(0, 700)}`;
+  return `${entry.kind}经历（${localDay(entry.createdAt)}；本机来源 ${entry.sourceId}）《${entry.title}》：${entry.text.slice(0, 700)}`;
 }
 
 function archiveLine(hit: ArchiveHit): string {
   const speaker = hit.message.role === "user" ? "用户" : "角色";
-  return `${hit.message.createdAt.slice(0, 10)} · ${hit.sessionTitle} · ${speaker}消息 ${hit.message.id}：${hit.message.content.slice(0, 700)}`;
+  return `${localDay(hit.message.createdAt)} · ${hit.sessionTitle} · ${speaker}消息 ${hit.message.id}：${hit.message.content.slice(0, 700)}`;
 }
 
 export async function recallChatMemory(input: {
@@ -144,7 +153,7 @@ export async function recallChatMemory(input: {
           const candidate = archivedLearnedLine(experience);
           if (!learnedCandidates.some((item) => item.provenance === candidate.provenance)) learnedCandidates.push(candidate);
         } else {
-          experiences.push(`${experience.kind}经历（${experience.createdAt.slice(0, 10)}；本机来源 ${experience.sourceId}）《${experience.title}》：${experience.text.slice(0, 500)}`);
+          experiences.push(`${experience.kind}经历（${localDay(experience.createdAt)}；本机来源 ${experience.sourceId}）《${experience.title}》：${experience.text.slice(0, 500)}`);
         }
         seenSources.add(experience.sourceId);
       }
@@ -205,7 +214,7 @@ export async function recallChatMemory(input: {
     ? `核心记忆（根消息 ${preparedMemory.coreSourceMessageIds.slice(0, 8).join("、")}）：${preparedMemory.core}`
     : undefined;
   const observation = observationRow
-    ? `${store.getSession(sessionId)?.title ?? "当前会话"}（原文消息 ${observationRow.fromMessageId} 至 ${observationRow.throughMessageId}，更新于 ${observationRow.updatedAt.slice(0, 10)}）\n${observationRow.summary}`
+    ? `${store.getSession(sessionId)?.title ?? "当前会话"}（原文消息 ${observationRow.fromMessageId} 至 ${observationRow.throughMessageId}，更新于 ${localDay(observationRow.updatedAt)}）\n${observationRow.summary}`
     : undefined;
   const retainedLearnings = learnedCandidates.filter((entry) => clarityOf(entry) !== "trace");
   learned = decayForPrompt(retainedLearnings).map((text, index) => `${retainedLearnings[index].provenance}：${text}`);

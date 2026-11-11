@@ -25,6 +25,7 @@ import {
   getSurfFeed,
   getSurfStatus,
   isFresh,
+  localDay,
   markSeen,
   nextRunText,
   putSurfSettings,
@@ -111,6 +112,8 @@ export function SurfPage() {
     const next = await getSurfStatus(character.id);
     if (!next) return;
     setStatus(next);
+    // 页面藏起来时错过了「逛完了」的事件：状态说她没在逛，就别一直停在「她正在逛…」。
+    if (!next.running) setBusy(false);
     // 刷新页面或从别处回来时，她正好在逛：直接接上当前这一步。
     if (next.running && next.stage) {
       setPhase((prev) => (prev?.kind === "browsing" && !next.detail ? prev : { kind: "browsing", stage: next.stage!, detail: next.detail, paused: next.waiting }));
@@ -265,7 +268,7 @@ export function SurfPage() {
             }}
             onRange={(next) => {
               setRange(next);
-              if (next === "day" && !day) setDay(new Date().toISOString().slice(0, 10));
+              if (next === "day" && !day) setDay(localDay());
               setPage(1);
             }}
             onDay={(next) => {

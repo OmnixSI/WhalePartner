@@ -50,7 +50,7 @@ export function DataSection({ offline, onToast, onUnavailable }: Props) {
 
   const runClear = async () => {
     setClearing(true);
-    const ok = await clearHistory();
+    const { ok } = await clearHistory();
     setClearing(false);
     setClearOpen(false);
     if (ok) onToast("聊天记录清空了。");
@@ -128,7 +128,7 @@ export function DataSection({ offline, onToast, onUnavailable }: Props) {
         confirmDisabled={offline}
         onConfirm={() => void runDelete()}
       >
-        聊天、她记得的事、日记、她逛到的东西、额度记录和你的昵称都会删掉，B 站登录也会退出。建议先导出一份。
+        聊天、她记得的事、日记、她逛到的东西、好感度、额度记录和你的昵称都会删掉，B 站登录也会退出。建议先导出一份。
       </ConfirmDialog>
     </div>
   );

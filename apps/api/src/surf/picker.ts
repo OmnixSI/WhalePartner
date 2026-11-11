@@ -268,9 +268,11 @@ export function filterWebResults(results: readonly WebResult[], input: WebFilter
     const keys = webDedupeKeys(result.url);
     if (keys.some((key) => seen.has(key))) continue;
     for (const key of keys) seen.add(key);
-    const used = (counts[host] ?? 0) + (perHost.get(host) ?? 0);
+    // 和入库的 source_site 用同一种规范化（siteOf 去掉 www.），否则 www 开头的域名永远不受每日次数限制。
+    const site = siteOf(result.url);
+    const used = (counts[site] ?? 0) + (perHost.get(site) ?? 0);
     if (used >= MAX_PER_HOST_PER_DAY) continue;
-    perHost.set(host, (perHost.get(host) ?? 0) + 1);
+    perHost.set(site, (perHost.get(site) ?? 0) + 1);
     out.push(result);
     if (out.length >= MAX_CANDIDATES) break;
   }
