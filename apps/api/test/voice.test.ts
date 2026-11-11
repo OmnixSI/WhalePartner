@@ -701,6 +701,114 @@ function processExists(pid: number): boolean {
   }
 }
 
+test("X-ASR rebuild claims the warm-up slot so a concurrent warm-up waits for it", async () => {
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-asr-rebuild-race-"));
+  const workerPath = join(dataDirectory, "xasr-worker");
+  const spawnLog = join(dataDirectory, "spawns.log");
+  const service = createXAsrAsrService(dataDirectory, { workerPath });
+  const previousFetch = globalThis.fetch;
+  let downloads = 0;
+  try {
+    for (const [archive, files] of [[STREAMING_ARCHIVE, STREAMING_MODEL_FILES], [OFFLINE_ARCHIVE, OFFLINE_MODEL_FILES]] as const) {
+      const directory = join(dataDirectory, "models", archive);
+      await mkdir(directory, { recursive: true });
+      for (const file of files) {
+        const handle = await open(join(directory, file.name), "w");
+        await handle.truncate(file.size);
+        await handle.close();
+      }
+      await writeFile(join(directory, "bpe.vocab"), "x".repeat(10_001));
+    }
+    await writeFile(workerPath, `#!${process.execPath}
+const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(spawnLog)}, process.pid + "\\n");
+const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
+send({ type: "ready", refinementReady: true });
+require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
+  const request = JSON.parse(line);
+  if (request.action === "shutdown") process.exit(0);
+  send({ type: "reply", requestId: request.requestId, ok: true });
+});
+`);
+    await chmod(workerPath, 0o755);
+    globalThis.fetch = async () => { downloads += 1; return new Response(null, { status: 404 }); };
+
+    await service.warm();
+    assert.equal(service.status().state, "ready");
+    const rebuild = service.rebuild();
+    assert.equal(service.status().state, "loading");
+    const concurrentWarm = service.warm();
+    assert.equal(concurrentWarm, rebuild);
+    await assert.rejects(Promise.all([rebuild, concurrentWarm]), /HTTP 404/);
+    // The concurrent warm-up joined the rebuild instead of downloading the models a second time.
+    assert.equal(downloads, 1);
+    assert.equal(service.status().state, "failed");
+  } finally {
+    globalThis.fetch = previousFetch;
+    await service.close?.();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("CosyVoice rebuild claims the warm-up slot so a concurrent warm-up waits for it", async (context) => {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
+    context.skip("CosyVoice local TTS is supported on Apple Silicon macOS.");
+    return;
+  }
+  const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-tts-rebuild-race-"));
+  const voiceDirectory = join(dataDirectory, "voices", "big-fish", "keli_voice");
+  const runtimeSetupScriptPath = join(dataDirectory, "setup-runtime.sh");
+  const modelSetupScriptPath = join(dataDirectory, "setup-model.sh");
+  const tts = createCosyVoiceTtsService(dataDirectory, { runtimeSetupScriptPath, modelSetupScriptPath });
+  try {
+    await mkdir(voiceDirectory, { recursive: true });
+    await writeFile(join(voiceDirectory, "reference.wav"), "reference");
+    await writeFile(join(voiceDirectory, "voice.json"), JSON.stringify({
+      model: "FunAudioLLM/Fun-CosyVoice3-0.5B-2512",
+      reference_audio: "reference.wav",
+      transcript: "你好。",
+    }));
+    await writeFile(runtimeSetupScriptPath, `#!/bin/bash
+set -euo pipefail
+runtime="$WP_DATA_DIR/runtimes/tts-cosyvoice3-mlx-native"
+mkdir -p "$runtime/bin"
+echo fixture > "$runtime/bin/libmlx.dylib"
+echo fixture > "$runtime/bin/mlx.metallib"
+printf '15.0\\n' > "$runtime/deployment-target"
+cat > "$runtime/bin/cosyvoice3_server" <<'SERVER'
+#!/usr/bin/env node
+const http = require("node:http");
+const args = process.argv.slice(2);
+const port = Number(args[args.indexOf("--port") + 1]);
+http.createServer((_request, response) => response.end("ok")).listen(port, "127.0.0.1");
+SERVER
+chmod 755 "$runtime/bin/cosyvoice3_server"
+`);
+    await writeFile(modelSetupScriptPath, `#!/bin/bash
+set -euo pipefail
+model="$WP_DATA_DIR/models/tts/cosyvoice3-mlx-fp16"
+mkdir -p "$model/speech_tokenizer"
+for file in config.json model.safetensors tokenizer.json tokenizer_config.json speech_tokenizer/config.json speech_tokenizer/model.safetensors; do
+  echo fixture > "$model/$file"
+done
+`);
+    await chmod(runtimeSetupScriptPath, 0o755);
+    await chmod(modelSetupScriptPath, 0o755);
+
+    await tts.warm();
+    assert.equal(tts.status().state, "ready");
+    const rebuild = tts.rebuild();
+    assert.equal(tts.status().state, "loading");
+    const concurrentWarm = tts.warm();
+    assert.equal(concurrentWarm, rebuild);
+    await Promise.all([rebuild, concurrentWarm]);
+    assert.equal(tts.status().state, "ready");
+  } finally {
+    await tts.close?.();
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
 function listen(server: Server): Promise<string> {
   return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
 }
