@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { browsersDir } from "../server/data-dir.ts";
 import { isPrivateAddress } from "../webpage/service.ts";
+import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./egress-proxy.ts";
 import { classifyError, SurfError } from "./errors.ts";
 
 /**
@@ -13,7 +14,9 @@ import { classifyError, SurfError } from "./errors.ts";
  * - 空闲 60 秒自动关闭，下次再用再起；`close()` 随时可以把它关干净（后端退出时用）；
  * - 同时最多 2 个页面在跑，每个页面 15 秒超时，会话取消时立即关掉对应的 context；
  * - 图片、媒体、字体、websocket 和广告/追踪请求一律不加载，只留 HTML 和脚本；
- * - 每次导航（含重定向）都重新校验是不是公网地址；
+ * - 浏览器的所有网络请求（导航、重定向、页面脚本）都经过一个只给它用的本机出口代理，
+ *   代理在连接时解析并校验目标地址，内网请求连不出去；代理跟浏览器一起启动、关闭；
+ * - 每次导航（含重定向）还会在 Node 侧预校验一次，给出更清楚的报错；
  * - 没装 Chromium 时在数据目录下自动安装（用 playwright-core 自带的 CLI），进度可查询。
  */
 
@@ -25,12 +28,12 @@ const DESKTOP_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
 /** 域名解析结果里只要有一个内网地址就拒绝（DNS 重绑定也过不去）。 */
-export async function resolvesPublic(host: string): Promise<boolean> {
+export async function resolvesPublic(host: string, resolve: (host: string) => Promise<string[]> = async (name) => (await lookup(name, { all: true })).map((entry) => entry.address)): Promise<boolean> {
   if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return false;
   try {
-    const addresses = await lookup(host, { all: true });
+    const addresses = await resolve(host);
     if (addresses.length === 0) return false;
-    return addresses.every((entry) => !isPrivateAddress(entry.address));
+    return addresses.every((address) => !isPrivateAddress(address));
   } catch {
     return false;
   }
@@ -273,6 +276,8 @@ export interface BrowserManagerOptions {
   allowPrivateHosts?: boolean;
   /** 只给测试用：注入一个假的 chromium 模块。 */
   chromiumModule?: unknown;
+  /** 只给测试用：替换 Node 侧预校验的 DNS 解析，以及出口代理的解析和拨号。 */
+  egress?: { guardLookup?: (host: string) => Promise<string[]> } & Pick<EgressProxyOptions, "lookup" | "dial">;
 }
 
 export interface BrowserStats {
@@ -303,6 +308,7 @@ export class BrowserManager {
   readonly #options: BrowserManagerOptions;
   readonly #gate: Semaphore;
   #browser: AnyBrowser | null = null;
+  #proxy: EgressProxy | null = null;
   #launching: Promise<AnyBrowser> | null = null;
   #idleTimer: ReturnType<typeof setTimeout> | null = null;
   #launches = 0;
@@ -355,9 +361,12 @@ export class BrowserManager {
     if (this.#idleTimer) clearTimeout(this.#idleTimer);
     this.#idleTimer = null;
     const current = this.#browser;
+    const proxy = this.#proxy;
     this.#browser = null;
+    this.#proxy = null;
     this.#launching = null;
     if (current) await current.close().catch(() => undefined);
+    if (proxy) await proxy.close().catch(() => undefined);
   }
 
   async #launch(): Promise<AnyBrowser> {
@@ -366,33 +375,46 @@ export class BrowserManager {
     if (this.#launching) return this.#launching;
     this.#launching = (async () => {
       const module = (this.#options.chromiumModule ?? (await import("playwright-core"))) as { chromium: AnyChromium };
+      // 先起出口代理，再起浏览器：浏览器的所有请求都只能经由它出去。
+      const proxy = await startEgressProxy({ allowPrivate: this.#options.allowPrivateHosts, ...this.#options.egress });
       const base: Record<string, unknown> = { headless: true };
       if (this.#options.chromiumPath) base.executablePath = this.#options.chromiumPath;
-      // 容器里必须关 sandbox；普通桌面不加这个参数。
-      if (inContainer()) base.args = ["--no-sandbox"];
+      // Chromium 默认不代理回环地址；<-loopback> 取消这条隐式绕过，127.0.0.1 / localhost 也要过代理。
+      // 容器里还必须关 sandbox；普通桌面不加那个参数。
+      base.args = [`--proxy-server=${proxy.url}`, "--proxy-bypass-list=<-loopback>", ...(inContainer() ? ["--no-sandbox"] : [])];
       let instance: AnyBrowser;
       try {
-        instance = await module.chromium.launch(base);
-      } catch (first) {
-        // 只装了完整版 chromium 时 headless shell 不存在，换成新 headless 再试一次。
-        if (!/executable doesn't exist/i.test(String((first as Error)?.message))) throw new SurfError("browser", `浏览器起不来：${(first as Error)?.message ?? first}`, { cause: first });
         try {
-          instance = await module.chromium.launch({ ...base, channel: "chromium" });
-        } catch (second) {
-          throw new SurfError("browser", `浏览器起不来：${(second as Error)?.message ?? second}`, { cause: second });
+          instance = await module.chromium.launch(base);
+        } catch (first) {
+          // 只装了完整版 chromium 时 headless shell 不存在，换成新 headless 再试一次。
+          if (!/executable doesn't exist/i.test(String((first as Error)?.message))) throw new SurfError("browser", `浏览器起不来：${(first as Error)?.message ?? first}`, { cause: first });
+          try {
+            instance = await module.chromium.launch({ ...base, channel: "chromium" });
+          } catch (second) {
+            throw new SurfError("browser", `浏览器起不来：${(second as Error)?.message ?? second}`, { cause: second });
+          }
         }
+      } catch (error) {
+        await proxy.close().catch(() => undefined);
+        throw error;
       }
       if (this.#closed) {
         await instance.close().catch(() => undefined);
+        await proxy.close().catch(() => undefined);
         throw new SurfError("aborted", "冲浪已经停止，不再启动浏览器。");
       }
       this.#launches += 1;
       this.#browser = instance;
+      this.#proxy = proxy;
       instance.on?.("disconnected", () => {
         if (this.#browser === instance) {
           this.#browser = null;
+          this.#proxy = null;
           this.#launching = null;
         }
+        // 浏览器崩溃或被外部结束时，代理跟着收掉，不留下监听端口。
+        void proxy.close().catch(() => undefined);
       });
       return instance;
     })().catch((error: unknown) => {
@@ -411,7 +433,7 @@ export class BrowserManager {
     }
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new SurfError("content", "只能读 http 或 https 网页。");
     if (this.#options.allowPrivateHosts) return parsed;
-    if (!(await resolvesPublic(parsed.hostname.replace(/^\[|\]$/g, "")))) throw new SurfError("content", "这个地址指向内部网络，不会去读。");
+    if (!(await resolvesPublic(parsed.hostname.replace(/^\[|\]$/g, ""), this.#options.egress?.guardLookup))) throw new SurfError("content", "这个地址指向内部网络，不会去读。");
     return parsed;
   }
 
