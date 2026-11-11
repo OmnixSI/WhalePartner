@@ -3,6 +3,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { readJsonBody, sendJson } from "../server/http.ts";
 import { authorize, type AuthOptions, type AuthVerdict } from "../hub/auth.ts";
+import type { DeviceConnections } from "../hub/device-connections.ts";
 import { isEmotion } from "../chat/emotion.ts";
 import type { AsrService, AsrStream } from "../voice/asr.ts";
 import { TTS_MAX_TEXT_LENGTH, type TtsService } from "../voice/tts.ts";
@@ -101,7 +102,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
   return false;
 }
 
-export function attachVoiceWebSocket(server: Server, service: AsrService, auth: AuthOptions): () => void {
+export function attachVoiceWebSocket(server: Server, service: AsrService, auth: AuthOptions, connections?: DeviceConnections): () => void {
   const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_PCM_FRAME_BYTES, perMessageDeflate: false });
 
   server.on("upgrade", (request, socket, head) => {
@@ -125,7 +126,12 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
       rejectUpgrade(socket, `${verdict.status} ${verdict.status === 401 ? "Unauthorized" : "Forbidden"}`);
       return;
     }
-    sockets.handleUpgrade(request, socket, head, (client) => sockets.emit("connection", client, request));
+    sockets.handleUpgrade(request, socket, head, (client) => {
+      // 撤销设备时直接 terminate()：close() 要等对端回关闭帧，不回帧的客户端会拖到 ws 默认的 30 秒；重连会因 token 失效拿到 401。
+      const unregister = connections?.add(verdict.deviceId, () => client.terminate());
+      if (unregister) client.on("close", unregister);
+      sockets.emit("connection", client, request);
+    });
   });
 
   sockets.on("connection", (client) => {
