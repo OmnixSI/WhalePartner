@@ -65,6 +65,21 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   return !address || address === "::1" || address.startsWith("127.") || address === "::ffff:127.0.0.1";
 }
 
+/**
+ * 请求的来源地址，用于按地址限流：反向代理后的真实地址在转发头里，取第一个；
+ * 没有转发头就用 TCP 对端地址。
+ */
+export function clientAddress(request: IncomingMessage): string {
+  for (const name of ["x-forwarded-for", "cf-connecting-ip", "x-real-ip"]) {
+    const value = request.headers[name];
+    const raw = Array.isArray(value) ? value[0] : value;
+    if (typeof raw !== "string") continue;
+    const first = raw.split(",")[0].trim();
+    if (first) return first;
+  }
+  return request.socket.remoteAddress ?? "";
+}
+
 function hostName(host: string): string {
   return host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
 }

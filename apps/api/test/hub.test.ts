@@ -163,6 +163,53 @@ test("pairing codes expire after 10 minutes and wrong guesses are rate limited",
   assert.deepEqual(limited.redeem("123456", "x"), { ok: false, reason: "rate_limited" });
 });
 
+test("pairing failures are limited per source address, with a higher global cap", () => {
+  let now = 1_000_000;
+  const registry = new DeviceRegistry(undefined, () => now);
+  const { code } = registry.createPairingCode();
+  const wrong = code === "000000" ? "111111" : "000000";
+  for (let i = 0; i < 8; i++) assert.equal(registry.redeem(wrong, "x", "203.0.113.7").ok, false);
+  // 刷满的来源连正确的配对码也不能再试。
+  assert.deepEqual(registry.redeem(code, "手机", "203.0.113.7"), { ok: false, reason: "rate_limited" });
+  // 其他来源不受影响，同一个配对码还能兑换。
+  const redeemed = registry.redeem(code, "手机", "198.51.100.9");
+  assert.equal(redeemed.ok, true);
+
+  // 分散到多个来源的暴力枚举仍然会被全局上限挡住。
+  const crowded = new DeviceRegistry(undefined, () => now);
+  const next = crowded.createPairingCode();
+  const crowdedWrong = next.code === "000000" ? "111111" : "000000";
+  for (let source = 0; source < 5; source++) {
+    for (let i = 0; i < 8; i++) crowded.redeem(crowdedWrong, "x", `10.0.0.${source}`);
+  }
+  assert.deepEqual(crowded.redeem(next.code, "新设备", "192.0.2.1"), { ok: false, reason: "rate_limited" });
+  // 失败窗口过去后恢复。
+  now += 60_001;
+  assert.equal(crowded.redeem(next.code, "新设备", "192.0.2.1").ok, true);
+});
+
+test("pairing rate limit follows the forwarded source address", async () => {
+  const { base, server } = await boot({ localToken: "home-secret" });
+  const owner = { ...json, authorization: "Bearer home-secret" };
+  try {
+    const created = await (await fetch(`${base}/api/pair/create`, { method: "POST", headers: owner, body: "{}" })).json() as { code: string };
+    const wrong = created.code === "000000" ? "111111" : "000000";
+    const blockedSource = { ...json, "x-forwarded-for": "203.0.113.7" };
+    for (let i = 0; i < 8; i++) {
+      const response = await fetch(`${base}/api/pair/redeem`, { method: "POST", headers: blockedSource, body: JSON.stringify({ code: wrong, name: "x" }) });
+      assert.equal(response.status, 400);
+    }
+    assert.equal((await fetch(`${base}/api/pair/redeem`, { method: "POST", headers: blockedSource, body: JSON.stringify({ code: created.code, name: "x" }) })).status, 429);
+    // 另一个来源还能正常配对。
+    const other = await fetch(`${base}/api/pair/redeem`, {
+      method: "POST",
+      headers: { ...json, "x-forwarded-for": "198.51.100.9" },
+      body: JSON.stringify({ code: created.code, name: "手机" }),
+    });
+    assert.equal(other.status, 200);
+  } finally { server.close(); server.closeAllConnections(); }
+});
+
 test("auth: cross-site origin, text/plain, wrong token, proxied requests and --lan are rejected", async () => {
   const open = await boot();
   try {

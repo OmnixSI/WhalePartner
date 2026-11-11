@@ -22,7 +22,10 @@ export interface PublicDevice {
 }
 
 export const PAIR_CODE_TTL_MS = 10 * 60_000;
-const MAX_FAILED = 8;
+/** 单个来源地址每分钟最多输错次数。 */
+const MAX_FAILED_PER_SOURCE = 8;
+/** 所有来源合计的上限，防止用大量地址分摊暴力枚举。 */
+const MAX_FAILED_GLOBAL = 40;
 const FAIL_WINDOW_MS = 60_000;
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -32,6 +35,8 @@ export class DeviceRegistry {
   #devices: DeviceRecord[] = [];
   readonly #codes = new Map<string, number>();
   #failures: number[] = [];
+  /** 按来源地址分别记失败时间：一个地址刷满不会连累其他设备。 */
+  readonly #failuresBySource = new Map<string, number[]>();
   readonly #now: () => number;
 
   /** file 省略时只存内存（测试 / 临时库）。 */
@@ -66,16 +71,31 @@ export class DeviceRegistry {
   #sweep() {
     const now = this.#now();
     for (const [code, expires] of this.#codes) if (expires <= now) this.#codes.delete(code);
-    this.#failures = this.#failures.filter((at) => now - at < FAIL_WINDOW_MS);
+    const recent = (at: number) => now - at < FAIL_WINDOW_MS;
+    this.#failures = this.#failures.filter(recent);
+    for (const [source, times] of this.#failuresBySource) {
+      const kept = times.filter(recent);
+      if (kept.length === 0) this.#failuresBySource.delete(source);
+      else this.#failuresBySource.set(source, kept);
+    }
   }
 
-  /** 兑换：成功返回明文 token（只此一次）。 */
-  redeem(code: string, name: string): { ok: true; token: string; device: PublicDevice } | { ok: false; reason: "rate_limited" | "invalid" } {
+  #recordFailure(source: string) {
+    const now = this.#now();
+    this.#failures.push(now);
+    const times = this.#failuresBySource.get(source) ?? [];
+    times.push(now);
+    this.#failuresBySource.set(source, times);
+  }
+
+  /** 兑换：成功返回明文 token（只此一次）。source 是请求来源地址，用于按地址限流。 */
+  redeem(code: string, name: string, source = ""): { ok: true; token: string; device: PublicDevice } | { ok: false; reason: "rate_limited" | "invalid" } {
     this.#sweep();
-    if (this.#failures.length >= MAX_FAILED) return { ok: false, reason: "rate_limited" };
+    if (this.#failures.length >= MAX_FAILED_GLOBAL) return { ok: false, reason: "rate_limited" };
+    if ((this.#failuresBySource.get(source)?.length ?? 0) >= MAX_FAILED_PER_SOURCE) return { ok: false, reason: "rate_limited" };
     const expires = this.#codes.get(code.trim());
     if (expires === undefined || expires <= this.#now()) {
-      this.#failures.push(this.#now());
+      this.#recordFailure(source);
       return { ok: false, reason: "invalid" };
     }
     this.#codes.delete(code.trim());
