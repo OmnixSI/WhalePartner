@@ -181,10 +181,14 @@ fn build_command(app: &AppHandle, port: u16, token: &str) -> Result<Command, Str
   let mut cmd;
   let mut paths = Vec::new();
   if tauri::is_dev() {
-    // tauri dev：直接跑源码，和 `pnpm --dir apps/api run serve` 一样（读 apps/api/.env）。
+    // tauri dev：直接跑源码。先读 apps/api/.env，再读数据目录的 .env（设置页写的那份）；
+    // Node 支持多个 --env-file，后面的覆盖前面的，所以设置里保存的密钥在 dev 下也生效。
     let api_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../api");
     cmd = Command::new("node");
-    cmd.current_dir(api_dir).args(["--experimental-strip-types", "--env-file-if-exists=.env", "src/server.ts"]);
+    cmd.current_dir(api_dir)
+      .args(["--experimental-strip-types", "--env-file-if-exists=.env"])
+      .arg(format!("--env-file-if-exists={}", data_dir.join(".env").display()))
+      .arg("src/server.ts");
   } else {
     let exe_dir = std::env::current_exe().map_err(|e| e.to_string())?.parent().map(Path::to_path_buf).ok_or("找不到可执行文件目录")?;
     let node = exe_dir.join(if cfg!(windows) { "whale-node.exe" } else { "whale-node" });
