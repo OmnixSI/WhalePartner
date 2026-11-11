@@ -126,3 +126,54 @@ test("completed chats update the API once and invalid personas are rejected", as
     store.close();
   }
 });
+
+test("deleting a chat does not reset the daily affinity cap", () => {
+  const store = new ChatStore(":memory:");
+  try {
+    const day = new Date("2026-10-05T12:00:00.000Z");
+    const session = store.getOrCreateSession("deepseek");
+    for (let turn = 0; turn < 10; turn += 1) recordTurn(store, "deepseek", new Date(day.getTime() + turn * 1000));
+    assert.equal(store.relationshipSnapshot("deepseek", day).points, 10);
+
+    // 删掉当天聊满上限的会话：事件行级联删除，但按天记账保留，同一天不该再涨。
+    assert.ok(store.deleteSession(session.id, "deepseek"));
+    const after = recordTurn(store, "deepseek", new Date(day.getTime() + 60_000));
+    assert.equal(after.recorded, true);
+    assert.equal(store.relationshipSnapshot("deepseek", day).points, 10);
+
+    // 第二天重新有 10 点。
+    for (let turn = 0; turn < 10; turn += 1) recordTurn(store, "deepseek", new Date(day.getTime() + 86_400_000 + turn * 1000));
+    assert.equal(store.relationshipSnapshot("deepseek", new Date(day.getTime() + 86_400_000)).points, 20);
+  } finally {
+    store.close();
+  }
+});
+
+test("upgrading a database without daily_counters carries over today's affinity so deleting a chat still cannot reset the cap", () => {
+  const dir = mkdtempSync(join(tmpdir(), "wp-daily-counters-migration-"));
+  const path = join(dir, "app.db");
+  try {
+    const before = new ChatStore(path);
+    const start = Date.now();
+    const session = before.getOrCreateSession("deepseek");
+    for (let turn = 0; turn < 10; turn += 1) recordTurn(before, "deepseek", new Date(start + turn));
+    before.close();
+
+    // 还原成升级前的库：只有 relationship_events 里的记录，没有按天记账表。
+    const legacy = new DatabaseSync(path);
+    legacy.exec("DROP TABLE daily_counters");
+    legacy.close();
+
+    const after = new ChatStore(path);
+    try {
+      assert.ok(after.deleteSession(session.id, "deepseek"));
+      const next = recordTurn(after, "deepseek", new Date(start + 1000));
+      assert.equal(next.recorded, true);
+      assert.equal(after.relationshipSnapshot("deepseek", new Date(start + 1000)).points, 10);
+    } finally {
+      after.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { localDayKey, localDayStart } from "./daily-counters.ts";
 
 export function openChatDatabase(path: string): DatabaseSync {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
@@ -144,6 +145,16 @@ export function openChatDatabase(path: string): DatabaseSync {
     CREATE INDEX IF NOT EXISTS proactive_triggers_pending ON proactive_triggers(status, due_at, expires_at);
     CREATE INDEX IF NOT EXISTS proactive_triggers_sent ON proactive_triggers(status, sent_at DESC);
 
+    -- 按天记账：不挂聊天外键，删会话/清历史不会让当天的好感度和主动消息限额重新计数。
+    CREATE TABLE IF NOT EXISTS daily_counters (
+      day TEXT NOT NULL,
+      name TEXT NOT NULL,
+      subject TEXT NOT NULL DEFAULT '',
+      value INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (day, name, subject)
+    );
+
     CREATE TABLE IF NOT EXISTS memory_facts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       subject TEXT NOT NULL,
@@ -234,6 +245,7 @@ export function openChatDatabase(path: string): DatabaseSync {
     );
   `);
   migrateExperiences(db);
+  migrateDailyCounters(db);
   return db;
 }
 
@@ -262,5 +274,40 @@ function migrateExperiences(db: DatabaseSync) {
   const columns = db.prepare("PRAGMA table_info(memory_experiences)").all() as unknown as Array<{ name: string }>;
   if (!columns.some((column) => column.name === "source_missing")) {
     db.exec("ALTER TABLE memory_experiences ADD COLUMN source_missing INTEGER NOT NULL DEFAULT 0");
+  }
+}
+
+/**
+ * 升级时补齐当天的按天记账：之前的上限是从 relationship_events / proactive_triggers
+ * 现算的，换了记账表后先把今天已经用掉的量搬过来，免得升级当天重新计数。
+ * 只补当天、只在对应记账行还不存在时补；之后删会话不会再把它们写回来。
+ * 主动消息的冷却跨天生效，所以即使今天一条都没发，也会把最近一次发送时间带过来。
+ */
+function migrateDailyCounters(db: DatabaseSync) {
+  const now = new Date();
+  const day = localDayKey(now);
+  const start = localDayStart(now).toISOString();
+  const exists = (name: string, subject: string) =>
+    Boolean(db.prepare("SELECT 1 FROM daily_counters WHERE day = ? AND name = ? AND subject = ?").get(day, name, subject));
+
+  if (!exists("affinity_points", "deepseek")) {
+    const row = db.prepare("SELECT COALESCE(SUM(points), 0) AS points FROM relationship_events WHERE character = 'deepseek' AND created_at >= ?")
+      .get(start) as { points: number };
+    if (Number(row.points) > 0) {
+      db.prepare("INSERT INTO daily_counters(day, name, subject, value, updated_at) VALUES (?, 'affinity_points', 'deepseek', ?, ?)")
+        .run(day, Number(row.points), now.toISOString());
+    }
+  }
+
+  if (!exists("proactive_sent", "")) {
+    // 冷却看的是最近一次发送，可能在昨天 23:50、升级在 00:10：所以最后发送时间取全表，今天的次数只数今天。
+    const row = db.prepare(`
+      SELECT MAX(sent_at) AS lastSentAt, COUNT(CASE WHEN sent_at >= ? THEN 1 END) AS today
+      FROM proactive_triggers WHERE status = 'sent'
+    `).get(start) as { lastSentAt: string | null; today: number };
+    if (row.lastSentAt) {
+      db.prepare("INSERT INTO daily_counters(day, name, subject, value, updated_at) VALUES (?, 'proactive_sent', '', ?, ?)")
+        .run(day, Number(row.today), row.lastSentAt);
+    }
   }
 }

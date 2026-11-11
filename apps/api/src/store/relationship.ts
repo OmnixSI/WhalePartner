@@ -1,14 +1,18 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { Emotion } from "../chat/emotion.ts";
 import { AFFINITY_DAILY_LIMIT, AFFINITY_PER_COMPLETED_DEEPSEEK_TURN, recoverMood, relationshipSnapshot, type RelationshipSnapshot } from "../relationship/policy.ts";
+import { DailyCounters } from "./daily-counters.ts";
 
 const RELATIONSHIP_EMOTION_INTENSITY = 100;
 
 export class RelationshipRepository {
   readonly #db: DatabaseSync;
+  /** 当天已加的点数记在独立账本里：删聊天不会让它重算。 */
+  readonly #counters: DailyCounters;
 
   constructor(db: DatabaseSync) {
     this.#db = db;
+    this.#counters = new DailyCounters(db);
   }
 
   recordCompletedInteraction(input: {
@@ -18,8 +22,6 @@ export class RelationshipRepository {
     emotion: Emotion;
   }, now = new Date()) {
     const stamp = now.toISOString();
-    const localDay = new Date(now);
-    localDay.setHours(0, 0, 0, 0);
     this.#db.exec("BEGIN IMMEDIATE");
     try {
       const inserted = this.#db.prepare(`
@@ -48,15 +50,13 @@ export class RelationshipRepository {
       `).run(input.character, input.emotion, input.emotion === "neutral" ? 0 : RELATIONSHIP_EMOTION_INTENSITY, stamp);
 
       if (input.character === "deepseek") {
-        const count = this.#db.prepare(`
-          SELECT COALESCE(SUM(points), 0) AS points
-          FROM relationship_events WHERE created_at >= ? AND character = 'deepseek'
-        `).get(localDay.toISOString()) as { points: number };
-        const awarded = Number(count.points) < AFFINITY_DAILY_LIMIT ? AFFINITY_PER_COMPLETED_DEEPSEEK_TURN : 0;
+        const used = this.#counters.value("affinity_points", "deepseek", now);
+        const awarded = used < AFFINITY_DAILY_LIMIT ? AFFINITY_PER_COMPLETED_DEEPSEEK_TURN : 0;
         if (awarded) {
           this.#db.prepare("UPDATE relationship_events SET points = ? WHERE assistant_message_id = ?").run(awarded, input.assistantMessageId);
           this.#db.prepare("UPDATE relationship_state SET affinity_points = affinity_points + ?, updated_at = ? WHERE id = 1")
             .run(awarded, stamp);
+          this.#counters.add("affinity_points", "deepseek", awarded, now);
         }
       }
       this.#db.exec("COMMIT");
