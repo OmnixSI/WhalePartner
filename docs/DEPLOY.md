@@ -43,6 +43,12 @@ home.example.com {
 
 Nginx 需要：`proxy_buffering off; proxy_read_timeout 1h;`（`/api/events` 与 `/api/chat` 是长连接 SSE）。
 
+**配对码限流依赖真实客户端地址**（每个来源地址有自己的错误次数桶）：
+
+- 镜像默认设了 `WP_TRUSTED_PROXIES=172.16.0.0/12`。容器里看到的对端是 Docker bridge 网关（如 `172.17.0.1`），不是 `127.0.0.1`；不信任这个网段，所有人会共用一个限流桶。用 `--network host` 时对端就是回环，不用设；用了别的网段（如 `192.168.x.x` 的自定义网络）就 `-e WP_TRUSTED_PROXIES=<网段>` 覆盖。
+- 只有对端在可信网段（回环或 `WP_TRUSTED_PROXIES`）里，才读 `X-Forwarded-For`，并从右往左取第一个不可信的地址。**只看 `X-Forwarded-For`**，不看 `CF-Connecting-IP`、`X-Real-IP`：Caddy、nginx 默认会把客户端自带的这两个头原样转给后端，可信代理后面的客户端能伪造它们。Caddy 和 Cloudflare 会把真实地址追加进 `X-Forwarded-For`；Nginx 请显式写 `proxy_set_header X-Forwarded-For $remote_addr;`（单级代理，覆盖客户端自带的值）。
+- 代理最好把客户端自带的 `CF-Connecting-IP`、`X-Real-IP` 清掉：Caddy 用 `header_up -CF-Connecting-IP` 和 `header_up -X-Real-IP`，Nginx 用 `proxy_set_header CF-Connecting-IP "";` 和 `proxy_set_header X-Real-IP "";`。
+
 ## B. cloudflared 隧道（不开端口，暴露本机 hub）
 
 家里电脑上先正常运行后端（桌面 App 的后台运行，或 `pnpm --dir apps/api run serve`），并设置令牌：

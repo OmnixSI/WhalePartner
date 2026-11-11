@@ -24,7 +24,10 @@ ENV WP_STATIC_DIR=/app/apps/client/dist \
     APP_DB_PATH=/data/whalepartner.db \
     MEMORY_DIR=/data/memory \
     API_HOST=0.0.0.0 \
-    API_PORT=8787
+    API_PORT=8787 \
+    WP_TRUSTED_PROXIES=172.16.0.0/12
+# 容器里看到的 TCP 对端是 Docker bridge 网关（如 172.17.0.1），不是 127.0.0.1。把 Docker 的私有网段当作代理，
+# 配对码限流才会按 X-Forwarded-For 里的真实客户端分桶，否则所有人共用一个桶。用 --network host 或别的网段时改写这个变量。
 VOLUME ["/data"]
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s CMD node -e "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"

@@ -241,23 +241,51 @@ test("直连伪造 X-Forwarded-For 不会产生新的来源桶", () => {
   assert.equal(registry.redeem(code, "手机", "198.51.100.8").ok, true);
 });
 
-test("可信代理后面才看转发头：cf-connecting-ip 优先，XFF 从右往左挑第一个不可信地址", () => {
-  // 本机反代（回环）写入的转发头可信。
+test("可信代理后面只看 X-Forwarded-For，从右往左挑第一个不可信地址", () => {
+  // 本机反代（回环）追加的 XFF 可信。
   assert.equal(clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "203.0.113.7" })), "203.0.113.7");
   assert.equal(clientAddress(sourceRequest("::1", { "x-forwarded-for": "203.0.113.7" })), "203.0.113.7");
-  assert.equal(
-    clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "203.0.113.5", "cf-connecting-ip": "198.51.100.9" })),
-    "198.51.100.9",
-    "cf 是边缘写入的，优先于 XFF",
-  );
   // 多级代理：右边的值是最近的代理追加的，跳过可信代理网段后取到真实客户端。
   assert.equal(
     clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "203.0.113.5, 10.0.0.2" }), ["10.0.0.0/8"]),
     "203.0.113.5",
   );
+  // 客户端在 XFF 左边自带的假地址不会被采信：取的是最右边那个不可信的。
+  assert.equal(
+    clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "6.6.6.6, 203.0.113.5" })),
+    "203.0.113.5",
+  );
   // 配置的代理网段同样可信；没配置时按真实对端算。
   assert.equal(clientAddress(sourceRequest("10.1.2.3", { "x-forwarded-for": "6.6.6.6" }), ["10.0.0.0/8"]), "6.6.6.6");
   assert.equal(clientAddress(sourceRequest("10.1.2.3", { "x-forwarded-for": "6.6.6.6" })), "10.1.2.3");
+});
+
+test("可信代理后面客户端自带的 cf-connecting-ip / x-real-ip 不被采信", () => {
+  // Caddy/nginx 默认原样转发客户端自带的这两个头；代理只会追加真实地址到 XFF。
+  const forged = { "cf-connecting-ip": "6.6.6.6", "x-real-ip": "7.7.7.7", "x-forwarded-for": "203.0.113.5" };
+  assert.equal(clientAddress(sourceRequest("127.0.0.1", forged)), "203.0.113.5");
+  assert.equal(clientAddress(sourceRequest("172.17.0.1", forged), ["172.16.0.0/12"]), "203.0.113.5");
+  // 没有 XFF 时回落到对端地址，而不是伪造头。
+  assert.equal(clientAddress(sourceRequest("127.0.0.1", { "cf-connecting-ip": "6.6.6.6", "x-real-ip": "7.7.7.7" })), "127.0.0.1");
+});
+
+test("Docker 默认 bridge：对端是网关 172.17.0.1，配置代理网段后才按真实客户端分桶", () => {
+  const request = (client: string) => sourceRequest("172.17.0.1", { "x-forwarded-for": client });
+  // 没配 WP_TRUSTED_PROXIES：所有人都落在网关地址上（单一全局桶）。
+  assert.equal(clientAddress(request("203.0.113.1")), "172.17.0.1");
+  assert.equal(clientAddress(request("203.0.113.2")), "172.17.0.1");
+  // Dockerfile 默认的 172.16.0.0/12：按 XFF 里的真实客户端分桶，且仍不放过 172.16/12 之外的直连。
+  const proxies = ["172.16.0.0/12"];
+  assert.equal(clientAddress(request("203.0.113.1"), proxies), "203.0.113.1");
+  assert.equal(clientAddress(request("203.0.113.2"), proxies), "203.0.113.2");
+  assert.equal(clientAddress(sourceRequest("198.51.100.7", { "x-forwarded-for": "203.0.113.1" }), proxies), "198.51.100.7");
+
+  const registry = new DeviceRegistry(undefined, () => 1_000_000);
+  const { code } = registry.createPairingCode();
+  const wrong = code === "000000" ? "111111" : "000000";
+  for (let i = 0; i < 20; i += 1) registry.redeem(wrong, "x", clientAddress(request("203.0.113.1"), proxies));
+  assert.deepEqual(registry.redeem(code, "手机", clientAddress(request("203.0.113.1"), proxies)), { ok: false, reason: "rate_limited" });
+  assert.equal(registry.redeem(code, "手机", clientAddress(request("203.0.113.2"), proxies)).ok, true);
 });
 
 test("auth: cross-site origin, text/plain, wrong token, proxied requests and --lan are rejected", async () => {

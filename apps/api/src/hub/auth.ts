@@ -123,17 +123,14 @@ function headerValue(value: string | string[] | undefined): string {
 /**
  * 请求的来源地址，用于按地址限流。
  * 只有 TCP 对端是可信代理时才看转发头——直连的客户端可以随便写 X-Forwarded-For，
- * 采信它等于让攻击者每次换一个来源桶。代理后面依次看 cf-connecting-ip（边缘写入）、
- * x-real-ip，最后是 x-forwarded-for 从右往左第一个不可信的地址（右边的值由最近的代理追加）。
+ * 采信它等于让攻击者每次换一个来源桶。代理后面只看 x-forwarded-for，从右往左取第一个不可信的地址
+ * （右边的值由最近的代理追加）。
+ * 不采信 cf-connecting-ip / x-real-ip：Caddy、nginx 默认会把客户端自带的这两个头原样转给后端，
+ * 可信代理后面的客户端照样能伪造；而 Cloudflare 和常见反代都会追加 X-Forwarded-For，用它就够了。
  */
 export function clientAddress(request: IncomingMessage, trustedProxies: string[] = []): string {
   const peer = normalizeAddress(request.socket.remoteAddress ?? "");
   if (!isTrustedProxy(peer, trustedProxies)) return peer;
-
-  const cf = headerValue(request.headers["cf-connecting-ip"]);
-  if (cf) return normalizeAddress(cf.split(",")[0]);
-  const realIp = headerValue(request.headers["x-real-ip"]);
-  if (realIp) return normalizeAddress(realIp.split(",")[0]);
 
   const forwarded = headerValue(request.headers["x-forwarded-for"]);
   if (forwarded) {
