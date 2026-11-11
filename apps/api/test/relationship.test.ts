@@ -148,3 +148,32 @@ test("deleting a chat does not reset the daily affinity cap", () => {
     store.close();
   }
 });
+
+test("upgrading a database without daily_counters carries over today's affinity so deleting a chat still cannot reset the cap", () => {
+  const dir = mkdtempSync(join(tmpdir(), "wp-daily-counters-migration-"));
+  const path = join(dir, "app.db");
+  try {
+    const before = new ChatStore(path);
+    const start = Date.now();
+    const session = before.getOrCreateSession("deepseek");
+    for (let turn = 0; turn < 10; turn += 1) recordTurn(before, "deepseek", new Date(start + turn));
+    before.close();
+
+    // 还原成升级前的库：只有 relationship_events 里的记录，没有按天记账表。
+    const legacy = new DatabaseSync(path);
+    legacy.exec("DROP TABLE daily_counters");
+    legacy.close();
+
+    const after = new ChatStore(path);
+    try {
+      assert.ok(after.deleteSession(session.id, "deepseek"));
+      const next = recordTurn(after, "deepseek", new Date(start + 1000));
+      assert.equal(next.recorded, true);
+      assert.equal(after.relationshipSnapshot("deepseek", new Date(start + 1000)).points, 10);
+    } finally {
+      after.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
