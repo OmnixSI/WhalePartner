@@ -53,15 +53,47 @@ export function remoteConnection(): HubConnection | null {
   return readStored();
 }
 
+interface BackendInfoPayload {
+  url?: string;
+  token?: string;
+}
+
+/**
+ * 应用桌面壳给的后端信息：启动时的 backend_info，或后端换端口重启后的 backend-ready。
+ * 新基址必须进 knownBases，否则 fetch 包装认不出这是后端请求，既不改写地址也不带令牌。
+ * 地址或令牌变了就广播连接变更：EventSource 重连，页面重新拉健康和聊天历史。
+ */
+function applyBackendInfo(info: BackendInfoPayload | null | undefined, notify = true) {
+  const url = info?.url?.replace(/\/+$/, "");
+  const nextToken = typeof info?.token === "string" ? info.token : token;
+  const changed = (Boolean(url) && url !== API_BASE) || nextToken !== token;
+  if (url) {
+    API_BASE = url;
+    knownBases.add(url);
+  }
+  token = nextToken;
+  if (notify && changed && typeof window !== "undefined") window.dispatchEvent(new Event("wp:connection-changed"));
+}
+
 async function resolveTauri(): Promise<void> {
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const info = await invoke<{ url?: string; token?: string }>("backend_info");
-    if (info?.url) {
-      API_BASE = info.url.replace(/\/+$/, "");
-      knownBases.add(API_BASE);
+    const [{ invoke }, { listen }] = await Promise.all([
+      import("@tauri-apps/api/core"),
+      import("@tauri-apps/api/event"),
+    ]);
+    let readySeen = false;
+    try {
+      // 先挂监听再取当前值：后端可能在两次调用之间换端口就绪，反过来会漏掉 backend-ready。
+      await listen<BackendInfoPayload>("backend-ready", (event) => {
+        readySeen = true;
+        applyBackendInfo(event.payload);
+      });
+    } catch {
+      // 监听注册失败不拦启动：仍用 backend_info 连当前后端；真换了端口，下次启动也能恢复。
     }
-    token = info?.token ?? "";
+    const info = await invoke<BackendInfoPayload>("backend_info");
+    // 等 invoke 返回期间若已收到 ready，以事件里的新地址为准，别被更旧的返回值覆盖。
+    if (!readySeen) applyBackendInfo(info, false);
   } catch {
     // Rust 端还没实现 / 调用失败：回退到本机默认地址，不带 token。
     API_BASE = LOCAL_DEFAULT;
