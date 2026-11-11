@@ -43,6 +43,17 @@ home.example.com {
 
 Nginx 需要：`proxy_buffering off; proxy_read_timeout 1h;`（`/api/events` 与 `/api/chat` 是长连接 SSE）。
 
+**配对码限流依赖真实客户端地址**（每个来源地址有自己的错误次数桶）：
+
+- 镜像默认设了 `WP_TRUSTED_PROXIES=172.16.0.0/12`。容器里看到的对端是 Docker bridge 网关（如 `172.17.0.1`），不是 `127.0.0.1`；不信任这个网段，所有人会共用一个限流桶。用了别的网段（如 `192.168.x.x` 的自定义网络）就 `-e WP_TRUSTED_PROXIES=<网段>` 覆盖。
+- **`--network host` 必须加 `-e WP_TRUSTED_PROXIES=` 清空默认值。** host 网络下宿主上的 Caddy 从回环连进来，回环本来就可信，不需要这个网段；留着它，局域网里落在 `172.16.0.0/12` 的机器直连 8787 端口时能伪造 `X-Forwarded-For`，绕过按来源的限流。
+- 只有对端在可信网段（回环或 `WP_TRUSTED_PROXIES`）里，才读 `X-Forwarded-For`，并从右往左取第一个不可信的地址。**只看 `X-Forwarded-For`**，不看 `CF-Connecting-IP`、`X-Real-IP`：Caddy、nginx 默认会把客户端自带的这两个头原样转给后端，可信代理后面的客户端能伪造它们。Caddy 会把它看到的对端地址追加进 `X-Forwarded-For`；Nginx 请显式写 `proxy_set_header X-Forwarded-For $remote_addr;`（单级代理，覆盖客户端自带的值）。
+- 代理最好把客户端自带的 `CF-Connecting-IP`、`X-Real-IP` 清掉：Caddy 用 `header_up -CF-Connecting-IP` 和 `header_up -X-Real-IP`，Nginx 用 `proxy_set_header CF-Connecting-IP "";` 和 `proxy_set_header X-Real-IP "";`。
+- **域名走 Cloudflare 橙云（Cloudflare → Caddy → 容器）需要多配两处，否则按来源限流不成立**：Caddy 直接看到的对端是 Cloudflare 边缘 IP，同一个边缘节点后面的用户会落进同一个桶。
+  1. 把 [Cloudflare 公布的 IP 段](https://www.cloudflare.com/ips/)全部加进 `WP_TRUSTED_PROXIES`（逗号分隔，连同上面的 Docker 网段），这样从右往左会跳过 Cloudflare 边缘，取到它追加在前面的真实客户端地址。
+  2. Caddy 的全局选项里配 `servers { trusted_proxies static <同一批 Cloudflare 网段> }`，Caddy 才会保留 Cloudflare 传来的 `X-Forwarded-For`，而不是用边缘 IP 覆盖它。
+  Cloudflare 的网段会更新，需要定期核对。不想维护这份清单就不要把橙云当作支持的部署：关掉代理（灰云，仅 DNS），或改用方案 B 的 cloudflared 隧道（连进来的是本机回环）。
+
 ## B. cloudflared 隧道（不开端口，暴露本机 hub）
 
 家里电脑上先正常运行后端（桌面 App 的后台运行，或 `pnpm --dir apps/api run serve`），并设置令牌：

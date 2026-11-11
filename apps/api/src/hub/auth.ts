@@ -10,6 +10,7 @@
  */
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
+import { BlockList, isIP } from "node:net";
 import type { DeviceRegistry } from "./devices.ts";
 import { CORS_ALLOWED_ORIGINS } from "../server/http.ts";
 
@@ -63,6 +64,83 @@ export function extractToken(request: IncomingMessage, url: URL): string {
 
 export function isLoopbackAddress(address: string | undefined): boolean {
   return !address || address === "::1" || address.startsWith("127.") || address === "::ffff:127.0.0.1";
+}
+
+/** 配置的代理网段（WP_TRUSTED_PROXIES，逗号分隔的地址或 CIDR）。 */
+export function trustedProxiesFromEnv(): string[] {
+  return (process.env.WP_TRUSTED_PROXIES ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+/** 去掉方括号、端口、zone id，并把 IPv4-mapped IPv6（::ffff:127.0.0.1）还原成 IPv4。 */
+function normalizeAddress(value: string): string {
+  let address = value.trim().toLowerCase();
+  if (address.startsWith("[")) {
+    const end = address.indexOf("]");
+    if (end > 0) address = address.slice(1, end);
+  } else if (/^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(address)) {
+    address = address.slice(0, address.lastIndexOf(":"));
+  }
+  const zone = address.indexOf("%");
+  if (zone > 0) address = address.slice(0, zone);
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(address);
+  return mapped ? mapped[1] : address;
+}
+
+function isLoopbackHost(address: string): boolean {
+  return address === "::1" || address.startsWith("127.");
+}
+
+function matchesConfiguredProxy(address: string, entries: string[]): boolean {
+  const family = isIP(address);
+  if (!family || entries.length === 0) return false;
+  const list = new BlockList();
+  let added = false;
+  for (const entry of entries) {
+    const [rawAddress, rawPrefix] = entry.split("/");
+    const host = normalizeAddress(rawAddress ?? "");
+    const hostFamily = isIP(host);
+    if (!hostFamily) continue;
+    const prefix = rawPrefix === undefined ? (hostFamily === 4 ? 32 : 128) : Number.parseInt(rawPrefix, 10);
+    if (!Number.isInteger(prefix) || prefix < 0 || prefix > (hostFamily === 4 ? 32 : 128)) continue;
+    list.addSubnet(host, prefix, hostFamily === 4 ? "ipv4" : "ipv6");
+    added = true;
+  }
+  return added && list.check(address, family === 4 ? "ipv4" : "ipv6");
+}
+
+/** TCP 对端是不是可信代理：本机回环（本地隧道/反代），或 WP_TRUSTED_PROXIES 里配置的网段。 */
+export function isTrustedProxy(address: string, trustedProxies: string[] = []): boolean {
+  const peer = normalizeAddress(address);
+  if (!peer) return false;
+  return isLoopbackHost(peer) || matchesConfiguredProxy(peer, trustedProxies);
+}
+
+function headerValue(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+/**
+ * 请求的来源地址，用于按地址限流。
+ * 只有 TCP 对端是可信代理时才看转发头——直连的客户端可以随便写 X-Forwarded-For，
+ * 采信它等于让攻击者每次换一个来源桶。代理后面只看 x-forwarded-for，从右往左取第一个不可信的地址
+ * （右边的值由最近的代理追加）。
+ * 不采信 cf-connecting-ip / x-real-ip：Caddy、nginx 默认会把客户端自带的这两个头原样转给后端，
+ * 可信代理后面的客户端照样能伪造；而 Cloudflare 和常见反代都会追加 X-Forwarded-For，用它就够了。
+ */
+export function clientAddress(request: IncomingMessage, trustedProxies: string[] = []): string {
+  const peer = normalizeAddress(request.socket.remoteAddress ?? "");
+  if (!isTrustedProxy(peer, trustedProxies)) return peer;
+
+  const forwarded = headerValue(request.headers["x-forwarded-for"]);
+  if (forwarded) {
+    const chain = forwarded.split(",").map(normalizeAddress).filter(Boolean);
+    for (let index = chain.length - 1; index >= 0; index -= 1) {
+      if (!isTrustedProxy(chain[index], trustedProxies)) return chain[index];
+    }
+    if (chain.length > 0) return chain[0];
+  }
+  return peer;
 }
 
 function hostName(host: string): string {

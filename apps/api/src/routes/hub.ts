@@ -6,12 +6,15 @@ import { attachEventStream, publishEvent, type EventBus } from "../hub/events.ts
 import { readJsonBody, sendJson, startSse } from "../server/http.ts";
 import type { DeviceRegistry } from "../hub/devices.ts";
 import type { DeviceConnections } from "../hub/device-connections.ts";
+import { clientAddress } from "../hub/auth.ts";
 
 export interface HubDeps {
   devices: DeviceRegistry;
   events: EventBus;
   port: number;
   connections?: DeviceConnections;
+  /** 额外可信的代理网段（本机回环总是可信）。 */
+  trustedProxies?: string[];
 }
 
 function lanAddresses(port: number): string[] {
@@ -53,7 +56,7 @@ export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, re
       const code = typeof body.code === "string" ? body.code.trim() : "";
       const name = typeof body.name === "string" ? body.name : "";
       if (!/^\d{6}$/.test(code)) throw new ChatInputError("配对码是 6 位数字。");
-      const result = deps.devices.redeem(code, name);
+      const result = deps.devices.redeem(code, name, clientAddress(request, deps.trustedProxies));
       if (!result.ok) {
         sendJson(response, result.reason === "rate_limited" ? 429 : 400, {
           error: result.reason,

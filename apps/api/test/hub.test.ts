@@ -4,7 +4,9 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import type { IncomingMessage } from "node:http";
 import { loadConfig } from "../src/server/config.ts";
+import { clientAddress } from "../src/hub/auth.ts";
 import { DeviceRegistry } from "../src/hub/devices.ts";
 import { EmotionFilter, splitEmotionTags } from "../src/chat/emotion.ts";
 import { EventBus } from "../src/hub/events.ts";
@@ -252,6 +254,144 @@ test("pairing codes expire after 10 minutes and wrong guesses are rate limited",
   const limited = new DeviceRegistry(undefined, () => now);
   for (let i = 0; i < 8; i++) limited.redeem("123456", "x");
   assert.deepEqual(limited.redeem("123456", "x"), { ok: false, reason: "rate_limited" });
+});
+
+test("pairing failures are limited per source address, with a higher global cap", () => {
+  let now = 1_000_000;
+  const registry = new DeviceRegistry(undefined, () => now);
+  const { code } = registry.createPairingCode();
+  const wrong = code === "000000" ? "111111" : "000000";
+  for (let i = 0; i < 8; i++) assert.equal(registry.redeem(wrong, "x", "203.0.113.7").ok, false);
+  // 刷满的来源连正确的配对码也不能再试。
+  assert.deepEqual(registry.redeem(code, "手机", "203.0.113.7"), { ok: false, reason: "rate_limited" });
+  // 其他来源不受影响，同一个配对码还能兑换。
+  const redeemed = registry.redeem(code, "手机", "198.51.100.9");
+  assert.equal(redeemed.ok, true);
+
+  // 分散到多个来源的暴力枚举仍然会被全局上限挡住。
+  const crowded = new DeviceRegistry(undefined, () => now);
+  const next = crowded.createPairingCode();
+  const crowdedWrong = next.code === "000000" ? "111111" : "000000";
+  for (let source = 0; source < 5; source++) {
+    for (let i = 0; i < 8; i++) crowded.redeem(crowdedWrong, "x", `10.0.0.${source}`);
+  }
+  assert.deepEqual(crowded.redeem(next.code, "新设备", "192.0.2.1"), { ok: false, reason: "rate_limited" });
+  // 失败窗口过去后恢复。
+  now += 60_001;
+  assert.equal(crowded.redeem(next.code, "新设备", "192.0.2.1").ok, true);
+});
+
+test("pairing rate limit follows the forwarded source address", async () => {
+  const { base, server } = await boot({ localToken: "home-secret" });
+  const owner = { ...json, authorization: "Bearer home-secret" };
+  try {
+    const created = await (await fetch(`${base}/api/pair/create`, { method: "POST", headers: owner, body: "{}" })).json() as { code: string };
+    const wrong = created.code === "000000" ? "111111" : "000000";
+    const blockedSource = { ...json, "x-forwarded-for": "203.0.113.7" };
+    for (let i = 0; i < 8; i++) {
+      const response = await fetch(`${base}/api/pair/redeem`, { method: "POST", headers: blockedSource, body: JSON.stringify({ code: wrong, name: "x" }) });
+      assert.equal(response.status, 400);
+    }
+    assert.equal((await fetch(`${base}/api/pair/redeem`, { method: "POST", headers: blockedSource, body: JSON.stringify({ code: created.code, name: "x" }) })).status, 429);
+    // 另一个来源还能正常配对。
+    const other = await fetch(`${base}/api/pair/redeem`, {
+      method: "POST",
+      headers: { ...json, "x-forwarded-for": "198.51.100.9" },
+      body: JSON.stringify({ code: created.code, name: "手机" }),
+    });
+    assert.equal(other.status, 200);
+  } finally { server.close(); server.closeAllConnections(); }
+});
+
+/** 假的请求：只有限流用得到的 headers 和 socket.remoteAddress。 */
+function sourceRequest(remoteAddress: string | undefined, headers: Record<string, string> = {}): IncomingMessage {
+  return { headers, socket: { remoteAddress } } as unknown as IncomingMessage;
+}
+
+test("直连伪造 X-Forwarded-For 不会产生新的来源桶", () => {
+  // 公网直连：对端不是代理，转发头一律不采信。
+  const forged: Array<Record<string, string>> = [
+    { "x-forwarded-for": "203.0.113.1" },
+    { "x-forwarded-for": "203.0.113.2, 10.0.0.1" },
+    { "cf-connecting-ip": "203.0.113.3" },
+    { "x-real-ip": "203.0.113.4" },
+    { "x-forwarded-for": "203.0.113.5", "cf-connecting-ip": "203.0.113.6" },
+  ];
+  const sources = new Set(forged.map((headers) => clientAddress(sourceRequest("198.51.100.7", headers))));
+  assert.deepEqual([...sources], ["198.51.100.7"], "换着伪造头也只有一个来源");
+  assert.equal(clientAddress(sourceRequest("::ffff:198.51.100.7", { "x-forwarded-for": "203.0.113.1" })), "198.51.100.7");
+
+  // 连着输错 20 次，全部记在真实地址上：8 次后这个来源被限流，其他来源不受影响。
+  const registry = new DeviceRegistry(undefined, () => 1_000_000);
+  const { code } = registry.createPairingCode();
+  const wrong = code === "000000" ? "111111" : "000000";
+  for (let i = 0; i < 20; i += 1) {
+    registry.redeem(wrong, "x", clientAddress(sourceRequest("198.51.100.7", { "x-forwarded-for": `203.0.113.${i}` })));
+  }
+  assert.deepEqual(registry.redeem(code, "手机", "198.51.100.7"), { ok: false, reason: "rate_limited" });
+  assert.equal(registry.redeem(code, "手机", "198.51.100.8").ok, true);
+});
+
+test("可信代理后面只看 X-Forwarded-For，从右往左挑第一个不可信地址", () => {
+  // 本机反代（回环）追加的 XFF 可信。
+  assert.equal(clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "203.0.113.7" })), "203.0.113.7");
+  assert.equal(clientAddress(sourceRequest("::1", { "x-forwarded-for": "203.0.113.7" })), "203.0.113.7");
+  // 多级代理：右边的值是最近的代理追加的，跳过可信代理网段后取到真实客户端。
+  assert.equal(
+    clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "203.0.113.5, 10.0.0.2" }), ["10.0.0.0/8"]),
+    "203.0.113.5",
+  );
+  // 客户端在 XFF 左边自带的假地址不会被采信：取的是最右边那个不可信的。
+  assert.equal(
+    clientAddress(sourceRequest("127.0.0.1", { "x-forwarded-for": "6.6.6.6, 203.0.113.5" })),
+    "203.0.113.5",
+  );
+  // 配置的代理网段同样可信；没配置时按真实对端算。
+  assert.equal(clientAddress(sourceRequest("10.1.2.3", { "x-forwarded-for": "6.6.6.6" }), ["10.0.0.0/8"]), "6.6.6.6");
+  assert.equal(clientAddress(sourceRequest("10.1.2.3", { "x-forwarded-for": "6.6.6.6" })), "10.1.2.3");
+});
+
+test("可信代理后面客户端自带的 cf-connecting-ip / x-real-ip 不被采信", () => {
+  // Caddy/nginx 默认原样转发客户端自带的这两个头；代理只会追加真实地址到 XFF。
+  const forged = { "cf-connecting-ip": "6.6.6.6", "x-real-ip": "7.7.7.7", "x-forwarded-for": "203.0.113.5" };
+  assert.equal(clientAddress(sourceRequest("127.0.0.1", forged)), "203.0.113.5");
+  assert.equal(clientAddress(sourceRequest("172.17.0.1", forged), ["172.16.0.0/12"]), "203.0.113.5");
+  // 没有 XFF 时回落到对端地址，而不是伪造头。
+  assert.equal(clientAddress(sourceRequest("127.0.0.1", { "cf-connecting-ip": "6.6.6.6", "x-real-ip": "7.7.7.7" })), "127.0.0.1");
+});
+
+test("Cloudflare 橙云 → Caddy：配置了 Cloudflare 网段才跳过边缘 IP，取到真实客户端", () => {
+  // Cloudflare 把真实客户端追加进 XFF，Caddy（信任 CF 网段时）再把 CF 边缘追加在后面。
+  const request = (client: string, edge: string) => sourceRequest("172.17.0.1", { "x-forwarded-for": `${client}, ${edge}` });
+  const dockerOnly = ["172.16.0.0/12"];
+  const withCloudflare = ["172.16.0.0/12", "173.245.48.0/20", "104.16.0.0/13"];
+  // 只配 Docker 网段：同一个边缘节点后面的用户共用一个桶（文档里明说不算支持）。
+  assert.equal(clientAddress(request("203.0.113.1", "173.245.48.1"), dockerOnly), "173.245.48.1");
+  assert.equal(clientAddress(request("203.0.113.2", "173.245.48.1"), dockerOnly), "173.245.48.1");
+  // 把 Cloudflare 网段加进去：按真实客户端分桶，多个边缘节点也一样。
+  assert.equal(clientAddress(request("203.0.113.1", "173.245.48.1"), withCloudflare), "203.0.113.1");
+  assert.equal(clientAddress(request("203.0.113.2", "104.16.0.9"), withCloudflare), "203.0.113.2");
+  // 客户端自己在 XFF 里塞假地址：Cloudflare 追加的是真实地址，取右边第一个不可信的，假地址排在它左边。
+  assert.equal(clientAddress(sourceRequest("172.17.0.1", { "x-forwarded-for": "6.6.6.6, 203.0.113.1, 173.245.48.1" }), withCloudflare), "203.0.113.1");
+});
+
+test("Docker 默认 bridge：对端是网关 172.17.0.1，配置代理网段后才按真实客户端分桶", () => {
+  const request = (client: string) => sourceRequest("172.17.0.1", { "x-forwarded-for": client });
+  // 没配 WP_TRUSTED_PROXIES：所有人都落在网关地址上（单一全局桶）。
+  assert.equal(clientAddress(request("203.0.113.1")), "172.17.0.1");
+  assert.equal(clientAddress(request("203.0.113.2")), "172.17.0.1");
+  // Dockerfile 默认的 172.16.0.0/12：按 XFF 里的真实客户端分桶，且仍不放过 172.16/12 之外的直连。
+  const proxies = ["172.16.0.0/12"];
+  assert.equal(clientAddress(request("203.0.113.1"), proxies), "203.0.113.1");
+  assert.equal(clientAddress(request("203.0.113.2"), proxies), "203.0.113.2");
+  assert.equal(clientAddress(sourceRequest("198.51.100.7", { "x-forwarded-for": "203.0.113.1" }), proxies), "198.51.100.7");
+
+  const registry = new DeviceRegistry(undefined, () => 1_000_000);
+  const { code } = registry.createPairingCode();
+  const wrong = code === "000000" ? "111111" : "000000";
+  for (let i = 0; i < 20; i += 1) registry.redeem(wrong, "x", clientAddress(request("203.0.113.1"), proxies));
+  assert.deepEqual(registry.redeem(code, "手机", clientAddress(request("203.0.113.1"), proxies)), { ok: false, reason: "rate_limited" });
+  assert.equal(registry.redeem(code, "手机", clientAddress(request("203.0.113.2"), proxies)).ok, true);
 });
 
 test("auth: cross-site origin, text/plain, wrong token, proxied requests and --lan are rejected", async () => {
