@@ -162,7 +162,7 @@ test("health reports the model chain and never exposes a key; CORS only for app 
       model: "deepseek-model",
       fallbacks: ["codex"],
       memory: { enabled: false, state: "idle" },
-      memoryQueue: { pendingJobs: 0, retryingJobs: 0, pendingVectorIndexes: 0, pendingFactVectorIndexes: 0 },
+      memoryQueue: { pendingJobs: 0, retryingJobs: 0, deadJobs: 0, pendingVectorIndexes: 0, pendingFactVectorIndexes: 0 },
       // B6.4：cron 摊成 HH:MM，界面用它显示「她一般什么时候写日记」。
       schedule: { journalTime: "20:30" },
     });

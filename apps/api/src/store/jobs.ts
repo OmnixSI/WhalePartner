@@ -1,9 +1,15 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { MemoryJob, MemoryJobBatch, StoredMessage } from "./types.ts";
 
+/** 记忆任务最多尝试次数（#137）；达到后转为死信，不再被领取。 */
+export const MAX_MEMORY_JOB_ATTEMPTS = 8;
+/** 死信用远未来的 next_attempt_at 表示（表结构只有 pending/running/done 三态，不迁移）。 */
+const DEAD_LETTER_AT = "9999-12-31T00:00:00.000Z";
+
 export interface MemoryQueueStatus {
   pendingJobs: number;
   retryingJobs: number;
+  deadJobs: number;
   pendingVectorIndexes: number;
   pendingFactVectorIndexes: number;
 }
@@ -107,7 +113,9 @@ export class MemoryJobRepository {
   }
 
   fail(id: number, attempts: number, error: string) {
-    const retryAt = new Date(Date.now() + Math.min(30_000 * attempts, 3_600_000)).toISOString();
+    const retryAt = attempts >= MAX_MEMORY_JOB_ATTEMPTS
+      ? DEAD_LETTER_AT
+      : new Date(Date.now() + Math.min(30_000 * attempts, 3_600_000)).toISOString();
     this.db.prepare(`
       UPDATE memory_jobs SET status = 'pending', last_error = ?, next_attempt_at = ?, updated_at = ? WHERE id = ?
     `).run(error.slice(0, 1000), retryAt, new Date().toISOString(), id);
@@ -116,7 +124,7 @@ export class MemoryJobRepository {
   pause(id: number) {
     const now = new Date().toISOString();
     this.db.prepare(`
-      UPDATE memory_jobs SET status = 'pending', last_error = NULL, next_attempt_at = ?, updated_at = ?
+      UPDATE memory_jobs SET status = 'pending', attempts = MAX(attempts - 1, 0), last_error = NULL, next_attempt_at = ?, updated_at = ?
       WHERE id = ? AND status = 'running'
     `).run(now, now, id);
   }
@@ -128,14 +136,17 @@ export class MemoryJobRepository {
 
   status(): MemoryQueueStatus {
     const jobs = this.db.prepare(`
-      SELECT COUNT(*) AS pending, SUM(CASE WHEN last_error IS NOT NULL THEN 1 ELSE 0 END) AS retrying
+      SELECT SUM(CASE WHEN next_attempt_at < ? THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN next_attempt_at < ? AND last_error IS NOT NULL THEN 1 ELSE 0 END) AS retrying,
+        SUM(CASE WHEN next_attempt_at >= ? THEN 1 ELSE 0 END) AS dead
       FROM memory_jobs WHERE status = 'pending'
-    `).get() as unknown as { pending: number; retrying: number | null };
+    `).get(DEAD_LETTER_AT, DEAD_LETTER_AT, DEAD_LETTER_AT) as unknown as { pending: number | null; retrying: number | null; dead: number | null };
     const indexes = this.db.prepare("SELECT COUNT(*) AS pending FROM memory_experiences WHERE vector_indexed = 0").get() as unknown as { pending: number };
     const facts = this.db.prepare("SELECT COUNT(*) AS pending FROM memory_facts WHERE vector_entry_id IS NULL AND status = 'active'").get() as unknown as { pending: number };
     return {
-      pendingJobs: Number(jobs.pending),
+      pendingJobs: Number(jobs.pending ?? 0),
       retryingJobs: Number(jobs.retrying ?? 0),
+      deadJobs: Number(jobs.dead ?? 0),
       pendingVectorIndexes: Number(indexes.pending),
       pendingFactVectorIndexes: Number(facts.pending),
     };

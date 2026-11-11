@@ -204,7 +204,7 @@ test("a cancelled plan supersedes its active plan and suppresses its pending rem
   }
 });
 
-test("a terminal plan cannot complete the batch with no valid active-plan target", async () => {
+test("a terminal plan with no valid active-plan target is dropped and the rest of the batch still lands", async () => {
   const store = new ChatStore(":memory:");
   const session = store.createSession("whale", "计划终态校验");
   const old = store.add("user", "周五我会去看牙医。", null, "whale", session.id);
@@ -215,34 +215,134 @@ test("a terminal plan cannot complete the batch with no valid active-plan target
   const otherFact = store.saveFacts(otherFactMessage.id, [{
     subject: "用户", predicate: "喜好饮品", value: "咖啡", kind: "preference", evidence: "我喜欢咖啡", confidence: 0.9, importance: 0.7, supersedes: false,
   }]).facts[0]!;
-  const correction = store.add("user", "我取消周五去看牙医的安排了。", null, "whale", session.id);
-  const provider = scripted(() => JSON.stringify({
-    facts: [{
-      source_message_id: correction.id, subject: "用户", predicate: "日程安排", value: "已取消周五看牙医", kind: "plan",
-      evidence: "我取消周五去看牙医的安排了", confidence: 0.95, importance: 0.8, plan_status: "cancelled",
-      supersedes_fact_ids: [otherFact.id],
-    }],
-    topics: [], core: "", core_source_message_ids: [], observation: "",
-  }));
-
+  const correction = store.add("user", "我取消周五去看牙医的安排了，另外我养了一只猫。", null, "whale", session.id);
+  const terminal = {
+    source_message_id: correction.id, subject: "用户", predicate: "日程安排", value: "已取消周五看牙医", kind: "plan",
+    evidence: "我取消周五去看牙医的安排了", confidence: 0.95, importance: 0.8, plan_status: "cancelled",
+  };
+  const pet = {
+    source_message_id: correction.id, subject: "用户", predicate: "宠物", value: "一只猫", kind: "fact",
+    evidence: "我养了一只猫", confidence: 0.95, importance: 0.7, supersedes: false,
+  };
+  const warnings: string[] = [];
+  const warn = console.warn;
+  console.warn = (...args: unknown[]) => void warnings.push(args.join(" "));
   try {
     const context = store.memoryDistillationWorkingSet(correction.content);
-    await assert.rejects(
-      distillMemoryBatch(provider, { messages: [correction], context }),
-      /计划终态缺少对应的活动计划来源/u,
+    // 引用了另一主体无关的事实 id：无效来源，丢弃终态候选，宠物事实照常通过。
+    const wrongTarget = await distillMemoryBatch(
+      scripted(() => JSON.stringify({ facts: [{ ...terminal, supersedes_fact_ids: [otherFact.id] }, pet], topics: [], core: "", core_source_message_ids: [], observation: "" })),
+      { messages: [correction], context },
     );
-    const hiddenPlanProvider = scripted(() => JSON.stringify({
-      facts: [{
-        source_message_id: correction.id, subject: "用户", predicate: "日程安排", value: "已取消周五看牙医", kind: "plan",
-        evidence: "我取消周五去看牙医的安排了", confidence: 0.95, importance: 0.8, plan_status: "cancelled",
-      }],
-      topics: [], core: "", core_source_message_ids: [], observation: "",
-    }));
-    await assert.rejects(
-      distillMemoryBatch(hiddenPlanProvider, { messages: [correction], context: { ...context, facts: [], activePlanSubjects: ["用户"] } }),
-      /计划终态缺少对应的活动计划来源/u,
+    assert.deepEqual(wrongTarget.facts.map((fact) => fact.predicate), ["宠物"]);
+    // 活动计划根本不在上下文里：同样丢弃而不是抛错。
+    const hiddenPlan = await distillMemoryBatch(
+      scripted(() => JSON.stringify({ facts: [terminal, pet], topics: [], core: "", core_source_message_ids: [], observation: "" })),
+      { messages: [correction], context: { ...context, facts: [], activePlanSubjects: ["用户"] } },
     );
+    assert.deepEqual(hiddenPlan.facts.map((fact) => fact.predicate), ["宠物"]);
+    assert.equal(warnings.length, 2);
+    assert.match(warnings[0]!, /计划终态缺少对应的活动计划来源/u);
     assert.equal(store.listFacts().filter((fact) => fact.status === "active" && fact.kind === "plan").length, 1);
+  } finally {
+    console.warn = warn;
+    store.close();
+  }
+});
+
+test("a memory job whose terminal plan cannot find its active plan completes and writes the other facts", async () => {
+  const store = new ChatStore(":memory:");
+  const session = store.createSession("whale", "终态计划不阻塞批次");
+  const old = store.add("user", "周五我会去看牙医。", null, "whale", session.id);
+  store.saveFacts(old.id, [{
+    subject: "用户", predicate: "看牙医", value: "周五去看牙医", kind: "plan", evidence: "周五我会去看牙医", confidence: 0.95, importance: 0.8, supersedes: false,
+  }]);
+  const user = store.add("user", "我取消周五去看牙医的安排了，另外我养了一只猫。", null, "whale", session.id);
+  const assistant = store.add("assistant", "好的。", null, "whale", session.id);
+  store.enqueueMemoryJob({ sessionId: session.id, character: "whale", userMessageId: user.id, assistantMessageId: assistant.id });
+  const provider = scripted(() => JSON.stringify({
+    facts: [
+      { source_message_id: user.id, subject: "用户", predicate: "日程安排", value: "已取消周五看牙医", kind: "plan", evidence: "我取消周五去看牙医的安排了", confidence: 0.95, importance: 0.8, plan_status: "cancelled" },
+      { source_message_id: user.id, subject: "用户", predicate: "宠物", value: "一只猫", kind: "fact", evidence: "我养了一只猫", confidence: 0.95, importance: 0.7, supersedes: false },
+    ],
+    topics: [], core: "", core_source_message_ids: [], observation: "",
+  }));
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    await scheduleMemoryJobs({ store, provider });
+    assert.equal(store.memoryQueueStatus().pendingJobs, 0);
+    assert.equal(store.memoryQueueStatus().retryingJobs, 0);
+    assert.ok(store.listFacts().some((fact) => fact.predicate === "宠物" && fact.status === "active"));
+  } finally {
+    console.warn = warn;
+    store.close();
+  }
+});
+
+test("the distillation working set keeps an active plan even when related facts fill the quota", () => {
+  const store = new ChatStore(":memory:");
+  const session = store.createSession("whale", "工作集优先活动计划");
+  const planMessage = store.add("user", "周五我会去看牙医。", null, "whale", session.id);
+  const plan = store.saveFacts(planMessage.id, [{
+    subject: "用户", predicate: "看牙医", value: "周五去看牙医", kind: "plan", evidence: "周五我会去看牙医", confidence: 0.95, importance: 0.8, supersedes: false,
+  }]).facts[0]!;
+  for (let index = 0; index < 14; index += 1) {
+    const message = store.add("user", `我喜欢咖啡口味${index}。`, null, "whale", session.id);
+    store.saveFacts(message.id, [{
+      subject: "用户", predicate: `咖啡口味${index}`, value: "咖啡", kind: "preference", evidence: `我喜欢咖啡口味${index}`, confidence: 0.9, importance: 0.6, supersedes: false,
+    }]);
+  }
+  try {
+    const set = store.memoryDistillationWorkingSet("咖啡");
+    assert.equal(set.facts.length, 12);
+    assert.ok(set.facts.some((fact) => fact.id === plan.id), "活动计划必须在 12 条工作集内");
+  } finally {
+    store.close();
+  }
+});
+
+test("a memory job moves to the dead letter after the retry cap and stops being claimed", (context) => {
+  context.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+  const store = new ChatStore(":memory:");
+  const session = store.createSession("whale", "重试上限");
+  const user = store.add("user", "你好。", null, "whale", session.id);
+  const assistant = store.add("assistant", "你好。", null, "whale", session.id);
+  store.enqueueMemoryJob({ sessionId: session.id, character: "whale", userMessageId: user.id, assistantMessageId: assistant.id });
+  try {
+    context.mock.timers.tick(1_000); // 冻结的时钟要越过 SQLite 默认的入队时间
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const batch = store.claimMemoryJobBatch();
+      assert.ok(batch, `第 ${attempt} 次仍应能领取`);
+      assert.equal(batch.jobs[0]!.attempts, attempt);
+      store.failMemoryJob(batch.jobs[0]!.id, batch.jobs[0]!.attempts, "模型输出无效");
+      context.mock.timers.tick(2 * 3_600_000);
+    }
+    context.mock.timers.tick(365 * 24 * 3_600_000);
+    assert.equal(store.claimMemoryJobBatch(), undefined);
+    assert.deepEqual(
+      { pending: store.memoryQueueStatus().pendingJobs, retrying: store.memoryQueueStatus().retryingJobs, dead: store.memoryQueueStatus().deadJobs },
+      { pending: 0, retrying: 0, dead: 1 },
+    );
+  } finally {
+    store.close();
+  }
+});
+
+test("pausing a memory job for foreground chat does not spend a retry attempt", () => {
+  const store = new ChatStore(":memory:");
+  const session = store.createSession("whale", "暂停不计次");
+  const user = store.add("user", "你好。", null, "whale", session.id);
+  const assistant = store.add("assistant", "你好。", null, "whale", session.id);
+  store.enqueueMemoryJob({ sessionId: session.id, character: "whale", userMessageId: user.id, assistantMessageId: assistant.id });
+  try {
+    for (let round = 0; round < 12; round += 1) {
+      const batch = store.claimMemoryJobBatch();
+      assert.ok(batch);
+      assert.equal(batch.jobs[0]!.attempts, 1);
+      store.pauseMemoryJob(batch.jobs[0]!.id);
+    }
+    assert.equal(store.memoryQueueStatus().deadJobs, 0);
   } finally {
     store.close();
   }

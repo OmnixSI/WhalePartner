@@ -28,7 +28,7 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
     if (!batch) return;
     const controller = beginMemoryJob();
     if (!controller) {
-      for (const job of batch.jobs) store.failMemoryJob(job.id, job.attempts, "前台聊天开始，等待空闲时继续整理。");
+      for (const job of batch.jobs) store.pauseMemoryJob(job.id);
       return;
     }
     try {
