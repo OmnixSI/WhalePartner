@@ -10,23 +10,18 @@ import { FallbackChatProvider } from "../src/llm/router.ts";
 import { createApiServer } from "../src/server.ts";
 import { ChatStore } from "../src/store/index.ts";
 import type { CodexModelOption } from "../src/codex/app-server.ts";
+import { CodexBinaryError } from "../src/codex/binary.ts";
 import { acquireSetupWrite, releaseSetupWrite } from "../src/routes/setup.ts";
 
 /**
  * 模型接入（设置 › 模型接入）的契约：
  * GET 只给「配没配 + 后四位」、key 要过格式、codex effort 走白名单、写下去能读回来、同时只有一个写。
- * 每个用例都用临时目录里的 .env / config.toml，绝不碰真的 `~/.codex/config.toml`。
+ * Codex 的选择存在大肥鱼自己的 codex-settings.json；每个用例都用临时目录，绝不碰真的 `~/.codex/config.toml`。
  */
 
 /** 假的 key 也长得像真的：断言里只允许出现它的后四位。 */
 const FAKE_KEY = "sk-live-00000000000000000000abcd";
-const TOML = `model = "gpt-6-luna"
-model_reasoning_effort = "max"
-
-[profiles.reviewer]
-model = "gpt-6-astra"
-model_reasoning_effort = "xhigh"
-`;
+const SAVED = `${JSON.stringify({ model: "gpt-6-luna", effort: "max" }, null, 2)}\n`;
 
 const CODEX_MODELS: CodexModelOption[] = [
   {
@@ -65,16 +60,17 @@ interface Harness {
   close: () => void;
 }
 
-function serve(options: { env?: string; codex?: string | null } = {}): Promise<Harness> {
+function serve(options: { env?: string; codex?: string | null; codexModels?: () => Promise<CodexModelOption[]> } = {}): Promise<Harness> {
   const dir = mkdtempSync(join(tmpdir(), "wp-setup-"));
   const envPath = join(dir, ".env");
-  const codexPath = join(dir, "config.toml");
+  const codexPath = join(dir, "codex-settings.json");
   if (options.env !== undefined) writeFileSync(envPath, options.env, "utf8");
-  if (options.codex !== null) writeFileSync(codexPath, options.codex ?? TOML, "utf8");
+  if (options.codex !== null) writeFileSync(codexPath, options.codex ?? SAVED, "utf8");
 
   const store = new ChatStore(":memory:");
   const provider = new FallbackChatProvider([fakeProvider("deepseek", "deepseek-flash"), fakeProvider("codex", "gpt-6-luna")]);
-  const server = createApiServer({ config: loadConfig({}), provider, store, setup: { envPath, codexPath }, codexModels: async () => CODEX_MODELS });
+  const codexModels = options.codexModels ?? (async () => CODEX_MODELS);
+  const server = createApiServer({ config: loadConfig({}), provider, store, setup: { envPath, codexPath }, codexModels });
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
       const { port } = server.address() as AddressInfo;
@@ -100,7 +96,7 @@ const put = (base: string, path: string, body: unknown) =>
   });
 
 test("GET /api/setup 只说配没配和后四位，绝不回明文", async () => {
-  const app = await serve({ env: `API_PORT=8787\nDEEPSEEK_API_KEY=${FAKE_KEY}\n`, codex: TOML });
+  const app = await serve({ env: `API_PORT=8787\nDEEPSEEK_API_KEY=${FAKE_KEY}\n`, codex: SAVED });
   try {
     const response = await fetch(`${app.base}/api/setup`);
     assert.equal(response.status, 200);
@@ -111,45 +107,75 @@ test("GET /api/setup 只说配没配和后四位，绝不回明文", async () =>
 
     const body = JSON.parse(text) as {
       deepseek: { configured: boolean; masked: string | null };
-      codex: {
-        model: string;
-        effort: string;
-        configPath: string;
-        present: boolean;
-        catalogAvailable: boolean;
-        modelAvailable: boolean;
-        effortAvailable: boolean;
-        availableEfforts: CodexModelOption["supportedReasoningEfforts"];
-      };
+      codex: { model: string; effort: string; configPath: string; present: boolean };
       chain: string[];
     };
     assert.deepEqual(body.deepseek, { configured: true, masked: "sk-…abcd" });
-    assert.equal(body.codex.model, "gpt-6-luna");
-    assert.equal(body.codex.effort, "max");
-    assert.equal(body.codex.configPath, app.codexPath);
-    assert.equal(body.codex.present, true);
-    assert.equal(body.codex.catalogAvailable, true);
-    assert.equal(body.codex.modelAvailable, true);
-    assert.equal(body.codex.effortAvailable, true);
-    assert.deepEqual(body.codex.availableEfforts, CODEX_MODELS[0].supportedReasoningEfforts);
+    assert.deepEqual(body.codex, { model: "gpt-6-luna", effort: "max", configPath: app.codexPath, present: true });
     assert.deepEqual(body.chain, ["deepseek", "codex"]);
   } finally {
     app.close();
   }
 });
 
-test("没配 key、config.toml 也不在时如实说没有", async () => {
+test("没配 key、也没选过 Codex 模型时如实说没有", async () => {
   const app = await serve({ env: "API_PORT=8787\n", codex: null });
   try {
     const body = (await (await fetch(`${app.base}/api/setup`)).json()) as {
       deepseek: { configured: boolean; masked: string | null };
-      codex: { model: string; effort: string; present: boolean; catalogAvailable: boolean };
+      codex: { model: string; effort: string; present: boolean };
     };
     assert.deepEqual(body.deepseek, { configured: false, masked: null });
     assert.equal(body.codex.present, false);
+    assert.equal(body.codex.model, "", "没选过就是空，由界面按模型列表的默认项显示");
+    assert.equal(body.codex.effort, "");
+  } finally {
+    app.close();
+  }
+});
+
+test("GET /api/setup 不等 Codex 模型列表：列表读不到时已保存的值照样返回", async () => {
+  const app = await serve({ codex: SAVED, codexModels: () => Promise.reject(new Error("app-server 起不来")) });
+  try {
+    const setup = await fetch(`${app.base}/api/setup`);
+    assert.equal(setup.status, 200);
+    const body = (await setup.json()) as { codex: { model: string; effort: string } };
     assert.equal(body.codex.model, "gpt-6-luna");
-    assert.equal(body.codex.effort, "medium");
-    assert.equal(body.codex.catalogAvailable, true);
+    assert.equal(body.codex.effort, "max");
+
+    const models = await fetch(`${app.base}/api/setup/codex/models`);
+    assert.equal(models.status, 503);
+    assert.equal(((await models.json()) as { error: string }).error, "codex_unavailable");
+  } finally {
+    app.close();
+  }
+});
+
+test("只找到改参数的包装脚本时，模型列表和保存都返回 503 并说明原因，不改已保存的值", async () => {
+  const reason = "找到的 codex（/opt/homebrew/bin/codex）是会改写模型参数的包装脚本，大肥鱼不用它；没找到真实的 Codex CLI。请用环境变量 WP_CODEX_BIN 指向真实的 codex。";
+  const app = await serve({ codex: SAVED, codexModels: () => Promise.reject(new CodexBinaryError(reason)) });
+  try {
+    const models = await fetch(`${app.base}/api/setup/codex/models`);
+    assert.equal(models.status, 503);
+    assert.deepEqual(await models.json(), { error: "codex_unavailable", message: reason, kind: "binary" });
+
+    const saved = await fetch(`${app.base}/api/setup/codex`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "gpt-6-luna", effort: "high" }) });
+    assert.equal(saved.status, 503);
+    assert.equal(((await saved.json()) as { message: string }).message, reason);
+    assert.deepEqual(JSON.parse(readFileSync(app.codexPath, "utf8")), JSON.parse(SAVED));
+  } finally {
+    app.close();
+  }
+});
+
+test("GET /api/setup/codex/models 原样给出 Codex 的模型列表和每个模型支持的档位", async () => {
+  const app = await serve();
+  try {
+    const response = await fetch(`${app.base}/api/setup/codex/models`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(((await response.json()) as { models: CodexModelOption[] }).models, CODEX_MODELS);
+    const wrongMethod = await fetch(`${app.base}/api/setup/codex/models`, { method: "POST" });
+    assert.equal(wrongMethod.status, 405);
   } finally {
     app.close();
   }
@@ -209,7 +235,7 @@ test("PUT /api/setup/deepseek：.env 里原来写的是 export 那一行，也�
 });
 
 test("PUT /api/setup/codex：effort 只认当前模型清单，model 不许带空格", async () => {
-  const app = await serve({ codex: TOML });
+  const app = await serve({ codex: SAVED });
   try {
     const badEffort = await put(app.base, "/api/setup/codex", { effort: "turbo" });
     assert.equal(badEffort.status, 400);
@@ -219,7 +245,7 @@ test("PUT /api/setup/codex：effort 只认当前模型清单，model 不许带�
     assert.equal(unsupportedEffort.status, 400);
     assert.equal(((await unsupportedEffort.json()) as { error: string }).error, "invalid_effort");
 
-    for (const model of ["a", "has space", "quote\"inside", `x${"y".repeat(64)}`]) {
+    for (const model of ["a", "has space", "not-in-list", `x${"y".repeat(64)}`]) {
       const refused = await put(app.base, "/api/setup/codex", { model });
       assert.equal(refused.status, 400, `应当拒绝模型名：${model}`);
       assert.equal(((await refused.json()) as { error: string }).error, "invalid_model");
@@ -229,14 +255,14 @@ test("PUT /api/setup/codex：effort 只认当前模型清单，model 不许带�
     assert.equal(empty.status, 400);
 
     // 被拒之后文件一个字节都没动
-    assert.equal(readFileSync(app.codexPath, "utf8"), TOML);
+    assert.equal(readFileSync(app.codexPath, "utf8"), SAVED);
   } finally {
     app.close();
   }
 });
 
-test("PUT /api/setup/codex：写下去能读回来，只动顶层同名那两行", async () => {
-  const app = await serve({ codex: TOML });
+test("PUT /api/setup/codex：写进大肥鱼自己的设置文件，能读回来", async () => {
+  const app = await serve({ codex: SAVED });
   try {
     const saved = await put(app.base, "/api/setup/codex", { model: "gpt-6-luna-preview", effort: "high" });
     assert.equal(saved.status, 200);
@@ -249,13 +275,7 @@ test("PUT /api/setup/codex：写下去能读回来，只动顶层同名那两行
     assert.equal(body.restartRequired, false);
     assert.equal(body.codex.model, "gpt-6-luna-preview");
     assert.equal(body.codex.effort, "high");
-
-    const toml = readFileSync(app.codexPath, "utf8");
-    assert.match(toml, /^model = "gpt-6-luna-preview"$/m);
-    assert.match(toml, /^model_reasoning_effort = "high"$/m);
-    assert.match(toml, /\[profiles\.reviewer\]\nmodel = "gpt-6-astra"/, "子表里的 model 不能被改");
-    assert.match(toml, /\[profiles\.reviewer\][\s\S]*model_reasoning_effort = "xhigh"/, "子表里的 effort 不能被改");
-    assert.ok(existsSync(`${app.codexPath}.bak`), "写之前要备份 config.toml.bak");
+    assert.deepEqual(JSON.parse(readFileSync(app.codexPath, "utf8")), { model: "gpt-6-luna-preview", effort: "high" });
 
     const reread = (await (await fetch(`${app.base}/api/setup`)).json()) as { codex: { model: string; effort: string } };
     assert.equal(reread.codex.model, "gpt-6-luna-preview");
@@ -265,24 +285,19 @@ test("PUT /api/setup/codex：写下去能读回来，只动顶层同名那两行
   }
 });
 
-test("PUT /api/setup/codex：顶层没有这两项就补在第一个子表之前", async () => {
-  const app = await serve({ codex: `approval_policy = "never"\n\n[features]\njs_repl = false\n` });
+test("PUT /api/setup/codex：只给 effort 时沿用已保存的模型；没选过模型就用列表默认模型", async () => {
+  const app = await serve({ codex: null });
   try {
-    const saved = await put(app.base, "/api/setup/codex", { model: "gpt-6-luna", effort: "medium" });
+    const saved = await put(app.base, "/api/setup/codex", { effort: "xhigh" });
     assert.equal(saved.status, 200);
-    const toml = readFileSync(app.codexPath, "utf8");
-    assert.equal(toml.split("\n")[0], `approval_policy = "never"`);
-    assert.match(toml, /^model = "gpt-6-luna"$/m);
-    assert.match(toml, /^model_reasoning_effort = "medium"$/m);
-    assert.ok(toml.indexOf('model = "gpt-6-luna"') < toml.indexOf("[features]"), "补在顶层区，别掉进子表");
-    assert.match(toml, /\[features\]\njs_repl = false/);
+    assert.deepEqual(JSON.parse(readFileSync(app.codexPath, "utf8")), { model: "gpt-6-luna", effort: "xhigh" });
   } finally {
     app.close();
   }
 });
 
 test("同时只允许一个写：抢不到锁就回 409", async () => {
-  const app = await serve({ codex: TOML });
+  const app = await serve({ codex: SAVED });
   try {
     assert.equal(acquireSetupWrite(), true, "先占住写锁，模拟另一个请求正在写");
     try {
@@ -301,7 +316,7 @@ test("同时只允许一个写：抢不到锁就回 409", async () => {
 
     const allowed = await put(app.base, "/api/setup/codex", { effort: "low" });
     assert.equal(allowed.status, 200, "放锁之后要能写");
-    assert.match(readFileSync(app.codexPath, "utf8"), /^model_reasoning_effort = "low"$/m);
+    assert.equal(JSON.parse(readFileSync(app.codexPath, "utf8")).effort, "low");
   } finally {
     app.close();
   }

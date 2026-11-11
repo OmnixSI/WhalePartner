@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { tmpdir } from "node:os";
+import { resolveCodexBinary } from "./binary.ts";
 import { listCodexModels, resolveCodexSettings } from "./app-server.ts";
 import { readStoredCodexSettings, type StoredCodexSettings } from "./settings.ts";
 
@@ -133,7 +134,14 @@ export function runCodexExec(args: string[], prompt: string, signal?: AbortSigna
   signal?.throwIfAborted();
   return new Promise<CodexExecOutput>((resolve, reject) => {
     // 独立进程组：Codex 自己拉起的命令也归我们管，中止时一起结束。
-    const codex = spawn("codex", args, { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
+    let binary: string;
+    try {
+      binary = resolveCodexBinary();
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    const codex = spawn(binary, args, { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     let timeout: ReturnType<typeof setTimeout> | undefined;

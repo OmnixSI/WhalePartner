@@ -18,7 +18,7 @@ import type { CodexModelOption } from "../codex/app-server.ts";
 export interface SetupPaths {
   /** 写 `DEEPSEEK_API_KEY` 的 `.env`；不传就用 `apps/api/.env`。 */
   envPath?: string;
-  /** Codex 的 `config.toml`；不传就用 `~/.codex/config.toml`。 */
+  /** 大肥鱼自己的 Codex 设置文件；不传就用数据目录里的 `codex-settings.json`。 */
   codexPath?: string;
 }
 

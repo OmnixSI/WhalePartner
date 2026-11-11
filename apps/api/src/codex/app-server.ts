@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import { tmpdir } from "node:os";
+import { resolveCodexBinary } from "./binary.ts";
 import type { StoredCodexSettings } from "./settings.ts";
 
 const REQUEST_TIMEOUT_MS = 30000;
@@ -24,17 +25,41 @@ export interface ResolvedCodexSettings extends StoredCodexSettings {
   modelOption: CodexModelOption;
 }
 
+/** Codex 没给某个模型的档位清单时可选的通用档位；客户端 `codex-model-options.ts` 用同一份。 */
+export const GENERIC_REASONING_EFFORTS: readonly string[] = ["low", "medium", "high", "xhigh"];
+
+/**
+ * 这个模型能用的推理强度：Codex 给了清单就按清单；没给清单时用通用档位，
+ * 模型自己的默认档位（比如 max、none）不在通用档位里就补上，不把它丢掉。
+ */
+export function supportedEffortsOf(model: CodexModelOption): string[] {
+  const listed = model.supportedReasoningEfforts.map((option) => option.reasoningEffort);
+  if (listed.length > 0) return listed;
+  const fallback = model.defaultReasoningEffort;
+  return fallback && !GENERIC_REASONING_EFFORTS.includes(fallback) ? [...GENERIC_REASONING_EFFORTS, fallback] : [...GENERIC_REASONING_EFFORTS];
+}
+
+/** 没选档位时用的：模型自己的默认档位（在可选范围内时），否则可选档位的第一项。 */
+export function defaultEffortOf(model: CodexModelOption): string {
+  const supported = supportedEffortsOf(model);
+  return supported.includes(model.defaultReasoningEffort) ? model.defaultReasoningEffort : supported[0];
+}
+
+/** 推理实际用的模型：设置里选过就是那一个，没选就是 Codex 模型列表的默认项；推理、展示和探测都走这里。 */
+export function resolveCodexModel(stored: StoredCodexSettings, models: CodexModelOption[]): CodexModelOption | undefined {
+  if (stored.model) return models.find((model) => model.model === stored.model);
+  return models.find((model) => model.isDefault) ?? models[0];
+}
+
 export function resolveCodexSettings(stored: StoredCodexSettings, models: CodexModelOption[]): ResolvedCodexSettings {
-  let modelOption: CodexModelOption | undefined;
-  if (stored.model) modelOption = models.find((model) => model.model === stored.model);
-  else modelOption = models.find((model) => model.isDefault) ?? models[0];
+  const modelOption = resolveCodexModel(stored, models);
 
   if (!modelOption) {
     throw new Error(stored.model ? `本机 Codex 当前没有可用模型：${stored.model}` : "本机 Codex 没有可用模型。");
   }
 
-  const effort = stored.effort || modelOption.defaultReasoningEffort;
-  const supportedEfforts = modelOption.supportedReasoningEfforts.map((option) => option.reasoningEffort);
+  const supportedEfforts = supportedEffortsOf(modelOption);
+  const effort = stored.effort || defaultEffortOf(modelOption);
   if (!supportedEfforts.includes(effort)) {
     throw new Error(`推理强度 ${effort} 不在 ${modelOption.model} 当前可用列表中：${supportedEfforts.join(" / ")}`);
   }
@@ -199,7 +224,8 @@ class CodexAppServer {
 
   async #ensureReady() {
     if (this.#ready) return this.#ready;
-    const child = spawn("codex", ["app-server", "--stdio", "-c", "mcp_servers={}"], { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
+    // 按解析出的真实路径拉起，绕过会改写参数的包装脚本；找不到就直接抛错。
+    const child = spawn(resolveCodexBinary(), ["app-server", "--stdio", "-c", "mcp_servers={}"], { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
     this.#child = child;
     this.#reader = createInterface({ input: child.stdout });
     this.#reader.on("line", (line) => this.#readLine(line));

@@ -138,7 +138,7 @@
 |---|---|
 | `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_BASE_URL` | 主模型，默认 `deepseek-flash` |
 | `BACKUP_LLM_BASE_URL`、`BACKUP_LLM_API_KEY`、`BACKUP_LLM_MODEL` | 备用 OpenAI 兼容接口，三项齐全才启用 |
-| `CODEX_FALLBACK`、`CODEX_HOME`、`CODEX_REASONING_EFFORT` | 本机 Codex 兜底（默认开）；模型与推理强度按 `CODEX_HOME/config.toml`（默认 `~/.codex/config.toml`）读取，环境变量仅在配置文件未写推理强度时使用。设置界面只展示 `model/list` 返回的当前模型可用档位，下一轮请求按选项原样调用。 |
+| `CODEX_FALLBACK` | 本机 Codex 兜底（默认开）。模型与推理强度只来自「设置 › 模型接入」，存在数据目录的 `codex-settings.json`；大肥鱼自己不读也不写用户的 `~/.codex/config.toml`。app-server 启动时 Codex 仍会加载它自身的配置，但大肥鱼每轮都显式覆盖模型和档位（`thread/start` 的 `model`、`turn/start` 的 `model` 与 `effort`）；`codex exec` 用 `--ignore-user-config` 加 `-m` / `-c model_reasoning_effort`。所以用户自己的 Codex 换模型不会影响大肥鱼。Codex 可执行文件按 `WP_CODEX_BIN` → PATH 上的 `codex` → ChatGPT.app 自带的 CLI 的顺序查找，跳过包装脚本（例如 ARIS shim），但只识别「以 `#!` 开头、文本里含 `model_reasoning_effort`」的文本脚本：只改 `-m` 的脚本或编译型包装器识别不了，这种情况请用 `WP_CODEX_BIN` 指向真实的 codex。只找到可识别的包装脚本时报错，不回落；读模型列表失败且原因是找不到可用 Codex 时，`GET /api/setup/codex/models` 的 503 响应带 `kind: "binary"`。没选过时用 `model/list` 的默认模型和它的默认档位。设置界面的模型列表来自 `GET /api/setup/codex/models`。 |
 | `MEMORY`、`MEMORY_DIR` | `MEMORY=off` 关闭 Mem0 与语义索引；SQLite 记忆档案继续运行。向量数据和模型默认在 `apps/api/.local/memory` |
 | `API_HOST`、`API_PORT`、`APP_DB_PATH`、`LLM_TIMEOUT_MS` | 监听地址、端口、聊天/待看/日记共用的 SQLite 文件位置、等待模型首个响应的超时 |
 | `DIARY_CRON` | 定时日记 cron 表达式，按 API 主机本地时区运行；默认 `0 20 * * *`（每日 20:00） |

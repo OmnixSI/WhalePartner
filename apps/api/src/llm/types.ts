@@ -35,4 +35,6 @@ export interface ChatProvider {
   stream(messages: ChatMessage[], options?: StreamOptions): AsyncIterable<LlmDelta>;
   /** 可选：探测上游可用模型，用于启动自检。 */
   listModels?(signal?: AbortSignal): Promise<string[]>;
+  /** 可选：`model` 要等上游列表才能确定时（如 Codex 未选模型走默认项），返回推理实际会用的模型名。 */
+  resolveModel?(signal?: AbortSignal): Promise<string>;
 }

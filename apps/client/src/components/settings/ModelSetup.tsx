@@ -1,48 +1,45 @@
 /**
  * 模型接入（设置 › 模型接入）。
  *
- * 「接 DeepSeek 的 api」和「调 Codex 的模型和推理强度」以前只躺在 `.env` 和
- * `~/.codex/config.toml` 里，界面上完全看不见。这里把它们摆出来：
+ * 「接 DeepSeek 的 api」和「调 Codex 的模型和推理强度」摆到界面上：
  *
  * - DeepSeek：只显示「已配置 sk-…abcd / 未配置」，输入框只往上传，**不回显明文**；
- * - Codex：显示现在用的 model + effort，能改就写回 config.toml；
+ * - Codex：模型和推理档位都是下拉菜单，选项来自 `GET /api/setup/codex/models`；
+ *   列表单独拉取，拉取中或失败时已保存的值照样显示，不会清空；
  * - 测试连接：打 `/api/health?probe=1`，告诉你现在实际走的是哪家模型。
  *
- * 数字和状态只有后端一个来源：拿不到就写「现在拿不到」，不自己编。
+ * 接口：`GET /api/setup` 读已保存的值，`GET /api/setup/codex/models` 读
+ * 模型列表，`PUT /api/setup/codex` 用 `{ model, effort }` 保存。
+ * 数字和状态只有后端一个来源：拿不到就写「现在拿不到」，不自己编模型名。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE } from "../../lib/api";
+import {
+  catalogFailureHint,
+  defaultEffort,
+  defaultModel,
+  effortAfterModelChange,
+  effortChoices,
+  effortsFor,
+  findModel,
+  modelChoices,
+  parseCodexModels,
+  type CodexModelOption,
+} from "../../lib/codex-model-options";
 import { describeNetError } from "../../lib/net";
 import { SettingRow } from "./Row";
-
-interface CodexEffortOption {
-  reasoningEffort: string;
-  description: string;
-}
-
-interface CodexModelOption {
-  model: string;
-  displayName: string;
-  defaultReasoningEffort: string;
-  supportedReasoningEfforts: CodexEffortOption[];
-  isDefault: boolean;
-}
 
 interface DeepSeekState {
   configured: boolean;
   masked: string | null;
 }
 
+/** `model` / `effort` 为空表示还没保存过，推理时用 Codex 列表里的默认模型和默认档位。 */
 interface CodexState {
   model: string;
   effort: string;
   configPath: string;
   present: boolean;
-  catalogAvailable: boolean;
-  modelAvailable: boolean;
-  effortAvailable: boolean;
-  availableEfforts: CodexEffortOption[];
-  models: CodexModelOption[];
 }
 
 interface SetupState {
@@ -53,6 +50,9 @@ interface SetupState {
 
 type Phase = { phase: "loading" } | { phase: "ok"; data: SetupState } | { phase: "down" };
 
+/** 模型列表单独拉：要先拉起本机 Codex，可能慢也可能失败，不能拖住已保存的值。 */
+type Catalog = { phase: "loading" } | { phase: "ok"; models: CodexModelOption[] } | { phase: "failed"; message: string; hint: string };
+
 type Probe =
   | { phase: "idle" }
   | { phase: "busy" }
@@ -60,11 +60,14 @@ type Probe =
   | { phase: "failed"; note: string };
 
 const REASONING_EFFORT_LABELS: Record<string, string> = {
+  none: "无",
+  minimal: "最少",
   low: "低",
   medium: "中",
   high: "高",
   xhigh: "超高",
   max: "最高",
+  ultra: "极高",
 };
 
 function reasoningEffortLabel(effort: string): string {
@@ -83,9 +86,7 @@ function isSetup(value: unknown): value is SetupState {
       typeof setup.codex.model === "string" &&
       typeof setup.codex.effort === "string" &&
       typeof setup.codex.configPath === "string" &&
-      typeof setup.codex.catalogAvailable === "boolean" &&
-      Array.isArray(setup.codex.availableEfforts) &&
-      Array.isArray(setup.codex.models) &&
+      typeof setup.codex.present === "boolean" &&
       Array.isArray(setup.chain),
   );
 }
@@ -115,13 +116,32 @@ export function ModelSetup({ offline, onToast }: Props) {
   const [effortDraft, setEffortDraft] = useState("");
   const [savingCodex, setSavingCodex] = useState(false);
   const [codexError, setCodexError] = useState("");
+  const [catalog, setCatalog] = useState<Catalog>({ phase: "loading" });
   const [probe, setProbe] = useState<Probe>({ phase: "idle" });
   const alive = useRef(true);
 
   const apply = useCallback((data: SetupState) => {
     setState({ phase: "ok", data });
     setModelDraft(data.codex.model);
-    setEffortDraft(data.codex.effortAvailable ? data.codex.effort : "");
+    setEffortDraft(data.codex.effort);
+  }, []);
+
+  /** 模型列表单独拉：列表失败时已保存的 model / effort 仍然留在下拉里。 */
+  const loadCatalog = useCallback(async () => {
+    setCatalog({ phase: "loading" });
+    try {
+      const response = await fetch(`${API_BASE}/api/setup/codex/models`);
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { message?: string; error?: string; kind?: string };
+        const message = body.message ?? body.error ?? `请求失败（HTTP ${response.status}）`;
+        if (alive.current) setCatalog({ phase: "failed", message, hint: catalogFailureHint(body.kind) });
+        return;
+      }
+      const models = parseCodexModels(await response.json());
+      if (alive.current) setCatalog({ phase: "ok", models });
+    } catch (error) {
+      if (alive.current) setCatalog({ phase: "failed", message: describeNetError(error, "读不到本机 Codex 的模型列表"), hint: catalogFailureHint(undefined) });
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -144,10 +164,28 @@ export function ModelSetup({ offline, onToast }: Props) {
   useEffect(() => {
     alive.current = true;
     void load();
+    void loadCatalog();
     return () => {
       alive.current = false;
     };
-  }, [load]);
+  }, [load, loadCatalog]);
+
+  // 没保存过模型 / 档位：列表到了以后，下拉先停在 Codex 的默认模型和它的默认档位上（还没保存）。
+  useEffect(() => {
+    if (state.phase !== "ok" || catalog.phase !== "ok") return;
+    const saved = state.data.codex;
+    if (saved.model === "") {
+      const fallback = defaultModel(catalog.models);
+      if (!fallback) return;
+      setModelDraft((current) => current || fallback.model);
+      setEffortDraft((current) => current || defaultEffort(fallback));
+      return;
+    }
+    if (saved.effort === "") {
+      const option = findModel(catalog.models, saved.model);
+      if (option) setEffortDraft((current) => current || defaultEffort(option));
+    }
+  }, [state, catalog]);
 
   const saveKey = async () => {
     if (offline || savingKey) return;
@@ -173,14 +211,12 @@ export function ModelSetup({ offline, onToast }: Props) {
   const saveCodex = async () => {
     if (offline || savingCodex || state.phase !== "ok") return;
     const { codex } = state.data;
-    const patch: { model?: string; effort?: string } = {};
-    const model = modelDraft.trim();
-    if (model && model !== codex.model) patch.model = model;
-    if (effortDraft && effortDraft !== codex.effort) patch.effort = effortDraft;
-    if (patch.model === undefined && patch.effort === undefined) {
-      onToast("模型和推理强度都没变。");
+    if (modelDraft === codex.model && effortDraft === codex.effort) {
+      onToast("模型和推理档位都没变。");
       return;
     }
+    // 两项一起存：换模型时档位已按新模型回落，后端不会拿到不支持的组合。
+    const patch = { model: modelDraft, effort: effortDraft };
     setSavingCodex(true);
     setCodexError("");
     try {
@@ -190,10 +226,10 @@ export function ModelSetup({ offline, onToast }: Props) {
         body: JSON.stringify(patch),
       });
       if (!response.ok) throw new Error(await errorText(response));
-      onToast("已保存。下一轮会按选中的模型和推理强度调用。");
+      onToast("已保存。下一轮会按选中的模型和推理档位调用。");
       await load();
     } catch (error) {
-      setCodexError(describeNetError(error, "没写进 Codex"));
+      setCodexError(describeNetError(error, "没存上"));
     } finally {
       setSavingCodex(false);
     }
@@ -234,7 +270,7 @@ export function ModelSetup({ offline, onToast }: Props) {
     return (
       <div className="set-state" role="status">
         <p className="set-state__title">模型设置暂时看不到</p>
-        <p className="set-state__desc">接哪家模型、用多大强度，这两项只从后端读；现在拿不到，就不猜给你。</p>
+        <p className="set-state__desc">接哪家模型、用多大档位，这两项只从后端读；现在拿不到，就不猜给你。</p>
         <button type="button" className="btn btn--secondary" onClick={() => void load()}>
           再试一次
         </button>
@@ -243,12 +279,26 @@ export function ModelSetup({ offline, onToast }: Props) {
   }
 
   const { data } = state;
-  const modelOption = data.codex.models.find((item) => item.model === modelDraft.trim());
-  const availableEfforts = modelOption?.supportedReasoningEfforts ?? [];
-  const modelChanged = modelDraft.trim() !== "" && modelDraft.trim() !== data.codex.model;
-  const effortChanged = effortDraft !== "" && effortDraft !== data.codex.effort;
-  const effortIsAvailable = availableEfforts.some((item) => item.reasoningEffort === effortDraft);
-  const canSaveCodex = !offline && !savingCodex && Boolean(modelOption) && effortIsAvailable && (modelChanged || effortChanged);
+  const models = catalog.phase === "ok" ? catalog.models : [];
+  const modelOption = findModel(models, modelDraft);
+  const supportedEfforts = effortsFor(modelOption);
+  // 列表还没到或拉取失败：只显示已保存的值（下拉禁用），不判断它在不在列表里。
+  const savedOnly = (value: string, text: string) => (value !== "" ? [{ value, label: text, missing: false }] : []);
+  const modelOptions = catalog.phase === "ok" ? modelChoices(models, modelDraft) : savedOnly(modelDraft, modelDraft);
+  const effortOptions =
+    catalog.phase === "ok"
+      ? effortChoices(modelOption, effortDraft, reasoningEffortLabel)
+      : savedOnly(effortDraft, reasoningEffortLabel(effortDraft));
+  const changed = modelDraft !== data.codex.model || effortDraft !== data.codex.effort;
+  const canSaveCodex =
+    !offline &&
+    !savingCodex &&
+    catalog.phase === "ok" &&
+    Boolean(modelOption) &&
+    supportedEfforts.includes(effortDraft) &&
+    changed;
+  const savedModelMissing = catalog.phase === "ok" && data.codex.model !== "" && !findModel(models, data.codex.model);
+  const draftEffortMissing = Boolean(modelOption) && effortDraft !== "" && !supportedEfforts.includes(effortDraft);
 
   return (
     <div className="mset">
@@ -302,17 +352,17 @@ export function ModelSetup({ offline, onToast }: Props) {
       <SettingRow
         icon="settings"
         title="Codex"
-        desc="模型和推理强度写在本机 Codex 的配置里，改完下一轮调用就按新的来。"
+        desc="大肥鱼调用 Codex 时固定用这里选的模型和推理档位，不跟着你自己的 Codex 走，也不改它的配置。"
         stacked
       >
         <p className="mset__now">
-          {data.codex.present ? (
+          {data.codex.model ? (
             <>
-              现在用 <strong>{data.codex.model || "（没选模型）"}</strong>
+              现在用 <strong>{data.codex.model}</strong>
               {data.codex.effort ? ` · ${reasoningEffortLabel(data.codex.effort)}` : ""}
             </>
           ) : (
-            <>使用本机列表中的默认模型 <strong>{data.codex.model || "（暂不可用）"}</strong>{data.codex.effort ? ` · ${reasoningEffortLabel(data.codex.effort)}` : ""}</>
+            <>还没选过，用本机 Codex 列表里的默认模型</>
           )}
         </p>
         <div className="mset__form mset__form--codex">
@@ -320,57 +370,68 @@ export function ModelSetup({ offline, onToast }: Props) {
             <label className="mset__label" htmlFor="mset-model">
               模型
             </label>
-            <input
+            <select
               id="mset-model"
-              className="field mset__field"
-              type="text"
-              maxLength={64}
-              list="mset-codex-models"
-              spellCheck={false}
-              placeholder="例如 gpt-6-luna"
+              className="field mset__select"
               value={modelDraft}
-              disabled={offline || savingCodex}
+              disabled={offline || savingCodex || catalog.phase !== "ok"}
               onChange={(event) => {
-                const nextModel = event.target.value;
-                const nextOption = data.codex.models.find((item) => item.model === nextModel.trim());
-                const defaultEffort = nextOption?.supportedReasoningEfforts.some(
-                  (item) => item.reasoningEffort === nextOption.defaultReasoningEffort,
-                ) ? nextOption.defaultReasoningEffort : "";
-                setModelDraft(nextModel);
-                setEffortDraft((current) =>
-                  nextOption?.supportedReasoningEfforts.some((item) => item.reasoningEffort === current)
-                    ? current
-                    : defaultEffort,
-                );
+                const next = findModel(models, event.target.value);
+                setModelDraft(event.target.value);
+                setEffortDraft((current) => effortAfterModelChange(next, current));
               }}
-            />
-            <datalist id="mset-codex-models">
-              {data.codex.models.map((item) => (
-                <option key={item.model} value={item.model}>
-                  {item.displayName}
+            >
+              {modelDraft === "" && (
+                <option value="" disabled>
+                  {catalog.phase === "loading"
+                    ? "正在读模型列表…"
+                    : catalog.phase === "failed"
+                      ? "模型列表暂时读不到"
+                      : modelOptions.length === 0
+                        ? "本机 Codex 没有可用模型"
+                        : "选择模型"}
                 </option>
-              ))}
-            </datalist>
+              )}
+              {catalog.phase !== "ok" && modelDraft !== "" && <option value={modelDraft}>{modelDraft}</option>}
+              {catalog.phase === "ok" &&
+                modelOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+            </select>
           </div>
           <div className="mset__item">
             <label className="mset__label" htmlFor="mset-effort">
-              推理强度
+              推理档位
             </label>
             <select
               id="mset-effort"
               className="field mset__select"
               value={effortDraft}
-              disabled={offline || savingCodex}
+              disabled={offline || savingCodex || catalog.phase !== "ok" || !modelOption}
               onChange={(event) => setEffortDraft(event.target.value)}
             >
-              <option value="" disabled>
-                {data.codex.catalogAvailable ? "选择当前模型支持的档位" : "暂时读不到可用档位"}
-              </option>
-              {availableEfforts.map((item) => (
-                <option key={item.reasoningEffort} value={item.reasoningEffort}>
-                  {reasoningEffortLabel(item.reasoningEffort)}
+              {effortDraft === "" && (
+                <option value="" disabled>
+                  {catalog.phase === "loading"
+                    ? "正在读可用档位…"
+                    : catalog.phase === "failed"
+                      ? "模型列表暂时读不到"
+                      : modelOption
+                        ? "选择推理档位"
+                        : "先选模型"}
                 </option>
-              ))}
+              )}
+              {catalog.phase !== "ok" && effortDraft !== "" && (
+                <option value={effortDraft}>{reasoningEffortLabel(effortDraft)}</option>
+              )}
+              {catalog.phase === "ok" &&
+                effortOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
             </select>
           </div>
           <button
@@ -379,13 +440,34 @@ export function ModelSetup({ offline, onToast }: Props) {
             disabled={!canSaveCodex}
             onClick={() => void saveCodex()}
           >
-            {savingCodex ? "正在写…" : "保存"}
+            {savingCodex ? "正在存…" : "保存"}
           </button>
         </div>
-        {!data.codex.catalogAvailable && <p className="set-row__bad" role="status">暂时读不到本机 Codex 的模型清单，不能保存未确认的推理强度。</p>}
-        {data.codex.catalogAvailable && !modelOption && <p className="set-row__bad" role="status">这个模型不在本机 Codex 的可用清单中。</p>}
-        {modelOption && !data.codex.effortAvailable && !effortChanged && <p className="set-row__bad" role="status">已保存的推理强度不在此模型的当前可用清单中，请重新选择。</p>}
-        <p className="mset__path">{data.codex.configPath}</p>
+        {catalog.phase === "loading" && (
+          <p className="mset__hint" role="status">
+            正在读本机 Codex 的模型列表…
+          </p>
+        )}
+        {catalog.phase === "failed" && (
+          <div className="mset__error" role="alert">
+            <p className="set-row__bad">{catalog.message}</p>
+            <p className="mset__hint">{catalog.hint}</p>
+            <button type="button" className="btn btn--secondary" disabled={offline} onClick={() => void loadCatalog()}>
+              重试
+            </button>
+          </div>
+        )}
+        {savedModelMissing && (
+          <p className="set-row__bad" role="status">
+            已保存的模型 {data.codex.model} 不在当前列表里，调用会失败；请换一个再保存。
+          </p>
+        )}
+        {draftEffortMissing && (
+          <p className="set-row__bad" role="status">
+            推理档位 {reasoningEffortLabel(effortDraft)} 不在这个模型的可用档位里，请重新选择。
+          </p>
+        )}
+        <p className="mset__path">大肥鱼自己的设置文件：{data.codex.configPath}</p>
         {codexError && (
           <p className="set-row__bad" role="alert">
             {codexError}
