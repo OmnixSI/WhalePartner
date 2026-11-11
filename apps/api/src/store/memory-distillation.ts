@@ -46,7 +46,9 @@ export class MemoryDistillationRepository {
     const currentFacts = this.#facts.listFacts(100).filter((fact) => fact.status === "active");
     const recentPlans = currentFacts.filter((fact) => fact.kind === "plan").slice(0, 8);
     const recentFacts = currentFacts.slice(0, 8);
-    const facts = [...new Map([...relatedFacts, ...recentPlans, ...recentFacts].map((fact) => [fact.id, fact])).values()]
+    // 终态计划必须引用活动计划 id（#137）：先带上最近的活动计划，避免被 16 条 bm25 相关事实挤出 12 条配额。
+    const leadPlans = recentPlans.slice(0, 4);
+    const facts = [...new Map([...leadPlans, ...relatedFacts, ...recentPlans, ...recentFacts].map((fact) => [fact.id, fact])).values()]
       .slice(0, 12)
       .map((fact) => ({
         ...fact,

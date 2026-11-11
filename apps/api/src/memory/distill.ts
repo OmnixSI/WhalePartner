@@ -83,7 +83,9 @@ export async function distillMemoryBatch(
     const allowedSupersedesIds = terminalPlan ? activePlanIds : activeFactIds;
     const supersedesFactIds = row.supersedes === true || terminalPlan ? sourceIds(row.supersedes_fact_ids, allowedSupersedesIds).slice(0, 8) : [];
     if (terminalPlan && activePlanSubjects.has(subject) && supersedesFactIds.length === 0) {
-      throw new Error("计划终态缺少对应的活动计划来源，保留本批任务并稍后重试。");
+      // 同一输入重试必然同一结果，整批失败只会无限重试（#137）：丢弃这条候选，旧计划保持 active，其余内容照常写入。
+      console.warn(`计划终态缺少对应的活动计划来源，已丢弃该候选：${subject} · ${predicate}`);
+      return [];
     }
     const supersedes = row.supersedes === true || terminalPlan;
     return [{

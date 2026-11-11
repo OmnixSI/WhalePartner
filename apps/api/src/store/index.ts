@@ -50,6 +50,7 @@ export class ChatStore {
     this.#experiences = new ExperienceRepository(this.#db);
     this.#observations = new ObservationRepository(this.#db);
     this.#jobs = new MemoryJobRepository(this.#db);
+    this.#jobs.reviveDead();
     this.#proactive = new ProactiveRepository(this.#db, this.#sessions);
     this.#relationship = new RelationshipRepository(this.#db);
   }
