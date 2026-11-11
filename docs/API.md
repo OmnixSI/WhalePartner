@@ -138,7 +138,7 @@
 |---|---|
 | `DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`、`DEEPSEEK_BASE_URL` | 主模型，默认 `deepseek-flash` |
 | `BACKUP_LLM_BASE_URL`、`BACKUP_LLM_API_KEY`、`BACKUP_LLM_MODEL` | 备用 OpenAI 兼容接口，三项齐全才启用 |
-| `CODEX_FALLBACK`、`CODEX_HOME`、`CODEX_REASONING_EFFORT` | 本机 Codex 兜底（默认开）；模型与推理强度按 `CODEX_HOME/config.toml`（默认 `~/.codex/config.toml`）读取，环境变量仅在配置文件未写推理强度时使用。设置界面只展示 `model/list` 返回的当前模型可用档位，下一轮请求按选项原样调用。 |
+| `CODEX_FALLBACK` | 本机 Codex 兜底（默认开）。模型与推理强度只来自「设置 › 模型接入」，存在数据目录的 `codex-settings.json`；不读也不写用户的 `~/.codex/config.toml`，用户自己的 Codex 换模型不会影响大肥鱼。每次请求都显式带上这两个值（app-server 的 `turn/start`，`codex exec` 的 `-m` 与 `--ignore-user-config`）。没选过时用 `model/list` 的默认模型和它的默认档位。设置界面的模型列表来自 `GET /api/setup/codex/models`。 |
 | `MEMORY`、`MEMORY_DIR` | `MEMORY=off` 关闭 Mem0 与语义索引；SQLite 记忆档案继续运行。向量数据和模型默认在 `apps/api/.local/memory` |
 | `API_HOST`、`API_PORT`、`APP_DB_PATH`、`LLM_TIMEOUT_MS` | 监听地址、端口、聊天/待看/日记共用的 SQLite 文件位置、等待模型首个响应的超时 |
 | `DIARY_CRON` | 定时日记 cron 表达式，按 API 主机本地时区运行；默认 `0 20 * * *`（每日 20:00） |

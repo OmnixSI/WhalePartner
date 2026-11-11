@@ -3,41 +3,38 @@ import { dirname, join, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readJsonBody, sendJson } from "../server/http.ts";
 import { listCodexModels, type CodexModelOption } from "../codex/app-server.ts";
-import { codexConfigPath, readStoredCodexSettings } from "../codex/settings.ts";
+import { codexSettingsPath, readStoredCodexSettings, writeStoredCodexSettings } from "../codex/settings.ts";
 import type { ServerDeps } from "../server/types.ts";
 
 /**
- * 模型接入（设置 › 模型接入）：把「接 DeepSeek 的 key」和「调 Codex 的模型和推理强度」
- * 从 `.env` / `~/.codex/config.toml` 搬到界面上。
+ * 模型接入（设置 › 模型接入）：把「接 DeepSeek 的 key」和「调 Codex 的模型和推理强度」搬到界面上。
+ * Codex 的选择存在大肥鱼自己的 `codex-settings.json`，不碰用户的 `~/.codex/config.toml`。
  *
  * 三条底线：
  * 1. **绝不回明文**：GET 只给 configured + 掩码后四位；PUT 的响应里也只有掩码。
- * 2. **写文件先备份**：`.env` → `.env.bak`，`config.toml` → `config.toml.bak`。
+ * 2. **写 `.env` 先备份**成 `.env.bak`。
  * 3. **同时只允许一个写**：抢不到写锁就回 409，别让两个保存互相盖。
  *
  * 都不写日志：这里没有任何 console 调用。
  */
-/** `^\S{2,64}$`，另外挡掉会破坏 TOML 基本字符串的引号和反斜杠。 */
+/** 模型名的粗筛；真正的判断是它在不在 Codex 当前的模型列表里。 */
 const MODEL_PATTERN = /^\S{2,64}$/;
-const MODEL_UNSAFE = /["\\]/;
 /** `sk-` 前缀 + 17–197 个可打印字符 = 全长 20–200，且不可能夹换行。 */
 const KEY_PATTERN = /^sk-[\x21-\x7e]{17,197}$/;
 
 const ENV_FILE_NAME = "DEEPSEEK_API_KEY";
-const CODEX_MODEL_KEY = "model";
-const CODEX_EFFORT_KEY = "model_reasoning_effort";
 
 export interface SetupTargets {
   /** 写 `DEEPSEEK_API_KEY` 的那个 `.env`；默认 `apps/api/.env`。 */
   envPath: string;
-  /** Codex 的 `config.toml`；默认 `~/.codex/config.toml`。 */
+  /** 大肥鱼自己的 Codex 设置；默认数据目录里的 `codex-settings.json`。 */
   codexPath: string;
 }
 
 export function setupTargets(deps: ServerDeps): SetupTargets {
   return {
     envPath: deps.setup?.envPath ?? (process.env.WP_DATA_DIR?.trim() ? join(resolve(process.env.WP_DATA_DIR.trim()), ".env") : resolve(import.meta.dirname, "../../.env")),
-    codexPath: deps.setup?.codexPath ?? codexConfigPath(),
+    codexPath: deps.setup?.codexPath ?? codexSettingsPath(),
   };
 }
 
@@ -103,45 +100,6 @@ function upsertEnvValue(text: string, name: string, value: string): string {
   return trimmed ? `${trimmed}\n${line}\n` : `${line}\n`;
 }
 
-/** 顶层区（第一个 `[section]` 之前）的键值；同名 key 在子表里不参与。 */
-function readTomlTopLevel(text: string, name: string): string | undefined {
-  for (const raw of text.split(/\r?\n/)) {
-    const line = raw.trim();
-    if (line.startsWith("[")) break; // 进子表了，后面的不算顶层
-    if (!line || line.startsWith("#")) continue;
-    const match = new RegExp(`^${name}\\s*=\\s*(.*)$`).exec(line);
-    if (match) return unquote(match[1]);
-  }
-  return undefined;
-}
-
-/** 替换顶层那一行；没有就在顶层区末尾补一行（不碰任何子表）。 */
-function upsertTomlTopLevel(text: string, name: string, value: string): string {
-  const lines = text.split("\n");
-  let limit = lines.length;
-  for (let index = 0; index < lines.length; index += 1) {
-    if (lines[index].trimStart().startsWith("[")) {
-      limit = index;
-      break;
-    }
-  }
-  const assignment = `${name} = ${JSON.stringify(value)}`;
-  const pattern = new RegExp(`^\\s*${name}\\s*=`);
-  for (let index = 0; index < limit; index += 1) {
-    if (pattern.test(lines[index])) {
-      const next = [...lines];
-      next[index] = assignment;
-      return next.join("\n");
-    }
-  }
-  const head = lines.slice(0, limit);
-  const rest = lines.slice(limit);
-  while (head.length > 0 && head[head.length - 1].trim() === "") head.pop();
-  head.push(assignment);
-  if (rest.length > 0 && rest[0].trim() !== "") head.push("");
-  return [...head, ...rest].join("\n");
-}
-
 function readFileOrEmpty(path: string): string {
   try {
     return existsSync(path) ? readFileSync(path, "utf8") : "";
@@ -172,32 +130,15 @@ async function readCodexModels(deps: ServerDeps) {
   return deps.codexModels ? deps.codexModels() : listCodexModels();
 }
 
-export async function readSetupState(deps: ServerDeps) {
+/**
+ * 只读已保存的值，不等 Codex 模型列表：列表要先拉起 app-server，可能慢也可能失败，
+ * 界面上已保存的模型和档位不能跟着它一起转圈或消失。模型列表走 `GET /api/setup/codex/models`。
+ */
+export function readSetupState(deps: ServerDeps) {
   const targets = setupTargets(deps);
   // 文件里的值优先：刚保存过就能立刻在界面上看到；进程内 config 兜底（key 也可能来自系统环境变量）。
   const key = readEnvValue(targets.envPath, ENV_FILE_NAME) ?? deps.config.deepseek?.apiKey;
-
-  let present = false;
-  try {
-    present = existsSync(targets.codexPath);
-  } catch {
-    present = false;
-  }
-
-  let models: CodexModelOption[] = [];
-  let catalogAvailable = true;
-  try {
-    models = await readCodexModels(deps);
-  } catch {
-    catalogAvailable = false;
-  }
-
   const stored = readStoredCodexSettings(targets.codexPath);
-  const selectedModel = stored.model
-    ? models.find((model) => model.model === stored.model)
-    : models.find((model) => model.isDefault) ?? models[0];
-  const effort = stored.effort || selectedModel?.defaultReasoningEffort || "";
-  const availableEfforts = selectedModel?.supportedReasoningEfforts ?? [];
 
   return {
     deepseek: {
@@ -205,15 +146,10 @@ export async function readSetupState(deps: ServerDeps) {
       masked: key ? maskKey(key) : null,
     },
     codex: {
-      model: stored.model || selectedModel?.model || "",
-      effort,
+      model: stored.model,
+      effort: stored.effort,
       configPath: targets.codexPath,
-      present,
-      catalogAvailable,
-      modelAvailable: Boolean(selectedModel),
-      effortAvailable: availableEfforts.some((option) => option.reasoningEffort === effort),
-      availableEfforts,
-      models,
+      present: existsSync(targets.codexPath),
     },
     chain: deps.provider.providers.map((item) => item.id),
   };
@@ -243,13 +179,26 @@ export async function handleSetupRoute(
   if (url.pathname === "/api/setup") {
     if (request.method === "GET") {
       try {
-        sendJson(response, 200, await readSetupState(deps));
+        sendJson(response, 200, readSetupState(deps));
       } catch {
         sendJson(response, 503, { error: "setup_unavailable", message: "现在读不到模型设置。" });
       }
       return true;
     }
     sendJson(response, 405, { error: "method_not_allowed", message: "只支持 GET。" });
+    return true;
+  }
+
+  if (url.pathname === "/api/setup/codex/models") {
+    if (request.method !== "GET") {
+      sendJson(response, 405, { error: "method_not_allowed", message: "只支持 GET。" });
+      return true;
+    }
+    try {
+      sendJson(response, 200, { models: await readCodexModels(deps) });
+    } catch {
+      sendJson(response, 503, { error: "codex_unavailable", message: "现在读不到本机 Codex 的可用模型列表。" });
+    }
     return true;
   }
 
@@ -294,7 +243,7 @@ export async function handleSetupRoute(
 
       let model: string | undefined;
       if (wantsModel) {
-        if (typeof body.model !== "string" || !MODEL_PATTERN.test(body.model) || MODEL_UNSAFE.test(body.model)) {
+        if (typeof body.model !== "string" || !MODEL_PATTERN.test(body.model)) {
           sendJson(response, 400, { error: "invalid_model", message: "模型名只能是 2–64 个不带空格的字符。" });
           return true;
         }
@@ -340,28 +289,12 @@ export async function handleSetupRoute(
         return true;
       }
 
-      const before = readFileOrEmpty(targets.codexPath);
-      let after = before;
-      after = upsertTomlTopLevel(after, CODEX_MODEL_KEY, modelOption.model);
-      after = upsertTomlTopLevel(after, CODEX_EFFORT_KEY, selectedEffort);
-      backup(targets.codexPath);
-      writeText(targets.codexPath, after);
-
-      const text = readFileOrEmpty(targets.codexPath);
+      writeStoredCodexSettings({ model: modelOption.model, effort: selectedEffort }, targets.codexPath);
+      const saved = readStoredCodexSettings(targets.codexPath);
       sendJson(response, 200, {
         ok: true,
         restartRequired: false,
-        codex: {
-          model: readTomlTopLevel(text, CODEX_MODEL_KEY) ?? "",
-          effort: readTomlTopLevel(text, CODEX_EFFORT_KEY) ?? "",
-          configPath: targets.codexPath,
-          present: existsSync(targets.codexPath),
-          catalogAvailable: true,
-          modelAvailable: true,
-          effortAvailable: true,
-          availableEfforts: modelOption.supportedReasoningEfforts,
-          models,
-        },
+        codex: { model: saved.model, effort: saved.effort, configPath: targets.codexPath, present: true },
       });
     } catch (error) {
       sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : "没写进去。" });
