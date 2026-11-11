@@ -13,10 +13,15 @@ import { stopSurf } from "../src/surf/index.ts";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+interface FakeRequestLink {
+  url(): string;
+  redirectedFrom(): FakeRequestLink | null;
+}
+
 const HTML = `<html><head><title>渲染出来的</title></head><body><article>${"<p>这是脚本渲染出来的一整段正文，足够长，长到可以通过正文长度检查。</p>".repeat(10)}</article></body></html>`;
 
 /** 假 playwright：记录启动、关闭、并发、被拦截的请求。 */
-function fakeChromium(options: { gotoMs?: number; neverResolve?: boolean; html?: string } = {}) {
+function fakeChromium(options: { gotoMs?: number; neverResolve?: boolean; html?: string; finalUrl?: string; redirects?: string[] } = {}) {
   const state = {
     launches: 0,
     browserCloses: 0,
@@ -25,6 +30,7 @@ function fakeChromium(options: { gotoMs?: number; neverResolve?: boolean; html?:
     maxActive: 0,
     aborted: [] as string[],
     continued: [] as string[],
+    contentReads: 0,
   };
   const requests = [
     { url: "https://example.com/", type: "document", nav: true },
@@ -58,15 +64,23 @@ function fakeChromium(options: { gotoMs?: number; neverResolve?: boolean; html?:
                     }
                     if (options.neverResolve) await new Promise(() => undefined);
                     if (options.gotoMs) await sleep(options.gotoMs);
+                    const chain = [...(options.redirects ?? []), ...(options.finalUrl ? [options.finalUrl] : [])];
+                    if (chain.length === 0) return undefined;
+                    const link = (index: number): FakeRequestLink => ({
+                      url: () => chain[index],
+                      redirectedFrom: () => (index > 0 ? link(index - 1) : null),
+                    });
+                    return { request: () => link(chain.length - 1) };
                   } finally {
                     state.activePages -= 1;
                   }
                 },
                 async waitForTimeout() {},
                 async content() {
+                  state.contentReads += 1;
                   return options.html ?? HTML;
                 },
-                url: () => "https://example.com/",
+                url: () => options.finalUrl ?? "https://example.com/",
                 async close() {},
               };
             },
@@ -117,6 +131,15 @@ test("渲染时丢掉图片/字体/追踪请求，只放行文档和普通脚本
   await manager.render("https://example.com/");
   assert.deepEqual(fake.state.aborted.sort(), ["https://example.com/font.woff", "https://example.com/pic.png", "https://www.google-analytics.com/collect"].sort());
   assert.deepEqual(fake.state.continued.sort(), ["https://example.com/", "https://example.com/app.js"].sort());
+  await manager.close();
+});
+
+test("渲染：302 跳转链上有内网地址时，读正文前就拒绝", async () => {
+  // 用公网 IP 字面量做起点，第一跳校验不依赖 DNS。
+  const fake = fakeChromium({ redirects: ["https://93.184.216.34/"], finalUrl: "http://192.168.1.1/" });
+  const manager = new BrowserManager({ chromiumModule: fake.module });
+  await assert.rejects(() => manager.render("https://93.184.216.34/"), /内部网络/);
+  assert.equal(fake.state.contentReads, 0, "内网页面不能读正文");
   await manager.close();
 });
 

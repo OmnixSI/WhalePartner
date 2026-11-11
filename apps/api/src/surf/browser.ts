@@ -286,6 +286,16 @@ export interface RenderedPage {
   url: string;
 }
 
+/** 只看重定向链需要的部分，playwright 的 Request/Response 和测试里的假对象都能对上。 */
+interface RedirectRequest {
+  url(): string;
+  redirectedFrom?(): RedirectRequest | null;
+}
+
+interface NavigationResponse {
+  request?(): RedirectRequest;
+}
+
 const inContainer = () => existsSync("/.dockerenv") || existsSync("/run/.containerenv");
 
 export class BrowserManager {
@@ -405,6 +415,25 @@ export class BrowserManager {
     return parsed;
   }
 
+  /**
+   * 跳转后核对最终地址和整条重定向链：Playwright 不会为每次 302 都调 route 处理函数，
+   * 只靠请求拦截会漏掉跳转目标，所以拿到响应后、读正文前再逐跳校验一次。
+   */
+  async #guardRedirects(response: NavigationResponse | null | undefined, finalUrl: string) {
+    const seen = new Set<string>();
+    const guard = async (url: string) => {
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      await this.#guard(url);
+    };
+    let request = response?.request?.() ?? null;
+    while (request) {
+      await guard(request.url());
+      request = request.redirectedFrom?.() ?? null;
+    }
+    await guard(finalUrl);
+  }
+
   /** 用浏览器渲染一个页面并取回 HTML。最多 2 个并行；15 秒超时；取消时立刻关掉。 */
   async render(url: string, options: { signal?: AbortSignal } = {}): Promise<RenderedPage> {
     if (this.#closed) throw new SurfError("aborted", "冲浪已经停止。");
@@ -450,7 +479,9 @@ export class BrowserManager {
       });
       const page = await opened.newPage();
       const work = (async () => {
-        await page.goto(target.toString(), { waitUntil: "domcontentloaded", timeout: timeoutMs });
+        const response = await page.goto(target.toString(), { waitUntil: "domcontentloaded", timeout: timeoutMs });
+        // 跳转后的地址和链上每一跳都核对过，才读正文。
+        await this.#guardRedirects(response as NavigationResponse | null, page.url());
         // 给脚本渲染正文留一小会儿，但不长等。
         await page.waitForTimeout(600);
         return { html: await page.content(), url: page.url() };
