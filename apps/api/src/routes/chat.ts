@@ -3,7 +3,7 @@ import { ChatFailure, ChatInputError, runChat, validateUserMessage } from "../ch
 import { ClientIdLedger, SessionMutex } from "./session-lock.ts";
 import { readUserName } from "./profile.ts";
 import { quotaUsage } from "./quota.ts";
-import { readJsonBody, sendJson, sendSse, startSse } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson, sendSse, startSse } from "../server/http.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "../persona/persona.ts";
 import type { ServerDeps } from "../server/types.ts";
 import type { ChatSessionRequests } from "./chat-session-requests.ts";
@@ -40,7 +40,7 @@ export async function handleChatRoute(
       clientId = body.clientId;
     }
   } catch (error) {
-    const status = error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
+    const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
     sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : (error as Error).message });
     return;
   }

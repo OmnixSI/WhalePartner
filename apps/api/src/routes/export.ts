@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { pauseBackgroundJobs } from "../chat/background.ts";
 import { clearMem0History } from "../memory/history.ts";
 import { waitForMemoryJobs } from "../memory/jobs.ts";
-import { readJsonBody, sendJson } from "../server/http.ts";
+import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import { createZip, type ZipEntry } from "../server/zip.ts";
 import type { ServerDeps } from "../server/types.ts";
 import type { UserDataTable } from "../store/maintenance.ts";
@@ -183,8 +183,9 @@ export async function handleExportRoute(
       }
       bundles.clear();
       sendJson(response, 200, { ok: true, memoriesCleared: result.memoriesCleared });
-    } catch {
-      sendJson(response, 503, { error: "delete_failed", message: "这次没删成功，再试一次。" });
+    } catch (error) {
+      if (error instanceof RequestBodyError) sendJson(response, error.status, { error: error.code, message: error.message });
+      else sendJson(response, 503, { error: "delete_failed", message: "这次没删成功，再试一次。" });
     } finally {
       busy = false;
     }

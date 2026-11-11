@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendJson, readJsonBody } from "../server/http.ts";
+import { sendJson, readJsonBody, RequestBodyError } from "../server/http.ts";
 import { isCharacterId } from "../persona/persona.ts";
 import type { EventBus } from "../hub/events.ts";
 import type { ChatStore } from "../store/index.ts";
@@ -27,7 +27,7 @@ export async function handleCompanionRoute(
         deps.events.publish("settings.updated", { scope: "companion" });
         sendJson(response, 200, settings);
       } catch (error) {
-        sendJson(response, 400, {
+        sendJson(response, error instanceof RequestBodyError ? error.status : 400, {
           error: "invalid_settings",
           message: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof CompanionSettingsError ? error.message : "主动陪伴设置没存上。",
         });
@@ -58,7 +58,7 @@ export async function handleCompanionRoute(
     });
     response.writeHead(204).end();
   } catch (error) {
-    sendJson(response, 400, { error: "invalid_presence", message: error instanceof Error ? error.message : "在线状态格式不对。" });
+    sendJson(response, error instanceof RequestBodyError ? error.status : 400, { error: "invalid_presence", message: error instanceof Error ? error.message : "在线状态格式不对。" });
   }
   return true;
 }

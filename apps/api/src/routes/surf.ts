@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { sendJson, readJsonBody, sendSse, startSse } from "../server/http.ts";
+import { sendJson, readJsonBody, RequestBodyError, sendSse, startSse } from "../server/http.ts";
 import { DEFAULT_CHARACTER, isCharacterId, type CharacterId } from "../persona/persona.ts";
 import { validateSettingsPatch } from "../surf/settings.ts";
 import type { SurfService } from "../surf/service.ts";
@@ -82,7 +82,7 @@ export async function handleSurf(
       const status = await surf.status(character);
       sendJson(response, 200, { ...saved, webAvailable: status.webAvailable, browser: status.browser });
     } catch (error) {
-      sendJson(response, 400, {
+      sendJson(response, error instanceof RequestBodyError ? error.status : 400, {
         error: "invalid_settings",
         message: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "设置不对。",
       });
