@@ -1,10 +1,24 @@
 import assert from "node:assert/strict";
+import { lookup as dnsLookup } from "node:dns";
+import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { BrowserManager, resolvesPublic } from "../src/surf/browser.ts";
-import { createPageReader } from "../src/surf/page-reader.ts";
+import { createPageReader, fetchStaticHtml } from "../src/surf/page-reader.ts";
 import { filterWebResults } from "../src/surf/picker.ts";
+import { thumbFetcher } from "../src/surf/thumbs.ts";
 import { decodeBingRedirect, decodeDuckDuckGoRedirect, parseBingResults, parseDuckDuckGoResults, createWebSource } from "../src/surf/web-search.ts";
+
+/** 测试用 lookup：public.test 指向本机夹具，其他域名一律当作内网；和 safeLookup 一样在连接时判定。 */
+const testLookup = ((hostname: string, options: unknown, callback: (...args: unknown[]) => void) => {
+  const done = typeof options === "function" ? (options as typeof callback) : callback;
+  const address = hostname === "public.test" ? "127.0.0.1" : undefined;
+  if (!address) return done(new Error("这个链接指向内部地址，不会去读。"));
+  const wantsAll = typeof options === "object" && options !== null && (options as { all?: boolean }).all;
+  return wantsAll ? done(null, [{ address, family: 4 }]) : done(null, address, 4);
+}) as typeof dnsLookup;
 
 const b64url = (value: string) => Buffer.from(value).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
@@ -111,5 +125,94 @@ test("读正文：静态抓取 + Readability，去掉导航页脚，拿到 og:im
   } finally {
     await reader.close();
     server.close();
+  }
+});
+
+test("静态抓取：每一跳都在连接时校验，公网页面跳到内网会被拒绝", async () => {
+  const server = createServer((request, response) => {
+    if (request.url === "/page") {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      response.end(ARTICLE);
+      return;
+    }
+    if (request.url === "/jump") {
+      response.writeHead(302, { location: "http://internal.test/secret" });
+      response.end();
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  try {
+    const page = await fetchStaticHtml(`http://public.test:${port}/page`, { lookup: testLookup });
+    assert.match(page.html, /鲸歌笔记/);
+    // 302 跳到内网：第二跳在连接时被 lookup 拦下，不会发出请求。
+    await assert.rejects(() => fetchStaticHtml(`http://public.test:${port}/jump`, { lookup: testLookup }), /内部网络/);
+    // 域名直接解析到内网也一样。
+    await assert.rejects(() => fetchStaticHtml(`http://internal.test:${port}/page`, { lookup: testLookup }), /内部网络/);
+  } finally {
+    server.close();
+  }
+});
+
+test("缩略图：跳转目标逐跳校验，超过 2 MB 立刻停止读取", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "wp-thumbs-"));
+  const chunk = Buffer.alloc(64 * 1024, 7);
+  const total = 8 * 1024 * 1024;
+  let writtenAtClose = -1;
+  let markClosed!: () => void;
+  const closed = new Promise<void>((resolve) => { markClosed = resolve; });
+  const server = createServer((request, response) => {
+    if (request.url === "/ok.jpg") {
+      response.writeHead(200, { "content-type": "image/jpeg" });
+      response.end(Buffer.alloc(2048, 1));
+      return;
+    }
+    if (request.url === "/jump.jpg") {
+      response.writeHead(302, { location: "http://internal.test/x.jpg" });
+      response.end();
+      return;
+    }
+    if (request.url === "/big.jpg") {
+      response.writeHead(200, { "content-type": "image/jpeg" });
+      let written = 0;
+      const timer = setInterval(() => {
+        if (written >= total) {
+          clearInterval(timer);
+          response.end();
+          return;
+        }
+        response.write(chunk);
+        written += chunk.length;
+      }, 1);
+      response.on("close", () => {
+        clearInterval(timer);
+        writtenAtClose = written;
+        markClosed();
+      });
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  const fetcher = thumbFetcher(dir, { lookup: testLookup });
+  try {
+    assert.equal(await fetcher.fetch(`http://public.test:${port}/ok.jpg`, 1), "thumbs/1.jpg");
+    // og:image 指向的地址跳到内网：不跟随。
+    assert.equal(await fetcher.fetch(`http://public.test:${port}/jump.jpg`, 2), null);
+    // 超过 2 MB 的「图片」不整包读进内存。
+    assert.equal(await fetcher.fetch(`http://public.test:${port}/big.jpg`, 3), null);
+    await Promise.race([closed, new Promise((resolve) => setTimeout(resolve, 2000))]);
+    assert.ok(writtenAtClose >= 0, "超过上限后客户端要主动断开");
+    assert.ok(writtenAtClose < total, `超过 2 MB 后不应继续读完（只写到 ${writtenAtClose} 字节）`);
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -1,4 +1,8 @@
-import { BrowserManager, resolvesPublic, sharedBrowser, type BrowserManagerOptions, type InstallStatus } from "./browser.ts";
+import { lookup as dnsLookup } from "node:dns";
+import { request as httpRequest, type IncomingHttpHeaders } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { isPrivateHostname, safeLookup } from "../webpage/service.ts";
+import { BrowserManager, sharedBrowser, type BrowserManagerOptions, type InstallStatus } from "./browser.ts";
 import { classifyError, SurfError } from "./errors.ts";
 import { assertReadable, extractArticle, toWebPage } from "./reader.ts";
 import type { WebPageText } from "./types.ts";
@@ -30,52 +34,96 @@ const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_REDIRECTS = 4;
 const STATIC_TIMEOUT_MS = 15_000;
 
-export type StaticFetcher = (url: string, options: { signal?: AbortSignal; allowPrivateHosts?: boolean }) => Promise<{ html: string; url: string }>;
+export type StaticFetcher = (url: string, options: {
+  signal?: AbortSignal;
+  allowPrivateHosts?: boolean;
+  /** 只给测试用：替换连接时解析地址的 lookup。 */
+  lookup?: typeof dnsLookup;
+}) => Promise<{ html: string; url: string }>;
+
+interface StaticHop {
+  status: number;
+  headers: IncomingHttpHeaders;
+  body: Buffer;
+}
+
+const privateAddressError = (error: unknown) => error instanceof Error && /内部地址/.test(error.message);
+
+/**
+ * 用 node:http(s) 发一跳请求：lookup 在连接时校验解析出的地址，DNS 重绑定没有先查后连的窗口。
+ * 响应流式读取，超过 2 MB 就不再往下读。
+ */
+function requestStatic(target: URL, options: { signal: AbortSignal; lookup?: typeof dnsLookup }): Promise<StaticHop> {
+  return new Promise((resolve, reject) => {
+    const send = target.protocol === "https:" ? httpsRequest : httpRequest;
+    const request = send(target, {
+      ...(options.lookup ? { lookup: options.lookup } : {}),
+      signal: options.signal,
+      headers: { "user-agent": UA, "accept-language": "zh-CN,zh;q=0.9,en;q=0.5", accept: "text/html,application/xhtml+xml" },
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve({ status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks) });
+      };
+      response.on("data", (chunk: Buffer) => {
+        if (settled) return;
+        size += chunk.length;
+        chunks.push(chunk);
+        if (size > MAX_HTML_BYTES) {
+          finish();
+          response.destroy();
+        }
+      });
+      response.on("end", finish);
+      response.on("close", finish);
+      response.on("error", (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      });
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
 
 export const fetchStaticHtml: StaticFetcher = async (url, options) => {
+  const lookup = options.allowPrivateHosts ? undefined : (options.lookup ?? safeLookup);
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const target = new URL(current);
     if (target.protocol !== "http:" && target.protocol !== "https:") throw new SurfError("content", "只能读 http 或 https 网页。");
-    if (!options.allowPrivateHosts && !(await resolvesPublic(target.hostname.replace(/^\[|\]$/g, "")))) {
+    if (!options.allowPrivateHosts && isPrivateHostname(target.hostname)) {
       throw new SurfError("content", "这个地址指向内部网络，不会去读。");
     }
     const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(STATIC_TIMEOUT_MS)]) : AbortSignal.timeout(STATIC_TIMEOUT_MS);
-    const response = await fetch(target, {
-      redirect: "manual",
-      signal,
-      headers: { "user-agent": UA, "accept-language": "zh-CN,zh;q=0.9,en;q=0.5", accept: "text/html,application/xhtml+xml" },
-    });
+    let response: StaticHop;
+    try {
+      response = await requestStatic(target, { signal, lookup });
+    } catch (error) {
+      if (!options.allowPrivateHosts && privateAddressError(error)) throw new SurfError("content", "这个地址指向内部网络，不会去读。");
+      throw error;
+    }
     if (response.status >= 300 && response.status < 400) {
-      const location = response.headers.get("location");
+      const location = response.headers.location;
       if (!location) throw new SurfError("content", "页面重定向没有目的地。");
       current = new URL(location, target).toString();
       continue;
     }
     if (response.status === 429) throw new SurfError("rate_limit", "对方让我们慢一点（429）。", { status: 429 });
-    if (!response.ok) throw new SurfError(response.status >= 500 ? "network" : "content", `页面返回了 ${response.status}。`, { status: response.status });
-    const type = response.headers.get("content-type") ?? "";
+    if (response.status < 200 || response.status >= 300) throw new SurfError(response.status >= 500 ? "network" : "content", `页面返回了 ${response.status}。`, { status: response.status });
+    const type = String(response.headers["content-type"] ?? "");
     if (type && !/html|xml/i.test(type)) throw new SurfError("content", "这不是一个网页。");
-    const reader = response.body?.getReader();
-    if (!reader) throw new SurfError("content", "页面没有内容。");
-    const chunks: Uint8Array[] = [];
-    let size = 0;
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      chunks.push(value);
-      if (size > MAX_HTML_BYTES) {
-        await reader.cancel().catch(() => undefined);
-        break;
-      }
-    }
     const charset = /charset=([\w-]+)/i.exec(type)?.[1] ?? "utf-8";
     let html: string;
     try {
-      html = new TextDecoder(charset).decode(Buffer.concat(chunks));
+      html = new TextDecoder(charset).decode(response.body);
     } catch {
-      html = new TextDecoder("utf-8").decode(Buffer.concat(chunks));
+      html = new TextDecoder("utf-8").decode(response.body);
     }
     return { html, url: target.toString() };
   }

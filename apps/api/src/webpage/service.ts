@@ -71,8 +71,16 @@ export function isPrivateAddress(address: string): boolean {
   return false;
 }
 
+/** 明显指向本机/内网的域名或 IP 字面量；域名解析出来的地址另由 safeLookup 在连接时校验。 */
+export function isPrivateHostname(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  if (!host) return true;
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return true;
+  return isIP(host) !== 0 && isPrivateAddress(host);
+}
+
 /** 连接时才校验解析出的地址（不是先查再连），这样 DNS 重绑定也绕不过去。 */
-const safeLookup: typeof dnsLookup = ((hostname: string, options: unknown, callback: (...args: unknown[]) => void) => {
+export const safeLookup: typeof dnsLookup = ((hostname: string, options: unknown, callback: (...args: unknown[]) => void) => {
   const done = typeof options === "function" ? (options as typeof callback) : callback;
   dnsLookup(hostname, { all: true }, (error, addresses) => {
     if (error) return done(error);
