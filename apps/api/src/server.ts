@@ -93,7 +93,7 @@ async function probe({ provider }: ServerDeps) {
 
 export function createApiServer(deps: ServerDeps): ApiServer {
   const sessionRequests = new ChatSessionRequests();
-  const packagedAsrWorker = join(import.meta.dirname, "../../bin/whale-xasr-worker");
+  const packagedAsrWorker = join(import.meta.dirname, "../../bin/whale-xasr-worker/whale-xasr-worker");
   const asr = deps.asr ?? createXAsrAsrService(dataDir(), {
     workerPath: existsSync(packagedAsrWorker) ? packagedAsrWorker : undefined,
     setupScriptPath: join(import.meta.dirname, "../scripts/setup-xasr-runtime.sh"),
@@ -249,7 +249,7 @@ if (import.meta.main) {
     generatedToken = true;
   }
   const staticDir = process.env.WP_STATIC_DIR || join(import.meta.dirname, "../../client/dist");
-  const packagedAsrWorker = join(import.meta.dirname, "../../bin/whale-xasr-worker");
+  const packagedAsrWorker = join(import.meta.dirname, "../../bin/whale-xasr-worker/whale-xasr-worker");
   const asr = createXAsrAsrService(dataDir(), {
     workerPath: existsSync(packagedAsrWorker) ? packagedAsrWorker : undefined,
     setupScriptPath: join(import.meta.dirname, "../scripts/setup-xasr-runtime.sh"),

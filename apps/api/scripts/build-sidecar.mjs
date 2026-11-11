@@ -14,12 +14,13 @@
  *   sidecar/api/vendor                   vendor 资源
  *   sidecar/api/node_modules             原生/动态依赖（onnxruntime-node 等），npm 安装
  *   sidecar/bin/ffmpeg[.exe]             ffmpeg（ffmpeg-static，没有则取 PATH 里的）
+ *   sidecar/bin/whale-xasr-worker/       X-ASR worker（macOS，PyInstaller onedir，逐文件签名）
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 const apiDir = resolve(import.meta.dirname, "..");
 const tauriDir = resolve(apiDir, "../client/src-tauri");
@@ -58,6 +59,26 @@ if (!existsSync(nodeTarget) || readFileSync(nodeTarget).length !== readFileSync(
 // Tauri 在编译期检查 resources 目录存在。
 mkdirSync(join(sidecarDir, "api"), { recursive: true });
 mkdirSync(join(sidecarDir, "bin"), { recursive: true });
+
+// 以前的 onefile worker 是个文件，tauri-build 往 target/<profile>/bin 复制 onedir 时会报
+// "Not a directory"。这份副本每次构建都会重新复制，删掉旧文件即可。
+// 扫 target/{debug,release} 和 target/<任意三元组>/{debug,release}；相对 CARGO_TARGET_DIR 按 src-tauri 解析（cargo 在那里跑）。
+const cargoTargetDir = resolve(tauriDir, process.env.CARGO_TARGET_DIR || "target");
+const profileParents = [cargoTargetDir];
+if (existsSync(cargoTargetDir)) {
+  for (const entry of readdirSync(cargoTargetDir, { withFileTypes: true })) {
+    if (entry.isDirectory()) profileParents.push(join(cargoTargetDir, entry.name));
+  }
+}
+for (const parent of profileParents) {
+  for (const profile of ["debug", "release"]) {
+    const stale = join(parent, profile, "bin", "whale-xasr-worker");
+    if (existsSync(stale) && statSync(stale).isFile()) {
+      rmSync(stale);
+      log("删除旧版 onefile worker 副本：", stale);
+    }
+  }
+}
 
 if (dev) {
   log("--dev：跳过 esbuild / 依赖 / ffmpeg。");
@@ -118,11 +139,92 @@ if (process.platform === "darwin") {
   const resolvedPython = existsSync(python) ? python : join(dataDirectory, "runtimes", "asr-sherpa", "bin", "python");
   const xasrBuildDir = join(sidecarDir, ".xasr-build");
   mkdirSync(xasrBuildDir, { recursive: true });
-  execFileSync(resolvedPython, ["-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--collect-all", "sherpa_onnx", "--collect-all", "sherpa_onnx_core", "--name", "whale-xasr-worker",
+  // onedir 而不是 onefile（#120）：onefile 每次启动都把 dylib 解压到新的 $TMPDIR/_MEI*，
+  // 加载等待让预热多花约 3 秒；onedir 的库在 App 里固定位置，启动和直接跑脚本一样快。
+  const xasrWorkerDir = join(sidecarDir, "bin", "whale-xasr-worker");
+  rmSync(xasrWorkerDir, { recursive: true, force: true }); // 旧版 onefile 产物是同名文件，不清掉 PyInstaller 建不了目录
+  execFileSync(resolvedPython, ["-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--collect-all", "sherpa_onnx", "--collect-all", "sherpa_onnx_core", "--name", "whale-xasr-worker",
     "--distpath", join(sidecarDir, "bin"), "--workpath", join(xasrBuildDir, "work"), "--specpath", xasrBuildDir,
     join(apiDir, "src/voice/xasr_worker.py")], { stdio: "inherit" });
-  chmodSync(join(sidecarDir, "bin", "whale-xasr-worker"), 0o755);
-  log("X-ASR 本机推理运行时已打包");
+  chmodSync(join(xasrWorkerDir, "whale-xasr-worker"), 0o755);
+  inlineSymlinks(xasrWorkerDir);
+  signXAsrWorker(xasrWorkerDir);
+  log("X-ASR 本机推理运行时已打包（onedir）");
+}
+
+/**
+ * PyInstaller 在 _internal/ 顶层放了指向 sherpa_onnx/lib/ 的 dylib 符号链接，实际只加载顶层这份
+ * （扩展模块的 rpath 已改成 @loader_path/../..）。Tauri 复制资源时会把链接展开成第二份实体文件，
+ * 多出约 33MB；这里把真文件挪到链接的位置，目录里不留符号链接。
+ * 挪过去的 dylib 自己的 @loader_path rpath 是按原位置写的（c-api 的 @loader_path/../..），
+ * 挪完要改成从新位置指向同一个目录，否则直接 dlopen 它会找不到 libonnxruntime.dylib。签名在这之后。
+ */
+function inlineSymlinks(dir) {
+  const root = realpathSync(dir) + "/";
+  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!entry.isSymbolicLink()) continue;
+    const link = join(entry.parentPath, entry.name);
+    const target = realpathSync(link);
+    if (!target.startsWith(root) || !statSync(target).isFile()) {
+      throw new Error(`X-ASR worker 里有指向目录外或非文件的符号链接：${link} -> ${target}`);
+    }
+    rmSync(link);
+    renameSync(target, link);
+    if (isMachO(link)) retargetLoaderRpaths(dirname(target), link);
+  }
+}
+
+/** 把 `file` 里按 `oldDir` 写的 @loader_path rpath 改成从它现在的目录出发、仍指向同一个目录。 */
+function retargetLoaderRpaths(oldDir, file) {
+  const load = execFileSync("otool", ["-l", file], { encoding: "utf8" });
+  const rpaths = [...load.matchAll(/cmd LC_RPATH\n\s+cmdsize \d+\n\s+path (\S+) \(offset/g)].map((m) => m[1]);
+  for (const rpath of rpaths) {
+    if (!rpath.startsWith("@loader_path")) continue;
+    const absolute = resolve(oldDir, rpath.slice("@loader_path".length).replace(/^\//, "") || ".");
+    const rel = relative(dirname(file), absolute);
+    const next = rel ? `@loader_path/${rel}` : "@loader_path";
+    if (next === rpath) continue;
+    execFileSync("install_name_tool", ["-rpath", rpath, next, file], { stdio: ["ignore", "ignore", "pipe"] });
+    log(`改写 rpath：${file.slice(file.indexOf("_internal"))} ${rpath} -> ${next}`);
+  }
+}
+
+/**
+ * 逐个签名 onedir 里的 Mach-O（Tauri 只签主程序和 externalBin，不签 Resources 里的库）。
+ * 身份与 Tauri 一致：APPLE_SIGNING_IDENTITY > tauri.conf.json 的 bundle.macOS.signingIdentity > ad-hoc（"-"）。
+ * 正式身份加 hardened runtime 与时间戳，公证要求每个二进制都这样签。
+ */
+function signXAsrWorker(dir) {
+  const config = JSON.parse(readFileSync(join(tauriDir, "tauri.conf.json"), "utf8"));
+  const identity = process.env.APPLE_SIGNING_IDENTITY || config.bundle?.macOS?.signingIdentity || "-";
+  const flags = ["--force", "--sign", identity];
+  if (identity !== "-") flags.push("--options", "runtime", "--timestamp", "--entitlements", join(tauriDir, "entitlements.plist"));
+  const main = join(dir, "whale-xasr-worker");
+  const libs = machOFiles(dir).filter((file) => file !== main);
+  // 先签库，最后签主程序。
+  for (const file of libs) execFileSync("codesign", [...flags, file], { stdio: "ignore" });
+  execFileSync("codesign", [...flags, main], { stdio: "ignore" });
+  for (const file of [...libs, main]) execFileSync("codesign", ["--verify", "--strict", file], { stdio: "inherit" });
+  log(`X-ASR worker 已签名：${libs.length + 1} 个 Mach-O，身份 ${identity === "-" ? "ad-hoc" : identity}`);
+}
+
+function machOFiles(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!entry.isFile()) continue;
+    const file = join(entry.parentPath, entry.name);
+    if (isMachO(file)) out.push(file);
+  }
+  return out;
+}
+
+function isMachO(file) {
+  const magics = new Set([0xfeedfacf, 0xcffaedfe, 0xfeedface, 0xcefaedfe, 0xcafebabe, 0xbebafeca]);
+  const fd = openSync(file, "r");
+  const head = Buffer.alloc(4);
+  const n = readSync(fd, head, 0, 4, 0);
+  closeSync(fd);
+  return n === 4 && magics.has(head.readUInt32BE(0));
 }
 
 /* ---- 5. 外置依赖（含 onnxruntime-node 原生库）---- */
