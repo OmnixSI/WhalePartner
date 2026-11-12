@@ -510,12 +510,17 @@ async function checkChatGeometry(browser) {
     for (const state of ["done", "thinking", "failed"]) {
       const { context, page } = await openPage(browser, { width, height: width === 390 ? 844 : 900, touch: width === 390 });
       await page.route("**/api/chat/sessions**", (route) => json(route, FIXTURES.chatSessions));
-      if (state === "thinking") await page.route(/\/api\/chat$/, () => new Promise(() => {}));
-      if (state === "failed") await page.route(/\/api\/chat$/, (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "stub failure" }) }));
+      let sent = 0;
+      if (state === "thinking") await page.route(/\/api\/chat$/, () => { sent += 1; return new Promise(() => {}); });
+      if (state === "failed") await page.route(/\/api\/chat$/, (route) => { sent += 1; return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "stub failure" }) }); });
       await visit(page, "/");
       if (state !== "done") {
+        // 触屏（390）下 Enter 只换行，所以统一点发送键；再确认请求发出、目标状态真的出现，免得量到的是 idle 的尺寸。
         await page.locator("#chat-input").fill("测试消息");
-        await page.locator("#chat-input").press("Enter");
+        await page.locator(".composer__send").click();
+        const reached = await page.locator(`.dlg[data-state="${state}"]`).waitFor({ timeout: 5000 }).then(() => true, () => false);
+        if (sent !== 1) fails.push(`${width} ${state} /api/chat 发出 ${sent} 次，应为 1 次`);
+        if (!reached) fails.push(`${width} ${state} 没进入 ${state} 状态`);
         await page.waitForTimeout(800);
       }
       await page.waitForTimeout(300);
