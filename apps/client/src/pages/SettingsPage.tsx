@@ -5,7 +5,7 @@
  * 昵称走 `lib/profile.ts`（GET/PUT /api/profile）。接口不在就写「现在拿不到」并禁按钮，
  * 页面自己绝不编一个数字出来。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { version as clientVersion } from "../../package.json";
 import { fetchHealth } from "../lib/api";
@@ -72,6 +72,7 @@ export function SettingsPage() {
   const character = useCharacter();
   const relationship = useRelationship(character.id);
   const { hash } = useLocation();
+  const pageRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const [a11y, setA11y] = useState(readA11y);
   const [backend, setBackend] = useState<Backend>("checking");
@@ -140,18 +141,30 @@ export function SettingsPage() {
     setActiveCat(ANCHOR_CATEGORY[id] ?? id.replace(/^cat-/, ""));
   }, [hash]);
 
-  // 目录高亮跟着滚动走：哪个分类标题最先进入视口上半，就亮哪个。
+  // 目录高亮跟着滚动走：标题越过视口上 10% 的那一组最后一个亮；滚到底直接亮最后一组（它太短，标题上不去）。
   useEffect(() => {
-    const sections = CATEGORIES.map((item) => document.getElementById(`cat-${item.id}`)).filter((node): node is HTMLElement => node !== null);
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const top = entries.filter((entry) => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (top) setActiveCat(top.target.id.replace("cat-", ""));
-      },
-      { rootMargin: "-10% 0px -70% 0px" },
-    );
-    sections.forEach((node) => observer.observe(node));
-    return () => observer.disconnect();
+    const scroller = pageRef.current;
+    if (!scroller) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const line = scroller.getBoundingClientRect().top + scroller.clientHeight * 0.1;
+      const atBottom = scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
+      let current: string = CATEGORIES[0].id;
+      for (const item of CATEGORIES) {
+        const node = document.getElementById(`cat-${item.id}`);
+        if (node && node.getBoundingClientRect().top <= line) current = item.id;
+      }
+      setActiveCat(atBottom ? CATEGORIES[CATEGORIES.length - 1].id : current);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
   }, []);
 
   const notify = (text: string) => toast({ title: text });
@@ -233,6 +246,8 @@ export function SettingsPage() {
 
   const goTo = (id: string) => {
     setActiveCat(id);
+    // 只改地址栏不走路由：刷新后仍落在这一类，又不会再触发一次跳转。
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}#cat-${id}`);
     document.getElementById(`cat-${id}`)?.scrollIntoView({ block: "start", behavior: a11y.calm ? "auto" : "smooth" });
   };
 
@@ -243,7 +258,7 @@ export function SettingsPage() {
   );
 
   return (
-    <div className="page page--settings">
+    <div className="page page--settings" ref={pageRef}>
       <div className="page__inner">
         <header className="set-head">
           <h1 className="page__title">设置</h1>
