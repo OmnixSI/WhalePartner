@@ -102,6 +102,15 @@ export class SessionRepository {
     return rows.map(mapMessage).reverse();
   }
 
+  /** 所有会话里 since（ISO 时间）之后的消息，取最新的 limit 条，旧的在前。 */
+  messagesSince(since: string, limit: number): StoredMessage[] {
+    const rows = this.db.prepare(`
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
+      FROM messages WHERE created_at >= ? ORDER BY id DESC LIMIT ?
+    `).all(since, limit) as unknown as StoredMessage[];
+    return rows.map(mapMessage).reverse();
+  }
+
   messagesBetween(sessionId: string, fromId: number, throughId: number): StoredMessage[] {
     const rows = this.db.prepare(`
       SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
@@ -192,6 +201,22 @@ export class SessionRepository {
       ORDER BY CASE WHEN character = 'shared' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
     `).get() as unknown as { text: string; assistantCount: number; updatedAt: string } | undefined;
     return row ? { ...row } : undefined;
+  }
+
+  /**
+   * 一条查询，给近况的定时判断用：since 是上一版近况的时间（还没写过时取第一条聊天的时间，没有聊天为 null），
+   * hasNewChat 表示那之后有没有新聊天（还没写过时，有聊天就算）。
+   */
+  reflectionState(): { since: string | null; hasNewChat: boolean } {
+    const row = this.db.prepare(`
+      SELECT COALESCE(n.updated_at, (SELECT MIN(created_at) FROM messages)) AS since,
+        EXISTS(SELECT 1 FROM messages WHERE created_at > COALESCE(n.updated_at, '')) AS hasNewChat
+      FROM (SELECT 1) LEFT JOIN (
+        SELECT updated_at FROM character_notes
+        ORDER BY CASE WHEN character = 'shared' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
+      ) n
+    `).get() as unknown as { since: string | null; hasNewChat: number };
+    return { since: row.since, hasNewChat: row.hasNewChat === 1 };
   }
 
   setNote(_character: string, text: string, assistantCount: number) {

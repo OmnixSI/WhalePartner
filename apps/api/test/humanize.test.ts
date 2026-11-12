@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { runChat, type ChatEvent } from "../src/chat/service.ts";
+import { resetReflectionScheduleForTests, waitForBackgroundJobs } from "../src/chat/background.ts";
+import { waitForMemoryJobs } from "../src/memory/jobs.ts";
 import { humanizeText } from "../src/diary/humanize.ts";
 import { parseLearnings } from "../src/chat/learning.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
@@ -113,8 +119,11 @@ test("a page that cannot be read is reported honestly", async () => {
   assert.ok(system.includes("没能读成") && system.includes("内部地址") && system.includes("不要编造"));
 });
 
-test("every few turns she writes a note about herself and it reaches the next prompt", async () => {
-  const store = new ChatStore(":memory:");
+test("once 3 days have passed since chat began she writes a note about herself and it reaches the next prompt", async () => {
+  resetReflectionScheduleForTests();
+  const directory = mkdtempSync(join(tmpdir(), "whalepartner-humanize-note-"));
+  const path = join(directory, "chat.db");
+  const store = new ChatStore(path);
   const seen: ChatMessage[][] = [];
   const model: ChatProvider = {
     id: "fake", model: "m",
@@ -125,12 +134,26 @@ test("every few turns she writes a note about herself and it reaches the next pr
       else yield { text: "[emotion:happy]嗯嗯" };
     },
   };
-  for (let i = 0; i < 12; i++) await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, `第 ${i} 句`));
-  await tick();
-  assert.equal(store.getNote("claude")?.text, "最近老被问到猫的事，开始有点想养一只了。");
-  assert.equal(store.getNote("deepseek")?.text, "最近老被问到猫的事，开始有点想养一只了。");
-  await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "再聊一句"));
-  const last = [...seen].reverse().find((m) => m[0].content.startsWith("# 角色设定"))!;
-  const prompt = last.filter((message) => message.role === "system").map((message) => message.content).join("\n");
-  assert.ok(prompt.includes("## 角色近况") && prompt.includes("想养一只"));
+  try {
+    await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "第一句"));
+    await waitForBackgroundJobs();
+    // 刚开始聊，不满 3 天，不写。
+    assert.equal(store.getNote("claude"), undefined);
+    const raw = new DatabaseSync(path);
+    raw.prepare("UPDATE messages SET created_at = ?").run(new Date(Date.now() - 4 * 86_400_000).toISOString());
+    raw.close();
+    await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "四天后又来聊"));
+    await waitForBackgroundJobs();
+    assert.equal(store.getNote("claude")?.text, "最近老被问到猫的事，开始有点想养一只了。");
+    assert.equal(store.getNote("deepseek")?.text, "最近老被问到猫的事，开始有点想养一只了。");
+    await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "再聊一句"));
+    const last = [...seen].reverse().find((m) => m[0].content.startsWith("# 角色设定"))!;
+    const prompt = last.filter((message) => message.role === "system").map((message) => message.content).join("\n");
+    assert.ok(prompt.includes("## 角色近况") && prompt.includes("想养一只"));
+  } finally {
+    await waitForBackgroundJobs();
+    await waitForMemoryJobs(store);
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

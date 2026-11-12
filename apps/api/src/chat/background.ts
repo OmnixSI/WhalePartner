@@ -1,7 +1,7 @@
 import type { ChatDeps } from "./service.ts";
 import { CHARACTERS, type CharacterId } from "../persona/persona.ts";
 import { learnFrom } from "./learning.ts";
-import { reflect } from "./reflect.ts";
+import { buildWeekChat, reflect, REFLECT_CHAT_BUDGET, REFLECT_WINDOW_DAYS } from "./reflect.ts";
 import { beginOtherBackgroundJob, endOtherBackgroundJob, waitForForegroundChatIdle } from "../memory/priority.ts";
 
 let backgroundQueue: Promise<unknown> = Promise.resolve();
@@ -62,39 +62,73 @@ export async function pauseBackgroundJobs() {
   };
 }
 
-const REFLECT_EVERY = 12;
+/** 近况多久写一版。 */
+export const REFLECT_INTERVAL_MS = 3 * 86_400_000;
+/** 一次生成失败（模型出错或小记被过滤）后，至少隔这么久再试，免得每条回复都重试。 */
+const REFLECT_RETRY_MS = 6 * 3_600_000;
+let reflectionQueued = false;
+let lastReflectionAttempt = 0;
 
+/** 测试用：清掉进程内的排队和重试记录。 */
+export function resetReflectionScheduleForTests() {
+  reflectionQueued = false;
+  lastReflectionAttempt = 0;
+}
+
+/** 距上一版满 3 天、且这期间有新聊天才算到期；从没写过时，从第一条聊天算起满 3 天。 */
+export function reflectionDue(state: { since: string | null; hasNewChat: boolean }, now = Date.now()) {
+  return state.hasNewChat && state.since !== null && now - Date.parse(state.since) >= REFLECT_INTERVAL_MS;
+}
+
+/**
+ * 启动时和每次回复之后调用：只做一条查询，到期才在后台排一次生成，不阻塞调用方。
+ * 不用常驻定时器，因为 App 不会一直开着。
+ */
+export function queueReflectionIfDue(deps: ChatDeps, character: CharacterId) {
+  if (reflectionQueued || Date.now() - lastReflectionAttempt < REFLECT_RETRY_MS) return;
+  if (!reflectionDue(deps.store.reflectionState())) return;
+  queueReflection(deps, character, false);
+}
+
+/** force：删除会话后按剩下的聊天重写一版，不看间隔。 */
 export function queueReflection(deps: ChatDeps, character: CharacterId, force: boolean) {
   const { provider, store, memory } = deps;
-  const countAtQueue = store.countAssistant();
-  const previousAtQueue = store.getNote(character);
-  if (!force && countAtQueue - (previousAtQueue?.assistantCount ?? 0) < REFLECT_EVERY) return;
+  if (!force) reflectionQueued = true;
   queueBackground("写近况小记", async (signal) => {
-    const sourceMessages = store.recent(14);
-    if (sourceMessages.length === 0) return;
-    const count = store.countAssistant();
-    const previous = store.getNote(character);
-    if (!force && count - (previous?.assistantCount ?? 0) < REFLECT_EVERY) return;
-    if (!force) {
-      const mine = sourceMessages.filter((message) => message.role === "user");
-      if (mine.length >= 4) {
-        await learnFrom(
-          { provider, memory, store },
-          { title: "用户最近的说法", text: mine.map((message) => message.content.slice(0, 160)).join("\n") },
-          `chat:${character}:${count}`,
-          signal,
-          [...new Set(mine.map((message) => message.sessionId))],
-        );
+    try {
+      if (!force && !reflectionDue(store.reflectionState())) return;
+      const since = new Date(Date.now() - REFLECT_WINDOW_DAYS * 86_400_000).toISOString();
+      // 行数上限只是防止一周聊得特别多时一次读太多行；真正的长度由字数上限控制。
+      const weekMessages = store.messagesSince(since, Math.ceil(REFLECT_CHAT_BUDGET / 4));
+      if (weekMessages.length === 0) return;
+      if (!force) lastReflectionAttempt = Date.now();
+      const { chat, kept: sourceMessages, truncated } = buildWeekChat(weekMessages);
+      const count = store.countAssistant();
+      const previous = store.getNote(character);
+      if (!force) {
+        // 从用户说法里学东西仍只看最近 14 条。
+        const mine = store.recent(14).filter((message) => message.role === "user");
+        if (mine.length >= 4) {
+          await learnFrom(
+            { provider, memory, store },
+            { title: "用户最近的说法", text: mine.map((message) => message.content.slice(0, 160)).join("\n") },
+            `chat:${character}:${count}`,
+            signal,
+            [...new Set(mine.map((message) => message.sessionId))],
+          );
+        }
       }
+      let learned = store.recentLearnings(4).map((entry) => entry.text);
+      if (learned.length === 0 && memory) {
+        learned = (await memory.recentLearnings(4).catch(() => [])).map((entry) => entry.text);
+      }
+      const note = await reflect(provider, { name: CHARACTERS[character].name, previous: previous?.text, learned, chat, truncated }, signal);
+      signal.throwIfAborted();
+      // assistant_count 只作记录（写这一版时一共有多少条回复），不再决定何时重写。
+      if (note && sourceMessages.every((message) => store.message(message.id))) store.setNote(character, note, count);
+    } finally {
+      if (!force) reflectionQueued = false;
     }
-    let learned = store.recentLearnings(4).map((entry) => entry.text);
-    if (learned.length === 0 && memory) {
-      learned = (await memory.recentLearnings(4).catch(() => [])).map((entry) => entry.text);
-    }
-    const chat = sourceMessages.map((message) => `${message.role === "user" ? "用户" : "她"}：${message.content.slice(0, 160)}`);
-    const note = await reflect(provider, { name: CHARACTERS[character].name, previous: previous?.text, learned, chat }, signal);
-    signal.throwIfAborted();
-    if (note && sourceMessages.every((message) => store.message(message.id))) store.setNote(character, note, count);
   });
 }
 
@@ -102,7 +136,6 @@ export function queueLearning(deps: ChatDeps, character: CharacterId, material: 
   queueBackground("整理学到的东西", async (signal) => {
     const survivingSessionIds = sourceSessionIds.filter((id) => deps.store.getSession(id));
     if (sourceSessionIds.length > 0 && survivingSessionIds.length === 0) return;
-    const learned = await learnFrom({ provider: deps.provider, memory: deps.memory, store: deps.store }, material, key, signal, survivingSessionIds);
-    if (learned.length > 0) queueReflection(deps, character, true);
+    await learnFrom({ provider: deps.provider, memory: deps.memory, store: deps.store }, material, key, signal, survivingSessionIds);
   });
 }
