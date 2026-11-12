@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 import { usePrefetchAvatar } from "./avatar/prefetch";
 import { CompanionCorner } from "./components/CompanionCorner";
-import { Nav } from "./components/Nav";
+import { AppShell } from "./components/shell/AppShell";
 import { Ocean } from "./components/Ocean";
 import { Onboarding, useOnboardingOpen } from "./components/Onboarding";
 import { ChatPage } from "./pages/ChatPage";
@@ -32,21 +32,18 @@ export default function App() {
     <>
       <Ocean />
       {!onboarding && (
-        <div className="app">
-          <Nav />
-          <main className="main">
-            <Routes>
-              <Route path="/" element={<ChatPage />} />
-              <Route path="/diary" element={<Suspense fallback={null}><DiaryPage /></Suspense>} />
-              <Route path="/memory" element={<Suspense fallback={null}><MemoryPage /></Suspense>} />
-              <Route path="/surf" element={<Suspense fallback={null}><SurfPage /></Suspense>} />
-              <Route path="/settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
-              <Route path="/__kit/*" element={<Suspense fallback={null}><UiKitPage /></Suspense>} />
-              <Route path="/__kit/ink" element={<Suspense fallback={null}><KitPage /></Suspense>} />
-            </Routes>
-            {cornerHere && <CompanionCorner />}
-          </main>
-        </div>
+        <AppShell>
+          <Routes>
+            <Route path="/" element={<ChatPage />} />
+            <Route path="/diary" element={<Suspense fallback={null}><DiaryPage /></Suspense>} />
+            <Route path="/memory" element={<Suspense fallback={null}><MemoryPage /></Suspense>} />
+            <Route path="/surf" element={<Suspense fallback={null}><SurfPage /></Suspense>} />
+            <Route path="/settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
+            <Route path="/__kit/*" element={<Suspense fallback={null}><UiKitPage /></Suspense>} />
+            <Route path="/__kit/ink" element={<Suspense fallback={null}><KitPage /></Suspense>} />
+          </Routes>
+          {cornerHere && <CompanionCorner />}
+        </AppShell>
       )}
       <Onboarding />
     </>

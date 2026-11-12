@@ -17,6 +17,7 @@ import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 import { useCharacter } from "../characters";
 import { Accounts } from "../components/Accounts";
 import { reopenOnboarding } from "../components/Onboarding";
+import { PageHeader } from "../components/shell/PageHeader";
 import { SettingGroup, SettingRow } from "../components/settings/Row";
 import { ScaleSetting } from "../components/settings/ScaleSetting";
 import { Switch } from "../components/settings/Switch";
@@ -274,10 +275,11 @@ export function SettingsPage() {
   return (
     <div className="page page--settings" ref={pageRef}>
       <div className="page__inner">
-        <header className="set-head">
-          <h1 className="page__title">设置</h1>
-          <p className="set-head__lead">大多数设置改完就生效；字号调整后点“确认”应用。</p>
-        </header>
+        <PageHeader
+          eyebrow="系统 · 设置"
+          title="设置"
+          lead="大多数设置改完就生效；字号调整后点“确认”应用。"
+        />
 
         {offline && (
           <div className="set-banner" role="status">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CompanionCorner, setCompanionMood } from "../components/CompanionCorner";
+import { PageHeader } from "../components/shell/PageHeader";
 import { ConfirmDialog } from "../components/chat/ConfirmDialog";
 import { useMediaQuery } from "../components/chat/useViewport";
 import { Tape } from "../components/ink";
@@ -218,10 +219,11 @@ export function MemoryPage() {
   return (
     <div className="page memory-page">
       <div className="memory-page__inner">
-        <header className="memory-page__head">
-          <h1 className="memory-page__title">她记得的事</h1>
-          {entries !== null && <p className="memory-page__count">已收好 {total} 件</p>}
-        </header>
+        <PageHeader
+          eyebrow="手帐 · 记忆"
+          title="她记得的事"
+          actions={entries !== null ? <span className="page-head__meta">已收好 {total} 件</span> : undefined}
+        />
 
         <div className={`memory-page__top${note ? "" : " memory-page__top--bare"}`}>
           {note && (
