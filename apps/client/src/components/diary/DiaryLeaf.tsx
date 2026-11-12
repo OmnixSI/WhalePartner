@@ -1,12 +1,13 @@
 /**
- * 一页日记（规范 §7.2.2）：`.sheet` + 手绘框，左缘 24px 装订区（两个 14px 圆孔），
+ * 一页日记（规范 §7.2.2）：components/ui Card 承载的一张日记卡，
  * 顶部 DateStamp + 涂鸦 + 「写好啦」邮戳，正文写在横线本上（18/36，文楷）。
  *
  * 月 / 年模式：每篇折叠为 3 行 + 「展开看全文」，展开时靠 CSS 的 grid-rows 过渡，够轻、不抢滚动。
  * 天气 / 心情 / 小标题都来自后端 P-B 的可选字段：缺了就不画那一块，不留空框。
  */
 import { useId, useState } from "react";
-import { InkFrame, Stamp } from "../ink";
+import { Stamp } from "../ink";
+import { Card } from "../ui/Card";
 import { useInkEnv } from "../ink/useCalm";
 import { DateStamp } from "./DateStamp";
 import { Doodle } from "./Doodle";
@@ -34,12 +35,7 @@ export function DiaryLeaf({ item, collapsed, fresh = false, fallbackTitle }: Pro
   const expanded = collapsed ? open : true;
 
   return (
-    <InkFrame as="article" radius={20} stroke={2} tone="ink" fill="sheet" openCorner className="leaf" id={`leaf-${item.id}`}>
-      <div className="leaf__binding" aria-hidden>
-        <span className="leaf__hole" />
-        <span className="leaf__hole" />
-      </div>
-
+    <Card role="article" variant="flat" padding="lg" className="leaf" id={`leaf-${item.id}`}>
       <div className="leaf__body">
         <header className="leaf__head">
           {at ? <DateStamp at={at} id={`${id}-stamp`} /> : <span className="leaf__nodate">{fallbackTitle}</span>}
@@ -92,6 +88,6 @@ export function DiaryLeaf({ item, collapsed, fresh = false, fallbackTitle }: Pro
           </details>
         )}
       </div>
-    </InkFrame>
+    </Card>
   );
 }

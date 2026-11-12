@@ -7,7 +7,9 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, 
 import { isSendKey, PREFS_EVENT, readSendKey, type SendKey } from "../../lib/chat-prefs";
 import { Icon } from "../../icons";
 import { Button, IconButton } from "../ui/Button";
-import { Input } from "../ui/Field";
+import { Card } from "../ui/Card";
+import { Tooltip } from "../ui/Tooltip";
+import { Input, Textarea } from "../ui/Field";
 import type { VoicePhase } from "./useVoiceMode";
 
 type Props = {
@@ -115,7 +117,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
     <div className="composer">
       {!online && <p className="composer__offline">连上之后就能发出去。</p>}
 
-      <div className="composer__frame">
+      <Card variant="raised" padding="none" className="composer__frame">
         <div className="composer__bar" data-voice={voiceMode || undefined} style={composerStyle}>
           {voicePhase === "error" ? (
             <>
@@ -168,10 +170,13 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             </>
           ) : (
             <>
+          <div className="composer__toolbar">
           <Popover.Root open={shareOpen} onOpenChange={setShareOpen}>
-            <Popover.Trigger asChild>
-              <IconButton label="发个视频给她"><Icon name="video" size={22} /></IconButton>
-            </Popover.Trigger>
+            <Tooltip content="发个视频给她">
+              <Popover.Trigger asChild>
+                <IconButton label="发个视频给她"><Icon name="video" size={22} /></IconButton>
+              </Popover.Trigger>
+            </Tooltip>
             <Popover.Portal>
               <Popover.Content className="pop" side="top" align="start" sideOffset={8} collisionPadding={16}>
                 <h3 className="pop__title">给她看个视频</h3>
@@ -198,10 +203,33 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             </Popover.Portal>
           </Popover.Root>
 
+          <Tooltip content="语音聊天">
+            <IconButton label="语音聊天" onClick={onStartVoice}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" />
+              </svg>
+            </IconButton>
+          </Tooltip>
+          <Popover.Root>
+            <Popover.Trigger asChild>
+              <IconButton label="输入小提示">?</IconButton>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content className="pop pop--small" side="top" align="end" sideOffset={8} collisionPadding={16}>
+                <p className="pop__lead">
+                  按 macOS 的听写快捷键就能用说的，文字会先放在输入框里，你检查后再发送。没反应的话，到「系统设置 › 键盘 ›
+                  听写」打开。
+                </p>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
+          </div>
+
           <label className="sr-only" htmlFor="chat-input">
             想和{name}说的话
           </label>
-          <textarea
+          <Textarea
             id="chat-input"
             ref={ref}
             className="composer__input"
@@ -214,18 +242,6 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
           />
 
           <div className="composer__actions">
-          <Button
-            className="composer__voice-mode"
-            icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M3 10v4m4-8v12m4-15v18m4-13v8m4-11v14m2-10v6" />
-              </svg>
-            }
-            onClick={onStartVoice}
-          >
-            <span className="composer__voice-label">语音聊天</span>
-            <span className="composer__voice-label-short">语音</span>
-          </Button>
           <Button
             variant="primary"
             className="composer__send"
@@ -241,7 +257,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             </>
           )}
         </div>
-      </div>
+      </Card>
 
       {value.length >= 1800 && (
         <span className="composer__count" data-alert={value.length >= 1950 || undefined}>
@@ -251,19 +267,6 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
 
       <div className="composer__hint">
         <span className="composer__keys">{coarse ? "Enter 换行 · ⌘/Ctrl+Enter 发送" : sendKey === "mod-enter" ? "⌘/Ctrl+Enter 发送" : "Enter 发送 · Shift+Enter 换行"}</span>
-        <Popover.Root>
-          <Popover.Trigger asChild>
-            <IconButton label="输入小提示">?</IconButton>
-          </Popover.Trigger>
-          <Popover.Portal>
-            <Popover.Content className="pop pop--small" side="top" align="end" sideOffset={8} collisionPadding={16}>
-              <p className="pop__lead">
-                按 macOS 的听写快捷键就能用说的，文字会先放在输入框里，你检查后再发送。没反应的话，到「系统设置 › 键盘 ›
-                听写」打开。
-              </p>
-            </Popover.Content>
-          </Popover.Portal>
-        </Popover.Root>
       </div>
     </div>
   );

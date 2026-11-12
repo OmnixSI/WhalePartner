@@ -1,3 +1,6 @@
+import { Button } from "../ui/Button";
+import { Select } from "../ui/Select";
+import { Tooltip } from "../ui/Tooltip";
 import { rangeOf, shiftMonth, shiftYear, startOfDay, type RangeMode } from "./types";
 
 type Props = {
@@ -44,31 +47,62 @@ function rangeLabel(mode: RangeMode, cursor: Date): string {
 export function PageBar({ mode, cursor, onCursor, onToday }: Props) {
   const step = STEP[mode];
   const label = rangeLabel(mode, cursor);
+  const monthOptions = Array.from({ length: 12 }, (_, month) => ({ value: String(month), label: `${month + 1} 月` }));
+  const yearOptions = Array.from({ length: 8 }, (_, index) => {
+    const year = cursor.getFullYear() - 5 + index;
+    return { value: String(year), label: `${year} 年` };
+  });
 
   return (
     <nav className="pagebar" aria-label="日记时间导航">
-      <button
-        type="button"
-        className="pagebar__step"
-        aria-label={step.prev}
-        onClick={() => onCursor(startOfDay(step.shift(cursor, -1)))}
-      >
-        <span aria-hidden="true">‹</span>
-        <span className="pagebar__word">{step.prev}</span>
-      </button>
-      <strong className="pagebar__range" aria-live="polite">{label}</strong>
-      <button
-        type="button"
-        className="pagebar__step"
-        aria-label={step.next}
-        onClick={() => onCursor(startOfDay(step.shift(cursor, 1)))}
-      >
-        <span className="pagebar__word">{step.next}</span>
-        <span aria-hidden="true">›</span>
-      </button>
-      <button type="button" className="btn btn--quiet pagebar__today" onClick={onToday}>
+      <Tooltip content={step.prev}>
+        <Button
+          variant="secondary"
+          className="pagebar__step pagebar__step--prev"
+          aria-label={step.prev}
+          icon={<span aria-hidden="true">‹</span>}
+          onClick={() => onCursor(startOfDay(step.shift(cursor, -1)))}
+        >
+          <span className="pagebar__word">{step.prev}</span>
+        </Button>
+      </Tooltip>
+      {mode !== "year" && (
+        <strong className="pagebar__range" aria-live="polite">
+          {mode === "month" ? `${cursor.getFullYear()}年` : label}
+        </strong>
+      )}
+      {mode === "month" && (
+        <Select
+          className="pagebar__jump"
+          aria-label="跳到月份"
+          value={String(cursor.getMonth())}
+          options={monthOptions}
+          onValueChange={(value) => onCursor(new Date(cursor.getFullYear(), Number(value), 1))}
+        />
+      )}
+      {mode === "year" && (
+        <Select
+          className="pagebar__jump"
+          aria-label="跳到年份"
+          value={String(cursor.getFullYear())}
+          options={yearOptions}
+          onValueChange={(value) => onCursor(new Date(Number(value), 0, 1))}
+        />
+      )}
+      <Tooltip content={step.next}>
+        <Button
+          variant="secondary"
+          className="pagebar__step pagebar__step--next"
+          aria-label={step.next}
+          icon={<span aria-hidden="true">›</span>}
+          onClick={() => onCursor(startOfDay(step.shift(cursor, 1)))}
+        >
+          <span className="pagebar__word">{step.next}</span>
+        </Button>
+      </Tooltip>
+      <Button variant="ghost" className="pagebar__today" onClick={onToday}>
         回到今天
-      </button>
+      </Button>
     </nav>
   );
 }

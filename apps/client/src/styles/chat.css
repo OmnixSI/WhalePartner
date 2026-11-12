@@ -10,6 +10,7 @@
 .room {
   display: grid;
   grid-template-columns: minmax(var(--scene-min), 1fr) var(--backlog-w);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   padding: var(--sp-3) var(--sp-3) var(--sp-3) 0;
@@ -670,7 +671,7 @@
   /* 舞台吃掉剩余高度：34–42dvh 之间伸缩，回信条永远在 tabbar 之上。
      手机舞台只是一条窄带，同一条构图规则把角色放到舞台的 90%（桌面 60%），
      否则 390×844 上只剩两百来像素，脸就看不清了。 */
-  .scene { flex: 1 1 auto; min-height: 34dvh; max-height: 42dvh; --stage-char-h: .9; --stage-sea-h: .26; }
+  .scene { flex: 1 1 auto; min-height: 34dvh; max-height: none; --stage-char-h: .9; --stage-sea-h: .26; }
   .scene__safe { bottom: 0; }
   .scene__figure { inset: 0; }
   .scene__wait { align-self: end; margin-bottom: var(--sp-4); }
@@ -753,3 +754,70 @@ html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
   .ink-in { transform: none; }
   .composer__voice-state[data-recording] .composer__voice-wave i { animation: none; }
 }
+
+/* ---------------------------------------------------------------- 近期对话（上一轮之前） */
+.chat-thread { display: flex; flex-direction: column; min-height: 0; margin: 0; background: var(--color-card); box-shadow: var(--elev-flat); }
+.chat-thread--aside { width: 100%; height: 100%; }
+.chat-thread--compact {
+  position: absolute;
+  z-index: var(--z-ui);
+  top: calc(56px + var(--sp-3));
+  right: var(--sp-3);
+  width: min(320px, calc(100% - var(--sp-6)));
+  max-height: 190px;
+  background: color-mix(in oklab, var(--color-card) 88%, transparent);
+}
+.chat-thread__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding-bottom: var(--sp-2); box-shadow: 0 1px 0 var(--color-border); }
+.chat-thread__title { margin: 0; font-family: var(--font-voice); font-size: var(--text-lg); letter-spacing: var(--ls-voice); color: var(--color-text-primary); }
+.chat-thread__list { display: flex; flex: 1; flex-direction: column; gap: var(--sp-2); min-height: 0; max-height: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
+.chat-thread--compact .chat-thread__list { max-height: 148px; }
+.chat-thread__list::-webkit-scrollbar { width: 6px; }
+.chat-thread__list::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: var(--r-full); }
+.chat-thread__item { display: flex; flex-direction: column; gap: var(--sp-2); }
+.chat-thread__day { display: flex; align-items: center; gap: var(--sp-2); color: var(--color-text-tertiary); font-size: var(--text-xs); }
+.chat-thread__day::before, .chat-thread__day::after { content: ""; flex: 1; height: 1px; background: var(--color-border); }
+.chat-thread__msg { display: flex; align-items: flex-end; gap: var(--sp-2); max-width: 100%; }
+.chat-thread__msg[data-role="me"] { flex-direction: row-reverse; align-self: flex-end; }
+.chat-thread__avatar { flex: none; width: 24px; height: 24px; }
+.chat-thread__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: min(78%, 42rem); }
+.chat-thread__msg[data-role="me"] .chat-thread__body { align-items: flex-end; }
+.chat-thread__meta { display: flex; align-items: baseline; gap: var(--sp-2); padding: 0 var(--sp-1); font-size: var(--text-xs); color: var(--color-text-tertiary); }
+.chat-thread__bubble { margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-element); background: var(--color-bg-muted); color: var(--color-text-primary); font-size: var(--text-sm); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-thread__msg[data-role="me"] .chat-thread__bubble { background: var(--color-accent-muted); }
+
+/* astryx ChatComposer：工具条 + 输入行 + 发送 */
+.composer__frame.ui-card { padding: var(--sp-1) var(--sp-2); }
+.composer__toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+.composer__toolbar-label {
+  margin-right: auto;
+  padding-left: var(--sp-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  letter-spacing: .12em;
+  color: var(--color-text-tertiary);
+}
+.composer__input.ui-input {
+  width: 0;
+  flex: 1 1 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.composer__input.ui-input:focus-visible { box-shadow: none; }
+.composer__bar:not([data-voice]) > .composer__input.ui-input { width: 0; flex: 1 1 0; }
+.chat-thread__peek { position: absolute; z-index: var(--z-ui); top: calc(var(--sp-3) + 44px + var(--sp-2)); right: var(--sp-3); box-shadow: var(--elev-raised); }
+
+/* 390：工具条单独一行，避免输入框被三个图标和发送键挤成细条 */
+@media (max-width: 600px) {
+  .composer__bar:not([data-voice]) { flex-wrap: wrap; }
+  .composer__toolbar { flex-basis: 100%; order: 0; }
+  .composer__input.ui-input { order: 1; }
+  .composer__actions { order: 2; }
+}
+.chat-thread__peek { top: calc(56px + 56px + var(--sp-2)); }

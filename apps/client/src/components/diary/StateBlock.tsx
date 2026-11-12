@@ -11,6 +11,8 @@ import { InkLine } from "../ink";
 import "../../styles/diary.css"; // 记忆页也用这个组件；日记页懒加载后，样式得跟着组件走
 import { CharacterMark, type CharacterMood } from "../CharacterMark";
 import { Horizon } from "../Horizon";
+import { Button } from "../ui/Button";
+import { Card } from "../ui/Card";
 import { useInkEnv } from "../ink/useCalm";
 
 type Props = {
@@ -30,7 +32,7 @@ export function StateBlock({ kind, title, body, action = null, detail, mood, chi
   const sticker: CharacterMood = mood ?? (kind === "error" ? "worried" : kind === "loading" ? "sleepy" : "hold");
 
   return (
-    <div className={`state state--${kind}`} role={kind === "error" ? "alert" : kind === "loading" ? "status" : undefined}>
+    <Card variant="flat" padding="lg" className={`state state--${kind}`} role={kind === "error" ? "alert" : kind === "loading" ? "status" : undefined}>
       {kind === "loading" ? <Horizon className="state__horizon" /> : <CharacterMark mood={sticker} className="state__sticker" />}
       {title && <h3 className="state__title">{title}</h3>}
       {body ? <p className="state__body">{body}</p> : null}
@@ -38,22 +40,17 @@ export function StateBlock({ kind, title, body, action = null, detail, mood, chi
       {children}
       <div className="state__actions">
         {action && (
-          <button type="button" className="btn btn--primary" onClick={action.onClick}>
+          <Button variant="primary" onClick={action.onClick}>
             {action.label}
-          </button>
+          </Button>
         )}
         {detail && (
-          <button
-            type="button"
-            className="btn btn--quiet"
-            aria-expanded={showDetail}
-            onClick={() => setShowDetail((v) => !v)}
-          >
+          <Button variant="ghost" aria-expanded={showDetail} onClick={() => setShowDetail((v) => !v)}>
             详情
-          </button>
+          </Button>
         )}
       </div>
       {detail && showDetail && <p className="state__detail">{detail}</p>}
-    </div>
+    </Card>
   );
 }

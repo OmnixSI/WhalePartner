@@ -12,7 +12,7 @@ import "./Tabs.css";
 
 export type TabItem = { value: string; label: ReactNode; disabled?: boolean };
 
-export function Tabs({ items, value, defaultValue, onValueChange, variant = "line", label, children, className }: {
+export function Tabs({ items, value, defaultValue, onValueChange, variant = "line", label, panelId, children, className }: {
   items: TabItem[];
   value?: string;
   defaultValue?: string;
@@ -20,6 +20,8 @@ export function Tabs({ items, value, defaultValue, onValueChange, variant = "lin
   variant?: "line" | "segmented";
   /** 读屏用的整体名字，例如「日记视图」 */
   label: string;
+  /** 面板在 Tabs 外部时，显式把每个标签指向它 */
+  panelId?: string;
   /** 每个面板用 <TabPanel value=…>；segmented 当筛选器用时可以不放面板 */
   children?: ReactNode;
   className?: string;
@@ -31,7 +33,7 @@ export function Tabs({ items, value, defaultValue, onValueChange, variant = "lin
     <T.Root value={value} defaultValue={defaultValue ?? items[0]?.value} onValueChange={onValueChange} className={cx("ui-tabs", className)}>
       <T.List aria-label={label} className={cx("ui-tabs__list", `ui-tabs__list--${variant}`)}>
         {items.map((it) => (
-          <T.Trigger key={it.value} value={it.value} disabled={it.disabled} className="ui-tabs__tab ui-press ui-focus" {...(panels.has(it.value) ? {} : { "aria-controls": undefined })}>
+          <T.Trigger key={it.value} value={it.value} disabled={it.disabled} className="ui-tabs__tab ui-press ui-focus" {...(panelId ? { "aria-controls": panelId } : panels.has(it.value) ? {} : { "aria-controls": undefined })}>
             {variant === "segmented" ? <span className="ui-tabs__seg" aria-hidden="true" /> : null}
             <span className="ui-tabs__text">{it.label}</span>
             {variant === "line" ? <span className="ui-tabs__bar" aria-hidden="true" /> : null}
