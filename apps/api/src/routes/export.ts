@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { pauseBackgroundJobs } from "../chat/background.ts";
+import { pauseBackgroundJobs, resetReflectionSchedule } from "../chat/background.ts";
 import { clearMem0History } from "../memory/history.ts";
 import { waitForMemoryJobs } from "../memory/jobs.ts";
 import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
@@ -52,12 +52,15 @@ function collect(deps: ServerDeps): ZipEntry[] {
     { name: "manifest.json", data: json({ app: "whalepartner", exportedAt: new Date().toISOString(), format: 2 }) },
     {
       name: "README.txt",
-      data: Buffer.from("这是 WhalePartner 导出的数据：聊天记录、记忆、日记、见闻、好感度、昵称与用量。用任何支持 zip 的工具打开即可。\n", "utf8"),
+      data: Buffer.from("这是 WhalePartner 导出的数据：聊天记录、记忆（含她的近况小记和聊天观察）、日记、见闻、好感度、昵称与用量。用任何支持 zip 的工具打开即可。\n", "utf8"),
     },
     { name: "chat/sessions.json", data: json(sessions) },
     { name: "chat/messages.json", data: json(messages) },
     { name: "memories/facts.json", data: json(store.listFacts(-1)) },
     { name: "memories/experiences.json", data: json(store.listExperiences(-1, true)) },
+    { name: "memories/note.json", data: table("character_notes") },
+    { name: "memories/note-history.json", data: table("character_note_history") },
+    { name: "memories/session-observations.json", data: table("session_observations") },
     { name: "diary/journals.json", data: table("daily_journals") },
     { name: "diary/journal-revisions.json", data: table("daily_journal_revisions") },
     { name: "diary/video-diary.json", data: table("diary_items") },
@@ -112,6 +115,7 @@ async function deleteAllData(deps: ServerDeps, sessionRequests: ChatSessionReque
     if (deps.journal) unlockJournals = await deps.journal.lockForSessionDeletion();
     await waitForMemoryJobs(deps.store);
     deps.store.clearAll();
+    resetReflectionSchedule();
     const memoriesCleared = await clearAllMemories(deps);
     await rm(join(deps.config.surfDir, "thumbs"), { recursive: true, force: true });
     try {

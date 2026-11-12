@@ -65,13 +65,13 @@
 
 ## 近况小记
 
-`GET /api/note?character=deepseek` → `{ note: { text, updatedAt } | null }`。近况小记跨人格共享，`character` 保留为兼容参数；旧版记录仍可读取。说明见 [`PERSONALITY.md`](PERSONALITY.md)。
+`GET /api/note?character=deepseek` → `{ note: { text, updatedAt } | null }`。近况小记跨人格共享，`character` 保留为兼容参数；旧版记录仍可读取。这里只返回当前一版；每次改写都会追加到 `character_note_history`，历史版本经 `/api/memories` 读取，删除会话或清除聊天时一并清空。说明见 [`PERSONALITY.md`](PERSONALITY.md)。
 
 ## 记忆
 
 记忆保存在本机 SQLite 与现有 Mem0 本地文件中。聊天、事实、经历、日记与见闻都对所有人格共享；`character` 字段保留记录来源，不作为读取隔离条件。切换角色只改变模型人格。SQLite 是原始聊天、会话摘要、带证据的事实版本和待处理任务的权威来源；Mem0 + 本地中文向量模型负责语义召回，SQLite FTS5 负责本地中文词项检索。聊天片段按消息 ID 链接到原文，B4 事实和经历的向量、全文索引可从 SQLite 来源重建；只保存在 B3 向量库中的旧记忆没有对应来源记录。
 
-- `GET /api/memories` → `{ entries: [{ id, kind: "fact"｜"experience", text, createdAt, source?, title?, url?, sourceId?, status?, validFrom?, validTo?, confidence?, sources?, vectorIndexed?, lastError? }], vectorError? }`。`local:<id>` 是带来源消息、置信度和有效期的结构化事实；`status` 为 `active` 或 `superseded`。`local-exp:<id>` 是 SQLite 本地经历档案；`vectorIndexed=false` 表示全文档案可用，语义索引等待重试。语义索引关闭或暂不可用时，SQLite 记录仍会返回。
+- `GET /api/memories` → `{ entries: [{ id, kind: "fact"｜"experience", text, createdAt, source?, title?, url?, sourceId?, status?, validFrom?, validTo?, confidence?, sources?, vectorIndexed?, lastError? }], vectorError? }`。`local:<id>` 是带来源消息、置信度和有效期的结构化事实；`status` 为 `active` 或 `superseded`。`local-exp:<id>` 是 SQLite 本地经历档案；`vectorIndexed=false` 表示全文档案可用，语义索引等待重试。语义索引关闭或暂不可用时，SQLite 记录仍会返回。`source: "reflection"` 是「她的近况」：`note:<id>` 是近况小记的各个版本（最新一版 `status: "active"`，其余 `superseded`），`observation:<sessionId>` 是会话观察；两者按时间倒序，不支持单条删除。
 - `GET /api/memories/explorer?character=deepseek&category=conversation&q=鲸鱼&from=2026-10-01&to=2026-10-31&role=user&status=all&page=1&pageSize=30` → `{ items, total, page, pageSize, counts }`。`character` 保留为兼容参数，返回完整共享档案；类别为 `all|fact|conversation|video|web|diary|learned|reflection`；`from/to` 是包含首尾日期的本机日历日期；`role` 仅筛选聊天发言；`status` 可筛选当前/历史事实。类别数、全文中文二元词项搜索和分页均在 SQLite 上计算，覆盖完整可查档案。事实条目带所有原话来源，经历条目带来源会话、源消息 ID 和原链接；若来源会话已删除且内容作为独立资料保留，`sourceMissing` 为 `true`。
 - `DELETE /api/memories/:id`
 - `POST /api/memories/experience`，给视频和日记写入一段经历：
@@ -129,7 +129,7 @@
 
 ## 导出与删除全部
 
-- `POST /api/export` 打包一份 zip，返回 `{ "id": "…" }`；`GET /api/export?id=…` 在 10 分钟内可下载。包里是完整副本、不截断：会话与全部消息、事实、经历、综合日记及修订、旧版视频日记、见闻、好感度、昵称和额度记录。
+- `POST /api/export` 打包一份 zip，返回 `{ "id": "…" }`；`GET /api/export?id=…` 在 10 分钟内可下载。包里是完整副本、不截断：会话与全部消息、事实、经历、她的近况小记（当前版和全部历史版本）、会话观察、综合日记及修订、旧版视频日记、见闻、好感度、昵称和额度记录。
 - `DELETE /api/data`，请求体必须是 `{ "confirm": "DELETE_ALL" }`。和清空聊天记录同一套锁：先停后台任务、拦住聊天和日记写入、等记忆任务收尾，再删除上面这些数据、全部向量与 mem0 的变更历史、见闻封面，并退出 B 站登录；见闻设置、陪伴设置、已配对设备和 `.env` 保留。返回 `{ "ok": true, "memoriesCleared": true }`，向量没有全部删掉时 `memoriesCleared` 为 `false`。导出或删除进行中时，聊天请求返回 409。
 
 ## 配置（`apps/api/.env`，见 `.env.example`）

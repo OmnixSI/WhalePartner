@@ -34,6 +34,8 @@ export function openChatDatabase(path: string): DatabaseSync {
 
   migrateMessages(db);
   migrateSessions(db);
+  migrateNoteHistory(db);
+  migrateChatLearningState(db);
   db.exec(`
     INSERT OR IGNORE INTO chat_sessions (id, character, title, created_at, updated_at)
     SELECT 'legacy:' || character, character, '历史聊天', MIN(created_at), MAX(created_at)
@@ -261,6 +263,53 @@ function migrateMessages(db: DatabaseSync) {
   if (!columns.some((column) => column.name === "attachment_json")) {
     db.exec("ALTER TABLE messages ADD COLUMN attachment_json TEXT");
   }
+}
+
+/**
+ * 近况小记的历史版本：character_notes 仍只存当前一版（提示词和顶部便签读它），
+ * 每次写入另在这里追加一行。第一次建表时把已有的小记当作最早的历史导入，升级后分区里马上能看到。
+ * 判断、建表和导入在同一个事务里：导入失败就整体回滚，下次打开会重新迁移，不会留下一张空表。
+ */
+function migrateNoteHistory(db: DatabaseSync) {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'character_note_history'").get();
+    if (!exists) {
+      db.exec(`
+        CREATE TABLE character_note_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          text TEXT NOT NULL,
+          assistant_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        );
+        INSERT INTO character_note_history (text, assistant_count, created_at)
+        SELECT text, assistant_count, updated_at FROM character_notes
+        ORDER BY CASE WHEN character = 'shared' THEN 1 ELSE 0 END, updated_at, character;
+      `);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+/**
+ * 从聊天里学用户说法的进度：上次学习时一共有多少条回复，每多 12 条再学一次。
+ * 以前这一步跟着近况走，进度就是近况的 assistant_count，所以第一次建表时从那里接上。
+ */
+function migrateChatLearningState(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_learning_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      assistant_count INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO chat_learning_state (id, assistant_count)
+    SELECT 1, COALESCE((
+      SELECT assistant_count FROM character_notes
+      ORDER BY CASE WHEN character = 'shared' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
+    ), 0);
+  `);
 }
 
 function migrateSessions(db: DatabaseSync) {

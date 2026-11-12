@@ -102,6 +102,15 @@ export class SessionRepository {
     return rows.map(mapMessage).reverse();
   }
 
+  /** 所有会话里 since（ISO 时间）之后的消息，取最新的 limit 条，旧的在前。 */
+  messagesSince(since: string, limit: number): StoredMessage[] {
+    const rows = this.db.prepare(`
+      SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
+      FROM messages WHERE created_at >= ? ORDER BY id DESC LIMIT ?
+    `).all(since, limit) as unknown as StoredMessage[];
+    return rows.map(mapMessage).reverse();
+  }
+
   messagesBetween(sessionId: string, fromId: number, throughId: number): StoredMessage[] {
     const rows = this.db.prepare(`
       SELECT id, role, content, emotion, character, session_id AS sessionId, created_at AS createdAt, attachment_json
@@ -194,12 +203,63 @@ export class SessionRepository {
     return row ? { ...row } : undefined;
   }
 
-  setNote(_character: string, text: string, assistantCount: number) {
+  /**
+   * 一条查询，给近况的定时判断用：lastAt 是上一版近况的时间，hasNewChat 表示那之后有没有新聊天。
+   * 还没写过近况时 lastAt 为 null，这时才数一下一共有多少条回复（assistantCount），其余情况不数。
+   */
+  reflectionState(): { lastAt: string | null; hasNewChat: boolean; assistantCount: number | null } {
+    const row = this.db.prepare(`
+      SELECT n.updated_at AS lastAt,
+        EXISTS(SELECT 1 FROM messages WHERE created_at > COALESCE(n.updated_at, '')) AS hasNewChat,
+        CASE WHEN n.updated_at IS NULL THEN (SELECT COUNT(*) FROM messages WHERE role = 'assistant') END AS assistantCount
+      FROM (SELECT 1) LEFT JOIN (
+        SELECT updated_at FROM character_notes
+        ORDER BY CASE WHEN character = 'shared' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
+      ) n
+    `).get() as unknown as { lastAt: string | null; hasNewChat: number; assistantCount: number | null };
+    return { lastAt: row.lastAt, hasNewChat: row.hasNewChat === 1, assistantCount: row.assistantCount };
+  }
+
+  /** 一条查询：现在一共有多少条回复，以及上次从聊天里学东西时有多少条。 */
+  chatLearningState(): { assistantCount: number; learnedAt: number } {
+    return this.db.prepare(`
+      SELECT (SELECT COUNT(*) FROM messages WHERE role = 'assistant') AS assistantCount,
+        COALESCE((SELECT assistant_count FROM chat_learning_state WHERE id = 1), 0) AS learnedAt
+    `).get() as unknown as { assistantCount: number; learnedAt: number };
+  }
+
+  markChatLearned(assistantCount: number) {
     this.db.prepare(`
-      INSERT INTO character_notes (character, text, assistant_count) VALUES (?, ?, ?)
-      ON CONFLICT(character) DO UPDATE SET text = excluded.text, assistant_count = excluded.assistant_count,
-        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-    `).run("shared", text, assistantCount);
+      INSERT INTO chat_learning_state (id, assistant_count) VALUES (1, ?)
+      ON CONFLICT(id) DO UPDATE SET assistant_count = excluded.assistant_count
+    `).run(assistantCount);
+  }
+
+  setNote(_character: string, text: string, assistantCount: number) {
+    const now = new Date().toISOString();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare(`
+        INSERT INTO character_notes (character, text, assistant_count, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(character) DO UPDATE SET text = excluded.text, assistant_count = excluded.assistant_count,
+          updated_at = excluded.updated_at
+      `).run("shared", text, assistantCount, now);
+      this.db.prepare("INSERT INTO character_note_history (text, assistant_count, created_at) VALUES (?, ?, ?)")
+        .run(text, assistantCount, now);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /** 近况小记的所有版本，新的在前；第一条就是当前这一版。 */
+  listNoteHistory(): Array<{ id: number; text: string; assistantCount: number; createdAt: string }> {
+    const rows = this.db.prepare(`
+      SELECT id, text, assistant_count AS assistantCount, created_at AS createdAt
+      FROM character_note_history ORDER BY created_at DESC, id DESC
+    `).all() as unknown as Array<{ id: number; text: string; assistantCount: number; createdAt: string }>;
+    return rows.map((row) => ({ ...row }));
   }
 
   countAssistant(_character?: string): number {
