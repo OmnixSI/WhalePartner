@@ -4,7 +4,7 @@
  *
  *   pnpm --dir apps/client run ui:check                    全跑（会自己起 vite dev，跑完关掉）
  *   pnpm --dir apps/client run ui:check --static           只跑源码检查，不开浏览器
- *   pnpm --dir apps/client run ui:check --shots            另外拍 5 页 × 亮/暗和预览页，存到 apps/client/test-results/ui-check/
+ *   pnpm --dir apps/client run ui:check --shots            另外拍 6 页 × 亮/暗和预览页，存到 apps/client/test-results/ui-check/
  *   pnpm --dir apps/client run ui:check --base=http://127.0.0.1:1420   复用已在跑的 dev server
  *   pnpm --dir apps/client run ui:check --debt             打印各文件的动效 / filter 存量（JSON），用来调低 perf-budget.json
  *
@@ -26,6 +26,8 @@
  *  13  filter 按文件只减不增（backdrop-filter 由第 3 项拦）
  *  14  首屏 JS / CSS gzip 不超过 0.3.4（默认构建到 node_modules/.cache/ui-check-dist，--dist=… 复用现成构建）
  *  15  静置 9 秒后没有还在跑的循环动画；页面隐藏后没有任何还在跑的动画
+ *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空
+ *  （--shots 再加一项：截图）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -264,6 +266,7 @@ const PAGES = [
   ["diary", "/diary"],
   ["memory", "/memory"],
   ["settings", "/settings"],
+  ["surf", "/surf"],
   ["kit", "/__kit"],
 ];
 const CHARACTERS = ["whale", "deepseek", "claude", "chatgpt"];
@@ -399,13 +402,17 @@ async function checkIdleAndHidden(browser) {
     const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true });
     await page.addInitScript(instrumentTimers);
     await visit(page, path);
-    if (path === "/") {
-      const loops = async () => (await page.evaluate(runningAnimations)).filter((a) => a.endsWith("∞"));
-      const before = await loops();
+    // 每页都查；静置前就没有循环动画的页不用再等 9.5 秒。
+    // 加载转圈（ui-spin）是状态反馈，加载完就没了，不算环境动效；隐藏后照样要停（下面那段查）。
+    const loops = async () => (await page.evaluate(runningAnimations)).filter((a) => a.endsWith("∞") && !a.includes(":ui-spin"));
+    const before = await loops();
+    if (before.length) {
       await page.waitForTimeout(9500); // 空闲门槛 8 秒（src/lib/activity.ts）
       const after = await loops();
-      notes.push(`静置前循环动画 ${before.length}，9.5s 后 ${after.length}`);
+      notes.push(`${name} 静置前循环动画 ${before.length}，9.5s 后 ${after.length}`);
       if (after.length) fails.push(`${name} 静置后仍在跑：${after.slice(0, 4).join("、")}`);
+    } else {
+      notes.push(`${name} 无循环动画`);
     }
     await page.evaluate(() => window.__wpSetHidden(true));
     await page.waitForTimeout(300);
@@ -414,6 +421,37 @@ async function checkIdleAndHidden(browser) {
     await context.close();
   }
   return record(`静置 / 隐藏后动画停下（${PAGES.length} 页）`, fails.length === 0, fails.length ? fails.join("；") : `${notes.join("；")}；隐藏后 0`);
+}
+
+/** 16. 懒加载页借用的组件样式还在：/surf 弹出的便签是 fixed 的小条；标签的 aria-controls 都指向真有的面板。 */
+async function checkLazyStyles(browser) {
+  const fails = [];
+  const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+  await visit(page, "/surf");
+  // 假后端对 /api/surf/run 回 200（不是 202），页面会弹「现在叫不动她」的便签
+  await page.getByRole("button", { name: "让她现在去逛逛" }).first().click();
+  const toast = await page.waitForSelector(".toast", { timeout: 3000 }).catch(() => null);
+  let toastNote = "没弹出";
+  if (!toast) fails.push("surf 点「让她现在去逛逛」后没有便签");
+  else {
+    const box = await toast.evaluate((el) => ({ position: getComputedStyle(el).position, width: Math.round(el.getBoundingClientRect().width) }));
+    toastNote = `${box.position} ${box.width}px`;
+    if (box.position !== "fixed" || box.width > 420) fails.push(`surf 便签样式丢了：${toastNote}`);
+  }
+  await context.close();
+  let tabs = 0;
+  const { context: c2, page: p2 } = await openPage(browser, { width: 1440, height: 900 });
+  for (const [name, path] of PAGES) {
+    await visit(p2, path);
+    const dangling = await p2.evaluate(() => [...document.querySelectorAll('[role="tab"]')].map((t) => {
+      const id = t.getAttribute("aria-controls");
+      return id && !document.getElementById(id) ? (t.textContent || "").trim().slice(0, 8) : null;
+    }).filter(Boolean));
+    tabs += await p2.evaluate(() => document.querySelectorAll('[role="tab"]').length);
+    for (const d of dangling) fails.push(`${name} 标签「${d}」的 aria-controls 指向不存在的面板`);
+  }
+  await c2.close();
+  return record("懒加载页的共享样式 / 标签面板指向", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls`);
 }
 
 async function shoot(browser) {
@@ -480,9 +518,10 @@ if (STATIC_ONLY) {
     await checkHorizontalScroll(browser);
     await checkAxe(browser, AxeBuilder);
     await checkIdleAndHidden(browser);
+    await checkLazyStyles(browser);
     if (WITH_SHOTS) {
       const written = await shoot(browser);
-      record(`截图 ${written.length} 张（5 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层）`, true, `${rel(SHOTS)}/`);
+      record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层）`, true, `${rel(SHOTS)}/`);
     }
     await browser.close();
   } catch (error) {

@@ -14,7 +14,7 @@
 - 没有渐变、毛玻璃、发光和彩色大阴影；层次靠一像素的线和留白（`--shadow-1` / `--shadow-2` 只做“纸平放 / 纸被拿起”）。
 - 没有胶囊徽标和圆形图标按钮；标签是 `InkFrame` 的细边小方框，主按钮是强调色实底 + 反色字。
 - 一个页面只有一种强调色，且随角色变；珊瑚色（`--coral`）只做胶带、邮戳、插画这类**图形**，禁止做文字。
-- 圆角只有 4 档 + 1 个圆：`--r-xs 4` / `--r-sm 8` / `--r-md 14`（老人模式 16）/ `--r-lg 20` / `--r-round 999`。
+- 圆角只有 4 档 + 1 个圆：`--r-inner 6` / `--r-element 12`（老人模式 14）/ `--r-container 18`（老人模式 20）/ `--r-page 26` / `--r-full 999`。旧页面还在用调色板层的 `--r-xs 4 / --r-sm 8 / --r-md 14 / --r-lg 20 / --r-round 999`，迁移时换成语义层。
 - 界面上不出现模型名、后端、API、token、“AI 助手”“为您生成”。她是角色，不是工具。
 
 ## 配色（`styles/tokens.css`）
@@ -66,7 +66,7 @@
 
 ## 设计系统（`components/ui/*`，#151）
 
-基础组件放在 `apps/client/src/components/ui/`，从 `components/ui/index.ts` 导出。每个组件带自己的 CSS，页面只为用到的组件付体积。交互底层用已有依赖 `radix-ui`（Dialog、Select、Tabs、Tooltip、Switch）和 `sonner`（Toast），没有新增运行时依赖。部分结构改写自 meta/astryx（MIT），没有作为依赖安装，见仓库根目录 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。
+基础组件放在 `apps/client/src/components/ui/`，从 `components/ui/index.ts` 导出。每个组件带自己的 CSS，页面只为用到的组件付体积。交互底层用已有依赖 `radix-ui`（Dialog、Select、Tabs、Tooltip、Switch、Toast），没有新增运行时依赖。部分结构改写自 meta/astryx（MIT），没有作为依赖安装，见仓库根目录 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。
 
 ### 语义 token（`styles/tokens.css`）
 
@@ -99,7 +99,7 @@
 | `Tabs` / `TabPanel` | 分段式；选中块用 `--r-inner` |
 | `Card` / `CardButton` | 静态卡与可点卡（可点卡才有 hover 叠层） |
 | `Dialog` / `ConfirmDialog` | 遮罩 `--color-scrim`，面板 `--r-page` + `--elev-overlay`；破坏性确认先讲后果 |
-| `Toaster` / `toast` | sonner，样式换成 token |
+| `Toaster` / `toast` | Radix Toast；默认 8 秒消失，常显「关掉」，带撤销时不短于 8 秒 |
 | `Tooltip` | 只补充说明，不承载唯一信息 |
 
 每个可交互组件都有 hover、按下（active）、焦点（`:focus-visible` 双环）和禁用四种状态：
@@ -127,7 +127,7 @@
 - 库：`motion`（`motion/react`）。只动 `transform` / `opacity`；例外只有墨线 `clip-path` 与折叠 `grid-template-rows`。
 - **弹簧只在 `src/motion/tokens.ts`**：`spring.press/soft/sheet/page/switch/cute/char`。组件里不写 stiffness/damping。
 - **时长与曲线只在 `styles/tokens.css`**：`--dur-press 120 / --dur-hover 160 / --dur-fade 200 / --dur-panel 280 / --dur-ink 240 / --dur-page 520`（ms）；常驻动效另有 `--breath 4.5s`、`--drift-far/mid/near 90/60/40s`、`--blink 4.6s`、`--lit 1.2s`、`--pen 1.6s`、`--dur-inkline 1800ms`、`--dur-fold 480ms`。
-- 缓动只有三条：`--ease-out`（入）、`--ease-inout`（循环）、`--ease-linear`（只给浪漂移）。设计系统组件另用语义档：`--dur-fast/medium/slow` 与 `--ease-standard/enter/exit`。UI 动效 ≤300ms，翻页 520ms、墨线 1800ms、“忘掉”480ms 是白名单。
+- 缓动只有三条：`--ease-out`（入）、`--ease-inout`（循环）、`--ease-linear`（只给浪漂移）。设计系统组件另用语义档：`--dur-fast/medium/slow` 与 `--ease-standard/enter/exit`。UI 动效不超过 `--dur-slow` 320ms（对话框、抽屉），翻页 520ms、墨线 1800ms、“忘掉”480ms 是白名单。
 - 环境动效（标了 `data-ambient` 的海平线和浪）静置 8 秒后暂停，有输入再继续；页面隐藏时所有 CSS 动画暂停（`lib/activity.ts`）；Live2D 的 pixi 交互管理器不挂系统 ticker。
 - 降级：`prefers-reduced-motion: reduce` 与 `data-motion="calm"`（老人模式自动进 calm）下，`--dur-*` 变 1ms/120ms、角色贴纸与浪停住、不位移只淡入。`calmFade`（`motion/tokens.ts`）就是那一档。
 
@@ -159,6 +159,7 @@
 | `styles/settings.css` | 设置与引导：分组行、开关、滑块、选择卡 |
 | `styles/surf.css` | 见闻页（懒加载） |
 | `styles/surf-slip.css` | 「她在逛」小便签，聊天页和见闻页共用，由 `SurfStatus` 引入 |
+| `styles/toast-note.css` | 日记、记忆、见闻三页共用的便签小提示，由 `components/diary/Toast` 引入 |
 | `styles/ink.css` | 手绘基元：线、框、胶带、邮戳、浪、图标 |
 | `styles/sticker.css` | 贴纸角色与小角（呼吸/眨眼/手机三道线/笔尖） |
 | `styles/layout.css` | 外框、导航、内容页通用排版、账号接入 |
@@ -179,12 +180,12 @@
 ```bash
 pnpm --dir apps/client run ui:check            # 全跑：源码 + 构建 + 浏览器（会自己起 vite，跑完关掉）
 pnpm --dir apps/client run ui:check --static   # 只跑源码检查
-pnpm --dir apps/client run ui:check --shots    # 另外拍 5 页 × 亮/暗 和预览页，存到 apps/client/test-results/ui-check/
+pnpm --dir apps/client run ui:check --shots    # 另外拍 6 页 × 亮/暗 和预览页，存到 apps/client/test-results/ui-check/
 pnpm --dir apps/client run ui:check --debt     # 打印各文件的动效 / filter 存量，用来调低 perf-budget.json
 pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印比值
 ```
 
-十六项，任何一项失败退出码为 1：
+默认跑 16 项，带 `--shots` 再加第 17 项截图；任何一项失败退出码为 1。浏览器检查覆盖聊天、日记、记忆、设置、见闻和预览页 6 页：
 
 1. 对比度 172 组
 2. 淘汰 token
@@ -200,8 +201,9 @@ pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印�
 12. 触控 ≥44（老人 ≥56）
 13. 横向滚动（380px 与 `--scale=2`）
 14. axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）
-15. 静置 / 隐藏后动画停下
-16. 截图
+15. 静置 / 隐藏后动画停下（每页都查）
+16. 懒加载页借用的组件样式还在（`/surf` 的便签是 fixed 小条），标签的 `aria-controls` 不悬空
+17. 截图（只在 `--shots` 时）
 
 角色闪卡（`apps/client/src/card-preview/`）的镭射、光泽和光照是单独确认的卡面效果，不受渐变、圆角和动效时长这三条限制。
 

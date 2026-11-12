@@ -36,6 +36,14 @@ export const FIXTURES = {
     costs: { chat: 2, video: 10, web: 4, journal: 6, surfVideo: 12, surfWeb: 5 },
     today: { used: 12 },
   },
+  surfFeed: {
+    items: [
+      { id: 11, kind: "video", title: "潮间带的一小时", url: "https://www.bilibili.com/video/BV1aa411c7mA", sourceSite: "bilibili", thumb: null, thumbError: null, summary: "退潮后的礁石上，小螃蟹和海葵各忙各的。", comment: "原来海葵合起来是在吃东西。", tags: ["海洋"], createdAt: "2026-11-06T09:30:00+11:00", sharedAt: null },
+      { id: 12, kind: "web", title: "怎么给旧毛衣补一个小洞", url: "https://example.com/darning", sourceSite: "example.com", thumb: null, thumbError: null, summary: "用织补蘑菇和同色毛线，一针一针把洞织回去。", comment: "下次你的袖口破了，我知道怎么办了。", tags: ["手作"], createdAt: "2026-11-05T20:00:00+11:00", sharedAt: "2026-11-05T20:05:00+11:00" },
+    ],
+    total: 2, page: 1, pageSize: 20,
+    sources: [{ site: "bilibili", count: 1 }, { site: "example.com", count: 1 }],
+  },
 };
 
 export async function stubApi(page) {
@@ -51,6 +59,7 @@ export async function stubApi(page) {
     if (url.includes("/api/profile")) return json({ nickname: "阿明" });
     // 设置页读这两项设置，缺了会整页白屏（0.3.4 起 ui-check 拍到的设置页一直是空白）
     if (url.includes("/api/companion/settings")) return json({ enabled: true, frequency: "normal", quiet: { start: "23:00", end: "08:00" } });
+    if (url.includes("/api/surf/feed")) return json(FIXTURES.surfFeed);
     if (url.includes("/api/surf/settings")) return json({ character: "whale", enabled: true, frequency: "normal", interests: ["海洋", "手作"], blocked: [], quiet: { start: "23:00", end: "08:00" }, video: true, web: true, shareToChat: true, webAvailable: true, browser: { state: "ready", percent: null, message: "" } });
     if (url.includes("/api/surf/status")) return json({ running: false, sessionId: null, stage: null, todayCount: 2, lastRunAt: NOW, nextRunAt: null, pausedReason: null, webAvailable: true });
     if (url.includes("/api/devices")) return json({ devices: [] });
