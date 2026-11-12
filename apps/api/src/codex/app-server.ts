@@ -7,6 +7,23 @@ import type { StoredCodexSettings } from "./settings.ts";
 const REQUEST_TIMEOUT_MS = 30000;
 const TURN_TIMEOUT_MS = 240000;
 
+/**
+ * 这里的 Codex 只用来生成聊天文字，不需要它的编码工具。默认每轮要带约 2 万 token 的工具定义，
+ * 关掉后约 6.5k：首字更快，也少耗一大截额度。只作用于这个子进程，不改用户的 ~/.codex/config.toml；
+ * 旧版 Codex 不认识的 feature 名会被忽略。
+ */
+const CHAT_ONLY_FEATURES = [
+  "apps", "browser_use", "browser_use_external", "computer_use", "plugins", "multi_agent", "shell_tool",
+  "unified_exec", "view_image", "image_generation", "goals", "skill_search", "tool_suggest", "sleep_tool",
+  "hooks", "in_app_browser", "code_mode_host",
+];
+export const CODEX_APP_SERVER_ARGS: readonly string[] = [
+  "app-server", "--stdio",
+  "-c", "mcp_servers={}",
+  "-c", 'web_search="disabled"',
+  ...CHAT_ONLY_FEATURES.flatMap((feature) => ["-c", `features.${feature}=false`]),
+];
+
 export interface CodexEffortOption {
   reasoningEffort: string;
   description: string;
@@ -235,7 +252,7 @@ class CodexAppServer {
   async #ensureReady() {
     if (this.#ready) return this.#ready;
     // 按解析出的真实路径拉起，绕过会改写参数的包装脚本；找不到就直接抛错。
-    const child = spawn(resolveCodexBinary(), ["app-server", "--stdio", "-c", "mcp_servers={}"], { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(resolveCodexBinary(), [...CODEX_APP_SERVER_ARGS], { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
     this.#child = child;
     this.#reader = createInterface({ input: child.stdout });
     this.#reader.on("line", (line) => this.#readLine(line));
@@ -381,6 +398,11 @@ function getAppServer() {
 
 export function listCodexModels(signal?: AbortSignal) {
   return getAppServer().listModels(signal);
+}
+
+/** 后端启动时先把 Codex 服务拉起来并取一次模型列表（不发模型请求、不耗额度），第一句话不再等进程启动。 */
+export async function warmCodexAppServer() {
+  await getAppServer().listModels();
 }
 
 export function streamWithCodexAppServer(prompt: string, settings: StoredCodexSettings, signal?: AbortSignal) {
