@@ -1,8 +1,4 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { runChat, type ChatEvent } from "../src/chat/service.ts";
 import { resetReflectionScheduleForTests, waitForBackgroundJobs } from "../src/chat/background.ts";
@@ -119,11 +115,9 @@ test("a page that cannot be read is reported honestly", async () => {
   assert.ok(system.includes("没能读成") && system.includes("内部地址") && system.includes("不要编造"));
 });
 
-test("once 3 days have passed since chat began she writes a note about herself and it reaches the next prompt", async () => {
+test("a new user gets the first note after 12 replies, and it reaches the next prompt", async () => {
   resetReflectionScheduleForTests();
-  const directory = mkdtempSync(join(tmpdir(), "whalepartner-humanize-note-"));
-  const path = join(directory, "chat.db");
-  const store = new ChatStore(path);
+  const store = new ChatStore(":memory:");
   const seen: ChatMessage[][] = [];
   const model: ChatProvider = {
     id: "fake", model: "m",
@@ -134,19 +128,16 @@ test("once 3 days have passed since chat began she writes a note about herself a
       else yield { text: "[emotion:happy]嗯嗯" };
     },
   };
+  const chat = (text: string) => collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, text));
   try {
-    await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "第一句"));
+    for (let i = 0; i < 11; i++) await chat(`第 ${i} 句`);
     await waitForBackgroundJobs();
-    // 刚开始聊，不满 3 天，不写。
-    assert.equal(store.getNote("claude"), undefined);
-    const raw = new DatabaseSync(path);
-    raw.prepare("UPDATE messages SET created_at = ?").run(new Date(Date.now() - 4 * 86_400_000).toISOString());
-    raw.close();
-    await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "四天后又来聊"));
+    assert.equal(store.getNote("claude"), undefined, "11 条回复还不写");
+    await chat("第 11 句");
     await waitForBackgroundJobs();
     assert.equal(store.getNote("claude")?.text, "最近老被问到猫的事，开始有点想养一只了。");
     assert.equal(store.getNote("deepseek")?.text, "最近老被问到猫的事，开始有点想养一只了。");
-    await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "再聊一句"));
+    await chat("再聊一句");
     const last = [...seen].reverse().find((m) => m[0].content.startsWith("# 角色设定"))!;
     const prompt = last.filter((message) => message.role === "system").map((message) => message.content).join("\n");
     assert.ok(prompt.includes("## 角色近况") && prompt.includes("想养一只"));
@@ -154,6 +145,48 @@ test("once 3 days have passed since chat began she writes a note about herself a
     await waitForBackgroundJobs();
     await waitForMemoryJobs(store);
     store.close();
-    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("learning from the user's words runs every 12 replies and never rewrites the note", async () => {
+  resetReflectionScheduleForTests();
+  const store = new ChatStore(":memory:");
+  store.setNote("claude", "刚写好的近况。", 0);
+  const learningInputs: string[] = [];
+  let reflections = 0;
+  const model: ChatProvider = {
+    id: "fake", model: "m",
+    async *stream(messages) {
+      const system = messages[0].content;
+      if (system.startsWith("你是整理笔记的助手")) {
+        learningInputs.push(messages.at(-1)?.content ?? "");
+        yield { text: "[]" };
+      } else if (system.startsWith("你在替一个聊天角色写")) {
+        reflections += 1;
+        yield { text: "不该出现的新近况。" };
+      } else yield { text: "[emotion:happy]嗯嗯" };
+    },
+  };
+  const chat = (text: string) => collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, text));
+  try {
+    for (let i = 0; i < 11; i++) await chat(`第 ${i} 句`);
+    await waitForBackgroundJobs();
+    assert.equal(learningInputs.length, 0, "11 条回复还不学");
+    await chat("第 11 句");
+    await waitForBackgroundJobs();
+    assert.equal(learningInputs.length, 1);
+    // 读的是最近 14 条消息里用户说的话（7 条），不是全部 12 条。
+    assert.match(learningInputs[0]!, /第 11 句/);
+    assert.match(learningInputs[0]!, /第 5 句/);
+    assert.doesNotMatch(learningInputs[0]!, /第 4 句/);
+    for (let i = 12; i < 24; i++) await chat(`第 ${i} 句`);
+    await waitForBackgroundJobs();
+    assert.equal(learningInputs.length, 2);
+    assert.equal(reflections, 0);
+    assert.equal(store.getNote("claude")?.text, "刚写好的近况。");
+  } finally {
+    await waitForBackgroundJobs();
+    await waitForMemoryJobs(store);
+    store.close();
   }
 });

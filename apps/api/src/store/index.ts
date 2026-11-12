@@ -74,6 +74,8 @@ export class ChatStore {
   journalSources(_character: string | undefined, from: string, to: string) { return journalSourcesForDay(this.#db, undefined, from, to); }
   getNote(character: string) { return this.#sessions.getNote(character); }
   reflectionState() { return this.#sessions.reflectionState(); }
+  chatLearningState() { return this.#sessions.chatLearningState(); }
+  markChatLearned(assistantCount: number) { return this.#sessions.markChatLearned(assistantCount); }
   setNote(character: string, text: string, assistantCount: number) { return this.#sessions.setNote(character, text, assistantCount); }
   listNoteHistory() { return this.#sessions.listNoteHistory(); }
   listSessionObservations() { return this.#observations.list(); }

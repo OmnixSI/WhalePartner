@@ -64,20 +64,30 @@ export async function pauseBackgroundJobs() {
 
 /** 近况多久写一版。 */
 export const REFLECT_INTERVAL_MS = 3 * 86_400_000;
+/** 还没有近况的新用户，聊到这么多条回复就写第一版。 */
+export const FIRST_NOTE_AFTER_REPLIES = 12;
+/** 每多这么多条回复，从用户最近的说法里学一次。 */
+export const LEARN_EVERY_REPLIES = 12;
 /** 一次生成失败（模型出错或小记被过滤）后，至少隔这么久再试，免得每条回复都重试。 */
 const REFLECT_RETRY_MS = 6 * 3_600_000;
 let reflectionQueued = false;
 let lastReflectionAttempt = 0;
+let learningQueued = false;
 
 /** 测试用：清掉进程内的排队和重试记录。 */
 export function resetReflectionScheduleForTests() {
   reflectionQueued = false;
   lastReflectionAttempt = 0;
+  learningQueued = false;
 }
 
-/** 距上一版满 3 天、且这期间有新聊天才算到期；从没写过时，从第一条聊天算起满 3 天。 */
-export function reflectionDue(state: { since: string | null; hasNewChat: boolean }, now = Date.now()) {
-  return state.hasNewChat && state.since !== null && now - Date.parse(state.since) >= REFLECT_INTERVAL_MS;
+/**
+ * 已有近况：距上一版满 3 天、且这期间有新聊天才到期。
+ * 还没有近况（新用户，或清除聊天后）：累计满 12 条回复就写第一版。
+ */
+export function reflectionDue(state: { lastAt: string | null; hasNewChat: boolean; assistantCount: number | null }, now = Date.now()) {
+  if (state.lastAt === null) return (state.assistantCount ?? 0) >= FIRST_NOTE_AFTER_REPLIES;
+  return state.hasNewChat && now - Date.parse(state.lastAt) >= REFLECT_INTERVAL_MS;
 }
 
 /**
@@ -105,29 +115,49 @@ export function queueReflection(deps: ChatDeps, character: CharacterId, force: b
       const { chat, kept: sourceMessages, truncated } = buildWeekChat(weekMessages);
       const count = store.countAssistant();
       const previous = store.getNote(character);
-      if (!force) {
-        // 从用户说法里学东西仍只看最近 14 条。
-        const mine = store.recent(14).filter((message) => message.role === "user");
-        if (mine.length >= 4) {
-          await learnFrom(
-            { provider, memory, store },
-            { title: "用户最近的说法", text: mine.map((message) => message.content.slice(0, 160)).join("\n") },
-            `chat:${character}:${count}`,
-            signal,
-            [...new Set(mine.map((message) => message.sessionId))],
-          );
-        }
-      }
       let learned = store.recentLearnings(4).map((entry) => entry.text);
       if (learned.length === 0 && memory) {
         learned = (await memory.recentLearnings(4).catch(() => [])).map((entry) => entry.text);
       }
       const note = await reflect(provider, { name: CHARACTERS[character].name, previous: previous?.text, learned, chat, truncated }, signal);
       signal.throwIfAborted();
-      // assistant_count 只作记录（写这一版时一共有多少条回复），不再决定何时重写。
+      // assistant_count 只作记录（写这一版时一共有多少条回复），不决定何时重写。
       if (note && sourceMessages.every((message) => store.message(message.id))) store.setNote(character, note, count);
     } finally {
       if (!force) reflectionQueued = false;
+    }
+  });
+}
+
+/**
+ * 每次回复之后调用：每多 12 条回复，在后台从用户最近 14 条消息里学一次。
+ * 和近况分开，频率与改动前一样，也不会触发近况。
+ */
+export function queueChatLearningIfDue(deps: ChatDeps, character: CharacterId) {
+  if (learningQueued) return;
+  const { assistantCount, learnedAt } = deps.store.chatLearningState();
+  // 删除会话或清除聊天后回复数会变少，进度跟着退回去，从那里重新数。
+  if (assistantCount < learnedAt) deps.store.markChatLearned(assistantCount);
+  if (assistantCount - Math.min(learnedAt, assistantCount) < LEARN_EVERY_REPLIES) return;
+  learningQueued = true;
+  queueBackground("从聊天里学东西", async (signal) => {
+    try {
+      const { assistantCount: count, learnedAt: last } = deps.store.chatLearningState();
+      if (count - last < LEARN_EVERY_REPLIES) return;
+      const mine = deps.store.recent(14).filter((message) => message.role === "user");
+      if (mine.length >= 4) {
+        await learnFrom(
+          { provider: deps.provider, memory: deps.memory, store: deps.store },
+          { title: "用户最近的说法", text: mine.map((message) => message.content.slice(0, 160)).join("\n") },
+          `chat:${character}:${count}`,
+          signal,
+          [...new Set(mine.map((message) => message.sessionId))],
+        );
+      }
+      signal.throwIfAborted();
+      deps.store.markChatLearned(count);
+    } finally {
+      learningQueued = false;
     }
   });
 }

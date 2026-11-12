@@ -179,3 +179,28 @@ test("a new version is written once 3 days have passed and there is new chat", a
     assert.equal(prompts.length, 1);
   });
 });
+
+test("upgrading continues chat learning from where the old note left off", () => {
+  const directory = mkdtempSync(join(tmpdir(), "whalepartner-learn-state-"));
+  const path = join(directory, "chat.db");
+  const oldDb = new DatabaseSync(path);
+  oldDb.exec(`
+    CREATE TABLE character_notes (
+      character TEXT PRIMARY KEY, text TEXT NOT NULL,
+      assistant_count INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+    );
+    INSERT INTO character_notes VALUES ('shared', '升级前的近况', 123, '2026-11-12T02:14:12.821Z');
+  `);
+  oldDb.close();
+  try {
+    let store = new ChatStore(path);
+    assert.equal(store.chatLearningState().learnedAt, 123);
+    store.markChatLearned(135);
+    store.close();
+    store = new ChatStore(path);
+    assert.equal(store.chatLearningState().learnedAt, 135, "再次打开不会覆盖进度");
+    store.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

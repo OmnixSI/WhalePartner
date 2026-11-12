@@ -35,6 +35,7 @@ export function openChatDatabase(path: string): DatabaseSync {
   migrateMessages(db);
   migrateSessions(db);
   migrateNoteHistory(db);
+  migrateChatLearningState(db);
   db.exec(`
     INSERT OR IGNORE INTO chat_sessions (id, character, title, created_at, updated_at)
     SELECT 'legacy:' || character, character, '历史聊天', MIN(created_at), MAX(created_at)
@@ -291,6 +292,24 @@ function migrateNoteHistory(db: DatabaseSync) {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+/**
+ * 从聊天里学用户说法的进度：上次学习时一共有多少条回复，每多 12 条再学一次。
+ * 以前这一步跟着近况走，进度就是近况的 assistant_count，所以第一次建表时从那里接上。
+ */
+function migrateChatLearningState(db: DatabaseSync) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_learning_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      assistant_count INTEGER NOT NULL
+    );
+    INSERT OR IGNORE INTO chat_learning_state (id, assistant_count)
+    SELECT 1, COALESCE((
+      SELECT assistant_count FROM character_notes
+      ORDER BY CASE WHEN character = 'shared' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
+    ), 0);
+  `);
 }
 
 function migrateSessions(db: DatabaseSync) {

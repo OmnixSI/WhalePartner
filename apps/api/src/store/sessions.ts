@@ -204,19 +204,35 @@ export class SessionRepository {
   }
 
   /**
-   * 一条查询，给近况的定时判断用：since 是上一版近况的时间（还没写过时取第一条聊天的时间，没有聊天为 null），
-   * hasNewChat 表示那之后有没有新聊天（还没写过时，有聊天就算）。
+   * 一条查询，给近况的定时判断用：lastAt 是上一版近况的时间，hasNewChat 表示那之后有没有新聊天。
+   * 还没写过近况时 lastAt 为 null，这时才数一下一共有多少条回复（assistantCount），其余情况不数。
    */
-  reflectionState(): { since: string | null; hasNewChat: boolean } {
+  reflectionState(): { lastAt: string | null; hasNewChat: boolean; assistantCount: number | null } {
     const row = this.db.prepare(`
-      SELECT COALESCE(n.updated_at, (SELECT MIN(created_at) FROM messages)) AS since,
-        EXISTS(SELECT 1 FROM messages WHERE created_at > COALESCE(n.updated_at, '')) AS hasNewChat
+      SELECT n.updated_at AS lastAt,
+        EXISTS(SELECT 1 FROM messages WHERE created_at > COALESCE(n.updated_at, '')) AS hasNewChat,
+        CASE WHEN n.updated_at IS NULL THEN (SELECT COUNT(*) FROM messages WHERE role = 'assistant') END AS assistantCount
       FROM (SELECT 1) LEFT JOIN (
         SELECT updated_at FROM character_notes
         ORDER BY CASE WHEN character = 'shared' THEN 0 ELSE 1 END, updated_at DESC LIMIT 1
       ) n
-    `).get() as unknown as { since: string | null; hasNewChat: number };
-    return { since: row.since, hasNewChat: row.hasNewChat === 1 };
+    `).get() as unknown as { lastAt: string | null; hasNewChat: number; assistantCount: number | null };
+    return { lastAt: row.lastAt, hasNewChat: row.hasNewChat === 1, assistantCount: row.assistantCount };
+  }
+
+  /** 一条查询：现在一共有多少条回复，以及上次从聊天里学东西时有多少条。 */
+  chatLearningState(): { assistantCount: number; learnedAt: number } {
+    return this.db.prepare(`
+      SELECT (SELECT COUNT(*) FROM messages WHERE role = 'assistant') AS assistantCount,
+        COALESCE((SELECT assistant_count FROM chat_learning_state WHERE id = 1), 0) AS learnedAt
+    `).get() as unknown as { assistantCount: number; learnedAt: number };
+  }
+
+  markChatLearned(assistantCount: number) {
+    this.db.prepare(`
+      INSERT INTO chat_learning_state (id, assistant_count) VALUES (1, ?)
+      ON CONFLICT(id) DO UPDATE SET assistant_count = excluded.assistant_count
+    `).run(assistantCount);
   }
 
   setNote(_character: string, text: string, assistantCount: number) {
