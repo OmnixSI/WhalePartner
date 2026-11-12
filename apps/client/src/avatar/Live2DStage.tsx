@@ -179,6 +179,9 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
         });
         host.appendChild(app.view as HTMLCanvasElement);
         const renderer = app.renderer as PIXI.Renderer;
+        // InteractionManager 默认挂在 Ticker.system 上，每帧补算「光标不动、物体移过来」的 over/out；
+        // 这里只用 pointertap，用不到它，却是一路常驻 60fps 的 rAF，页面隐藏也不停（#151 性能预算）
+        (renderer.plugins.interaction as PIXI.InteractionManager).useSystemTicker = false;
         gl = renderer.gl;
         app.stage.addChild(model);
 

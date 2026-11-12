@@ -167,6 +167,8 @@ if (isMain) {
     cpuPctAll: runs.map((r) => Number(r.cpuPct.toFixed(2))),
     rssMb: median(runs.map((r) => r.rssMb)),
     heapMb: median(runs.map((r) => r.heapMb)),
+    heapMbAll: runs.map((r) => Number(r.heapMb.toFixed(2))),
+    rssMbAll: runs.map((r) => Number(r.rssMb.toFixed(1))),
     domNodes: median(runs.map((r) => r.domNodes)),
     idleTimerFires: median(runs.map((r) => r.idleTimerFires)),
     hiddenTimerFires: median(runs.map((r) => r.hiddenTimerFires)),
