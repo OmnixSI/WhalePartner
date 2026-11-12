@@ -1,11 +1,10 @@
 /**
- * 二次确认对话框（规范 §7.4.7 / §9.1「确认」）：正文先说后果，安全选项在上、默认聚焦；
- * `ackLabel` 给了就多一道"我知道……"的勾选，勾上之前确认键不可用。
- *
- * 用 Radix Dialog：焦点陷阱、Esc、焦点回收都是默认行为，不自己实现。
+ * 二次确认对话框：正文先说后果；`ackLabel` 给了就多一道"我知道……"的勾选，勾上之前确认键不可用。
+ * 外壳是 ui/Dialog（焦点陷阱、Esc、焦点回收都由它处理）；ui 的 ConfirmDialog 没有勾选和禁用，所以这里自己搭底栏。
  */
-import { Dialog } from "radix-ui";
 import { useEffect, useId, useState, type ReactNode } from "react";
+import { Button } from "../ui/Button";
+import { Dialog } from "../ui/Dialog";
 
 type Props = {
   open: boolean;
@@ -38,8 +37,6 @@ export function ConfirmDialog({
 }: Props) {
   const [acked, setAcked] = useState(false);
   const ackId = useId();
-  const titleId = useId();
-  const descId = useId();
 
   useEffect(() => {
     if (!open) setAcked(false);
@@ -48,41 +45,29 @@ export function ConfirmDialog({
   const blocked = busy || confirmDisabled || (Boolean(ackLabel) && !acked);
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="set-dialog" aria-labelledby={titleId} aria-describedby={descId}>
-          <Dialog.Title className="set-dialog__title" id={titleId}>
-            {title}
-          </Dialog.Title>
-          <Dialog.Description className="set-dialog__body" id={descId}>
-            {children}
-          </Dialog.Description>
-          {ackLabel && (
-            <label className="set-ack" htmlFor={ackId}>
-              <input
-                id={ackId}
-                type="checkbox"
-                className="set-ack__box"
-                checked={acked}
-                onChange={(event) => setAcked(event.target.checked)}
-              />
-              <span className="set-ack__text">{ackLabel}</span>
-            </label>
-          )}
-          <div className="set-dialog__actions">
-            <Dialog.Close className="btn btn--secondary">{cancelLabel}</Dialog.Close>
-            <button
-              type="button"
-              className={danger ? "btn btn--danger" : "btn btn--primary"}
-              disabled={blocked}
-              onClick={onConfirm}
-            >
-              {busy ? "正在做…" : confirmLabel}
-            </button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      size="sm"
+      title={title}
+      description={children}
+      footer={
+        <>
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
+            {cancelLabel}
+          </Button>
+          <Button variant={danger ? "danger" : "primary"} disabled={blocked} loading={busy} onClick={onConfirm}>
+            {busy ? "正在做…" : confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      {ackLabel && (
+        <label className="set-ack" htmlFor={ackId}>
+          <input id={ackId} type="checkbox" className="set-ack__box" checked={acked} onChange={(event) => setAcked(event.target.checked)} />
+          <span>{ackLabel}</span>
+        </label>
+      )}
+    </Dialog>
   );
 }

@@ -28,6 +28,8 @@ import {
 } from "../../lib/codex-model-options";
 import { describeNetError } from "../../lib/net";
 import { SettingRow } from "./Row";
+import { Button } from "../ui/Button";
+import { Input } from "../ui/Field";
 
 interface DeepSeekState {
   configured: boolean;
@@ -271,9 +273,9 @@ export function ModelSetup({ offline, onToast }: Props) {
       <div className="set-state" role="status">
         <p className="set-state__title">模型设置暂时看不到</p>
         <p className="set-state__desc">接哪家模型、用多大档位，这两项只从后端读；现在拿不到，就不猜给你。</p>
-        <button type="button" className="btn btn--secondary" onClick={() => void load()}>
+        <Button variant="secondary" onClick={() => void load()}>
           再试一次
-        </button>
+        </Button>
       </div>
     );
   }
@@ -303,7 +305,6 @@ export function ModelSetup({ offline, onToast }: Props) {
   return (
     <div className="mset">
       <SettingRow
-        icon="conch"
         title="DeepSeek"
         desc="聊天默认走它。key 只写进后端的 .env，页面上只看得到后四位。"
         stacked
@@ -313,8 +314,7 @@ export function ModelSetup({ offline, onToast }: Props) {
           <span>{data.deepseek.configured ? `已配置 ${data.deepseek.masked ?? ""}` : "未配置"}</span>
         </p>
         <div className="mset__form">
-          <input
-            className="field mset__field"
+          <Input className="mset__field"
             type="password"
             name="deepseek-key"
             autoComplete="off"
@@ -332,14 +332,13 @@ export function ModelSetup({ offline, onToast }: Props) {
               }
             }}
           />
-          <button
-            type="button"
-            className="btn btn--secondary mset__save"
+          <Button
+            className="mset__save" variant="secondary"
             disabled={offline || savingKey || key.trim() === ""}
             onClick={() => void saveKey()}
           >
             {savingKey ? "正在存…" : "保存"}
-          </button>
+          </Button>
         </div>
         <p className="mset__hint">保存后要重启后端才生效；key 不会出现在页面、日志或返回值里。</p>
         {keyError && (
@@ -350,7 +349,6 @@ export function ModelSetup({ offline, onToast }: Props) {
       </SettingRow>
 
       <SettingRow
-        icon="settings"
         title="Codex"
         desc="大肥鱼调用 Codex 时固定用这里选的模型和推理档位，不跟着你自己的 Codex 走，也不改它的配置。"
         stacked
@@ -372,7 +370,7 @@ export function ModelSetup({ offline, onToast }: Props) {
             </label>
             <select
               id="mset-model"
-              className="field mset__select"
+              className="ui-input set-select"
               value={modelDraft}
               disabled={offline || savingCodex || catalog.phase !== "ok"}
               onChange={(event) => {
@@ -407,7 +405,7 @@ export function ModelSetup({ offline, onToast }: Props) {
             </label>
             <select
               id="mset-effort"
-              className="field mset__select"
+              className="ui-input set-select"
               value={effortDraft}
               disabled={offline || savingCodex || catalog.phase !== "ok" || !modelOption}
               onChange={(event) => setEffortDraft(event.target.value)}
@@ -434,14 +432,13 @@ export function ModelSetup({ offline, onToast }: Props) {
                 ))}
             </select>
           </div>
-          <button
-            type="button"
-            className="btn btn--secondary mset__save"
+          <Button
+            className="mset__save" variant="secondary"
             disabled={!canSaveCodex}
             onClick={() => void saveCodex()}
           >
             {savingCodex ? "正在存…" : "保存"}
-          </button>
+          </Button>
         </div>
         {catalog.phase === "loading" && (
           <p className="mset__hint" role="status">
@@ -452,9 +449,9 @@ export function ModelSetup({ offline, onToast }: Props) {
           <div className="mset__error" role="alert">
             <p className="set-row__bad">{catalog.message}</p>
             <p className="mset__hint">{catalog.hint}</p>
-            <button type="button" className="btn btn--secondary" disabled={offline} onClick={() => void loadCatalog()}>
+            <Button variant="secondary" disabled={offline} onClick={() => void loadCatalog()}>
               重试
-            </button>
+            </Button>
           </div>
         )}
         {savedModelMissing && (
@@ -475,16 +472,15 @@ export function ModelSetup({ offline, onToast }: Props) {
         )}
       </SettingRow>
 
-      <SettingRow icon="lighthouse" title="测试连接" desc="问一句后端：现在实际在用哪家模型。不会真的发一次聊天。" stacked>
+      <SettingRow title="测试连接" desc="问一句后端：现在实际在用哪家模型。不会真的发一次聊天。" stacked>
         <div className="mset__form">
-          <button
-            type="button"
-            className="btn btn--secondary"
+          <Button
+            variant="secondary"
             disabled={offline || probe.phase === "busy"}
             onClick={() => void runProbe()}
           >
             {probe.phase === "busy" ? "正在问…" : "测试连接"}
-          </button>
+          </Button>
         </div>
         {probe.phase === "done" && (
           <p className="mset__probe" role="status">

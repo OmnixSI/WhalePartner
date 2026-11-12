@@ -1,7 +1,6 @@
-/**
- * 开关（规范 §7.4 / §9.2.5）：`role="switch"` + `aria-checked`，并且**常显「开 / 关」**——
- * 状态不能只靠颜色区分。老人模式轨道 72×40、整块 ≥56 高。
- */
+/** 设置里的开关：套一层 ui/Switch，保留 `onChange` 的写法，常显「开 / 关」。 */
+import { Switch as UiSwitch } from "../ui/Switch";
+
 type Props = {
   checked: boolean;
   onChange: (next: boolean) => void;
@@ -11,23 +10,5 @@ type Props = {
 };
 
 export function Switch({ checked, onChange, label, disabled = false }: Props) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      className="set-switch"
-      aria-checked={checked}
-      aria-label={label}
-      data-on={checked ? "on" : "off"}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="set-switch__track" aria-hidden="true">
-        <span className="set-switch__knob" />
-      </span>
-      <span className="set-switch__state" aria-hidden="true">
-        {checked ? "开" : "关"}
-      </span>
-    </button>
-  );
+  return <UiSwitch checked={checked} onCheckedChange={onChange} label={label} disabled={disabled} />;
 }

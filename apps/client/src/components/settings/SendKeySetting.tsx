@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { readPace, readSendKey, writePace, writeSendKey, type SendKey } from "../../lib/chat-prefs";
 import { SettingRow } from "./Row";
+import { Button } from "../ui/Button";
 import { Switch } from "./Switch";
 
 export function SendKeySetting() {
@@ -20,18 +21,17 @@ export function SendKeySetting() {
   return (
     <>
       <SettingRow
-        icon="settings"
         title="发送键"
         desc={sendKey === "enter" ? "现在：Enter 发送，Shift + Enter 换行。（触屏设备 Enter 一直是换行。）" : "现在：⌘/Ctrl + Enter 发送，Enter 换行。"}
         stacked
       >
-        <div className="set-choices" role="radiogroup" aria-label="发送键">
-          <button type="button" role="radio" aria-checked={sendKey === "enter"} className={`btn ${sendKey === "enter" ? "btn--primary" : "btn--secondary"}`} onClick={() => chooseKey("enter")}>
+        <div className="set-actions set-actions--start" role="radiogroup" aria-label="发送键">
+          <Button role="radio" aria-checked={sendKey === "enter"} variant={sendKey === "enter" ? "primary" : "secondary"} onClick={() => chooseKey("enter")}>
             Enter 发送
-          </button>
-          <button type="button" role="radio" aria-checked={sendKey === "mod-enter"} className={`btn ${sendKey === "mod-enter" ? "btn--primary" : "btn--secondary"}`} onClick={() => chooseKey("mod-enter")}>
+          </Button>
+          <Button role="radio" aria-checked={sendKey === "mod-enter"} variant={sendKey === "mod-enter" ? "primary" : "secondary"} onClick={() => chooseKey("mod-enter")}>
             ⌘/Ctrl + Enter 发送
-          </button>
+          </Button>
         </div>
       </SettingRow>
       <SettingRow title="一句一句地说" desc="她的回复按句分成一到三条，像在打字一样一条条出现。关掉就一次摆全。" onActivate={() => choosePace(!pace)}>
