@@ -8,13 +8,29 @@ const base = process.env.WP_CARD_PREVIEW_URL ?? "http://127.0.0.1:1420/character
 const shots = fileURLToPath(new URL("../test-results/card-preview/", import.meta.url));
 const browser = await launchChrome(chromium);
 
-try {
-  await mkdir(shots, { recursive: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
-  const page = await context.newPage();
+const TIERS = [
+  { level: 1, label: "相识", finish: "素纸" },
+  { level: 2, label: "相熟", finish: "银衬" },
+  { level: 3, label: "默契", finish: "潮光" },
+  { level: 4, label: "亲近", finish: "金缘" },
+  { level: 5, label: "相依", finish: "鎏金箔" },
+];
+const CHARACTERS = [
+  { id: "whale", name: "鲸汐" },
+  { id: "deepseek", name: "大肥鱼" },
+  { id: "claude", name: "小克" },
+  { id: "chatgpt", name: "小智" },
+];
+const UPGRADES = [
+  { from: 1, to: 2, fromLabel: "相识", toLabel: "相熟" },
+  { from: 2, to: 3, fromLabel: "相熟", toLabel: "默契" },
+  { from: 3, to: 4, fromLabel: "默契", toLabel: "亲近" },
+  { from: 4, to: 5, fromLabel: "亲近", toLabel: "相依" },
+];
+const STAGE = '[data-testid="card-stage"] .acard';
+
+const collectErrors = (page) => {
   const errors = [];
-  const apiRequests = [];
-  const live2dRequests = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(`${message.text()} ${JSON.stringify(message.location())}`);
@@ -23,225 +39,213 @@ try {
   page.on("response", (response) => {
     if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`);
   });
+  return errors;
+};
+
+async function assertTierRow(page) {
+  const cards = page.getByTestId("card-tiers").locator(".acard");
+  assert.equal(await cards.count(), 5);
+  const labels = await cards.evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label") ?? ""));
+  for (const [index, tier] of TIERS.entries()) {
+    assert.equal(await cards.nth(index).getAttribute("data-level"), String(tier.level));
+    assert.match(labels[index], new RegExp(`Lv\\.${tier.level} ${tier.label}`));
+    assert.match(labels[index], new RegExp(`${tier.finish}卡面`));
+  }
+  const text = await page.getByTestId("card-tiers").innerText();
+  const order = ["相识", "相熟", "默契", "亲近", "相依"].map((label) => text.indexOf(label));
+  assert.ok(order.every((index) => index >= 0), `五档文案不齐：${text}`);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, `五档顺序不对：${text}`);
+}
+
+async function waitForUpgrade(page, to) {
+  await page.waitForFunction(
+    ({ selector, level }) => document.querySelector(selector)?.getAttribute("data-upgrading") === String(level),
+    { selector: STAGE, level: to },
+  );
+}
+
+async function waitForIdle(page) {
+  await page.waitForFunction(
+    (selector) => !document.querySelector(selector)?.hasAttribute("data-upgrading"),
+    STAGE,
+    { timeout: 6000 },
+  );
+}
+
+try {
+  await mkdir(shots, { recursive: true });
+
+  const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  const page = await context.newPage();
+  const errors = collectErrors(page);
+  const apiRequests = [];
   page.on("request", (request) => {
-    const url = new URL(request.url());
-    if (url.pathname.startsWith("/api/")) apiRequests.push(request.url());
-    if (url.pathname.startsWith("/live2d/")) live2dRequests.push(url.pathname);
+    if (new URL(request.url()).pathname.startsWith("/api/")) apiRequests.push(request.url());
   });
-  await page.addInitScript(() => localStorage.setItem("wp.character", "claude"));
+  await page.addInitScript(() => {
+    localStorage.setItem("wp.character", "claude");
+    localStorage.setItem("wp.theme", "light");
+    localStorage.setItem("wp.motion", "full");
+  });
   await page.goto(base, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
 
   assert.equal(await page.getByRole("heading", { name: "角色闪卡" }).count(), 1);
-  assert.equal(await page.locator(".card-preview__card").count(), 4);
-  assert.equal(await page.getByRole("button", { name: /预览等级/ }).count(), 4);
-  assert.match(await page.locator("body").innerText(), /固定演示值，不代表真实账号/);
-  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "4");
-  assert.equal(await page.locator(".card-preview__hero-top, .card-preview__hero-copy, .card-preview__hero-art-caption").count(), 0);
-  assert.equal(await page.locator(".card-preview__card-name, .card-preview__latin, .card-preview__model, .card-preview__rarity").count(), 0);
-  assert.match(await page.locator(".card-preview__card").first().getAttribute("aria-label"), /选择/);
-  await page.locator(".card-preview__hero-model .live2d[data-stage='ready']").waitFor({ state: "visible", timeout: 30000 });
-  assert.equal(await page.locator(".card-preview__hero-model canvas").count(), 1);
-  const modelHeightRatio = await page.locator(".card-preview__hero-model .live2d").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--stage-char-h")));
-  const modelWidthRatio = await page.locator(".card-preview__hero-model .live2d").evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue("--stage-char-w")));
-  assert.ok(modelHeightRatio >= 1.15, `card model height ratio is too small: ${modelHeightRatio}`);
-  assert.ok(modelWidthRatio >= 1.29, `card model width ratio is too small: ${modelWidthRatio}`);
-  const live2dRenderRate = await page.evaluate(async () => {
-    const ticker = window.PIXI?.Ticker.shared;
-    if (!ticker) throw new Error("Live2D shared Pixi ticker is unavailable");
-    let frames = 0;
-    const countFrame = () => { frames += 1; };
-    ticker.add(countFrame);
-    const startedAt = performance.now();
-    await new Promise((resolve) => window.setTimeout(resolve, 3000));
-    ticker.remove(countFrame);
-    const elapsedMs = performance.now() - startedAt;
-    return { frames, elapsedMs: Math.round(elapsedMs), fps: Math.round(frames / elapsedMs * 1000 * 10) / 10 };
+  assert.match(await page.locator("body").innerText(), /固定演示值|固定演示数据/);
+  await assertTierRow(page);
+
+  const characterButtons = page.getByRole("button", { name: /^选择/ });
+  assert.equal(await characterButtons.count(), 4);
+  for (const [index, character] of CHARACTERS.entries()) {
+    assert.equal(await characterButtons.nth(index).getAttribute("aria-label"), `选择${character.name}`);
+  }
+
+  for (const character of CHARACTERS) {
+    await page.getByRole("button", { name: `选择${character.name}` }).click();
+    const shown = await page.getByTestId("card-tiers").locator(".acard").evaluateAll(
+      (elements) => [...new Set(elements.map((element) => element.getAttribute("data-character")))],
+    );
+    assert.deepEqual(shown, [character.id], `切换 ${character.name} 后卡面角色不对：${shown.join(",")}`);
+  }
+
+  const gallery = page.getByTestId("card-characters").locator(".acard");
+  assert.equal(await gallery.count(), 4);
+  assert.deepEqual(
+    await gallery.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-character"))),
+    CHARACTERS.map((character) => character.id),
+  );
+  assert.deepEqual(
+    await gallery.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-level"))),
+    ["5", "5", "5", "5"],
+  );
+
+  assert.equal(await page.locator(STAGE).getAttribute("data-level"), "2");
+  assert.equal(await page.locator(STAGE).getAttribute("data-upgrading"), null);
+
+  assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-theme")), "light");
+  const lightBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  await page.screenshot({ path: `${shots}/desktop-light-1440x960.png` });
+  await page.getByTestId("card-tiers").screenshot({ path: `${shots}/tiers-light.png` });
+
+  await page.getByRole("button", { name: "暗色" }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-theme")), "dark");
+  assert.equal(await page.evaluate(() => localStorage.getItem("wp.theme")), "dark");
+  const darkBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  assert.notEqual(darkBackground, lightBackground, "亮色与暗色的页面底色相同");
+  await page.screenshot({ path: `${shots}/desktop-dark-1440x960.png` });
+  await page.getByTestId("card-tiers").screenshot({ path: `${shots}/tiers-dark.png` });
+  await page.getByRole("button", { name: "亮色" }).click();
+  assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-theme")), "light");
+
+  let expectedEnds = 0;
+  for (const upgrade of UPGRADES) {
+    await page.getByRole("button", {
+      name: `预览升级 ${upgrade.from}→${upgrade.to}：${upgrade.fromLabel}到${upgrade.toLabel}`,
+    }).click();
+    await waitForUpgrade(page, upgrade.to);
+    assert.equal(await page.locator(STAGE).getAttribute("data-level"), String(upgrade.to));
+    await page.locator(`${STAGE} .acard__skip`).click();
+    await waitForIdle(page);
+    expectedEnds += 1;
+    assert.equal(await page.locator(STAGE).getAttribute("data-level"), String(upgrade.to));
+    assert.equal(await page.locator("#card-upgrade-status").getAttribute("data-ends"), String(expectedEnds));
+    assert.match(await page.locator("#card-upgrade-status").innerText(), new RegExp(`${upgrade.from}→${upgrade.to} 已跳过`));
+    await page.locator(STAGE).screenshot({ path: `${shots}/upgrade-${upgrade.from}${upgrade.to}.png` });
+  }
+
+  await page.getByRole("button", { name: "预览升级 4→5：亲近到相依" }).click();
+  await waitForUpgrade(page, 5);
+  await page.waitForFunction(
+    (selector) => document.querySelector(selector)?.querySelector(".acard__notice")?.textContent?.includes("升到 Lv.5"),
+    STAGE,
+  );
+  await waitForIdle(page);
+  expectedEnds += 1;
+  assert.equal(await page.locator("#card-upgrade-status").getAttribute("data-ends"), String(expectedEnds));
+  assert.match(await page.locator("#card-upgrade-status").innerText(), /4→5 播完/);
+
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(1500);
+  const runningAnimations = await page.evaluate(() => {
+    const running = [];
+    for (const element of document.querySelectorAll(".card-preview-page *")) {
+      const style = getComputedStyle(element);
+      if (style.animationName !== "none" && style.animationPlayState === "running") {
+        running.push(`${element.className}: ${style.animationName}`);
+      }
+    }
+    return running;
   });
-  assert.ok(live2dRenderRate.frames > 0, "Live2D ticker must render animation frames");
-  console.log("LIVE2D_RENDER_RATE", JSON.stringify(live2dRenderRate));
-  assert.ok(live2dRequests.includes("/live2d/whale-maid/c_0120.model3.json"));
-  assert.ok(live2dRequests.includes("/live2d/libs/live2dcubismcore.min.js"));
-  assert.match(await page.locator(".card-preview__model-status").innerText(), /Live2D 已载入/);
-  assert.equal(await page.evaluate(() => localStorage.getItem("wp.character")), "claude");
+  assert.deepEqual(runningAnimations, [], `静置时仍有循环动画：${runningAnimations.join("；")}`);
 
-  const initialFontSize = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
-  await page.evaluate(() => document.documentElement.style.setProperty("--scale", "1.25"));
-  const scaledFontSize = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
-  assert.ok(scaledFontSize > initialFontSize);
-  await page.evaluate(() => document.documentElement.style.removeProperty("--scale"));
-
-  await page.locator(".card-preview__hero").hover({ position: { x: 42, y: 128 } });
-  await page.waitForTimeout(250);
-  assert.notEqual(await page.locator(".card-preview__hero").getAttribute("data-tilt-y"), "0");
-  await page.screenshot({ path: `${shots}/desktop-level4-1440x960.png`, fullPage: true });
-  await page.locator(".card-preview__hero").screenshot({ path: `${shots}/hero-card-lv4-exclusive.png` });
-
-  const modelLoadCount = live2dRequests.filter((path) => path === "/live2d/whale-maid/c_0120.model3.json").length;
-  await page.getByRole("button", { name: "预览等级 1：相识" }).click();
-  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "1");
-  assert.equal(await page.locator(".card-preview__particles").count(), 0);
-  assert.equal(await page.getByRole("button", { name: /选择小克/ }).isEnabled(), true);
-  await page.screenshot({ path: `${shots}/desktop-locked-1440x960.png`, fullPage: true });
-
-  await page.getByRole("button", { name: "预览等级 2：相熟" }).click();
-  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "2");
-  await page.locator(".card-preview__hero").hover({ position: { x: 42, y: 128 } });
-  await page.waitForTimeout(250);
-  assert.notEqual(await page.locator(".card-preview__hero").getAttribute("data-tilt-x"), "0");
-  await page.locator(".card-preview__hero").screenshot({ path: `${shots}/hero-card-lv2-depth.png` });
-  assert.equal(live2dRequests.filter((path) => path === "/live2d/whale-maid/c_0120.model3.json").length, modelLoadCount);
-  assert.equal(await page.locator(".card-preview__hero-model canvas").count(), 1);
-
-  await page.getByRole("button", { name: "预览等级 3：默契" }).click();
-  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "3");
-  assert.equal(await page.locator(".card-preview__hero-light").evaluate((el) => getComputedStyle(el).animationName), "hero-light");
-  await page.locator(".card-preview__hero").hover({ position: { x: 42, y: 128 } });
-  await page.waitForTimeout(250);
-  await page.locator(".card-preview__hero").screenshot({ path: `${shots}/hero-card-lv3-dynamic.png` });
-  await page.getByRole("button", { name: "预览等级 4：亲近" }).click();
-  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "4");
-  assert.equal(await page.locator(".card-preview__particles span").count(), 9);
-  await page.locator(".card-preview__hero").hover({ position: { x: 42, y: 128 } });
-  await page.waitForTimeout(250);
-  await page.locator(".card-preview__hero").screenshot({ path: `${shots}/hero-card-lv4-exclusive.png` });
-  assert.equal(await page.locator(".card-preview__hero").getAttribute("data-level"), "4");
-  assert.equal(live2dRequests.filter((path) => path === "/live2d/whale-maid/c_0120.model3.json").length, modelLoadCount);
-
-  const claudeCard = page.getByRole("button", { name: /选择小克/ });
-  await claudeCard.focus();
-  await page.keyboard.press("Enter");
-  assert.equal(await claudeCard.getAttribute("aria-pressed"), "true");
-  assert.equal(await page.locator(".card-preview__hero-model").count(), 0);
-  assert.equal(await page.getByText(/不借用其他角色的模型/).count(), 1);
-  assert.equal(await page.evaluate(() => localStorage.getItem("wp.character")), "claude");
-
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  const animationNames = await page.locator(".card-preview__hero-sheen, .card-preview__hero-light, .card-preview__hero-orbit, .card-preview__particles span").evaluateAll((elements) => elements.map((el) => getComputedStyle(el).animationName));
-  assert.ok(animationNames.length >= 4);
-  assert.deepEqual([...new Set(animationNames)], ["none"]);
-  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.getByTestId("card-characters").screenshot({ path: `${shots}/characters-light.png` });
   assert.deepEqual(apiRequests, []);
   assert.deepEqual(errors, []);
   await context.close();
 
-  const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const mobileContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
   const mobile = await mobileContext.newPage();
-  const mobileErrors = [];
+  const mobileErrors = collectErrors(mobile);
   const mobileApiRequests = [];
-  mobile.on("pageerror", (error) => mobileErrors.push(error.message));
-  mobile.on("console", (message) => {
-    if (message.type() === "error") mobileErrors.push(`${message.text()} ${JSON.stringify(message.location())}`);
-  });
-  mobile.on("requestfailed", (request) => mobileErrors.push(`${request.failure()?.errorText} ${request.url()}`));
-  mobile.on("response", (response) => {
-    if (response.status() >= 400) mobileErrors.push(`${response.status()} ${response.url()}`);
-  });
   mobile.on("request", (request) => {
-    const url = new URL(request.url());
-    if (url.pathname.startsWith("/api/")) mobileApiRequests.push(request.url());
+    if (new URL(request.url()).pathname.startsWith("/api/")) mobileApiRequests.push(request.url());
+  });
+  await mobile.addInitScript(() => {
+    localStorage.setItem("wp.character", "claude");
+    localStorage.setItem("wp.theme", "light");
+    localStorage.setItem("wp.motion", "full");
   });
   await mobile.goto(base, { waitUntil: "networkidle" });
   await mobile.evaluate(() => document.fonts.ready);
-  await mobile.locator(".card-preview__hero-model .live2d[data-stage='ready']").waitFor({ state: "visible", timeout: 30000 });
+  await assertTierRow(mobile);
+  assert.equal(await mobile.getByTestId("card-characters").locator(".acard").count(), 4);
+
   const overflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  assert.ok(overflow <= 0, `mobile horizontal overflow: ${overflow}px`);
-  await mobile.screenshot({ path: `${shots}/mobile-overview-390x844.png` });
-  await mobile.getByRole("button", { name: "预览等级 2：相熟" }).tap();
-  assert.equal(await mobile.locator(".card-preview__hero").getAttribute("data-level"), "2");
-  await mobile.getByRole("button", { name: /选择小智/ }).tap();
-  assert.equal(await mobile.getByRole("button", { name: /选择小智/ }).getAttribute("aria-pressed"), "true");
-  await mobile.evaluate(() => {
-    window.getSelection()?.removeAllRanges();
-    (document.activeElement instanceof HTMLElement ? document.activeElement : null)?.blur();
-  });
-  await mobile.mouse.move(0, 0);
-  await mobile.screenshot({ path: `${shots}/mobile-390x844.png`, fullPage: true });
+  assert.ok(overflow <= 0, `手机横向溢出：${overflow}px`);
+  await mobile.getByRole("button", { name: "选择小智" }).tap();
+  assert.deepEqual(
+    await mobile.getByTestId("card-tiers").locator(".acard").evaluateAll(
+      (elements) => [...new Set(elements.map((element) => element.getAttribute("data-character")))],
+    ),
+    ["chatgpt"],
+  );
+  await mobile.screenshot({ path: `${shots}/mobile-light-390x844.png` });
+  await mobile.getByTestId("card-tiers").screenshot({ path: `${shots}/mobile-tiers-390x844.png` });
+  await mobile.getByRole("button", { name: "暗色" }).tap();
+  assert.equal(await mobile.evaluate(() => document.documentElement.getAttribute("data-theme")), "dark");
+  const mobileOverflow = await mobile.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(mobileOverflow <= 0, `手机暗色横向溢出：${mobileOverflow}px`);
+  await mobile.screenshot({ path: `${shots}/mobile-dark-390x844.png` });
   assert.deepEqual(mobileApiRequests, []);
   assert.deepEqual(mobileErrors, []);
   await mobileContext.close();
 
-  const appContext = await browser.newContext({ viewport: { width: 1440, height: 960 } });
-  const appPage = await appContext.newPage();
-  const appErrors = [];
-  appPage.on("pageerror", (error) => appErrors.push(error.message));
-  const relationshipRequests = [];
-  const relationshipAttempts = new Map();
-  await appPage.route("**/api/relationship?character=**", async (route) => {
-    const character = new URL(route.request().url()).searchParams.get("character") ?? "deepseek";
-    relationshipRequests.push(character);
-    const attempts = (relationshipAttempts.get(character) ?? 0) + 1;
-    relationshipAttempts.set(character, attempts);
-    if (character === "whale" && attempts === 1) {
-      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "unavailable" }) });
-      return;
-    }
-    const points = character === "deepseek" ? 128 : character === "claude" ? 32 : 0;
-    const stage = points >= 250 ? 4 : points >= 100 ? 3 : points >= 25 ? 2 : 1;
-    const stages = [
-      { label: "相识", effect: "基础卡面", nextThreshold: 25 },
-      { label: "相熟", effect: "立体效果", nextThreshold: 100 },
-      { label: "默契", effect: "动态画面", nextThreshold: 250 },
-      { label: "亲近", effect: "专属特效", nextThreshold: null },
-    ];
-    const current = stages[stage - 1];
-    const previous = [0, 25, 100, 250][stage - 1];
-    const progress = current.nextThreshold === null ? 100 : Math.round(((points - previous) / (current.nextThreshold - previous)) * 100);
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ points, level: stage, ...current, progress, mood: { emotion: "neutral", intensity: 0, updatedAt: null } }),
-    });
+  const reducedContext = await browser.newContext({
+    viewport: { width: 1200, height: 900 },
+    reducedMotion: "reduce",
   });
-  await appPage.addInitScript(() => {
-    localStorage.setItem("wp.onboarded", "1");
-    localStorage.setItem("wp.character", "deepseek");
+  const reduced = await reducedContext.newPage();
+  const reducedErrors = collectErrors(reduced);
+  await reduced.addInitScript(() => {
+    localStorage.setItem("wp.theme", "light");
+    localStorage.setItem("wp.motion", "full");
   });
-  await appPage.goto(new URL("/settings", base).toString(), { waitUntil: "domcontentloaded" });
-  await appPage.getByRole("button", { name: "换一位" }).click();
-  const characterDialog = appPage.getByRole("dialog", { name: "换一位" });
-  await characterDialog.locator(".card-preview__hero-model .live2d[data-stage='ready']").waitFor({ state: "visible", timeout: 30000 });
-  const appCard = characterDialog.locator(".card-preview__hero");
-  await characterDialog.locator(".card-preview__live-progress").waitFor({ state: "visible" });
-  assert.equal(await appCard.getAttribute("data-character"), "deepseek");
-  assert.equal(await appCard.getAttribute("data-level"), "3");
-  assert.equal(await characterDialog.locator(".card-preview__hero-top, .card-preview__hero-copy, .card-preview__hero-art-caption").count(), 0);
-  assert.match(await characterDialog.locator(".card-preview__live-progress").innerText(), /128 点/);
-  assert.match(await characterDialog.locator(".card-preview__live-progress .card-preview__tier-next").innerText(), /还需 122 点/);
-  assert.equal(await characterDialog.locator(".card-preview__live-progress [role='progressbar']").getAttribute("aria-valuenow"), "19");
-  await appPage.screenshot({ path: `${shots}/role-card-dialog-1440x960.png` });
-  await characterDialog.getByRole("button", { name: /小克/ }).click();
-  await appCard.waitFor({ state: "visible" });
-  await appCard.evaluate((el) => el.getAttribute("data-character") === "claude" || new Promise((resolve) => {
-    const observer = new MutationObserver(() => {
-      if (el.getAttribute("data-character") === "claude") {
-        observer.disconnect();
-        resolve(true);
-      }
-    });
-    observer.observe(el, { attributes: true, attributeFilter: ["data-character"] });
-  }));
-  await characterDialog.locator(".card-preview__live-progress").waitFor({ state: "visible" });
-  assert.equal(await appCard.getAttribute("data-level"), "2");
-  assert.equal(await appPage.evaluate(() => localStorage.getItem("wp.character")), "claude");
-  assert.equal(await characterDialog.locator(".card-preview__hero-model").count(), 0);
-  await characterDialog.getByRole("button", { name: /鲸汐/ }).click();
-  await characterDialog.getByRole("button", { name: "重试读取好感度" }).waitFor({ state: "visible" });
-  assert.equal(await appCard.getAttribute("data-level"), "1");
-  await characterDialog.getByRole("button", { name: "重试读取好感度" }).click();
-  await characterDialog.locator(".card-preview__live-progress").waitFor({ state: "visible" });
-  assert.deepEqual(relationshipRequests, ["deepseek", "claude", "whale", "whale"]);
-  await characterDialog.getByRole("button", { name: "好" }).click();
-  assert.equal(await appPage.locator(".set-her__name").innerText(), "鲸汐");
-  await appPage.setViewportSize({ width: 390, height: 844 });
-  await appPage.getByRole("button", { name: "换一位" }).click();
-  const mobileDialog = appPage.getByRole("dialog", { name: "换一位" });
-  await mobileDialog.locator(".card-preview__hero").waitFor({ state: "visible" });
-  const appOverflow = await appPage.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  assert.ok(appOverflow <= 0, `role selector horizontal overflow: ${appOverflow}px`);
-  assert.deepEqual(appErrors, []);
-  await appContext.close();
-  console.log(`角色闪卡检查通过；截图保存至 ${shots}`);
+  await reduced.goto(base, { waitUntil: "networkidle" });
+  await reduced.evaluate(() => document.fonts.ready);
+  await reduced.getByRole("button", { name: "预览升级 1→2：相识到相熟" }).click();
+  await waitForUpgrade(reduced, 2);
+  assert.equal(await reduced.locator(STAGE).getAttribute("data-calm"), "true");
+  assert.match(await reduced.locator(`${STAGE} .acard__notice`).innerText(), /升到 Lv\.2/);
+  await waitForIdle(reduced);
+  assert.match(await reduced.locator("#card-upgrade-status").innerText(), /1→2 播完/);
+  assert.deepEqual(reducedErrors, []);
+  await reducedContext.close();
+
+  console.log(`角色闪卡五档检查通过；截图保存至 ${shots}`);
 } finally {
   await browser.close();
 }

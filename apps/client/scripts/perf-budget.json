@@ -24,7 +24,6 @@
     "streamdown"
   ],
   "motionDebt": {
-    "src/card-preview/card-preview.css": 4,
     "src/card-preview/card-showcase.css": 1,
     "src/styles/chat.css": 6,
     "src/styles/diary.css": 6,
@@ -35,7 +34,6 @@
     "src/styles/surf.css": 1
   },
   "filterDebt": {
-    "src/card-preview/card-preview.css": 1,
     "src/card-preview/card-showcase.css": 4
   }
 }
