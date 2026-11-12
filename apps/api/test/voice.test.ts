@@ -543,7 +543,7 @@ test("X-ASR model install clears temporary directories left by an interrupted do
   }
 });
 
-test("X-ASR stops a worker that never became fully ready so a later warm-up starts a fresh one", async () => {
+test("X-ASR restarts a worker that failed to load, and keeps streaming when only offline refinement fails", async () => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "whalepartner-asr-retry-"));
   const workerPath = join(dataDirectory, "xasr-worker");
   const spawnLog = join(dataDirectory, "spawns.log");
@@ -560,31 +560,47 @@ test("X-ASR stops a worker that never became fully ready so a later warm-up star
       }
       await writeFile(join(directory, "bpe.vocab"), "x".repeat(10_001));
     }
-    // 第 1 次：模型载入报错但进程不退；第 2 次：就绪但整句精修没载入；第 3 次：正常就绪。
+    // 第 1 次：模型载入报错但进程不退；第 2 次：流式就绪但整句精修没载入。
     await writeFile(workerPath, `#!${process.execPath}
 const fs = require("node:fs");
 fs.appendFileSync(${JSON.stringify(spawnLog)}, process.pid + "\\n");
 const attempt = fs.readFileSync(${JSON.stringify(spawnLog)}, "utf8").trim().split("\\n").length;
 const send = (message) => process.stdout.write(JSON.stringify(message) + "\\n");
 if (attempt === 1) send({ type: "error", message: "流式模型载入失败" });
-else send({ type: "ready", refinementReady: attempt > 2 });
+else send({ type: "ready", refinementReady: false });
 require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
   const request = JSON.parse(line);
   if (request.action === "shutdown") process.exit(0);
-  send({ type: "reply", requestId: request.requestId, ok: true });
+  send({ type: "reply", requestId: request.requestId, ok: true, text: request.action === "start" ? "" : "流式结果" });
 });
 `);
     await chmod(workerPath, 0o755);
 
     await assert.rejects(service.warm(), /流式模型载入失败/);
-    await assert.rejects(service.warm(), /整句精修模型载入失败/);
-    await service.warm();
+    const warned: string[] = [];
+    const previousWarn = console.warn;
+    console.warn = (...args: unknown[]) => void warned.push(args.join(" "));
+    try {
+      await service.warm();
+    } finally {
+      console.warn = previousWarn;
+    }
     assert.equal(service.status().state, "ready");
-    assert.equal(service.status().offlineRefinement, "ready");
+    assert.equal(service.status().offlineRefinement, "unavailable");
+    assert.match(service.status().message, /整句精修暂不可用/);
+    assert.match(warned.join("\n"), /整句精修模型载入失败/);
+
+    // 降级后仍能建识别流、出流式文本；再次 warm 复用同一个 worker。
+    const stream = await service.createStream();
+    assert.deepEqual(await stream.acceptPcm(Buffer.alloc(3_200)), { text: "流式结果", final: false });
+    assert.deepEqual(await stream.finish(), { text: "流式结果", final: true });
+    await stream.close();
+    await service.warm();
 
     const pids = (await readFile(spawnLog, "utf8")).trim().split("\n").map(Number);
-    assert.equal(pids.length, 3);
-    for (const pid of pids.slice(0, 2)) assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+    assert.equal(pids.length, 2);
+    assert.throws(() => process.kill(pids[0], 0), { code: "ESRCH" });
+    assert.doesNotThrow(() => process.kill(pids[1], 0));
   } finally {
     await service.close?.();
     await rm(dataDirectory, { recursive: true, force: true });
