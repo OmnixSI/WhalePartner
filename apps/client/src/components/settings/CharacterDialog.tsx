@@ -1,16 +1,19 @@
 /**
  * 「换一位」对话框（规范 §7.4.3-1）：4 张角色卡，选中立即换（`setCharacter`），
  * 关闭后小角的她挥个手。每个人格使用一个固定默认形象，不提供跨角色的模型选择。
+ *
+ * 上面是当前角色的好感度卡（真实等级，升档时播升级动画，#160）；下面四位角色用静态缩略卡，各显示自己的等级。
  */
-import { useEffect, useRef } from "react";
-import { CHARACTERS, setCharacter, useCharacter } from "../../characters";
-import { CARD_CHARACTERS, RELATIONSHIP_SAMPLES } from "../../card-preview/data";
-import { CardShowcase } from "../../card-preview/CardShowcase";
+import { Suspense, useEffect, useRef } from "react";
+import { CHARACTERS, setCharacter, useCharacter, type CharacterId } from "../../characters";
+import { CARD_CHARACTERS } from "../../card-preview/data";
+import { LazyAffinityCard, clampLevel, tierOf } from "../../card-preview/tier";
 import { setCompanionMood } from "../CompanionCorner";
 import { CharacterMark } from "../CharacterMark";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
-import type { RelationshipState } from "./useRelationship";
+import { AffinityShowcase } from "./AffinityShowcase";
+import type { RelationshipEntry, RelationshipState } from "./useRelationship";
 
 type Props = {
   open: boolean;
@@ -18,24 +21,37 @@ type Props = {
   relationship: RelationshipState;
 };
 
+/** 角色列表里的缩略卡（sm，静态）：显示这位角色自己的真实等级，数据和主卡是同一份；读到之前、读不到时仍是徽记。 */
+function CharThumb({ id, entry }: { id: CharacterId; entry: RelationshipEntry | undefined }) {
+  const level = entry?.snapshot ? clampLevel(entry.snapshot.level) : null;
+  const mark = <CharacterMark character={id} />;
+  return (
+    <>
+      <span className="set-char__thumb" aria-hidden="true">
+        {level ? <Suspense fallback={mark}><LazyAffinityCard character={id} level={level} size="sm" /></Suspense> : mark}
+      </span>
+      {level && <span className="set-char__level">Lv.{level} {tierOf(level).label}</span>}
+    </>
+  );
+}
+
 export function CharacterDialog({ open, onOpenChange, relationship }: Props) {
   const character = useCharacter();
   const cardCharacter = CARD_CHARACTERS.find((item) => item.id === character.id) ?? CARD_CHARACTERS[0];
   const changed = useRef(false);
+  const { snapshot, status, retry, entries } = relationship;
+  // 当前角色或任何一张缩略卡读不到，都给重试入口
+  const anyFailed = CHARACTERS.some((item) => entries[item.id]?.status === "error");
+
+  // 每次打开，设置页会把四个角色的真实等级一起重读（见 useRelationship 的 watchAll）
   useEffect(() => {
-    if (open) {
-      changed.current = false;
-    }
+    if (open) changed.current = false;
   }, [open]);
 
   const close = (next: boolean) => {
     if (!next && changed.current) setCompanionMood("wave", { ttl: 2400 });
     onOpenChange(next);
   };
-  const activeRelationship = relationship.snapshot;
-  const relationshipStatus = relationship.status;
-  const sample = RELATIONSHIP_SAMPLES.find((item) => item.level === activeRelationship?.level) ?? RELATIONSHIP_SAMPLES[0];
-  const cardRelationshipStatus = activeRelationship ? undefined : relationshipStatus === "error" ? "error" : "loading";
 
   return (
     <Dialog
@@ -47,18 +63,11 @@ export function CharacterDialog({ open, onOpenChange, relationship }: Props) {
       description="每个人格有自己的口吻；聊天、记忆、日记和见闻共用。选好角色卡就会切换人格，不用保存。"
       footer={<Button variant="secondary" onClick={() => close(false)}>好</Button>}
     >
-      {/* 角色卡展示区：主程的卡面组件挂在这里，外壳只管尺寸和留白 */}
-      <CardShowcase
-        character={cardCharacter}
-        sample={sample}
-        showProgress={activeRelationship !== null}
-        relationship={activeRelationship}
-        relationshipStatus={cardRelationshipStatus}
-      />
-      {relationshipStatus === "error" && (
+      <AffinityShowcase character={cardCharacter} snapshot={snapshot} status={status} />
+      {anyFailed && (
         <div className="set-dialog__relationship-retry">
           <p>好感度服务暂时没有响应，角色切换仍可正常使用。</p>
-          <Button variant="secondary" onClick={relationship.retry}>
+          <Button variant="secondary" onClick={retry}>
             重试读取好感度
           </Button>
         </div>
@@ -80,9 +89,7 @@ export function CharacterDialog({ open, onOpenChange, relationship }: Props) {
                   changed.current = true;
                 }}
               >
-                <span className="set-char__sticker" aria-hidden="true">
-                  <CharacterMark character={item.id} />
-                </span>
+                <CharThumb id={item.id} entry={entries[item.id]} />
                 <span className="set-char__name">{item.name}</span>
                 <span className="set-char__tagline">{item.tagline}</span>
               </button>
