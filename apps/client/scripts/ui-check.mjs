@@ -366,6 +366,21 @@ async function checkTouch(browser) {
         const bad = await page.evaluate(TOUCH_JS, min);
         measured += 1;
         for (const b of bad.slice(0, 3)) fails.push(`${name}@${vp.width}${elder ? "/elder" : ""} ${b}`);
+        if (path === "/settings") {
+          // 「换一位」弹窗里的切档按钮只有弹窗打开时才在 DOM 里，页面级扫描覆盖不到。
+          await page.locator(".set-her__swap").click();
+          await page.locator(".card-view__btn").first().waitFor({ timeout: 5000 });
+          await page.waitForTimeout(500);
+          const sizes = await page.locator(".card-view__btn").evaluateAll((els) => els.map((el) => {
+            const r = el.getBoundingClientRect();
+            return { w: r.width, h: r.height, text: (el.textContent || "").trim() };
+          }));
+          measured += 1;
+          const small = sizes.filter((s) => s.w < min || s.h < min);
+          if (small.length) fails.push(`设置·换一位@${vp.width}${elder ? "/elder" : ""} ${small.map((s) => `${s.text} ${Math.round(s.w)}×${Math.round(s.h)}`).join("、")}`);
+          await page.keyboard.press("Escape");
+          await page.locator(".set-dialog--chars").waitFor({ state: "detached", timeout: 3000 }).catch(() => {});
+        }
       }
       await context.close();
     }

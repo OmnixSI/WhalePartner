@@ -4,7 +4,7 @@
 .card-view__levels { display: flex; flex-wrap: wrap; gap: 6px; }
 .card-view__btn {
   min-width: 56px;
-  min-height: 36px;
+  min-height: var(--hit);
   padding: 4px 10px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-element);
