@@ -20,7 +20,7 @@ function recordTurn(store: ChatStore, character: string, at: Date, emotion: "neu
   return { assistant, recorded };
 }
 
-test("relationship awards completed DeepSeek turns once, enforces the daily cap, and unlocks four stages", () => {
+test("relationship awards completed DeepSeek turns once, enforces the daily cap, and unlocks five stages", () => {
   const store = new ChatStore(":memory:");
   try {
     const first = recordTurn(store, "deepseek", new Date("2026-10-01T12:00:00.000Z"), "happy");
@@ -119,11 +119,100 @@ test("completed chats update the API once and invalid personas are rejected", as
     const afterDuplicate = await (await fetch(`${base}/api/relationship?character=deepseek`)).json() as { points: number };
     assert.equal(afterDuplicate.points, 1);
     assert.equal((await fetch(`${base}/api/relationship?character=not-a-character`)).status, 400);
-    assert.equal(relationshipSnapshot(250, { emotion: "neutral", intensity: 0, updatedAt: null }).level, 4);
   } finally {
     server.closeVoiceConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     store.close();
+  }
+});
+
+const NEUTRAL = { emotion: "neutral", intensity: 0, updatedAt: null } as const;
+
+test("every stage threshold is an exact boundary for level, label, nextThreshold and progress", () => {
+  const cases: Array<[number, number, string, number | null, number]> = [
+    // points, level, label, nextThreshold, progress(%)
+    [0, 1, "相识", 25, 0],
+    [24, 1, "相识", 25, 96],
+    [25, 2, "相熟", 100, 0],
+    [99, 2, "相熟", 100, 99],
+    [100, 3, "默契", 250, 0],
+    [249, 3, "默契", 250, 99],
+    [250, 4, "亲近", 500, 0],
+    [499, 4, "亲近", 500, 99],
+    [500, 5, "相依", null, 100],
+    [5000, 5, "相依", null, 100],
+  ];
+  for (const [points, level, label, nextThreshold, progress] of cases) {
+    const state = relationshipSnapshot(points, NEUTRAL);
+    assert.deepEqual(
+      { points: state.points, level: state.level, label: state.label, nextThreshold: state.nextThreshold, progress: state.progress },
+      { points, level, label, nextThreshold, progress },
+      `points=${points}`,
+    );
+  }
+  assert.equal(relationshipSnapshot(500, NEUTRAL).effect, "镀闪卡面");
+  assert.equal(relationshipSnapshot(499, NEUTRAL).effect, "专属特效");
+  assert.equal(relationshipSnapshot(-3, NEUTRAL).level, 1);
+});
+
+test("an existing database already past 500 points shows Lv5 after upgrade and keeps lower stages unchanged", () => {
+  const directory = mkdtempSync(join(tmpdir(), "whalepartner-affinity5-"));
+  const path = join(directory, "chat.sqlite");
+  try {
+    // 旧版（四档）写入的状态：好感度只是一个点数，阶段由点数算出，没有单独存档。
+    const seed = new ChatStore(path);
+    seed.close();
+    const setPoints = (points: number) => {
+      const raw = new DatabaseSync(path);
+      raw.prepare("UPDATE relationship_state SET affinity_points = ? WHERE id = 1").run(points);
+      raw.close();
+    };
+    const expectations: Array<[number, number, number | null]> = [
+      [300, 4, 500], // 旧版封顶在 Lv4 的用户：仍是 Lv4，只是多了下一档
+      [499, 4, 500],
+      [500, 5, null],
+      [1234, 5, null],
+    ];
+    for (const [points, level, nextThreshold] of expectations) {
+      setPoints(points);
+      const store = new ChatStore(path);
+      try {
+        const state = store.relationshipSnapshot("deepseek");
+        assert.equal(state.points, points);
+        assert.equal(state.level, level, `points=${points}`);
+        assert.equal(state.nextThreshold, nextThreshold, `points=${points}`);
+      } finally {
+        store.close();
+      }
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("GET /api/relationship at 500 points returns Lv5 with no next threshold", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "whalepartner-affinity5-api-"));
+  const path = join(directory, "chat.sqlite");
+  const store = new ChatStore(path);
+  const raw = new DatabaseSync(path);
+  raw.prepare("UPDATE relationship_state SET affinity_points = 500 WHERE id = 1").run();
+  raw.close();
+  const provider: ChatProvider = { id: "fixture", model: "fixture", async *stream() { yield { text: "我在听。" }; } };
+  const server = createApiServer({ config: loadConfig({}), provider: new FallbackChatProvider([provider]), store });
+  const base = await new Promise<string>((resolve) => server.listen(0, "127.0.0.1", () => resolve(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)));
+  try {
+    const body = await (await fetch(`${base}/api/relationship?character=deepseek`)).json() as Record<string, unknown>;
+    assert.equal(body.points, 500);
+    assert.equal(body.level, 5);
+    assert.equal(body.label, "相依");
+    assert.equal(body.effect, "镀闪卡面");
+    assert.equal(body.nextThreshold, null);
+    assert.equal(body.progress, 100);
+  } finally {
+    server.closeVoiceConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    store.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 

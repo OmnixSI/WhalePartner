@@ -62,7 +62,10 @@ export function CharacterDialog({ open, onOpenChange }: Props) {
     onOpenChange(next);
   };
   const activeRelationship = relationship?.characterId === character.id ? relationship.snapshot : null;
-  const sample = RELATIONSHIP_SAMPLES.find((item) => item.level === activeRelationship?.level) ?? RELATIONSHIP_SAMPLES[0];
+  const level = activeRelationship?.level ?? 1;
+  // 后端已有第 5 档，但镀闪卡面还没做：超出样本表的档位暂按最高的已有卡面显示，不退回基础卡面。
+  const sample = RELATIONSHIP_SAMPLES.find((item) => item.level === level)
+    ?? (level > RELATIONSHIP_SAMPLES.length ? RELATIONSHIP_SAMPLES[RELATIONSHIP_SAMPLES.length - 1] : RELATIONSHIP_SAMPLES[0]);
   const cardRelationshipStatus = activeRelationship ? undefined : relationshipStatus === "error" ? "error" : "loading";
 
   return (
