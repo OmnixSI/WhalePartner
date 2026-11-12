@@ -712,8 +712,11 @@
 /* ---------------------------------------------------------------- 键盘弹起 */
 html[data-kb="on"] .app { height: var(--vvh, 100dvh); }
 html[data-kb="on"] .nav { display: none; }
-html[data-kb="on"] .room { height: var(--vvh, 100dvh); }
-html[data-kb="on"] .scene { height: 56px; }
+html[data-kb="on"] .room { height: 100%; }
+/* 键盘态只留一条舞台窄带；名字牌和开场芯片让位给输入区 */
+html[data-kb="on"] .scene { flex: none; height: 56px; min-height: 56px; max-height: 56px; }
+html[data-kb="on"] .nametab,
+html[data-kb="on"] .suggests { display: none; }
 html[data-kb="on"] .scene__figure { inset: 0; }
 html[data-kb="on"] .scene__wait,
 html[data-kb="on"] .scene__status,

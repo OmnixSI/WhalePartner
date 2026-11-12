@@ -117,7 +117,8 @@
 
 /* 收起：只留图标。只在桌面生效；窄窗和手机由下面的断点自动收起。 */
 @media (min-width: 1180px) {
-  .shell-nav.is-collapsed { padding-inline: var(--sp-2); }
+  .shell-nav.is-collapsed { padding-inline: var(--sp-1); }
+  .shell-nav.is-collapsed .shell-nav__sections { padding-inline: 0; }
   .shell-nav.is-collapsed .shell-nav__head { justify-content: center; padding-inline: 0; }
   .shell-nav.is-collapsed .shell-nav__brand,
   .shell-nav.is-collapsed .shell-nav__group-label,
@@ -132,7 +133,8 @@
 /* 窄窗自动收起（不依赖 JS，900px 也走这一档） */
 @media (max-width: 1179px) {
   .app-shell { grid-template-columns: var(--shell-nav-rail) minmax(0, 1fr); }
-  .shell-nav { padding-inline: var(--sp-2); }
+  .shell-nav { padding-inline: var(--sp-1); }
+  .shell-nav__sections { padding-inline: 0; }
   .shell-nav__head { justify-content: center; padding-inline: 0; }
   .shell-nav__brand,
   .shell-nav__group-label,
@@ -164,6 +166,8 @@
   .shell-nav__group-label { display: none; }
   .shell-nav__list > li { display: flex; flex: 1; min-width: 0; }
   .shell-nav__item { flex: 1; flex-direction: column; justify-content: center; gap: 2px; min-height: var(--tabbar-h); padding: 0; border-radius: 0; font-size: var(--text-xs); }
+  /* 1179px 以下默认隐藏标签，手机底栏要把文字恢复出来 */
+  .shell-nav__label { display: block; max-width: 100%; }
   .shell-nav__item[aria-current="page"] { background: none; }
   .shell-nav__item[aria-current="page"]::before { display: block; left: 50%; top: 0; bottom: auto; width: 28px; height: 3px; margin-left: -14px; }
 }
@@ -202,5 +206,6 @@
   .chat-page { padding: var(--sp-4) var(--sp-4) var(--sp-2); }
 }
 
-/* 手机键盘弹起时让出底部导航（旧外壳的 .nav 规则同样处理） */
+/* 手机键盘弹起：外壳跟可视高度缩；房间只占扣掉页头后的剩余空间 */
+html[data-kb="on"] .app-shell { height: var(--vvh, 100dvh); }
 html[data-kb="on"] .shell-nav { display: none; }

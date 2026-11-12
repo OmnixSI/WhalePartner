@@ -43,7 +43,10 @@
  *  26  换一位：主卡与缩略卡共用等级；单卡失败可重试，重试一起恢复，切角色不多发请求
  *  27  聊天页跨档提示一次、同一档不重复；点「去看看」打开设置页卡面并播升级
  *  28  外壳：1440 点「收起导航」后 nav 72px、main 从 x=72 起；再展开回 232；900 图标栏链接有可访问名称
- *  （默认共 28 项；--shots 再加一项截图，共 29 项）
+ *  29  手机键盘弹起（可视高 480）：外壳收到 480，输入框和发送键都在可视区内
+ *  30  手机底栏：719px 及以下文字标签可见（390 / 719 / 390 老人）
+ *  31  老人模式图标栏：900 / 720 / 1440 收起后链接都不小于 56×56
+ *  （默认共 31 项；--shots 再加一项截图，共 32 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -425,6 +428,95 @@ async function checkShellNav(browser) {
 
   const detail = fails.length ? fails.join("；") : `展开 ${before.nav}/${before.mainX} → 收起 ${after.nav}/${after.mainX} → 再展开 ${reopened.nav}/${reopened.mainX}；900 链接名称 5/5`;
   return record("外壳：1440 收起导航列宽 72、main 从 72 起；900 图标栏链接可访问", fails.length === 0, detail);
+}
+
+/** 29. 手机键盘：模拟可视高度 480px，外壳收到 480，输入框和发送键都在可视区内。 */
+async function checkMobileKeyboard(browser) {
+  const fails = [];
+  const { context, page } = await openPage(browser, { width: 390, height: 844, touch: true });
+  await visit(page, "/");
+  const before = await page.evaluate(() => Math.round(document.querySelector(".app-shell")?.getBoundingClientRect().height ?? -1));
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport, "height", { configurable: true, get: () => 480 });
+    window.visualViewport.dispatchEvent(new Event("resize"));
+  });
+  await page.waitForTimeout(400);
+  const m = await page.evaluate(() => {
+    const box = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) };
+    };
+    return {
+      kb: document.documentElement.dataset.kb,
+      vvh: getComputedStyle(document.documentElement).getPropertyValue("--vvh").trim(),
+      shell: box(".app-shell"), composer: box(".composer"), input: box(".composer__input"), send: box(".composer__send"),
+    };
+  });
+  await context.close();
+
+  if (m.kb !== "on" || m.vvh !== "480px") fails.push(`键盘状态 ${m.kb}/${m.vvh || "无 --vvh"}，应为 on/480px`);
+  if (m.shell?.bottom !== 480) fails.push(`外壳高 ${m.shell?.bottom}px，应为 480`);
+  for (const [name, b] of [["输入区", m.composer], ["输入框", m.input], ["发送键", m.send]]) {
+    if (!b) fails.push(`${name}不存在`);
+    else if (b.top < 0 || b.bottom > 480) fails.push(`${name} ${b.top}–${b.bottom}，超出 0–480`);
+  }
+  const detail = fails.length ? fails.join("；") : `外壳 ${before}→480；输入区 ${m.composer.top}–${m.composer.bottom}，输入框 ${m.input.top}–${m.input.bottom}，发送键 ${m.send.top}–${m.send.bottom}`;
+  return record("手机键盘弹起：外壳 480px，输入框与发送键都在可视区内", fails.length === 0, detail);
+}
+
+/** 30. 手机底栏文字：719px 及以下不能沿用 1179px 以下的隐藏规则。 */
+async function checkMobileTabLabels(browser) {
+  const fails = [];
+  const notes = [];
+  for (const [width, elder] of [[390, false], [719, false], [390, true]]) {
+    const { context, page } = await openPage(browser, { width, height: 900, touch: true, elder });
+    await visit(page, "/settings");
+    const m = await page.evaluate(() => ({
+      items: document.querySelectorAll(".shell-nav__item").length,
+      labels: [...document.querySelectorAll(".shell-nav__label")].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { text: el.textContent.trim(), display: getComputedStyle(el).display, w: Math.round(r.width), h: Math.round(r.height) };
+      }),
+    }));
+    await context.close();
+    const tag = `${width}${elder ? " 老人" : ""}`;
+    if (m.items !== m.labels.length) fails.push(`${tag} 有 ${m.items} 个入口，只找到 ${m.labels.length} 个标签`);
+    const hidden = m.labels.filter((l) => l.display === "none" || l.w === 0 || l.h === 0);
+    if (hidden.length) fails.push(`${tag} 标签不可见：${hidden.map((l) => l.text).join("、")}`);
+    notes.push(`${tag} ${m.labels.length}/${m.items}`);
+  }
+  return record("手机底栏：719px 及以下文字标签可见（含老人模式）", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
+/** 31. 老人模式图标栏：72px 列里链接至少 56×56（自动收起与 1440 手动收起都要过）。 */
+async function checkElderRailTargets(browser) {
+  const fails = [];
+  const notes = [];
+  for (const width of [900, 720, 1440]) {
+    const { context, page } = await openPage(browser, { width, height: 900, elder: true });
+    await visit(page, "/settings");
+    if (width === 1440) {
+      await page.getByRole("button", { name: "收起导航" }).click();
+      await page.waitForTimeout(200);
+    }
+    const m = await page.evaluate(() => ({
+      nav: Math.round(document.querySelector(".shell-nav").getBoundingClientRect().width),
+      links: [...document.querySelectorAll(".shell-nav__item")].map((el) => {
+        const r = el.getBoundingClientRect();
+        return { text: el.getAttribute("aria-label"), w: Math.round(r.width), h: Math.round(r.height) };
+      }),
+    }));
+    await context.close();
+    for (const link of m.links) {
+      if (link.w < 56 || link.h < 56) fails.push(`${width}px「${link.text}」${link.w}×${link.h}，小于 56×56`);
+    }
+    const minW = Math.min(...m.links.map((l) => l.w));
+    const minH = Math.min(...m.links.map((l) => l.h));
+    notes.push(`${width} ${m.nav}px 栏 ${minW}×${minH}`);
+  }
+  return record("老人模式图标栏：900 / 720 / 1440 收起后链接 ≥56×56", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
 async function checkAxe(browser, AxeBuilder) {
@@ -1305,6 +1397,9 @@ if (STATIC_ONLY) {
       await checkTouch(browser);
       await checkHorizontalScroll(browser);
       await checkShellNav(browser);
+      await checkMobileKeyboard(browser);
+      await checkMobileTabLabels(browser);
+      await checkElderRailTargets(browser);
       await checkAxe(browser, AxeBuilder);
       await checkIdleAndHidden(browser);
       await checkLazyStyles(browser);
