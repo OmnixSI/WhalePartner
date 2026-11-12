@@ -424,7 +424,7 @@
 @keyframes up-rise { 0% { opacity: 0; transform: translateY(0); } 15% { opacity: 1; } 70% { opacity: .9; } 100% { opacity: 0; transform: translateY(-3200%); } }
 @keyframes up-beam { 0%, 58% { opacity: 0; transform: translateY(-60%); } 88% { opacity: 1; transform: translateY(4%); } 100% { opacity: 1; transform: translateY(0); } }
 
-/* 4→5 鎏金：闪白一帧 → 镭射膜从左上扫到右下，旧卡面随之褪去 → 闪点逐个亮起 → 收尾一道高光 */
+/* 4→5 镀闪：闪白一帧 → 镭射膜从左上扫到右下，旧卡面随之褪去 → 闪点逐个亮起 → 收尾一道高光 */
 .acard[data-upgrading="5"] .acard__skin--ghost { animation-name: up-ghost-5; }
 .acard[data-upgrading="5"] .acard__holo { animation: up-holo var(--up-dur) linear both; }
 .acard[data-upgrading="5"] .acard__glint { animation: up-pop var(--up-dur) cubic-bezier(.2, .8, .25, 1) both; animation-delay: calc(var(--up-dur) * .012 * (var(--i) - 18)); }

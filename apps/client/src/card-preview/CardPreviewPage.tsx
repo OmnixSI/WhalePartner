@@ -30,13 +30,15 @@ export function CardPreviewPage() {
   const [stage, setStage] = useState<Stage>({ run: 0, level: 2 });
   const [last, setLast] = useState("还没播过");
   const [ends, setEnds] = useState(0);
-  const originalTheme = useRef<{ theme: string | null; pref: string | null } | null>(null);
+  const originalTheme = useRef<{ theme: string | null; pref: string | null; meta: string | null } | null>(null);
 
   useEffect(() => {
     const root = document.documentElement;
+    const meta = document.querySelector('meta[name="theme-color"]');
     originalTheme.current = {
       theme: root.getAttribute("data-theme"),
       pref: root.getAttribute("data-theme-pref"),
+      meta: meta?.getAttribute("content") ?? null,
     };
     return () => {
       const original = originalTheme.current;
@@ -45,6 +47,9 @@ export function CardPreviewPage() {
       else root.setAttribute("data-theme", original.theme);
       if (original.pref === null) root.removeAttribute("data-theme-pref");
       else root.setAttribute("data-theme-pref", original.pref);
+      const metaEl = document.querySelector('meta[name="theme-color"]');
+      if (original.meta === null) metaEl?.removeAttribute("content");
+      else metaEl?.setAttribute("content", original.meta);
     };
   }, []);
 
@@ -57,6 +62,8 @@ export function CardPreviewPage() {
     const root = document.documentElement;
     root.setAttribute("data-theme", next);
     root.setAttribute("data-theme-pref", next);
+    document.querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", next === "dark" ? "#0F1C2A" : "#F6EFE2");
   };
 
   const play = (from: CardLevel, to: CardLevel) => {

@@ -73,3 +73,24 @@ test("abortAll 之后到的响应（卸载）不再写回", async () => {
   assert.deepEqual(ready, []);
   assert.deepEqual(errors, []);
 });
+
+test("旧 Promise 已 settle、.then 未执行时发新请求：旧的成功结果不覆盖新结果", async () => {
+  const { calls, ready, loader } = harness();
+  loader.load(["whale"]);
+  calls[0].resolve(3); // 已 settle，成功回调还排在微任务队列里
+  loader.load(["whale"]); // 旧 .then 执行前发出新请求
+  calls[1].resolve(4);
+  await tick();
+  assert.deepEqual(ready, [["whale", 4]]);
+});
+
+test("旧 Promise 已 settle、.then 未执行时发新请求：旧的失败结果不把新结果标成 error", async () => {
+  const { calls, ready, errors, loader } = harness();
+  loader.load(["whale"]);
+  calls[0].reject(new Error("HTTP 500")); // 已 settle，失败回调还排在微任务队列里
+  loader.load(["whale"]);
+  calls[1].resolve(4);
+  await tick();
+  assert.deepEqual(ready, [["whale", 4]]);
+  assert.deepEqual(errors, []);
+});

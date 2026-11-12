@@ -33,7 +33,10 @@ await page.addInitScript((glMode) => {
   localStorage.setItem("wp.onboarded", "1"); localStorage.setItem("wp.character", "deepseek");
   if (glMode === "webgl2") return;
   const get = HTMLCanvasElement.prototype.getContext;
-  HTMLCanvasElement.prototype.getContext = function (type, ...args) { return type === "webgl2" ? null : get.call(this, type, ...args); };
+  HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+    if (type === "webgl2" || type === "experimental-webgl2") return null;
+    return get.call(this, type, ...args);
+  };
   if (glMode !== "webgl1-novao") return;
   const ext = WebGLRenderingContext.prototype.getExtension;
   WebGLRenderingContext.prototype.getExtension = function (name) { return name === "OES_vertex_array_object" ? null : ext.call(this, name); };
@@ -74,12 +77,15 @@ if (mode === "record") {
   const frames = bufs.map((b, i) => ({ hash: createHash("sha1").update(b).digest("hex").slice(0, 12), nz: out.res[i].nz }));
   if (mode === "b" && !(otherFile && existsSync(otherFile))) throw new Error(`b 模式需要 a 的像素文件：${otherFile}`);
   const other = mode === "b" ? JSON.parse(readFileSync(otherFile, "utf8")) : null;
-  if (other) frames.forEach((f, i) => { if (i >= other.length) return; const o = Buffer.from(other[i], "base64"), b = bufs[i]; let diff = 0, max = 0; for (let k = 0; k < b.length; k++) { const d = Math.abs(b[k] - o[k]); if (d) { diff++; if (d > max) max = d; } } f.diffBytes = diff; f.maxDelta = max; });
+  if (other) frames.forEach((f, i) => { if (i >= other.length) return; const o = Buffer.from(other[i], "base64"), b = bufs[i]; if (b.length !== o.length) { f.sizeMismatch = `${o.length} vs ${b.length}`; f.diffBytes = Math.abs(b.length - o.length); f.maxDelta = 255; return; } let diff = 0, max = 0; for (let k = 0; k < b.length; k++) { const d = Math.abs(b[k] - o[k]); if (d) { diff++; if (d > max) max = d; } } f.diffBytes = diff; f.maxDelta = max; });
   const tag = glMode === "webgl2" ? mode : `${mode}.${glMode}`;
   writeFileSync(snapFile.replace(".json", `.${tag}.px.json`), JSON.stringify(out.res.map((r) => r.px)));
   console.log(JSON.stringify({ gl: glMode, webgl2: out.webgl2, fastPath: out.fastPath, w: out.w, h: out.h, frames }));
   const bad = [];
+  // 只在候选用例（b）上断言：a 跑的是改动前的基线，本来就没有快路径
+  if (mode === "b" && glMode === "webgl2" && !(out.webgl2 && out.fastPath)) bad.push(`WebGL2 快路径没有启用（webgl2=${out.webgl2}，fastPath=${out.fastPath}）`);
   if (frames.some((f) => f.nz === 0)) bad.push("有帧全透明（立绘空白）");
+  if (frames.some((f) => f.sizeMismatch)) bad.push(`像素缓冲长度不一致：${frames.filter((f) => f.sizeMismatch).map((f) => f.sizeMismatch).join("、")}`);
   if (other && other.length !== frames.length) bad.push(`帧数不一致：${other.length} vs ${frames.length}`);
   if (other && frames.some((f) => f.diffBytes !== undefined && (f.diffBytes !== 0 || f.maxDelta !== 0))) bad.push("有帧像素不同");
   if (bad.length) { console.error("失败：" + bad.join("；")); process.exitCode = 1; }

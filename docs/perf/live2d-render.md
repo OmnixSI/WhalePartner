@@ -68,12 +68,12 @@ vite build --outDir /tmp/dist-new    # 在待发布提交上
 node scripts/live2d-pixel-diff.mjs /tmp/dist-base /tmp/snaps.json record
 # 3. 三种 GL 环境各比一次
 for g in webgl2 webgl1 webgl1-novao; do
-  node scripts/live2d-pixel-diff.mjs /tmp/dist-base /tmp/snaps.json a --gl=$g
+  node scripts/live2d-pixel-diff.mjs /tmp/dist-base /tmp/snaps.json a --gl=$g || { echo "失败：$g"; exit 1; }
   A=/tmp/snaps.a.px.json; [ $g = webgl2 ] || A=/tmp/snaps.a.$g.px.json
-  node scripts/live2d-pixel-diff.mjs /tmp/dist-new /tmp/snaps.json b $A --gl=$g || echo "失败：$g"
+  node scripts/live2d-pixel-diff.mjs /tmp/dist-new /tmp/snaps.json b $A --gl=$g || { echo "失败：$g"; exit 1; }
 done
 ```
 
 任一帧有像素差异、帧数不一致、或画面全透明时脚本退出码为 1。端口固定 14251，需要有界面的 Chrome。
 
-2026-11-12 的结果：三种环境 12 帧都与基线逐字节相同；修复前的 4d499bf 在无 VAO 扩展时 12 帧全透明（基线每帧约 14 万个非透明像素），脚本退出码 1。
+2026-11-12 的结果：三种环境 12 帧都与基线逐字节相同；修复前的 4d499bf 在无 VAO 扩展时 10 帧全透明，另 2 帧只剩少量残片（7,407 / 677 像素），远低于基线约 14 万，脚本退出码 1。

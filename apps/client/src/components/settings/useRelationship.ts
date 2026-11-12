@@ -41,7 +41,22 @@ export function useRelationship(currentId: CharacterId, watchAll: boolean): Rela
     onReady: (id, snapshot) => setEntries((prev) => ({ ...prev, [id]: { snapshot, status: "ready" } })),
     onError: (id) => setEntries((prev) => (prev[id as CharacterId]?.snapshot ? prev : { ...prev, [id]: { snapshot: null, status: "error" } })),
   });
-  const load = useCallback((ids: readonly CharacterId[]) => loader.current!.load(ids), []);
+  // 重读一开始就把上次失败的条目置回 loading，重试按钮不会在请求期间一直挂着。
+  // 已有快照的条目保留旧值，卡面不闪；失败的条目本来就没有快照。
+  const load = useCallback((ids: readonly CharacterId[]) => {
+    setEntries((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const id of ids) {
+        if (next[id]?.status === "error") {
+          next[id] = LOADING;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    loader.current!.load(ids);
+  }, []);
 
   // 进页面 / 换角色 / 打开弹窗时读；只是关弹窗不重读；弹窗开着换角色只读新的当前角色和还没读好的
   const last = useRef<{ id: CharacterId; all: boolean } | null>(null);
