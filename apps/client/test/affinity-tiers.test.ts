@@ -15,7 +15,7 @@ test("five tiers follow the backend stages, Lv5 相依 starts at 500", () => {
   assert.deepEqual(CARD_TIERS.map((t) => [t.level, t.label, t.threshold]), [
     [1, "相识", 0], [2, "相熟", 25], [3, "默契", 100], [4, "亲近", 250], [5, "相依", 500],
   ]);
-  assert.equal(tierOf(5).finish, "鎏金箔");
+  assert.equal(tierOf(5).finish, "镀闪");
 });
 
 test("levels are clamped into 1–5", () => {
