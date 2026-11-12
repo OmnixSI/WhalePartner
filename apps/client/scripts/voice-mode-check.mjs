@@ -11,6 +11,10 @@ const ttsRequests = [];
 const failures = [];
 let segments = 0;
 let socketCount = 0;
+// 第一次进入语音时模型还在载入：status 一直是 loading，warm 1.2 秒后才返回（#149）。
+let slowWarmPending = true;
+let warmDoneAt = 0;
+let firstSocketAt = 0;
 let closedSockets = 0;
 let asrPcmFramesReceived = 0;
 
@@ -265,6 +269,14 @@ try {
     if (path === "/api/chat/sessions") return json({ sessions: [] });
     if (path === "/api/chat/history") return json({ messages: [] });
     if (path === "/api/events") return route.fulfill({ status: 200, contentType: "text/event-stream", body: ": ready\n\n" });
+    if (path === "/api/voice/asr/warm" && slowWarmPending) {
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      slowWarmPending = false;
+      warmDoneAt = Date.now();
+    }
+    if (path === "/api/voice/asr/status" && slowWarmPending) {
+      return json({ state: "loading", progress: 50, message: "", model: "X-ASR 480 ms (test)", offlineRefinement: "loading" });
+    }
     if (path === "/api/voice/asr/status" || path === "/api/voice/asr/warm") {
       return json({ state: "ready", progress: 100, message: "", model: "X-ASR 480 ms (test)", offlineRefinement: "ready" });
     }
@@ -297,6 +309,7 @@ try {
 
   await page.routeWebSocket("**/api/voice/asr/stream", (socket) => {
     socketCount += 1;
+    firstSocketAt ||= Date.now();
     let closeForwarded = false;
     socket.onClose((code, reason) => {
       if (closeForwarded) return;
@@ -380,6 +393,7 @@ try {
   await alert.waitFor({ state: "visible" });
   const initialErrorLabel = await alert.getAttribute("aria-label");
   const errorBarAfterVoice = await page.locator(".composer__bar").boundingBox();
+  check("模型载入完成后立即连接 X-ASR，不再多等一个轮询间隔", warmDoneAt > 0 && firstSocketAt - warmDoneAt < 400, `${firstSocketAt - warmDoneAt} ms`);
   check("无麦克风时显示可恢复错误", (await alert.innerText()).includes("语音暂不可用") && initialErrorLabel?.includes("没有检测到可用麦克风"));
   check(
     "文字与语音状态使用同一输入条高度和位置",
