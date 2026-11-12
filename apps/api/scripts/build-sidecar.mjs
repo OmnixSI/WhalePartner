@@ -245,6 +245,17 @@ execFileSync("npm", npmArgs, {
   stdio: "inherit",
   shell: process.platform === "win32",
 });
+// onnxruntime-node 自带五套平台的原生库；包里的 node 只跑本机平台，其余约 200 MB 只会拖慢新版本首次启动时的系统扫描（#149）。
+const ortBin = join(apiOut, "node_modules", "onnxruntime-node", "bin", "napi-v6");
+if (existsSync(ortBin)) {
+  for (const platform of readdirSync(ortBin)) {
+    for (const arch of readdirSync(join(ortBin, platform))) {
+      if (platform !== process.platform || arch !== process.arch) rmSync(join(ortBin, platform, arch), { recursive: true, force: true });
+    }
+    if (readdirSync(join(ortBin, platform)).length === 0) rmSync(join(ortBin, platform), { recursive: true, force: true });
+  }
+  log(`onnxruntime-node 只保留 ${process.platform}/${process.arch} 原生库`);
+}
 
 /* ---- 6. ffmpeg ---- */
 let ffmpeg;

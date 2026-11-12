@@ -309,25 +309,29 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   const warmModel = useCallback(async (token: number) => {
     const controller = new AbortController();
     preparingRequest.current = controller;
-    const poll = async () => {
-      while (active.current && token === generation.current && !controller.signal.aborted) {
-        const response = await fetch(`${API_BASE}/api/voice/asr/status`, { signal: controller.signal });
-        if (!response.ok) throw new Error("读取本地 X-ASR 状态失败。");
-        const status = await response.json() as VoiceModelStatus;
-        setModel(status);
-        if (status.state === "ready") return;
-        if (status.state === "failed") throw new Error(status.message || "X-ASR 模型准备失败。");
-        await new Promise((resolve) => window.setTimeout(resolve, status.state === "loading" ? 900 : 200));
-      }
-    };
     try {
       const pending = fetch(`${API_BASE}/api/voice/asr/warm`, { method: "POST", signal: controller.signal });
+      // warm 一返回就停止轮询：不然要再等完一个 900 ms 的轮询间隔才进入录音（#149）。
+      let settled = false;
+      const done = pending.then(() => { settled = true; }, () => { settled = true; });
+      const poll = async () => {
+        while (!settled && active.current && token === generation.current && !controller.signal.aborted) {
+          const response = await fetch(`${API_BASE}/api/voice/asr/status`, { signal: controller.signal });
+          if (!response.ok) throw new Error("读取本地 X-ASR 状态失败。");
+          const status = await response.json() as VoiceModelStatus;
+          setModel(status);
+          if (status.state === "ready") return;
+          if (status.state === "failed") throw new Error(status.message || "X-ASR 模型准备失败。");
+          await Promise.race([new Promise((resolve) => window.setTimeout(resolve, status.state === "loading" ? 900 : 200)), done]);
+        }
+      };
       await Promise.all([pending, poll()]);
       const response = await pending;
       if (!response.ok) {
         const failure = await response.json().catch(() => ({})) as { message?: string };
         throw new Error(failure.message || "X-ASR 模型准备失败，请检查本机语音组件后重试。");
       }
+      setModel(await response.json() as VoiceModelStatus);
     } finally {
       if (preparingRequest.current === controller) preparingRequest.current = null;
     }

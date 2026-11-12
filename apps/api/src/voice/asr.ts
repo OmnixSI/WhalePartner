@@ -250,11 +250,8 @@ export class XAsrService implements AsrService {
     await this.#installModel();
     await this.#installOfflineModel();
     await this.#startWorker();
-    if (!this.#offlineRefinementReady) {
-      // Stop the half-ready worker; leaving it in #worker would make every later warm() skip #startWorker and fail again.
-      await this.#stopWorker("X-ASR 整句精修模型载入失败。");
-      throw new Error("X-ASR 整句精修模型载入失败。");
-    }
+    // 整句精修载入失败时降级：流式 worker 照常可用，状态里精修标为 unavailable，句子直接用流式结果。
+    if (!this.#offlineRefinementReady) console.warn("X-ASR 整句精修模型载入失败，仅使用流式识别。");
   }
 
   async #ensureRuntime(): Promise<void> {
