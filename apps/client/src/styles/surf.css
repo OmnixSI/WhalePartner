@@ -25,61 +25,6 @@
   color: var(--ink-mute);
 }
 
-/* 「她在逛」小便签（§7.7.3） */
-.surf-slip {
-  --surf-blink: 1200ms; /* 看视频：三道线依次点亮 */
-  --surf-scan: 1600ms;  /* 翻网页：笔尖往返 */
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: var(--hit);
-  padding: var(--sp-2) var(--sp-4);
-  border: 0;
-  border-radius: var(--r-md);
-  background: var(--slip);
-  color: var(--ink);
-  box-shadow: var(--shadow-1);
-  font-family: var(--font-ui);
-  font-size: var(--fs-small);
-  transform: rotate(-1deg);
-  cursor: pointer;
-}
-.surf-slip:hover { box-shadow: var(--shadow-2); }
-.surf-slip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.surf-slip__tape { position: absolute; top: -6px; left: 50%; translate: -50% 0; }
-.surf-slip__icon { display: inline-flex; color: var(--accent); }
-.surf-slip__body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.35; }
-.surf-slip__text { white-space: nowrap; }
-.surf-slip__detail {
-  max-width: 280px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: var(--fs-micro);
-  color: var(--ink-mute);
-}
-/* 找 → 看 → 翻 → 记：走到哪一步亮到哪一步 */
-.surf-slip__dots { display: inline-flex; align-items: center; gap: 5px; margin-left: var(--sp-1); }
-.surf-slip__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
-.surf-slip__dot[data-state="done"] { background: var(--ink-soft); }
-.surf-slip__dot[data-state="now"] { background: var(--accent); animation: surf-now var(--surf-blink) var(--ease-inout) infinite alternate; }
-@keyframes surf-now { from { opacity: .35; } to { opacity: 1; } }
-.surf-slip[data-calm="on"] .surf-slip__dot[data-state="now"] { animation: none; }
-:root[data-elder="on"] .surf-slip__dot[data-state="now"] { animation: none; }
-.surf-slip[data-calm="on"] { transform: none; }
-/* 看视频：三道横线依次点亮；翻网页：小笔尖左右走。calm / 老人模式不动。 */
-.surf-slip__icon[data-stage="watching"] svg { animation: surf-blink var(--surf-blink) steps(1, end) infinite; }
-.surf-slip__icon[data-stage="reading"] svg { animation: surf-scan var(--surf-scan) var(--ease-inout) infinite alternate; }
-@keyframes surf-blink {
-  0%, 33% { opacity: .35; }
-  34%, 66% { opacity: .7; }
-  67%, 100% { opacity: 1; }
-}
-@keyframes surf-scan { from { transform: translateX(0); } to { transform: translateX(3px); } }
-:root[data-elder="on"] .surf-slip { transform: none; font-size: calc(var(--fs-small) * 1.25); }
-:root[data-elder="on"] .surf-slip__icon svg { animation: none !important; }
-
 /* ---------------------------------------------------------------- 工具条 */
 .surf-bar {
   display: flex;
@@ -292,7 +237,7 @@
 .pcard__actions { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .pcard__forget { color: var(--alert); }
 
-.btn--sm { min-height: 36px; padding: 0 var(--sp-3); font-size: var(--fs-small); }
+.btn--sm { min-height: var(--hit); min-width: var(--hit); padding: 0 var(--sp-3); font-size: var(--fs-small); } /* 字小、边距窄，触控高度不减 */
 
 /* ---------------------------------------------------------------- 翻页 */
 .surf-more { display: flex; justify-content: center; padding: var(--sp-8) 0 var(--sp-4); }
@@ -378,7 +323,6 @@
   /* 竖排时 flex-basis 会变高度，这里必须收回，否则搜索框会被撑成一大块 */
   .surf-search { flex: none; }
   .surf-run { margin-left: 0; width: 100%; }
-  .surf-slip__text { white-space: normal; }
   .pdlg { top: auto; bottom: 0; left: 0; translate: none; width: 100%; border-radius: var(--r-lg) var(--r-lg) 0 0; max-height: 88dvh; }
 }
 
@@ -386,44 +330,8 @@
 :root[data-elder="on"] .pcard__sheet { clip-path: none; }
 :root[data-elder="on"] .pcard__sheet,
 :root[data-elder="on"] .pcard__btn { transform: none; }
-:root[data-elder="on"] .btn--sm { min-height: 56px; padding: 0 var(--sp-4); }
+:root[data-elder="on"] .btn--sm { padding: 0 var(--sp-4); }
 :root[data-elder="on"] .pcard__tape { display: none; }
-
-/* ---------------------------------------------------------------- 设置里的两组（§7.7.6） */
-.tagfield { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; }
-.tagfield__row { display: flex; gap: var(--sp-2); }
-.tagfield__input { flex: 1; min-width: 0; }
-.tagfield__list { display: flex; flex-wrap: wrap; gap: var(--sp-2); list-style: none; margin: 0; padding: 0; }
-.tagfield__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: 2px var(--sp-1) 2px var(--sp-3);
-  border-radius: var(--r-sm);
-  background: var(--paper-2);
-  font-size: var(--fs-small);
-}
-.tagfield__x {
-  min-width: 32px;
-  min-height: 32px;
-  border: 0;
-  border-radius: var(--r-xs);
-  background: transparent;
-  color: var(--ink-mute);
-  cursor: pointer;
-}
-.tagfield__x:hover { background: var(--sheet); color: var(--alert); }
-.tagfield__x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.tagfield__hint { font-size: var(--fs-small); color: var(--ink-mute); }
-
-.set-surf-toggles { display: inline-flex; gap: var(--sp-4); flex-wrap: wrap; }
-.set-surf-legend { margin: -8px 0 var(--sp-2); font-size: var(--fs-micro); color: var(--ink-mute); }
-.set-surf-quiet { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
-.set-surf-time { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-small); }
-.set-surf-time .field { width: 9rem; }
-.set-surf-quiet__hint { flex-basis: 100%; font-size: var(--fs-small); color: var(--ink-mute); }
-.set-surf-quota { padding: var(--sp-3) 0 0; font-size: var(--fs-small); color: var(--ink-mute); }
-.set-fold--inline { border-top: 1px solid var(--line); padding-top: var(--sp-3); }
 
 /* ---------------------------------------------------------------- 卡片信息行 */
 .pcard__meta-row { display: flex; align-items: baseline; gap: var(--sp-2); font-size: var(--fs-small); color: var(--ink-mute); }
@@ -487,12 +395,6 @@
 .surf-empty__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-3); }
 .surf-empty__detail { font-size: var(--fs-micro); color: var(--ink-mute); overflow-wrap: anywhere; }
 :root[data-elder="on"] .surf-empty__card { transform: none; }
-
-/* ---------------------------------------------------------------- 设置里的浏览器进度 */
-.surf-browser-note { margin: calc(var(--sp-2) * -1) 0 var(--sp-2); font-size: var(--fs-micro); line-height: var(--lh-body); color: var(--ink-mute); }
-.surf-browser-note[data-state="failed"] { color: var(--alert); }
-.surf-browser-note__bar { display: block; height: 4px; margin-top: var(--sp-1); border-radius: var(--r-round); background: var(--paper-2); overflow: hidden; }
-.surf-browser-note__bar span { display: block; height: 100%; background: var(--accent); transition: width var(--dur-hover) var(--ease-out); }
 
 @media (max-width: 767px) {
   .surf-filters { flex-direction: column; align-items: stretch; }

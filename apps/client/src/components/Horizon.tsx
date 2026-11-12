@@ -1,6 +1,6 @@
 /**
  * Horizon：加载与占位。纸面上一条慢慢呼吸的海平线，下面是角色名（文楷）。
- * 没有任何图形；淡入 ≤240ms；calm / reduced-motion 下线不动。
+ * 没有任何图形；淡入 ≤240ms；calm / reduced-motion 下线不动；静置 8 秒或窗口隐藏后暂停（data-ambient）。
  */
 import { useCharacter } from "../characters";
 import "../styles/mark.css";
@@ -23,6 +23,7 @@ export function Horizon({ name, note, className = "", label }: Props) {
       role={label ? "status" : undefined}
       aria-label={label}
       aria-hidden={label ? undefined : true}
+      data-ambient=""
     >
       <span className="horizon__name">{name ?? character.name}</span>
       <span className="horizon__line" />

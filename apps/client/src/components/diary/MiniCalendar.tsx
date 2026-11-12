@@ -7,6 +7,7 @@
  */
 import { useMemo } from "react";
 import { InkLine } from "../ink";
+import "../../styles/diary.css"; // 记忆页也用这个组件；日记页懒加载后，样式得跟着组件走
 import { MONTH_EN, WEEKDAY, isoDay, startOfDay } from "./types";
 
 type Props = {

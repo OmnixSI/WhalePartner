@@ -1,0 +1,70 @@
+.ui-tabs { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+.ui-tabs__list { display: flex; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+
+.ui-tabs__tab {
+  --r-focus: var(--r-element);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--control-h);
+  min-width: var(--control-h);
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-element);
+  color: var(--color-text-secondary);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+.ui-tabs__tab[data-state="active"] { color: var(--color-text-primary); }
+.ui-tabs__tab[data-disabled] { color: var(--color-text-disabled); cursor: not-allowed; }
+.ui-tabs__text { position: relative; z-index: 1; }
+
+/* line：下划线，选中时从中间展开 */
+.ui-tabs__list--line { gap: var(--sp-1); box-shadow: inset 0 -1px 0 var(--color-border); }
+.ui-tabs__list--line .ui-tabs__tab { border-radius: var(--r-element) var(--r-element) 0 0; --r-focus: var(--r-inner); }
+.ui-tabs__bar {
+  position: absolute;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  bottom: 0;
+  height: 3px;
+  border-radius: var(--r-full);
+  background: var(--color-accent);
+  transform: scaleX(0);
+  opacity: 0;
+  transition: transform var(--dur-medium) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard);
+}
+.ui-tabs__tab[data-state="active"] .ui-tabs__bar { transform: scaleX(1); opacity: 1; }
+
+/* segmented：轨道 + 选中白块（白块是一层，淡入） */
+.ui-tabs__list--segmented {
+  align-self: flex-start;
+  max-width: 100%;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--r-container);
+  background: var(--color-bg-muted);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+}
+.ui-tabs__list--segmented .ui-tabs__tab { border-radius: var(--r-element); }
+.ui-tabs__list--segmented .ui-tabs__tab::before { z-index: 1; }
+.ui-tabs__seg {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-card);
+  box-shadow: var(--elev-raised);
+  opacity: 0;
+  transform: scale(var(--enter-scale));
+  transition: opacity var(--dur-fast) var(--ease-standard), transform var(--dur-medium) var(--ease-standard);
+}
+.ui-tabs__tab[data-state="active"] .ui-tabs__seg { opacity: 1; transform: none; }
+.ui-tabs__list--segmented .ui-tabs__text { z-index: 2; }
+
+.ui-tabs__panel { --r-focus: var(--r-container); }
+.ui-tabs__panel:focus-visible { border-radius: var(--r-container); }
+
+@media (forced-colors: active) {
+  .ui-tabs__tab[data-state="active"] { outline: 2px solid Highlight; }
+}

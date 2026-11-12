@@ -40,7 +40,6 @@ export function BackgroundRunSetting() {
   return (
     <SettingGroup title="后台">
       <SettingRow
-        icon="settings"
         title="关掉窗口后让她在后台继续逛"
         desc={
           failed

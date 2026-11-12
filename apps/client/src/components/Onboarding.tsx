@@ -16,9 +16,10 @@ import { CHARACTERS, setCharacter, useCharacter, useModel } from "../characters"
 import { putNickname } from "../lib/profile";
 import { readA11y } from "../lib/a11y";
 import { CharacterMark } from "./CharacterMark";
-import { Tide } from "./ink";
 import { ELDER_MIN_SCALE, updateA11y } from "./settings/prefs";
-import "../styles/settings.css";
+import "../styles/onboarding.css";
+import { Button } from "./ui/Button";
+import { Input } from "./ui/Field";
 
 const ONBOARDED_KEY = "wp.onboarded";
 const Live2DStage = lazy(() => import("../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
@@ -161,10 +162,6 @@ export function Onboarding() {
 
   return (
     <div className="onb" role="dialog" aria-modal="true" aria-label="第一次见面，三步就好" tabIndex={-1} ref={frameRef}>
-      <div className="onb__tide" aria-hidden="true">
-        <Tide variant="stage" />
-      </div>
-
       <div className="onb__inner">
         <header className="onb__head">
           <p className="onb__progress">第 {step + 1} 步，共 3 步</p>
@@ -225,8 +222,7 @@ export function Onboarding() {
                     <br />
                     不想说也没关系。
                   </p>
-                  <input
-                    className="field onb__field"
+                  <Input className="onb__field"
                     type="text"
                     maxLength={12}
                     placeholder="不想说也没关系"
@@ -273,30 +269,28 @@ export function Onboarding() {
                   <p className="onb__sub">字看得清吗？</p>
                   <div className="onb__fonts" role="group" aria-label="字号">
                     {FONT_CHOICES.map((item) => (
-                      <button
+                      <Button
                         key={item.id}
-                        type="button"
-                        className="btn btn--secondary onb__font"
+                        className="onb__font" variant={fontChoice === item.id ? "primary" : "secondary"}
                         aria-pressed={fontChoice === item.id}
                         data-selected={fontChoice === item.id ? "on" : "off"}
                         onClick={() => chooseFont(item.id)}
                       >
                         {item.label}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                   {fontChoice === "huge" && <p className="onb__note">大字、大按钮、只留三个入口。以后在设置里还能改。</p>}
                   <p className="onb__sub">她要接上账号才能说话。</p>
-                  <button
-                    type="button"
-                    className="btn btn--secondary onb__model"
+                  <Button
+                    className="onb__model" variant="secondary"
                     onClick={() => {
                       finish(false);
                       navigate("/settings#model");
                     }}
                   >
                     去设置里接上她的账号
-                  </button>
+                  </Button>
                 </div>
               )}
             </>
@@ -304,12 +298,12 @@ export function Onboarding() {
         </div>
 
         <footer className="onb__foot">
-          <button type="button" className="btn btn--quiet onb__skip" onClick={() => finish(true)}>
+          <Button className="onb__skip" variant="ghost" onClick={() => finish(true)}>
             跳过，以后再说
-          </button>
-          <button type="button" className="btn btn--primary onb__next" onClick={next}>
+          </Button>
+          <Button className="onb__next" variant="primary" onClick={next}>
             {step === 0 ? "继续" : step === 1 ? "就这样" : "开始吧"}
-          </button>
+          </Button>
         </footer>
       </div>
     </div>

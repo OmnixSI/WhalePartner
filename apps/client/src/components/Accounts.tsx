@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { checkLogin, fetchAccounts, logout, startLogin, type AccountStatus, type LoginState } from "../lib/accounts";
 import { describeNetError } from "../lib/net";
+import { Button } from "./ui/Button";
 
 const POLL_MS = 2500;
 
@@ -97,11 +98,8 @@ export function Accounts() {
   const busy = flow.phase === "starting" || flow.phase === "scanning";
 
   return (
-    <div className="row row--stack">
-      <div>
-        <div className="row__label">账号</div>
-        <div className="row__desc">登录状态只保存在这台电脑上，不会上传，也不会替你发评论或点赞。其它平台（小红书、抖音、微博）还没有接入。</div>
-      </div>
+    <div className="accounts">
+      <p className="set-row__desc">登录状态只保存在这台电脑上，不会上传，也不会替你发评论或点赞。其它平台（小红书、抖音、微博）还没有接入。</p>
       <div className="account">
         <div className="account__head">
           <div>
@@ -109,9 +107,9 @@ export function Accounts() {
             <div className="account__status">{statusLine(bilibili, loading)}</div>
           </div>
           <div className="account__actions">
-            {bilibili && needsLogin && !busy && <button className="link-accent" onClick={() => void begin()}>扫码登录</button>}
-            {bilibili?.connected && !busy && <button className="link-danger" onClick={() => void signOut()} onBlur={() => setConfirmingLogout(false)}>{confirmingLogout ? "确认退出" : "退出登录"}</button>}
-            {busy && <button className="link-quiet" onClick={() => setFlow({ phase: "idle" })}>取消</button>}
+            {bilibili && needsLogin && !busy && <Button variant="primary" onClick={() => void begin()}>扫码登录</Button>}
+            {bilibili?.connected && !busy && <Button variant={confirmingLogout ? "danger" : "secondary"} onClick={() => void signOut()} onBlur={() => setConfirmingLogout(false)}>{confirmingLogout ? "确认退出" : "退出登录"}</Button>}
+            {busy && <Button variant="ghost" onClick={() => setFlow({ phase: "idle" })}>取消</Button>}
           </div>
         </div>
         {flow.phase === "starting" && <p className="account__hint">正在获取二维码…</p>}
@@ -122,7 +120,7 @@ export function Accounts() {
           </div>
         )}
         {flow.phase === "failed" && (
-          <p className="account__hint account__hint--bad" role="alert">{flow.message} <button className="link-accent" onClick={() => void begin()}>重新获取</button></p>
+          <p className="account__hint account__hint--bad" role="alert">{flow.message} <Button variant="secondary" onClick={() => void begin()}>重新获取</Button></p>
         )}
       </div>
     </div>

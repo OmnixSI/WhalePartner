@@ -1,6 +1,6 @@
 /**
- * 选项卡（规范 §7.4.2「看起来」「逛的频率」、§7.5 第 3 步字号）：
- * 160×112 的纸片，选中 = 2.5px 强调色框 + 「已选」邮戳；不做下拉列表。
+ * 单选项：一小块可点的卡，选中 = 强调色描边 + 底色。不做下拉列表。
+ * 用 `aria-pressed` 表示选中，读屏按「按钮，已按下」读。
  */
 import type { ReactNode } from "react";
 
@@ -19,7 +19,7 @@ export function ChoiceCard({ label, hint, selected, onSelect, preview, groupLabe
   return (
     <button
       type="button"
-      className="set-choice"
+      className="set-choice ui-press ui-focus"
       aria-pressed={selected}
       aria-label={groupLabel ? `${groupLabel}：${label}` : undefined}
       data-selected={selected ? "on" : "off"}
@@ -32,7 +32,6 @@ export function ChoiceCard({ label, hint, selected, onSelect, preview, groupLabe
       )}
       <span className="set-choice__label">{label}</span>
       {hint && <span className="set-choice__hint">{hint}</span>}
-      {selected && <span className="set-choice__stamp">已选</span>}
     </button>
   );
 }

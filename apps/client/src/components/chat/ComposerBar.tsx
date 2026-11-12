@@ -6,7 +6,8 @@ import { Popover } from "radix-ui";
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from "react";
 import { isSendKey, PREFS_EVENT, readSendKey, type SendKey } from "../../lib/chat-prefs";
 import { Icon } from "../../icons";
-import { InkFrame, InkLine } from "../ink";
+import { Button, IconButton } from "../ui/Button";
+import { Input } from "../ui/Field";
 import type { VoicePhase } from "./useVoiceMode";
 
 type Props = {
@@ -114,7 +115,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
     <div className="composer">
       {!online && <p className="composer__offline">连上之后就能发出去。</p>}
 
-      <InkFrame className="composer__frame" radius={14} stroke={2} tone="ink" fill="sheet" openCorner id="composer">
+      <div className="composer__frame">
         <div className="composer__bar" data-voice={voiceMode || undefined} style={composerStyle}>
           {voicePhase === "error" ? (
             <>
@@ -130,12 +131,8 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
                 <span className="composer__voice-copy">语音暂不可用</span>
               </div>
               <div className="composer__actions">
-                <button type="button" className="btn btn--quiet composer__text-mode" onClick={onStopVoice} aria-label="返回文字输入">
-                  文字
-                </button>
-                <button type="button" className="btn btn--secondary composer__voice-retry" onClick={onRetryVoice}>
-                  重试
-                </button>
+                <Button variant="ghost" className="composer__text-mode" onClick={onStopVoice} aria-label="返回文字输入">文字</Button>
+                <Button className="composer__voice-retry" onClick={onRetryVoice}>重试</Button>
               </div>
             </>
           ) : voiceMode ? (
@@ -158,23 +155,14 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
                 <span className="composer__voice-copy">{voiceStatus}</span>
               </div>
               <div className="composer__actions">
-                <button type="button" className="btn btn--quiet composer__text-mode" onClick={onStopVoice} aria-label="返回文字输入">
-                  文字
-                </button>
+                <Button variant="ghost" className="composer__text-mode" onClick={onStopVoice} aria-label="返回文字输入">文字</Button>
                 {voiceCanCancel && (
-                  <button type="button" className="btn btn--secondary composer__cancel" onClick={onCancelRecording}>
-                    取消
-                  </button>
+                  <Button className="composer__cancel" onClick={onCancelRecording}>取消</Button>
                 )}
                 {voiceRecording ? (
-                  <button type="button" className="btn btn--primary composer__send" onClick={onFinishVoice} aria-label="结束录音并发送">
-                    发送
-                    <Icon name="send" size={20} />
-                  </button>
+                  <Button variant="primary" className="composer__send" icon={<Icon name="send" size={20} />} onClick={onFinishVoice} aria-label="结束录音并发送">发送</Button>
                 ) : !voiceCanCancel && !voiceStarting ? (
-                  <button type="button" className="btn btn--primary composer__voice-action" onClick={onStartVoice}>
-                    说话
-                  </button>
+                  <Button variant="primary" className="composer__voice-action" onClick={onStartVoice}>说话</Button>
                 ) : null}
               </div>
             </>
@@ -182,9 +170,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             <>
           <Popover.Root open={shareOpen} onOpenChange={setShareOpen}>
             <Popover.Trigger asChild>
-              <button type="button" className="iconbtn" aria-label="发个视频给她">
-                <Icon name="video" size={22} />
-              </button>
+              <IconButton label="发个视频给她"><Icon name="video" size={22} /></IconButton>
             </Popover.Trigger>
             <Popover.Portal>
               <Popover.Content className="pop" side="top" align="start" sideOffset={8} collisionPadding={16}>
@@ -192,8 +178,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
                 <p className="pop__lead">
                   把 B 站视频的链接贴在这里，她看完会跟你讲。她只是看，不会替你评论或点赞。
                 </p>
-                <input
-                  className="field"
+                <Input
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://www.bilibili.com/video/…"
@@ -207,9 +192,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
                   }}
                 />
                 <div className="pop__actions">
-                  <button type="button" className="btn btn--primary" onClick={share} disabled={!url.trim()}>
-                    给她看
-                  </button>
+                  <Button variant="primary" onClick={share} disabled={!url.trim()}>给她看</Button>
                 </div>
               </Popover.Content>
             </Popover.Portal>
@@ -231,43 +214,34 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
           />
 
           <div className="composer__actions">
-          <button
-            type="button"
-            className="btn btn--secondary composer__voice-mode"
-            aria-pressed={false}
+          <Button
+            className="composer__voice-mode"
+            icon={
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M3 10v4m4-8v12m4-15v18m4-13v8m4-11v14m2-10v6" />
+              </svg>
+            }
             onClick={onStartVoice}
           >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-              <path d="M3 10v4m4-8v12m4-15v18m4-13v8m4-11v14m2-10v6" />
-            </svg>
             <span className="composer__voice-label">语音聊天</span>
             <span className="composer__voice-label-short">语音</span>
-          </button>
-          <button
-            type="button"
-            className="btn btn--primary composer__send"
+          </Button>
+          <Button
+            variant="primary"
+            className="composer__send"
+            icon={stopMode ? <span className="composer__stop" aria-hidden /> : <Icon name="send" size={20} />}
             onClick={submit}
             disabled={stopMode ? false : !canSend}
             aria-label={stopMode ? "停下她" : busy ? "停下她，并发送这句" : undefined}
             data-stop={stopMode || undefined}
           >
-            {stopMode ? (
-              <>
-                <InkLine id="composer-busy" size={2.4} draw="loop" className="composer__busy" />
-                停
-              </>
-            ) : (
-              <>
-                发送
-                <Icon name="send" size={20} />
-              </>
-            )}
-          </button>
+            {stopMode ? "停" : "发送"}
+          </Button>
           </div>
             </>
           )}
         </div>
-      </InkFrame>
+      </div>
 
       {value.length >= 1800 && (
         <span className="composer__count" data-alert={value.length >= 1950 || undefined}>
@@ -279,9 +253,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
         <span className="composer__keys">{coarse ? "Enter 换行 · ⌘/Ctrl+Enter 发送" : sendKey === "mod-enter" ? "⌘/Ctrl+Enter 发送" : "Enter 发送 · Shift+Enter 换行"}</span>
         <Popover.Root>
           <Popover.Trigger asChild>
-            <button type="button" className="iconbtn" aria-label="输入小提示">
-              ?
-            </button>
+            <IconButton label="输入小提示">?</IconButton>
           </Popover.Trigger>
           <Popover.Portal>
             <Popover.Content className="pop pop--small" side="top" align="end" sideOffset={8} collisionPadding={16}>

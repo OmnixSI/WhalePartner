@@ -118,6 +118,28 @@ export function contrastRows() {
   check("light alert-ink on alert", lightBlock["alert-ink"], lightBlock.alert, MIN_TEXT);
   check("dark alert-ink on alert", darkBlock["alert-ink"], darkBlock.alert, MIN_TEXT);
 
+  // 语义层（#151）：卡片 / 弹层两档新表面、状态色四组、禁用字
+  for (const [theme, b] of [["light", lightBlock], ["dark", darkBlock]]) {
+    const raised = [["card", b["color-card"]], ["popover", b["color-popover"]]];
+    for (const [name, bg] of raised) {
+      check(`${theme} ink / ${name}`, b.ink, bg, MIN_BODY);
+      check(`${theme} ink-soft / ${name}`, b["ink-soft"], bg, MIN_BODY);
+      check(`${theme} ink-mute / ${name}`, b["ink-mute"], bg, MIN_TEXT);
+      for (const [role, pair] of Object.entries(accents)) check(`${theme} accent(${role}) / ${name}`, pair[theme], bg, MIN_TEXT);
+    }
+    for (const [name, bg] of [["paper", b.paper], ...raised]) check(`${theme} text-disabled / ${name}`, b["color-text-disabled"], bg, MIN_UI);
+    for (const s of ["success", "warning", "error", "info"]) {
+      for (const [name, bg] of [["paper", b.paper], ["sheet", b.sheet], ...raised, [`${s}-muted`, b[`color-${s}-muted`]]]) {
+        check(`${theme} ${s} / ${name}`, b[`color-${s}`], bg, MIN_TEXT);
+      }
+      check(`${theme} on-${s} on ${s}`, b[`color-on-${s}`], b[`color-${s}`], MIN_TEXT);
+    }
+  }
+  // 暗色块只覆盖了一部分语义色，其余沿用亮色块里的十六进制值没有意义——缺了就是漏写
+  for (const k of ["color-card", "color-popover", "color-text-disabled", "color-success", "color-success-muted", "color-on-success"]) {
+    if (!darkBlock[k]) failures.push(`dark ${k}: 暗色主题缺这个语义色`);
+  }
+
   // 控件边界（非文字，≥3:1）
   check("light line-strong / paper", lightBlock["line-strong"], lightBlock.paper, MIN_UI);
   check("light line-strong / sheet", lightBlock["line-strong"], lightBlock.sheet, MIN_UI);

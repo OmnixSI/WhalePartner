@@ -1,0 +1,70 @@
+/* 开关：滑块只做 translateX；「开」的强调色是一层叠在轨道上的 fill，只改 opacity。
+   结构参照 meta/astryx 的 Switch（MIT，见 THIRD_PARTY_NOTICES.md）。 */
+.ui-switch {
+  --w: 2.75rem;
+  --h: 1.625rem;
+  --pad: 3px;
+  --r-focus: var(--r-full);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--control-h);
+  min-width: var(--control-h);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-full);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+:root[data-elder="on"] .ui-switch { --w: 4.5rem; --h: 2.5rem; }
+
+.ui-switch__track {
+  position: relative;
+  flex: none;
+  width: var(--w);
+  height: var(--h);
+  border-radius: var(--r-full);
+  background: var(--color-bg-muted);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+  color: var(--color-text-primary); /* 叠层颜色 */
+}
+.ui-switch__fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-accent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}
+.ui-switch__thumb {
+  position: absolute;
+  top: var(--pad);
+  left: var(--pad);
+  width: calc(var(--h) - 2 * var(--pad));
+  height: calc(var(--h) - 2 * var(--pad));
+  border-radius: 50%;
+  background: var(--color-card);
+  box-shadow: 0 0 0 1px var(--color-border-strong), 0 1px 2px rgb(0 0 0 / .18);
+  transition: transform var(--dur-medium) var(--ease-standard);
+}
+.ui-switch[data-state="checked"] .ui-switch__fill { opacity: 1; }
+.ui-switch[data-state="checked"] .ui-switch__thumb { transform: translateX(calc(var(--w) - var(--h))); box-shadow: 0 1px 2px rgb(0 0 0 / .2); }
+.ui-switch:focus-visible .ui-switch__track { box-shadow: inset 0 0 0 1px var(--color-border-strong), 0 0 0 2px var(--color-bg-body), 0 0 0 4px var(--color-accent); }
+.ui-switch:focus-visible, .ui-switch[data-preview="focus"] { box-shadow: none; }
+.ui-switch[data-preview="focus"] .ui-switch__track { box-shadow: inset 0 0 0 1px var(--color-border-strong), 0 0 0 2px var(--color-bg-body), 0 0 0 4px var(--color-accent); }
+@media (hover: hover) { .ui-switch:hover:not([data-disabled]) .ui-switch__track::before { opacity: var(--overlay-hover); } }
+.ui-switch:active:not([data-disabled]) .ui-switch__track::before { opacity: var(--overlay-press); }
+.ui-switch[data-disabled] { opacity: .5; cursor: not-allowed; }
+
+.ui-switch__state { display: grid; font-size: var(--text-sm); color: var(--color-text-secondary); min-width: 1em; }
+.ui-switch__state > span { grid-area: 1 / 1; }
+.ui-switch__on, .ui-switch[data-state="checked"] .ui-switch__off { visibility: hidden; }
+.ui-switch[data-state="checked"] .ui-switch__on { visibility: visible; color: var(--color-text-primary); }
+
+@media (forced-colors: active) {
+  .ui-switch__track { border: 1px solid CanvasText; }
+  .ui-switch__thumb { background: CanvasText; }
+  .ui-switch[data-state="checked"] .ui-switch__thumb { background: Highlight; }
+}
+/* 叠层要盖在「开」的填色上面、滑块下面 */
+.ui-switch__track::before { z-index: 1; }
+.ui-switch__thumb { z-index: 2; }

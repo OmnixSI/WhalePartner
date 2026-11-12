@@ -518,29 +518,6 @@
 .state__detail { font-size: var(--fs-micro); color: var(--ink-mute); overflow-wrap: anywhere; }
 .state--error .state__title { color: var(--alert); }
 
-/* ---------------------------------------------------------------- 小提示便签 */
-.toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(var(--sp-8) + env(safe-area-inset-bottom));
-  z-index: var(--z-toast);
-  transform: translateX(-50%);
-  width: min(420px, calc(100vw - 32px));
-}
-
-.toast__panel.ink-frame {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  background: var(--sheet);
-  box-shadow: var(--shadow-2);
-}
-
-.toast__text { flex: 1 1 auto; font-family: var(--font-voice); font-size: var(--fs-chat); }
-.toast__action { flex: none; min-height: var(--hit); }
-.toast[data-tone="alert"] .toast__text { color: var(--alert); }
-
 /* ---------------------------------------------------------------- 手机 */
 @media (max-width: 959px) {
   .diary-page { padding: var(--sp-6) var(--sp-4) var(--sp-16); }

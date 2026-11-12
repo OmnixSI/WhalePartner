@@ -1,5 +1,6 @@
-import { useEffect, useState, type PointerEvent } from "react";
-import { Live2DStage } from "../avatar/Live2DStage";
+import { lazy, Suspense, useEffect, useState, type PointerEvent } from "react";
+// 按需加载：静态 import 会让 pixi 落进两个入口共享的 chunk，连带进主应用首屏（#151 性能预算）
+const Live2DStage = lazy(() => import("../avatar/Live2DStage").then((m) => ({ default: m.Live2DStage })));
 import type { AvatarEmotion } from "../avatar/model.config";
 import { CharacterMark } from "../components/CharacterMark";
 import { CardParticles } from "./CardParticles";
@@ -99,6 +100,7 @@ export function CardShowcase({ character, sample, showProgress = true, relations
             )}
             {model ? (
               <div className="card-preview__hero-model">
+                <Suspense fallback={null}>
                 <Live2DStage
                   modelUrl={model.url}
                   emotion={emotion}
@@ -108,6 +110,7 @@ export function CardShowcase({ character, sample, showProgress = true, relations
                   onError={() => setStage("failed")}
                   onTap={() => setTapCount((count) => count + 1)}
                 />
+                </Suspense>
               </div>
             ) : (
               <div className="card-preview__hero-mark"><CharacterMark character={character.id} /></div>

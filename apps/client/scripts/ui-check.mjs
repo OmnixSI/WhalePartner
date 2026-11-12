@@ -4,11 +4,12 @@
  *
  *   pnpm --dir apps/client run ui:check                    全跑（会自己起 vite dev，跑完关掉）
  *   pnpm --dir apps/client run ui:check --static           只跑源码检查，不开浏览器
- *   pnpm --dir apps/client run ui:check --shots            另外拍 4 页 × 亮/暗，存到 apps/client/test-results/ui-check/
+ *   pnpm --dir apps/client run ui:check --shots            另外拍 6 页 × 亮/暗和预览页，存到 apps/client/test-results/ui-check/
  *   pnpm --dir apps/client run ui:check --base=http://127.0.0.1:1420   复用已在跑的 dev server
+ *   pnpm --dir apps/client run ui:check --debt             打印各文件的动效 / filter 存量（JSON），用来调低 perf-budget.json
  *
  * 检查项：
- *   1  对比度 90 组（亮/暗 × 4 角色，复用 contrast-check.mjs）
+ *   1  对比度（亮/暗 × 4 角色 × 正文/语义层，复用 contrast-check.mjs）
  *   2  淘汰 token（ink-faint / --rule / --ground / --radius / --font-serif / --sea / --ease / --chat-w）
  *   3  gradient / backdrop-filter
  *   4  window.confirm / window.alert
@@ -19,6 +20,17 @@
  *   9  横向滚动 ≤ 视口（380px 与 --scale=2）
  *  10  axe wcag2a/2aa/21aa/22aa，critical + serious = 0
  *
+ * 性能预算（docs/DESIGN.md §性能预算，基线在 scripts/perf-budget.json）：
+ *  11  运行时依赖只允许清单里的包（不加 UI 库 / 动画库 / CSS-in-JS）
+ *  12  动画与过渡只动 transform / opacity；components/ui 必须 0 处，旧页面按文件只减不增
+ *  13  filter 按文件只减不增（backdrop-filter 由第 3 项拦）
+ *  14  首屏 JS / CSS gzip 不超过 0.3.4（默认构建到 node_modules/.cache/ui-check-dist，--dist=… 复用现成构建）
+ *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
+ *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
+ *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
+ *  17  设置页：存了 Codex 模型后顶部概览同步；点目录后亮的就是刚点的那项（桌面、手机 380 × 字号 2 倍）
+ *  （--shots 再加一项：截图）
+ *
  * 退出码：0 全绿；1 有失败。
  */
 import { spawn } from "node:child_process";
@@ -27,6 +39,9 @@ import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { launchChrome } from "./browser.mjs";
+import { stubApi } from "./ui-fixtures.mjs";
+import { firstScreen, kb, readBudget } from "./perf-budget.mjs";
+import { instrumentTimers, runningAnimations } from "./perf-idle.mjs";
 import { contrastRows, isCardStyleException, scanBannedUsage, stripComments } from "./contrast-check.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -40,11 +55,13 @@ const STATIC_ONLY = argv.includes("--static");
 const WITH_SHOTS = argv.includes("--shots");
 const BASE = (argv.find((a) => a.startsWith("--base="))?.slice(7) || process.env.WP_BASE || "http://127.0.0.1:1420").replace(/\/$/, "");
 const PORT = new URL(BASE).port || "1420";
+const DIST_ARG = argv.find((a) => a.startsWith("--dist="))?.slice(7);
 
 const results = [];
 function record(name, ok, detail = "") {
-  results.push({ name, ok, detail });
-  return ok;
+  const entry = { name, ok, detail };
+  results.push(entry);
+  return entry;
 }
 const rel = (p) => relative(ROOT, p);
 
@@ -65,7 +82,7 @@ function sourceFiles(exts = /\.(css|tsx?)$/) {
 // ---------- 1. 对比度 ----------
 function checkContrast() {
   const { rows, failures } = contrastRows();
-  return record("对比度 90 组（亮/暗 × 4 角色）", failures.length === 0, failures.length ? failures.join("；") : `${rows.length} 组全部达标`);
+  return record(`对比度 ${rows.length} 组（亮/暗 × 4 角色）`, failures.length === 0, failures.length ? failures.join("；") : `${rows.length} 组全部达标`);
 }
 
 // ---------- 2. 淘汰 token ----------
@@ -104,7 +121,7 @@ function checkNativeDialogs() {
 }
 
 // ---------- 6. 圆角只允许 token / 50% / 0 ----------
-const RADIUS_OK = /^(var\(--r-[\w-]+\)|0|50%)$/;
+const RADIUS_OK = /^(var\(--r-[\w-]+\)|0|50%|inherit)$/; // inherit：叠层与父元素同形
 function checkRadius() {
   const hits = [];
   for (const p of sourceFiles()) {
@@ -144,66 +161,117 @@ function checkMotionTokens() {
   return record("动效参数只在 tokens（无手写时长/曲线/弹簧）", hits.length === 0, hits.length ? hits.slice(0, 12).join("；") : "0 处");
 }
 
+
+// ---------- 11–14. 性能预算 ----------
+const BUDGET = existsSync(join(HERE, "perf-budget.json")) ? readBudget() : { motionDebt: {}, filterDebt: {}, runtimeDependencies: [] };
+
+function checkRuntimeDeps() {
+  const pkg = JSON.parse(readFileSync(join(CLIENT, "package.json"), "utf8"));
+  const extra = Object.keys(pkg.dependencies ?? {}).filter((d) => !BUDGET.runtimeDependencies.includes(d));
+  return record("运行时依赖在清单内（perf-budget.json）", extra.length === 0, extra.length ? `新增 ${extra.join("、")}：先在 #151 说明体积与必要性，再改清单` : `${Object.keys(pkg.dependencies ?? {}).length} 个`);
+}
+
+/** 顶层逗号切分（cubic-bezier(…, …) 里的逗号不算）。 */
+function splitTop(s) {
+  const out = [];
+  let depth = 0, cur = "";
+  for (const ch of s) {
+    if (ch === "(") depth += 1;
+    if (ch === ")") depth -= 1;
+    if (ch === "," && depth === 0) { out.push(cur.trim()); cur = ""; } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+const COMPOSITED = new Set(["transform", "opacity", "translate", "scale", "rotate", "visibility", "none", "animation-timing-function", "offset"]);
+/** 每个 CSS 文件里不走合成层的动效：@keyframes 里的属性、transition 的属性。 */
+export function scanMotionDebt() {
+  const motion = {};
+  const filter = {};
+  for (const p of sourceFiles(/\.css$/)) {
+    const css = stripComments(readFileSync(p, "utf8"));
+    const key = relative(CLIENT, p);
+    const bad = [];
+    for (const m of css.matchAll(/@keyframes\s+([\w-]+)\s*\{((?:[^{}]*\{[^}]*\})*)\s*\}/g)) {
+      const props = [...new Set([...m[2].matchAll(/([\w-]+)\s*:/g)].map((x) => x[1]))].filter((x) => !COMPOSITED.has(x) && !x.startsWith("--"));
+      if (props.length) bad.push(`@keyframes ${m[1]}: ${props.join(",")}`);
+    }
+    for (const m of css.matchAll(/(?<![\w-])transition(-property)?\s*:\s*([^;}]+)/g)) {
+      const props = splitTop(m[2]).map((part) => (m[1] ? part : part.split(/\s+/)[0]));
+      const off = props.filter((x) => x && !COMPOSITED.has(x) && !x.startsWith("var("));
+      if (off.length) bad.push(`transition: ${off.join(",")}`);
+    }
+    if (bad.length) motion[key] = bad;
+    const filters = [...css.matchAll(/(?<![\w-])filter\s*:\s*([^;}]+)/g)].filter((m) => m[1].trim() !== "none");
+    if (filters.length) filter[key] = filters.length;
+  }
+  return { motion, filter };
+}
+
+function ratchet(name, found, allowed, strictPrefix) {
+  const over = [];
+  const lower = [];
+  for (const [file, n] of Object.entries(found)) {
+    const cap = file.startsWith(strictPrefix) ? 0 : (allowed[file] ?? 0);
+    if (n > cap) over.push(`${file} ${n} > ${cap}`);
+  }
+  for (const [file, cap] of Object.entries(allowed)) {
+    if ((found[file] ?? 0) < cap) lower.push(`${file} ${found[file] ?? 0}`);
+  }
+  const total = Object.values(found).reduce((a, b) => a + b, 0);
+  const detail = over.length ? over.join("；") : `旧页面存量 ${total} 处${lower.length ? `；已减少，可把基线降到：${lower.join("、")}` : ""}`;
+  return record(name, over.length === 0, detail);
+}
+
+function checkMotionDebt() {
+  const { motion, filter } = scanMotionDebt();
+  const counts = Object.fromEntries(Object.entries(motion).map(([f, list]) => [f, list.length]));
+  const r = ratchet("动画/过渡只动 transform·opacity（ui 0 处，旧页只减不增）", counts, BUDGET.motionDebt, "src/components/ui/");
+  if (!r.ok) {
+    const lines = Object.entries(motion).filter(([f]) => r.detail.includes(f)).flatMap(([f, list]) => list.map((x) => `${f}: ${x}`));
+    r.detail += `\n    ${lines.slice(0, 8).join("\n    ")}`;
+  }
+  ratchet("filter 只减不增（ui 0 处）", filter, BUDGET.filterDebt, "src/components/ui/");
+}
+
+function buildDist() {
+  if (DIST_ARG) return resolve(DIST_ARG);
+  const out = join(CLIENT, "node_modules", ".cache", "ui-check-dist");
+  return new Promise((ok, fail) => {
+    const child = spawn("pnpm", ["exec", "vite", "build", "--outDir", out, "--emptyOutDir", "--logLevel", "error"], { cwd: CLIENT, stdio: ["ignore", "ignore", "pipe"], env: process.env });
+    let err = "";
+    child.stderr.on("data", (d) => { err += d; });
+    child.on("exit", (code) => (code === 0 ? ok(out) : fail(new Error(`vite build 失败：${err.slice(-400)}`))));
+  });
+}
+
+async function checkFirstScreen() {
+  try {
+    const dist = await buildDist();
+    const r = firstScreen(dist);
+    const cap = BUDGET.firstScreenGzip;
+    const over = [];
+    if (r.js.gzip > cap.js) over.push(`JS ${kb(r.js.gzip)} > ${kb(cap.js)}`);
+    if (r.css.gzip > cap.css) over.push(`CSS ${kb(r.css.gzip)} > ${kb(cap.css)}`);
+    const pct = (a, b) => `${a <= b ? "−" : "+"}${Math.abs((1 - a / b) * 100).toFixed(1)}%`;
+    return record(`首屏 gzip ≤ ${BUDGET.baseline}`, over.length === 0,
+      over.length ? over.join("；") : `JS ${kb(r.js.gzip)}（${pct(r.js.gzip, cap.js)}）  CSS ${kb(r.css.gzip)}（${pct(r.css.gzip, cap.css)}）`);
+  } catch (error) {
+    return record(`首屏 gzip ≤ ${BUDGET.baseline}`, false, String(error?.message ?? error));
+  }
+}
+
 // ---------- 浏览器检查 ----------
 const PAGES = [
   ["chat", "/"],
   ["diary", "/diary"],
   ["memory", "/memory"],
   ["settings", "/settings"],
+  ["surf", "/surf"],
+  ["kit", "/__kit"],
 ];
-
-const NOW = "2026-11-06T10:00:00+11:00";
-const FIXTURES = {
-  history: {
-    messages: [
-      { id: 1, role: "assistant", content: "你回来啦。今天海面很平，我在这里等你。", emotion: "happy", createdAt: NOW },
-      { id: 2, role: "user", content: "刚下班，有点累。", emotion: null, createdAt: NOW },
-      { id: 3, role: "assistant", content: "那就先坐一会儿。我把今天捡到的一颗小石头放在你手边了。", emotion: "relaxed", createdAt: NOW },
-      { id: 4, role: "user", content: "谢谢。你今天做什么了？", emotion: null, createdAt: NOW },
-      { id: 5, role: "assistant", content: "我把昨天看到的那个视频写成了日记，写在第三页。", emotion: "happy", createdAt: NOW },
-      { id: 6, role: "user", content: "晚点我去看看。", emotion: null, createdAt: NOW },
-    ],
-  },
-  diary: {
-    items: [
-      { id: 1, inputUrl: "https://www.bilibili.com/video/BV1xx411c7mD", bvid: "BV1xx411c7mD", title: "海边捡到的第一块玻璃", sourceUrl: null, summary: "一个把碎玻璃磨成小石头的短片。", diaryText: "今天看到一个把碎玻璃磨成小石头的短片。\n\n海浪一次次推上来，又退回去，玻璃就慢慢圆了。我想起你上次说的那句「有些事只是需要时间」。", status: "done", errorStage: null, error: null, memoryStatus: "saved", memoryError: null, createdAt: "2026-11-05T10:00:00+11:00", processedAt: "2026-11-05T10:02:00+11:00", duplicateOf: null },
-      { id: 2, inputUrl: "https://www.bilibili.com/video/BV1yy411c7mE", bvid: "BV1yy411c7mE", title: "灯塔守夜人的一天", sourceUrl: null, summary: "守夜人怎么过一天。", diaryText: "守夜人一天只做三件事：擦灯、看海、记天气。他说，安静不是没有声音，是知道声音从哪来。", status: "done", errorStage: null, error: null, memoryStatus: "saved", memoryError: null, createdAt: "2026-11-04T10:00:00+11:00", processedAt: "2026-11-04T10:02:00+11:00", duplicateOf: null },
-      { id: 3, inputUrl: "https://www.bilibili.com/video/BV1zz411c7mF", bvid: null, title: null, sourceUrl: null, summary: null, diaryText: null, status: "pending", errorStage: null, error: null, memoryStatus: null, memoryError: null, createdAt: "2026-11-06T09:00:00+11:00", processedAt: null, duplicateOf: null },
-    ],
-  },
-  memories: {
-    entries: [
-      { id: "m1", text: "你下班回家的时候，通常先说一句「我回来了」。", kind: "fact", createdAt: "2026-11-05T10:00:00+11:00" },
-      { id: "m2", text: "你说累的时候，更想有人陪着，而不是被建议。", kind: "fact", createdAt: "2026-11-03T10:00:00+11:00" },
-      { id: "m3", text: "海边捡到玻璃的事，你听了很久。", kind: "experience", createdAt: "2026-11-02T10:00:00+11:00", source: "bilibili", title: "海边捡到的第一块玻璃", url: "https://www.bilibili.com/video/BV1xx411c7mD" },
-      { id: "m4", text: "你不太喜欢在晚上做决定。", kind: "fact", createdAt: "2026-10-28T10:00:00+11:00" },
-    ],
-  },
-  quota: {
-    billing: "off", enforced: false,
-    period: { start: "2026-11-01", end: "2026-11-30", resetsAt: "2026-12-01T00:00:00+11:00" },
-    total: 1000, used: 320, remaining: 680, low: false,
-    breakdown: { chat: 120, video: 100, web: 40, journal: 40, surf: 20 },
-    costs: { chat: 2, video: 10, web: 4, journal: 6, surfVideo: 12, surfWeb: 5 },
-    today: { used: 12 },
-  },
-};
-
-async function stubApi(page) {
-  await page.route("**/api/**", async (route) => {
-    const url = route.request().url();
-    const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-    if (url.includes("/api/health")) return json({ ok: true, provider: "stub", model: "stub" });
-    if (url.includes("/api/chat/history")) return json(FIXTURES.history);
-    if (url.includes("/api/diary")) return json(FIXTURES.diary);
-    if (url.includes("/api/memories")) return json(FIXTURES.memories);
-    if (url.includes("/api/note")) return json({ note: { text: "今天在窗台上发现一只小螃蟹。", updatedAt: NOW } });
-    if (url.includes("/api/quota")) return json(FIXTURES.quota);
-    if (url.includes("/api/profile")) return json({ nickname: "阿明" });
-    if (url.includes("/api/accounts")) return json({ accounts: [{ platform: "bilibili", name: "哔哩哔哩", connected: false, valid: null, savedAt: null }] });
-    return json({});
-  });
-}
+const CHARACTERS = ["whale", "deepseek", "claude", "chatgpt"];
 
 async function waitForServer(base, ms = 60_000) {
   const end = Date.now() + ms;
@@ -235,16 +303,17 @@ async function loadPlaywright() {
   return { chromium, AxeBuilder };
 }
 
-async function openPage(browser, { width, height, elder = false, theme = null }) {
-  const context = await browser.newContext({ viewport: { width, height }, reducedMotion: "reduce", deviceScaleFactor: 1 });
+async function openPage(browser, { width, height, elder = false, theme = null, character = null, motion = false }) {
+  const context = await browser.newContext({ viewport: { width, height }, reducedMotion: motion ? "no-preference" : "reduce", deviceScaleFactor: 1 });
   const page = await context.newPage();
   await stubApi(page);
   // 引导是一次性全屏：截图与测量都要先标记「看过」，否则四页拍到的都是引导页
-  await page.addInitScript(({ elder, theme }) => {
+  await page.addInitScript(({ elder, theme, character }) => {
     localStorage.setItem("wp.onboarded", "1");
     if (elder) localStorage.setItem("wp.elder", "on");
     if (theme) localStorage.setItem("wp.theme", theme);
-  }, { elder, theme });
+    if (character) localStorage.setItem("wp.character", character);
+  }, { elder, theme, character });
   return { context, page };
 }
 
@@ -326,6 +395,149 @@ async function checkAxe(browser, AxeBuilder) {
   return record(`axe wcag2a/2aa/21aa/22aa（${runs} 次扫描，critical+serious）`, fails.length === 0, fails.length ? fails.slice(0, 10).join("；") : "0 处");
 }
 
+
+/** 15. 静置与隐藏：真实动效（不开 reduced-motion），先确认确有环境动画，再看静置与隐藏后是否停下。 */
+async function checkIdleAndHidden(browser) {
+  const fails = [];
+  const notes = [];
+  for (const [name, path] of PAGES) {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true });
+    await page.addInitScript(instrumentTimers);
+    await visit(page, path);
+    // 每页都等满再统计：页面卡在 loading 或延迟启动的循环动画，只看开头会漏掉。
+    // 加载转圈（ui-spin）只在组件预览页豁免（那里是常驻的示例）；生产页静置后还在转就算失败。
+    const loops = async () => (await page.evaluate(runningAnimations)).filter((a) => a.endsWith("∞") && !(path === "/__kit" && a.includes(":ui-spin")));
+    const before = await loops();
+    await page.waitForTimeout(9500); // 空闲门槛 8 秒（src/lib/activity.ts）
+    const after = await loops();
+    notes.push(`${name} ${before.length}→${after.length}`);
+    if (after.length) fails.push(`${name} 静置后仍在跑：${after.slice(0, 4).join("、")}`);
+    await page.evaluate(() => window.__wpSetHidden(true));
+    await page.waitForTimeout(300);
+    const hidden = await page.evaluate(runningAnimations);
+    if (hidden.length) fails.push(`${name} 隐藏后仍在跑：${hidden.slice(0, 4).join("、")}`);
+    await context.close();
+  }
+  return record(`静置 / 隐藏后动画停下（${PAGES.length} 页）`, fails.length === 0, fails.length ? fails.join("；") : `静置前→9.5s 后循环动画 ${notes.join("、")}；隐藏后 0`);
+}
+
+/** 16. 懒加载页借用的组件样式还在：/surf 弹出的便签是 fixed 的小条；标签的 aria-controls 都指向真有的面板。 */
+async function checkLazyStyles(browser) {
+  const fails = [];
+  const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+  await visit(page, "/surf");
+  // 假后端对 /api/surf/run 回 200（不是 202），页面会弹「现在叫不动她」的便签
+  await page.getByRole("button", { name: "让她现在去逛逛" }).first().click();
+  const toast = await page.waitForSelector(".toast", { timeout: 3000 }).catch(() => null);
+  let toastNote = "没弹出";
+  if (!toast) fails.push("surf 点「让她现在去逛逛」后没有便签");
+  else {
+    const box = await toast.evaluate((el) => ({ position: getComputedStyle(el).position, width: Math.round(el.getBoundingClientRect().width) }));
+    toastNote = `${box.position} ${box.width}px`;
+    if (box.position !== "fixed" || box.width > 420) fails.push(`surf 便签样式丢了：${toastNote}`);
+  }
+  await context.close();
+  let tabs = 0;
+  const { context: c2, page: p2 } = await openPage(browser, { width: 1440, height: 900 });
+  for (const [name, path] of PAGES) {
+    await visit(p2, path);
+    const dangling = await p2.evaluate(() => [...document.querySelectorAll('[role="tab"]')].map((t) => {
+      const id = t.getAttribute("aria-controls");
+      return id && !document.getElementById(id) ? (t.textContent || "").trim().slice(0, 8) : null;
+    }).filter(Boolean));
+    // 反过来：渲染出来的每个面板，它的标签都要指向它（TabPanel 被 Fragment 包住时曾经丢过）
+    const orphan = await p2.evaluate(() => [...document.querySelectorAll('[role="tabpanel"]')].map((p) => {
+      // 日记页是几个标签共用一个面板（aria-label 命名，不带 aria-labelledby），所以只要有标签指向它就算数
+      const pointed = [...document.querySelectorAll('[role="tab"]')].some((t) => t.getAttribute("aria-controls") === p.id);
+      return pointed ? null : (document.getElementById(p.getAttribute("aria-labelledby") || "")?.textContent || p.id).trim().slice(0, 8);
+    }).filter(Boolean));
+    tabs += await p2.evaluate(() => document.querySelectorAll('[role="tab"]').length);
+    for (const d of dangling) fails.push(`${name} 标签「${d}」的 aria-controls 指向不存在的面板`);
+    for (const o of orphan) fails.push(`${name} 面板「${o}」的标签没写 aria-controls`);
+  }
+  // 公共组件行为（/__kit 的「不可用时不触发」区）：loading / aria-disabled 按钮点了、回车了都不提交不回调；
+  // 每个字段标签都连到控件，控件自带 id 时连到它
+  await visit(p2, "/__kit");
+  const guard = p2.locator("#uikit-guard").locator("..");
+  for (const name of ["提交中", "暂不可用", "暂不可用的图标按钮"]) await guard.getByRole("button", { name, exact: true }).click({ force: true }); // aria-disabled 在 Playwright 眼里是禁用，要强点
+  await guard.locator("#kit-own-id").press("Enter");
+  const count = (await p2.locator("#kit-guard-count").textContent())?.trim() ?? "";
+  if (count !== "提交 0 次，点击 0 次") fails.push(`kit 不可用按钮仍触发了：${count}`);
+  const labels = await p2.evaluate(() => [...document.querySelectorAll("label.ui-field__label")].map((l) => ({ text: (l.textContent || "").trim(), control: l.control?.id ?? null })));
+  for (const l of labels.filter((l) => !l.control)) fails.push(`kit 字段「${l.text}」的标签没连到控件`);
+  const own = labels.find((l) => l.text === "自带 id 的输入框");
+  if (own?.control !== "kit-own-id") fails.push(`kit 自带 id 的字段标签指向 ${own?.control ?? "无"}`);
+  await c2.close();
+  return record("懒加载页共享样式 / 标签面板指向 / 不可用按钮 / 字段标签", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls，面板都有标签指向；不可用按钮 3 个点击 + 回车：${count}；${labels.length} 个字段标签都连到控件`);
+}
+
+/** 17. 设置页两处交互：存了 Codex 模型后顶部概览跟着变；点目录后亮的就是刚点的那个（手机 380 × 字号 2 倍，吸顶目录会挡住标题）。 */
+async function checkSettingsInteractions(browser) {
+  const fails = [];
+  const notes = [];
+
+  // 1) 概览与模型设置共用一份结果：存成功后概览不用重进页面
+  {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+    const saved = { model: "model-a", effort: "medium" };
+    const entry = (model) => ({ model, displayName: model, defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "low", description: "" }, { reasoningEffort: "medium", description: "" }], isDefault: model === "model-a" });
+    await page.route(/\/api\/setup(\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (path.endsWith("/codex/models")) return json({ models: [entry("model-a"), entry("model-b")] });
+      if (path.endsWith("/setup/codex") && request.method() === "PUT") {
+        Object.assign(saved, JSON.parse(request.postData() ?? "{}"));
+        return json({});
+      }
+      return json({ deepseek: { configured: false, masked: null }, codex: { ...saved, configPath: "/tmp/codex.toml", present: true }, chain: ["codex"] });
+    });
+    await visit(page, "/settings");
+    const chip = () => page.locator(".set-chip", { hasText: "当前模型" }).locator(".set-chip__value").innerText();
+    const before = await chip();
+    await page.selectOption("#mset-model", "model-b");
+    await page.locator(".mset__save").last().click();
+    let after = before;
+    for (let i = 0; i < 20 && !after.includes("model-b"); i += 1) {
+      await page.waitForTimeout(150);
+      after = await chip();
+    }
+    if (!before.includes("model-a")) fails.push(`保存前概览应显示 model-a，实际「${before}」`);
+    if (!after.includes("model-b")) fails.push(`保存 model-b 后概览仍是「${after}」`);
+    notes.push(`概览 ${before.replace(/\s+/g, " ")}→${after.replace(/\s+/g, " ")}`);
+    await context.close();
+  }
+
+  // 2) 点目录 → 滚动稳定后，目录亮的就是刚点的那项
+  for (const [label, width, height, scale] of [["桌面", 1440, 900, 1], ["手机 380×560 ×2", 380, 560, 2]]) {
+    const { context, page } = await openPage(browser, { width, height });
+    await page.addInitScript((value) => localStorage.setItem("wp.scale", String(value)), scale);
+    await visit(page, "/settings");
+    const items = page.locator(".set-nav__item");
+    const count = await items.count();
+    const wrong = [];
+    for (let i = 0; i < count; i += 1) {
+      const name = (await items.nth(i).innerText()).trim();
+      await items.nth(i).click();
+      let last = -1;
+      for (let tries = 0; tries < 20; tries += 1) {
+        await page.waitForTimeout(150);
+        const top = await page.evaluate(() => document.querySelector(".page--settings").scrollTop);
+        if (top === last) break;
+        last = top;
+      }
+      await page.waitForTimeout(200);
+      const lit = (await page.locator('.set-nav__item[aria-current="true"]').allInnerTexts()).map((t) => t.trim()).join("/");
+      if (lit !== name) wrong.push(`点「${name}」亮「${lit || "无"}」`);
+    }
+    if (wrong.length) fails.push(`${label}：${wrong.join("、")}`);
+    notes.push(`${label} ${count - wrong.length}/${count}`);
+    await context.close();
+  }
+  return record("设置页：存模型后概览同步；点目录后亮的是刚点的", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
+
 async function shoot(browser) {
   mkdirSync(SHOTS, { recursive: true });
   const written = [];
@@ -339,10 +551,32 @@ async function shoot(browser) {
     }
     await context.close();
   }
+  // 组件预览页：4 角色 × 亮/暗，外加手机宽、老人模式，以及弹层钉住打开
+  const kit = [
+    ...CHARACTERS.flatMap((character) => ["light", "dark"].map((theme) => ({ tag: `${character}-${theme}`, theme, character, width: 1440, height: 900 }))),
+    { tag: "whale-light-390", theme: "light", character: "whale", width: 390, height: 844 },
+    { tag: "whale-light-elder", theme: "light", character: "whale", width: 1440, height: 900, elder: true },
+    ...["dialog", "confirm", "select", "tooltip"].map((open) => ({ tag: `open-${open}`, theme: "light", character: "whale", width: 1440, height: 900, query: `?open=${open}` })),
+  ];
+  for (const shot of kit) {
+    const { context, page } = await openPage(browser, shot);
+    await visit(page, `/__kit${shot.query ?? ""}`);
+    // 钉住的下拉在首屏以下：滚到视口中间再拍（打开的 Select 会锁滚动，只能程序滚）
+    if (shot.query) await page.evaluate(() => document.querySelector(".uikit__pinned")?.scrollIntoView({ block: "center" }));
+    const file = join(SHOTS, `kit-${shot.tag}.png`);
+    await page.screenshot({ path: file, fullPage: !shot.query });
+    written.push(rel(file));
+    await context.close();
+  }
   return written;
 }
 
 // ---------- 主流程 ----------
+if (argv.includes("--debt")) {
+  const { motion, filter } = scanMotionDebt();
+  console.log(JSON.stringify({ motionDebt: Object.fromEntries(Object.entries(motion).map(([f, l]) => [f, l.length])), filterDebt: filter, detail: motion }, null, 2));
+  process.exit(0);
+}
 console.log(`重设计验收 · ${rel(resolve(fileURLToPath(import.meta.url)))}  ·  ${STATIC_ONLY ? "只跑源码检查" : BASE}\n`);
 
 checkContrast();
@@ -351,9 +585,12 @@ checkBannedUsage();
 checkNativeDialogs();
 checkRadius();
 checkMotionTokens();
+checkRuntimeDeps();
+checkMotionDebt();
+if (!STATIC_ONLY) await checkFirstScreen();
 
 if (STATIC_ONLY) {
-  console.log("（--static：跳过浏览器检查：触控 / 横向滚动 / axe）\n");
+  console.log("（--static：跳过构建与浏览器检查：首屏体积 / 触控 / 横向滚动 / axe / 静置隐藏）\n");
 } else {
   let server = null;
   try {
@@ -364,9 +601,12 @@ if (STATIC_ONLY) {
     await checkTouch(browser);
     await checkHorizontalScroll(browser);
     await checkAxe(browser, AxeBuilder);
+    await checkIdleAndHidden(browser);
+    await checkLazyStyles(browser);
+    await checkSettingsInteractions(browser);
     if (WITH_SHOTS) {
       const written = await shoot(browser);
-      record("截图 4 页 × 亮/暗（1440×900）", true, written.join("、"));
+      record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层）`, true, `${rel(SHOTS)}/`);
     }
     await browser.close();
   } catch (error) {

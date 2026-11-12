@@ -4,6 +4,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getQuota, QUOTA_KIND_LABELS, type QuotaKind, type QuotaSummary } from "../../lib/quota";
+import { Button } from "../ui/Button";
 
 const KINDS: QuotaKind[] = ["chat", "video", "web", "journal", "surf"];
 
@@ -64,9 +65,9 @@ export function QuotaMeter() {
       <div className="set-state" role="status">
         <p className="set-state__title">额度暂时看不到</p>
         <p className="set-state__desc">贝壳数只从服务里读；现在拿不到，就不猜一个数给你。</p>
-        <button type="button" className="btn btn--secondary" onClick={() => void load()}>
+        <Button variant="secondary" onClick={() => void load()}>
           再试一次
-        </button>
+        </Button>
       </div>
     );
   }

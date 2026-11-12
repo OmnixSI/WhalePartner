@@ -1,0 +1,179 @@
+/* ============================================================================
+   首次引导（三步）+ 几条全局规则。
+   设置页的样式在 settings.css，随设置页一起懒加载；这里只放首屏必须有的：
+   引导本体、引导打开时收起后面的应用、老人模式的导航、小角不挡点击。
+   ============================================================================ */
+
+/* ---------------------------------------------------------------- 引导 */
+.onb:focus-visible { outline: none; box-shadow: none; border-radius: 0; }
+.onb {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  justify-content: center;
+  overflow-y: auto;
+  background: var(--color-bg-body);
+  color: var(--color-text-primary);
+}
+/* 引导打开时把后面的应用整块收起：右栏历史、导航、旧聊天记录都不露出来。
+   标记挂在 <html data-onboarding="on"> 上，引导关掉时由 Onboarding 自己摘掉。 */
+:root[data-onboarding="on"] .app { visibility: hidden; }
+.onb__inner {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: var(--sp-4);
+  width: min(1040px, 100%);
+  height: 100%;
+  min-height: 100%;
+  padding: var(--sp-5) var(--sp-6) var(--sp-4);
+}
+.onb__head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); min-height: var(--hit); }
+.onb__progress { font-size: var(--text-md); font-weight: var(--weight-medium); color: var(--color-text-primary); }
+.onb__beads { display: flex; align-items: center; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
+.onb__bead {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-full);
+  background: var(--color-border-strong);
+  transition: transform var(--dur-fast) var(--ease-standard);
+}
+.onb__bead[data-state="done"] { background: var(--color-accent-muted); }
+.onb__bead[data-state="on"] { background: var(--color-accent); transform: scale(1.4); }
+
+/* 舞台：第 1 步是整块真实形象；第 2、3 步放不下就在这一层里滚 */
+.onb__stage { display: flex; flex-direction: column; gap: var(--sp-4); min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.onb__stage[data-step="0"] { overflow: hidden; }
+
+/* 第 1 步：她 + 一句招呼（点她有反应） */
+.onb__scene {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: var(--sp-2);
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+.onb__figure {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  place-items: end center;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--r-page);
+  cursor: pointer;
+}
+.onb__figure:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+/* 画布铺满她那一块：absolute 才不会在网格里多占一行、也不会按画布原尺寸溢出 */
+.onb__figure .live2d { position: absolute; inset: 0; width: 100%; height: 100%; transform: scale(.92) translateY(4%); transform-origin: 50% 100%; }
+@media (min-width: 1100px) { .onb__figure .live2d { transform: scale(1.16) translateY(5%); } }
+.onb__figure .scene__status { top: var(--sp-3); bottom: auto; }
+.onb__sticker { width: min(40%, 200px); max-height: 100%; margin-bottom: var(--sp-4); }
+.onb__sticker .mark { width: 100%; height: auto; }
+.onb__hint {
+  justify-self: center;
+  margin: 0;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+.onb__line {
+  justify-self: center;
+  width: min(34em, 100%);
+  margin: 0;
+  padding: var(--sp-3) var(--sp-5);
+  border-radius: var(--r-container);
+  background: var(--color-card);
+  box-shadow: var(--elev-raised);
+  color: var(--color-text-primary);
+  font-family: var(--font-voice);
+  font-size: var(--text-lg);
+  line-height: 1.6;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* 第 2、3 步 */
+.onb__her { width: min(200px, 52%); margin: 0 auto; }
+.onb__say { max-width: 24em; font-family: var(--font-voice); font-size: var(--text-xl); line-height: 1.5; color: var(--color-text-primary); }
+.onb__block { display: flex; flex-direction: column; gap: var(--sp-3); }
+.onb__field { width: 100%; }
+.onb__sub { font-size: var(--text-sm); color: var(--color-text-secondary); }
+.onb__chars { list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); margin: 0; padding: 0; }
+.onb__char {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  min-height: var(--hit);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  border-radius: var(--r-element);
+  background: var(--color-card);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+  color: var(--color-text-primary);
+}
+.onb__char:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.onb__char[data-selected="on"] { background: var(--color-accent-muted); box-shadow: inset 0 0 0 2px var(--color-accent); }
+.onb__char-name { font-size: var(--text-md); font-weight: var(--weight-medium); }
+.onb__char-tag { font-size: var(--text-xs); color: var(--color-text-secondary); }
+.onb__pact { list-style: none; display: flex; flex-direction: column; gap: var(--sp-3); margin: 0; padding: 0; }
+.onb__pact li { display: flex; align-items: flex-start; gap: var(--sp-3); font-family: var(--font-voice); font-size: var(--text-lg); line-height: 1.6; color: var(--color-text-primary); }
+.onb__num {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-full);
+  background: var(--color-bg-muted);
+  font-family: var(--font-num);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+.onb__fonts { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.onb__note { font-size: var(--text-sm); color: var(--color-text-secondary); }
+.onb__model { align-self: flex-start; }
+/* 主动作永远在视野底部：内容再长，也只滚内容，不滚按钮 */
+.onb__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: auto;
+  padding: var(--sp-3) 0 var(--sp-1);
+  box-shadow: 0 -1px 0 var(--color-border);
+}
+.onb__next { min-width: 160px; }
+
+@media (max-width: 719px) {
+  .onb__inner { padding: var(--sp-3) var(--sp-4) var(--sp-4); gap: var(--sp-3); }
+  .onb__say { font-size: var(--text-lg); }
+  .onb__her { width: min(168px, 44%); }
+  .onb__line { font-size: var(--text-md); padding: var(--sp-2) var(--sp-3); }
+  .onb__chars { grid-template-columns: minmax(0, 1fr); }
+  .onb__foot { flex-direction: column-reverse; align-items: stretch; gap: var(--sp-2); }
+  .onb__next { width: 100%; }
+}
+
+/* 老人模式：导航只剩三项，标签放大；进度点放大 */
+:root[data-elder="on"] .nav { gap: var(--sp-2); }
+:root[data-elder="on"] .nav__label { font-size: var(--fs-body); letter-spacing: 0; }
+:root[data-elder="on"] .field { min-height: var(--hit); }
+:root[data-elder="on"] .onb__bead { width: 16px; height: 16px; }
+:root[data-elder="on"] .onb__hint { font-size: var(--text-md); }
+
+/* 小角的空白处点透，只有贴纸本身收点击 */
+.companion { pointer-events: none; }
+.companion__btn { pointer-events: auto; }
+
+:root[data-motion="calm"] .onb { animation: none; }
+:root[data-motion="calm"] .onb__bead { transition: none; }

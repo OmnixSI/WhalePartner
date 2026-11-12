@@ -1,0 +1,97 @@
+/**
+ * 按钮：主按钮 / 次按钮 / 幽灵按钮 / 危险按钮，外加 IconButton（图标按钮）。
+ *
+ * - 一屏只放一个主按钮；危险按钮只用在「确认删除」这类不可撤销的最后一步，平时的删除入口用幽灵或次按钮。
+ * - loading 时保持宽度、不可点、读屏读到「忙」；disabled 的按钮仍可聚焦说明原因时，用 aria-disabled 而不是 disabled。
+ *
+ * 结构改写自 meta/astryx 的 Button（MIT，见 THIRD_PARTY_NOTICES.md）：hover 叠层、按下微缩（触屏与降级动效下不缩）、
+ * 危险按钮焦点环同色。样式改为普通 CSS + 鲸汐 token。
+ */
+import { forwardRef, type ButtonHTMLAttributes, type MouseEventHandler, type ReactNode } from "react";
+import { cx } from "./cx";
+import { Spinner } from "./glyphs";
+import "./shared.css";
+import "./Button.css";
+
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonSize = "md" | "lg";
+
+type Common = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  loading?: boolean;
+  /** 只给 /__kit 预览页钉住状态拍图 */
+  "data-preview"?: "hover" | "active" | "focus";
+};
+
+/**
+ * loading 或 aria-disabled 时按钮仍可聚焦，所以要自己拦：吞掉点击回调，并 preventDefault，
+ * 这样 type="submit" 不提交表单（输入框里按回车触发的隐式提交也走这次 click，一并拦下）。
+ */
+function inactiveProps(loading: boolean, ariaDisabled: Common["aria-disabled"], onClick?: MouseEventHandler<HTMLButtonElement>) {
+  const inactive = loading || ariaDisabled === true || ariaDisabled === "true";
+  return {
+    "aria-disabled": inactive || undefined,
+    onClick: inactive ? (e: Parameters<MouseEventHandler<HTMLButtonElement>>[0]) => e.preventDefault() : onClick,
+  };
+}
+
+export type ButtonProps = Common & {
+  children: ReactNode;
+  /** 文字前的图标（16–20px，装饰性） */
+  icon?: ReactNode;
+  /** 撑满父容器宽度（窄屏底部操作条） */
+  block?: boolean;
+};
+
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = "secondary", size = "md", loading = false, icon, block, className, children, disabled, type = "button", ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      className={cx("ui-btn ui-press ui-focus", `ui-btn--${variant}`, size === "lg" && "ui-btn--lg", block && "ui-btn--block", className)}
+      disabled={disabled}
+      aria-busy={loading || undefined}
+      data-loading={loading || undefined}
+      {...rest}
+      {...inactiveProps(loading, rest["aria-disabled"], rest.onClick)}
+    >
+      {loading ? <span className="ui-btn__spin"><Spinner /></span> : null}
+      <span className="ui-btn__body">
+        {icon ? <span className="ui-btn__icon">{icon}</span> : null}
+        <span>{children}</span>
+      </span>
+    </button>
+  );
+});
+
+export type IconButtonProps = Common & {
+  /** 必填：图标按钮没有可见文字，读屏和提示都靠它 */
+  label: string;
+  children: ReactNode;
+};
+
+export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
+  { variant = "ghost", size = "md", loading = false, label, className, children, disabled, type = "button", ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      aria-label={label}
+      className={cx("ui-btn ui-btn--icon ui-press ui-focus", `ui-btn--${variant}`, size === "lg" && "ui-btn--lg", className)}
+      disabled={disabled}
+      aria-busy={loading || undefined}
+      data-loading={loading || undefined}
+      {...rest}
+      {...inactiveProps(loading, rest["aria-disabled"], rest.onClick)}
+    >
+      {loading ? <span className="ui-btn__spin"><Spinner /></span> : null}
+      <span className="ui-btn__body ui-btn__icon">{children}</span>
+    </button>
+  );
+});

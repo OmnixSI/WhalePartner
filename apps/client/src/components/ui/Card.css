@@ -1,0 +1,50 @@
+.ui-card {
+  --r-focus: var(--r-container);
+  position: relative;
+  display: block;
+  min-width: 0;
+  border-radius: var(--r-container);
+  background: var(--color-card);
+  color: var(--color-text-primary);
+  text-align: start;
+}
+.ui-card--flat { box-shadow: var(--elev-flat); }
+.ui-card--raised { box-shadow: var(--elev-raised); }
+.ui-card--pad-none { padding: 0; }
+.ui-card--pad-md { padding: var(--sp-4) var(--sp-5); }
+.ui-card--pad-lg { padding: var(--sp-6); }
+
+/* 可点卡片：上浮用 transform，阴影是一层预先画好的 ::after，只改 opacity（不对 box-shadow 做过渡） */
+.ui-card--interactive {
+  width: 100%;
+  box-shadow: var(--elev-raised);
+  color: var(--color-text-primary);
+  transition: transform var(--dur-medium) var(--ease-standard);
+}
+.ui-card--interactive::before { color: var(--color-text-primary); }
+.ui-card--interactive::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  border-radius: inherit;
+  box-shadow: var(--elev-floating);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-medium) var(--ease-standard);
+}
+@media (hover: hover) {
+  .ui-card--interactive:hover { transform: translateY(var(--lift)); }
+  .ui-card--interactive:hover::after { opacity: 1; }
+  .ui-card--interactive:hover::before { opacity: calc(var(--overlay-hover) / 2); }
+}
+.ui-card--interactive[data-preview="hover"] { transform: translateY(var(--lift)); }
+.ui-card--interactive[data-preview="hover"]::after { opacity: 1; }
+.ui-card--interactive:active, .ui-card--interactive[data-preview="active"] { transform: scale(calc(1 - (1 - var(--press-scale)) / 3)); }
+.ui-card--interactive:focus-visible, .ui-card--interactive[data-preview="focus"] {
+  border-radius: var(--r-container);
+  box-shadow: var(--elev-raised), 0 0 0 2px var(--color-bg-body), 0 0 0 4px var(--color-accent);
+}
+.ui-card--interactive:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+@media (forced-colors: active) { .ui-card { border: 1px solid CanvasText; } }

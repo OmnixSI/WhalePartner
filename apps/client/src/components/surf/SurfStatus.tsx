@@ -9,6 +9,7 @@ import { Icon, type IconName } from "../ink-icons";
 import { Tape } from "../ink";
 import { useInkEnv } from "../ink/useCalm";
 import type { SurfStage } from "./useSurfEvents";
+import "../../styles/surf-slip.css"; // 聊天页也用，跟组件走，不跟懒加载的见闻页走
 
 export type SurfPhase =
   | { kind: "browsing"; stage: SurfStage; detail?: string | null; paused?: boolean }
