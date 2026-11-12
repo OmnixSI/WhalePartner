@@ -2,6 +2,8 @@ import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CompanionCorner, setCompanionMood } from "../components/CompanionCorner";
+import { PageHeader } from "../components/shell/PageHeader";
+import { Button } from "../components/ui/Button";
 import { spring } from "../motion/tokens";
 import { DailyJournalLeaf } from "../components/diary/DailyJournalLeaf";
 import { DiaryLeaf } from "../components/diary/DiaryLeaf";
@@ -219,17 +221,15 @@ export function DiaryPage() {
   return (
     <div className="page diary-page">
       <div className="diary-page__inner">
-        <header className="diary-page__head">
-          <h1 className="diary-page__title">{character.name}的日记</h1>
-          <button
-            type="button"
-            className="btn btn--primary diary-page__write"
-            onClick={() => void write()}
-            disabled={writing}
-          >
-            {writing ? "她在写…" : "请她写今天的"}
-          </button>
-        </header>
+        <PageHeader
+          eyebrow="手帐 · 日记"
+          title={`${character.name}的日记`}
+          actions={
+            <Button variant="primary" className="diary-page__write" onClick={() => void write()} disabled={writing}>
+              {writing ? "她在写…" : "请她写今天的"}
+            </Button>
+          }
+        />
 
         <div className="diary-page__controls">
           <IndexTabs value={mode} onChange={changeMode} panelId="diary-panel" />

@@ -1,8 +1,9 @@
 /* /__kit 预览页自己的版式；只在预览页加载。 */
 html:has(.uikit) { height: auto; overflow-y: auto; }
 html:has(.uikit) body { height: auto; overflow: visible; }
-html:has(.uikit) #root, html:has(.uikit) .app { height: auto; min-height: 100dvh; }
-html:has(.uikit) .main { min-height: 0; }
+html:has(.uikit) #root,
+html:has(.uikit) .app-shell { height: auto; min-height: 100dvh; }
+html:has(.uikit) .app-shell__main { min-height: 0; }
 
 .uikit { display: flex; flex-direction: column; gap: var(--sp-10); max-width: 72rem; padding: var(--sp-6) var(--sp-8) var(--sp-16); color: var(--color-text-primary); }
 .uikit h1 { font-size: var(--text-2xl); margin-right: auto; }

@@ -7,6 +7,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "../components/chat/ConfirmDialog";
+import { PageHeader } from "../components/shell/PageHeader";
 import { Toast } from "../components/diary/Toast";
 import { PostcardCard } from "../components/surf/PostcardCard";
 import { SurfEmpty } from "../components/surf/SurfEmpty";
@@ -237,19 +238,18 @@ export function SurfPage() {
   return (
     <div className="page page--surf" data-elder={env.elder ? "on" : "off"}>
       <div className="page__inner">
-        <header className="surf-head">
-          <div className="surf-head__text">
-            <h1 className="page__title">{character.name}的见闻</h1>
-            <p className="surf-head__lead">
-              {status
-                ? disabled
-                  ? "她现在不去逛了"
-                  : `她今天逛了 ${status.todayCount} 个地方 · ${nextRunText(status)}`
-                : "正在问她今天逛到哪儿了…"}
-            </p>
-          </div>
-          <SurfStatus phase={phase} onDismiss={() => setPhase(null)} />
-        </header>
+        <PageHeader
+          eyebrow="手帐 · 见闻"
+          title={`${character.name}的见闻`}
+          lead={
+            status
+              ? disabled
+                ? "她现在不去逛了"
+                : `她今天逛了 ${status.todayCount} 个地方 · ${nextRunText(status)}`
+              : "正在问她今天逛到哪儿了…"
+          }
+          actions={<SurfStatus phase={phase} onDismiss={() => setPhase(null)} />}
+        />
 
         <div className="surf-bar">
           <SurfFilters

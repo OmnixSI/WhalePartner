@@ -1,5 +1,5 @@
 /**
- * 设置页：顶部一张「她」的概览卡，下面左边是分类目录、右边是按分类分好的卡片组；窄屏目录收成一排横向标签。
+ * 设置页：顶部一张「她」的概览卡，下面是一排吸顶分类标签和按分类分好的卡片组；不另做侧栏。
  *
  * 数据纪律：额度走 `lib/quota.ts`（GET /api/quota）、导出/删除走 `lib/data.ts`、
  * 昵称走 `lib/profile.ts`（GET/PUT /api/profile）。接口不在就写「现在拿不到」并禁按钮，
@@ -17,6 +17,7 @@ import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 import { useCharacter } from "../characters";
 import { Accounts } from "../components/Accounts";
 import { reopenOnboarding } from "../components/Onboarding";
+import { PageHeader } from "../components/shell/PageHeader";
 import { SettingGroup, SettingRow } from "../components/settings/Row";
 import { ScaleSetting } from "../components/settings/ScaleSetting";
 import { Switch } from "../components/settings/Switch";
@@ -274,10 +275,11 @@ export function SettingsPage() {
   return (
     <div className="page page--settings" ref={pageRef}>
       <div className="page__inner">
-        <header className="set-head">
-          <h1 className="page__title">设置</h1>
-          <p className="set-head__lead">大多数设置改完就生效；字号调整后点“确认”应用。</p>
-        </header>
+        <PageHeader
+          eyebrow="系统 · 设置"
+          title="设置"
+          lead="大多数设置改完就生效；字号调整后点“确认”应用。"
+        />
 
         {offline && (
           <div className="set-banner" role="status">
@@ -313,7 +315,7 @@ export function SettingsPage() {
 
           <div className="set-main">
             <section className="set-cat" id="cat-her" aria-labelledby="cat-her-h">
-              <h2 className="set-cat__title" id="cat-her-h">她与陪伴</h2>
+              <h2 className="sr-only" id="cat-her-h">她与陪伴</h2>
 
               <SettingGroup title="她怎么称呼你">
                 <SettingRow title="昵称" desc="写在这儿，她聊天时就会这么叫你。不想说也没关系。" stacked>
@@ -499,7 +501,7 @@ export function SettingsPage() {
             </section>
 
             <section className="set-cat" id="cat-look" aria-labelledby="cat-look-h">
-              <h2 className="set-cat__title" id="cat-look-h">外观与使用</h2>
+              <h2 className="sr-only" id="cat-look-h">外观与使用</h2>
 
               <SettingGroup title="看起来">
                 <div className="set-choices" role="group" aria-label="外观">
@@ -538,7 +540,7 @@ export function SettingsPage() {
             </section>
 
             <section className="set-cat" id="cat-model" aria-labelledby="cat-model-h">
-              <h2 className="set-cat__title" id="cat-model-h">模型与额度</h2>
+              <h2 className="sr-only" id="cat-model-h">模型与额度</h2>
 
               <SettingGroup title="模型接入" id="model" note="接哪家模型、用多大强度，都在这儿改；以前只能翻 .env 和本机配置。">
                 <ModelSetup offline={offline} onToast={notify} onSaved={() => setSetupRev((n) => n + 1)} />
@@ -554,7 +556,7 @@ export function SettingsPage() {
             </section>
 
             <section className="set-cat" id="cat-device" aria-labelledby="cat-device-h">
-              <h2 className="set-cat__title" id="cat-device-h">设备与数据</h2>
+              <h2 className="sr-only" id="cat-device-h">设备与数据</h2>
 
               <SettingGroup title="我的设备" id="devices" note="数据只放在一台「家」里，其他设备都连过来，所以到哪都是同步的。">
                 <DevicesSetting offline={offline} />
@@ -576,7 +578,7 @@ export function SettingsPage() {
             </section>
 
             <section className="set-cat" id="cat-about" aria-labelledby="cat-about-h">
-              <h2 className="set-cat__title" id="cat-about-h">关于</h2>
+              <h2 className="sr-only" id="cat-about-h">关于</h2>
               <SettingGroup title={`关于${character.name}`}>
                 <p className="set-about">
                   {character.name}是一个 AI 角色，不是真人。她会陪你聊天、看视频、写日记，也会自己去逛逛。
