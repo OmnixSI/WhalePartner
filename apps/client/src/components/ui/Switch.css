@@ -1,5 +1,5 @@
 /* 开关：滑块只做 translateX；「开」的强调色是一层叠在轨道上的 fill，只改 opacity。
-   结构参照 meta/astryx 的 Switch（MIT）。 */
+   结构参照 meta/astryx 的 Switch（MIT，见 THIRD_PARTY_NOTICES.md）。 */
 .ui-switch {
   --w: 2.75rem;
   --h: 1.625rem;

@@ -1,6 +1,6 @@
 /* components/ui 共用的几条规则：交互叠层、焦点环、弹层进出场。
    性能约定（#151）：动画与过渡只动 transform / opacity；没有常驻动画。
-   交互叠层的做法改写自 meta/astryx（MIT，见 THIRD_PARTY_NOTICES）：hover / 按下不换底色，
+   交互叠层的做法改写自 meta/astryx（MIT，见 THIRD_PARTY_NOTICES.md）：hover / 按下不换底色，
    在元素里垫一层 currentColor，只改它的 opacity——不触发重绘底色，也不需要每个变体各写一套 hover 色。 */
 
 /* 焦点环圆角默认跟控件一致；各组件用 --r-focus 覆盖（:where 零优先级，组件里随便写都能盖过） */

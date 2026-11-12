@@ -4,6 +4,7 @@
 
 - **唯一来源**：[`UI_SPEC.md`](UI_SPEC.md)（下称“规范”）。本文件是**实现镜像**：只写代码里现在是这样，不写打算这样。
 - **唯一真相**：颜色/圆角/字号/间距/时长在 `apps/client/src/styles/tokens.css`；弹簧参数在 `apps/client/src/motion/tokens.ts`。
+- **两层 token**：`--paper/--ink/--accent…` 是调色板；`--color-* / --text-* / --r-inner…--r-full / --elev-* / --dur-fast…` 是语义层（#151）。`components/ui/*` 只用语义层，页面迁移时也改用语义层。
 - 任何“页面级”硬编码（色值、px 圆角、ms 时长、stiffness）都算缺陷，`pnpm --dir apps/client run ui:check` 会拦。
 
 ## 取舍
@@ -63,6 +64,54 @@
 - `Tide`：水彩平涂的浪，三层（far 90s / mid 60s / near 40s 线性漂移），只用 `transform`。
 - 纸纹是**背景图层**（`--grain` 的 SVG 噪声，亮色墨颗粒 / 暗色暖纸颗粒），不是盖在所有东西上的叠层。
 
+## 设计系统（`components/ui/*`，#151）
+
+基础组件放在 `apps/client/src/components/ui/`，从 `components/ui/index.ts` 导出。每个组件带自己的 CSS，页面只为用到的组件付体积。交互底层用已有依赖 `radix-ui`（Dialog、Select、Tabs、Tooltip、Switch）和 `sonner`（Toast），没有新增运行时依赖。部分结构改写自 meta/astryx（MIT），没有作为依赖安装，见仓库根目录 [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md)。
+
+### 语义 token（`styles/tokens.css`）
+
+| 类 | token | 晨光（亮） | 深海夜（暗） |
+|---|---|---|---|
+| 表面（低→高） | `--color-bg-body` / `--color-bg-muted` / `--color-surface` / `--color-card` / `--color-popover` | 纸 / 次级纸 / `--sheet` / `#FFFCF5` / `#FFFDF9` | 纸 / 次级纸 / `#1B2E41` / `#1F3448` / `#243B51`（越高越亮） |
+| 遮罩 | `--color-scrim` | 墨 36% | 近黑 58% |
+| 文字 | `--color-text-primary/secondary/tertiary/disabled` | `--ink` / `--ink-soft` / `--ink-mute` / `#80878F` | 同名调色板 / `#7D8995` |
+| 边 | `--color-border` / `--color-border-strong` | `--line` / `--line-strong`（≥3:1） | 同左 |
+| 强调 | `--color-accent` / `-muted` / `--color-on-accent` | 随角色（`characters.css`） | 随角色 |
+| 状态 | `--color-success/warning/error/info`，各带 `-muted` 浅底与 `--color-on-*` | `#2F6B3F` / `#7A5200` / `#A8372B` / `#2F5C8C` | `#8FD3A0` / `#F2C14E` / `#FF9C86` / `#8FB6E0` |
+| 交互叠层 | `--overlay-hover` / `--overlay-press` | .07 / .13 | .09 / .16 |
+| 字号 | `--text-xs…--text-display` | `--text-base 1rem × --text-ratio 1.125` 的阶梯，13px 地板；rem 跟根字号和 `--scale` 缩放 | 同左 |
+| 圆角 | `--r-inner 6` / `--r-element 12` / `--r-container 18` / `--r-page 26` / `--r-full` | 控件内小块 / 按钮输入框 / 卡片弹层 / 对话框 | 同左 |
+| 层级 | `--elev-flat` / `-raised` / `-floating` / `-overlay` | 1px 边 + 递增的墨色阴影 | 1px 边 + 黑色阴影，靠表面提亮分层 |
+| 尺寸 | `--control-h`（=`--hit`）/ `--control-h-lg`（=`--field-h`）/ `--control-px` | 44 / 52 / 1.125rem；老人模式 56 | 同左 |
+| 动效 | `--dur-fast 120` / `--dur-medium 200` / `--dur-slow 320`（ms）；`--ease-standard/enter/exit`；`--press-scale .97`、`--enter-scale .96`、`--enter-shift 6px` | 降级动效下时长缩短、位移和缩放归零 | 同左 |
+
+间距沿用 `--sp-1…--sp-20`（4px 网格）。
+
+### 组件
+
+| 组件 | 要点 |
+|---|---|
+| `Button` | 变体 `primary` / `secondary` / `ghost` / `danger`，尺寸 `md` / `lg`，`loading`、`icon`、`block` |
+| `IconButton` | 第 5 个变体 `icon`：方形，必须给 `label`（读屏和 Tooltip 用） |
+| `Field` / `Input` / `Textarea` | 标签、说明、错误三件套自动连 `aria-describedby` |
+| `Select` | radix Select；弹层用 `--color-popover` + `--elev-floating` |
+| `Switch` | 轨道 `--r-full`，滑块只动 `transform` |
+| `Tabs` / `TabPanel` | 分段式；选中块用 `--r-inner` |
+| `Card` / `CardButton` | 静态卡与可点卡（可点卡才有 hover 叠层） |
+| `Dialog` / `ConfirmDialog` | 遮罩 `--color-scrim`，面板 `--r-page` + `--elev-overlay`；破坏性确认先讲后果 |
+| `Toaster` / `toast` | sonner，样式换成 token |
+| `Tooltip` | 只补充说明，不承载唯一信息 |
+
+每个可交互组件都有 hover、按下（active）、焦点（`:focus-visible` 双环）和禁用四种状态：
+
+- hover 和按下不换底色，垫一层 `currentColor` 只改 `opacity`（`ui-press`，`shared.css`）。
+- 精确指针下按下微缩 `--press-scale`；触屏和降级动效下不缩。
+- 禁用：`--color-text-disabled`，去掉叠层和指针。
+
+### 预览页
+
+`/__kit` 是组件预览页（`pages/UiKitPage.tsx`，懒加载、不进导航）：所有变体 × 状态、亮暗对照、4 个角色色、手机宽度和老人模式。手绘基元的样品页挪到了 `/__kit/ink`。截图见 [`images/design-system/`](images/design-system/)，`ui:check --shots` 每次重拍到 `apps/client/test-results/ui-check/`。
+
 ## 布局
 
 - **桌面（≥960px）**：左侧导航 `--nav-w 112px`（聊天、日记、记忆、见闻、设置），聊天页是 `.room` 网格 `minmax(--scene-min 480px, 1fr) + --backlog-w 360px`：左边舞台（她 + 对话框 + 回信条），右边「往回翻」默认收起，用户点击后展开。
@@ -78,13 +127,14 @@
 - 库：`motion`（`motion/react`）。只动 `transform` / `opacity`；例外只有墨线 `clip-path` 与折叠 `grid-template-rows`。
 - **弹簧只在 `src/motion/tokens.ts`**：`spring.press/soft/sheet/page/switch/cute/char`。组件里不写 stiffness/damping。
 - **时长与曲线只在 `styles/tokens.css`**：`--dur-press 120 / --dur-hover 160 / --dur-fade 200 / --dur-panel 280 / --dur-ink 240 / --dur-page 520`（ms）；常驻动效另有 `--breath 4.5s`、`--drift-far/mid/near 90/60/40s`、`--blink 4.6s`、`--lit 1.2s`、`--pen 1.6s`、`--dur-inkline 1800ms`、`--dur-fold 480ms`。
-- 缓动只有三条：`--ease-out`（入）、`--ease-inout`（循环）、`--ease-linear`（只给浪漂移）。UI 动效 ≤300ms，翻页 520ms、墨线 1800ms、“忘掉”480ms 是白名单。
+- 缓动只有三条：`--ease-out`（入）、`--ease-inout`（循环）、`--ease-linear`（只给浪漂移）。设计系统组件另用语义档：`--dur-fast/medium/slow` 与 `--ease-standard/enter/exit`。UI 动效 ≤300ms，翻页 520ms、墨线 1800ms、“忘掉”480ms 是白名单。
+- 环境动效（标了 `data-ambient` 的海平线和浪）静置 8 秒后暂停，有输入再继续；页面隐藏时所有 CSS 动画暂停（`lib/activity.ts`）；Live2D 的 pixi 交互管理器不挂系统 ticker。
 - 降级：`prefers-reduced-motion: reduce` 与 `data-motion="calm"`（老人模式自动进 calm）下，`--dur-*` 变 1ms/120ms、角色贴纸与浪停住、不位移只淡入。`calmFade`（`motion/tokens.ts`）就是那一档。
 
 ## 适老与无障碍
 
 - 老人模式：根字号 `16px × --scale`，且 `--scale ≥ 1.25`（=20px）；`--hit 56`；`--ink-mute = --ink-soft`（取消最浅灰）；`--line-strong = --ink-mute`；记忆从「设置 › 她记得的事」进，聊天、日记、见闻和设置保留在导航；`--r-md 16`；动效进 calm。
-- 对比度：正文 ≥7:1，任何文字 ≥4.5:1，控件边界 ≥3:1。`apps/client/scripts/contrast-check.mjs` 对 90 组（亮/暗 × 4 角色）逐对验算。
+- 对比度：正文 ≥7:1，任何文字 ≥4.5:1，控件边界 ≥3:1。`apps/client/scripts/contrast-check.mjs` 对 172 组（亮/暗 × 4 角色，含语义层）逐对验算。
 - 焦点：`:focus-visible` 双环 `--focus-ring`（纸 + 强调色），任何底色上都可见。
 - 语义：图标一律 `aria-hidden`，认路靠文字；装饰（浪、纸纹）`aria-hidden` + `pointer-events:none`；`<time>` 不用 `aria-label`（ARIA 禁止），改用 `sr-only` 文本。
 - 确认：所有破坏性操作走 `ConfirmDialog`（先讲后果，再给动作），**全站零 `window.confirm/alert`**。
@@ -110,7 +160,12 @@
 | `styles/ink.css` | 手绘基元：线、框、胶带、邮戳、浪、图标 |
 | `styles/sticker.css` | 贴纸角色与小角（呼吸/眨眼/手机三道线/笔尖） |
 | `styles/layout.css` | 外框、导航、内容页通用排版、账号接入 |
-| `styles/kit.css` | 隐藏样品页 `/__kit`（只看，不进导航） |
+| `styles/kit.css` | 手绘基元样品页 `/__kit/ink`（只看，不进导航） |
+| `components/ui/*` | 设计系统基础组件，见上文「设计系统」 |
+| `pages/UiKitPage.tsx` | 组件预览页 `/__kit` |
+| `scripts/perf-budget.json` | 性能预算：首屏基线、运行时依赖清单、动效/filter 存量 |
+| `scripts/perf-idle.mjs` | 空闲 CPU、渲染进程内存、定时器与动画计数 |
+| `scripts/ui-fixtures.mjs` | ui:check 和性能脚本共用的假 API |
 | `motion/tokens.ts` | 弹簧与 motion 侧的时长常量 |
 | `components/diary/useDiaryPageData.ts` | 周/月/年范围内读取共享日记与旧视频队列 |
 | `components/diary/DailyJournalLeaf.tsx` | 综合日记正文、日期与可展开来源 |
@@ -120,13 +175,53 @@
 ## 机器检查（交付闸门）
 
 ```bash
-pnpm --dir apps/client run ui:check            # 全跑：源码 + 浏览器（会自己起 vite，跑完关掉）
+pnpm --dir apps/client run ui:check            # 全跑：源码 + 构建 + 浏览器（会自己起 vite，跑完关掉）
 pnpm --dir apps/client run ui:check --static   # 只跑源码检查
-pnpm --dir apps/client run ui:check --shots    # 另外拍 4 页 × 亮/暗（1440×900），存到 apps/client/test-results/ui-check/
-pnpm --dir apps/client run contrast:check      # 只跑 90 组对比度，逐对打印比值
+pnpm --dir apps/client run ui:check --shots    # 另外拍 5 页 × 亮/暗 和预览页，存到 apps/client/test-results/ui-check/
+pnpm --dir apps/client run ui:check --debt     # 打印各文件的动效 / filter 存量，用来调低 perf-budget.json
+pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印比值
 ```
 
-十项：对比度 90 组、淘汰 token、gradient/backdrop-filter、`window.confirm/alert`、珊瑚色作文字、圆角只允许 `--r-*`、动效参数只在 tokens、触控 ≥44（老人 ≥56）、横向滚动（380px 与 `--scale=2`）、axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）。任何一项失败退出码为 1。角色闪卡（`apps/client/src/card-preview/`）的镭射、光泽和光照是单独确认的卡面效果，不受渐变、圆角和动效时长这三条限制。
+十六项，任何一项失败退出码为 1：
+
+1. 对比度 172 组
+2. 淘汰 token
+3. gradient / backdrop-filter
+4. 珊瑚色作文字
+5. `window.confirm/alert`
+6. 圆角只允许 `--r-*`
+7. 动效参数只在 tokens
+8. 运行时依赖在清单内
+9. 动画/过渡只动 transform·opacity（`components/ui` 0 处，旧页面只减不增）
+10. filter 只减不增
+11. 首屏 gzip ≤ 0.3.4
+12. 触控 ≥44（老人 ≥56）
+13. 横向滚动（380px 与 `--scale=2`）
+14. axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）
+15. 静置 / 隐藏后动画停下
+16. 截图
+
+角色闪卡（`apps/client/src/card-preview/`）的镭射、光泽和光照是单独确认的卡面效果，不受渐变、圆角和动效时长这三条限制。
+
+## 性能预算
+
+基线是 0.3.4（main@47518a3）。机器能判的写进 `scripts/perf-budget.json` 并由 ui:check 拦：
+
+| 预算 | 上限 | 在哪拦 |
+|---|---|---|
+| 首屏 JS gzip | ≤ 444 000 B（0.3.4） | ui:check 第 11 项（`vite build` 后按 `index.html` 的入口与 modulepreload 计） |
+| 首屏 CSS gzip | ≤ 50 100 B（0.3.4） | 同上 |
+| 运行时依赖 | 只能是清单里的 17 个；加依赖要改清单并在 #151 说明 | 第 8 项 |
+| 非合成层动效 / filter | `components/ui` 为 0；旧文件按 `motionDebt` / `filterDebt` 存量只减不增 | 第 9、10 项 |
+| 常驻动画 | 静置 10 秒内、页面隐藏后，循环动画数为 0 | 第 15 项 |
+
+需要人看的项用 `scripts/perf-idle.mjs` 测，结果记在 [`perf/`](perf/)：
+
+- 空闲 CPU：鲸汐聊天页静置 ≤ 1%。Live2D 角色页不高于 0.3.4。
+- 渲染进程内存：不高于 0.3.4。
+- 页面隐藏后，30 秒内定时器和 rAF 触发次数接近 0。
+
+新页面默认懒加载。只给某一页用的 CSS 跟着那一页加载，被别的页面复用的样式不要放进懒加载页的 CSS（设置页的标签框就是因此丢过样式）。
 
 ## 角色形象
 

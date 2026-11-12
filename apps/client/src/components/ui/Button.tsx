@@ -4,7 +4,7 @@
  * - 一屏只放一个主按钮；危险按钮只用在「确认删除」这类不可撤销的最后一步，平时的删除入口用幽灵或次按钮。
  * - loading 时保持宽度、不可点、读屏读到「忙」；disabled 的按钮仍可聚焦说明原因时，用 aria-disabled 而不是 disabled。
  *
- * 结构改写自 meta/astryx 的 Button（MIT，见 THIRD_PARTY_NOTICES）：hover 叠层、按下微缩（触屏与降级动效下不缩）、
+ * 结构改写自 meta/astryx 的 Button（MIT，见 THIRD_PARTY_NOTICES.md）：hover 叠层、按下微缩（触屏与降级动效下不缩）、
  * 危险按钮焦点环同色。样式改为普通 CSS + 鲸汐 token。
  */
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";

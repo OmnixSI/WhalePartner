@@ -4,7 +4,7 @@
  *
  *   pnpm --dir apps/client run ui:check                    全跑（会自己起 vite dev，跑完关掉）
  *   pnpm --dir apps/client run ui:check --static           只跑源码检查，不开浏览器
- *   pnpm --dir apps/client run ui:check --shots            另外拍 4 页 × 亮/暗，存到 apps/client/test-results/ui-check/
+ *   pnpm --dir apps/client run ui:check --shots            另外拍 5 页 × 亮/暗和预览页，存到 apps/client/test-results/ui-check/
  *   pnpm --dir apps/client run ui:check --base=http://127.0.0.1:1420   复用已在跑的 dev server
  *   pnpm --dir apps/client run ui:check --debt             打印各文件的动效 / filter 存量（JSON），用来调低 perf-budget.json
  *
