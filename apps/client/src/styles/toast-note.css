@@ -1,0 +1,22 @@
+/* 便签小提示（components/diary/Toast）：日记、记忆、见闻三页都用，样式跟着组件走，不放在懒加载页面的 CSS 里 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--sp-8) + env(safe-area-inset-bottom));
+  z-index: var(--z-toast);
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+}
+
+.toast__panel.ink-frame {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--sheet);
+  box-shadow: var(--shadow-2);
+}
+
+.toast__text { flex: 1 1 auto; font-family: var(--font-voice); font-size: var(--fs-chat); }
+.toast__action { flex: none; min-height: var(--hit); }
+.toast[data-tone="alert"] .toast__text { color: var(--alert); }

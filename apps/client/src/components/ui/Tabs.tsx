@@ -5,7 +5,7 @@
  * 指示器只做 scaleX / opacity 过渡。
  */
 import { Tabs as T } from "radix-ui";
-import type { ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import { cx } from "./cx";
 import "./shared.css";
 import "./Tabs.css";
@@ -24,12 +24,16 @@ export function Tabs({ items, value, defaultValue, onValueChange, variant = "lin
   children?: ReactNode;
   className?: string;
 }) {
+  // 只有真放了对应 TabPanel 的标签才指向面板（Radix 默认总写 aria-controls，axe 判 aria-valid-attr-value）
+  const panels = new Set<string>();
+  Children.forEach(children, (child) => {
+    if (isValidElement<{ value: string }>(child) && child.type === TabPanel) panels.add(child.props.value);
+  });
   return (
     <T.Root value={value} defaultValue={defaultValue ?? items[0]?.value} onValueChange={onValueChange} className={cx("ui-tabs", className)}>
       <T.List aria-label={label} className={cx("ui-tabs__list", `ui-tabs__list--${variant}`)}>
         {items.map((it) => (
-          // 没有面板时不指向不存在的 id（Radix 默认总写 aria-controls，axe 判 aria-valid-attr-value）
-          <T.Trigger key={it.value} value={it.value} disabled={it.disabled} className="ui-tabs__tab ui-press ui-focus" {...(children ? {} : { "aria-controls": undefined })}>
+          <T.Trigger key={it.value} value={it.value} disabled={it.disabled} className="ui-tabs__tab ui-press ui-focus" {...(panels.has(it.value) ? {} : { "aria-controls": undefined })}>
             {variant === "segmented" ? <span className="ui-tabs__seg" aria-hidden="true" /> : null}
             <span className="ui-tabs__text">{it.label}</span>
             {variant === "line" ? <span className="ui-tabs__bar" aria-hidden="true" /> : null}

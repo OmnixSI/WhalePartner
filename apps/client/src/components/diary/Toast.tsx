@@ -6,6 +6,7 @@
  */
 import { useEffect, useRef } from "react";
 import { InkFrame } from "../ink";
+import "../../styles/toast-note.css";
 
 type Props = {
   open: boolean;

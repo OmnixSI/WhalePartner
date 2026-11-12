@@ -237,7 +237,7 @@
 .pcard__actions { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .pcard__forget { color: var(--alert); }
 
-.btn--sm { min-height: 36px; padding: 0 var(--sp-3); font-size: var(--fs-small); }
+.btn--sm { min-height: var(--hit); min-width: var(--hit); padding: 0 var(--sp-3); font-size: var(--fs-small); } /* 字小、边距窄，触控高度不减 */
 
 /* ---------------------------------------------------------------- 翻页 */
 .surf-more { display: flex; justify-content: center; padding: var(--sp-8) 0 var(--sp-4); }
@@ -330,7 +330,7 @@
 :root[data-elder="on"] .pcard__sheet { clip-path: none; }
 :root[data-elder="on"] .pcard__sheet,
 :root[data-elder="on"] .pcard__btn { transform: none; }
-:root[data-elder="on"] .btn--sm { min-height: 56px; padding: 0 var(--sp-4); }
+:root[data-elder="on"] .btn--sm { padding: 0 var(--sp-4); }
 :root[data-elder="on"] .pcard__tape { display: none; }
 
 /* ---------------------------------------------------------------- 卡片信息行 */
