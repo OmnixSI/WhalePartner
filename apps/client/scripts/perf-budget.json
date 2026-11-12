@@ -1,0 +1,42 @@
+{
+  "$comment": "性能预算。基线 = 0.3.4（main@47518a3）的构建；motionDebt / filterDebt 是各文件现存的非合成层动效与 filter，只许减少（ui-check --debt 打印当前值）。见 docs/DESIGN.md §性能预算。",
+  "baseline": "0.3.4",
+  "firstScreenGzip": {
+    "js": 444000,
+    "css": 50100
+  },
+  "runtimeDependencies": [
+    "@fontsource-variable/fraunces",
+    "@pixi/unsafe-eval",
+    "@tauri-apps/api",
+    "@tauri-apps/plugin-opener",
+    "lxgw-wenkai-webfont",
+    "motion",
+    "perfect-freehand",
+    "pixi-live2d-display",
+    "pixi.js",
+    "qrcode",
+    "radix-ui",
+    "react",
+    "react-dom",
+    "react-router-dom",
+    "react-virtuoso",
+    "sonner",
+    "streamdown"
+  ],
+  "motionDebt": {
+    "src/card-preview/card-preview.css": 4,
+    "src/card-preview/card-showcase.css": 1,
+    "src/styles/chat.css": 6,
+    "src/styles/diary.css": 6,
+    "src/styles/ink.css": 2,
+    "src/styles/layout.css": 5,
+    "src/styles/memory.css": 3,
+    "src/styles/settings.css": 3,
+    "src/styles/surf.css": 2
+  },
+  "filterDebt": {
+    "src/card-preview/card-preview.css": 1,
+    "src/card-preview/card-showcase.css": 4
+  }
+}
