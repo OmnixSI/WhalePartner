@@ -1,5 +1,5 @@
 /* ============================================================================
-   日记页（规范 §7.2 + §6.10 的 DateStamp / IndexTabs / 月历）
+   日记页（规范 §7.2 + §6.10 的 DateStamp / Tabs / 月历）
    规矩：颜色、圆角、间距、时长全部走 tokens；不出现渐变 / 毛玻璃 / 骨架屏条纹。
    ============================================================================ */
 
@@ -67,41 +67,13 @@
   min-width: 0;
 }
 
-/* 周 / 月 / 年切换始终放在时间导航上方。 */
-.indextabs {
-  display: flex;
-  gap: var(--sp-2);
-  align-items: center;
-  min-width: 0;
-  flex-wrap: nowrap;
-}
+/* #155：日记列表按天分组，组头 + 卡片列 */
+.diary-day { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.diary-day__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); padding: 0 var(--sp-1); }
+.diary-day__title { margin: 0; font-family: var(--font-voice); font-size: var(--text-xl); line-height: var(--lh-tight); letter-spacing: var(--ls-voice); color: var(--color-text-primary); }
+.diary-day__meta { font-size: var(--text-xs); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.diary-day__cards { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
 
-.indextabs__tab {
-  display: grid;
-  place-items: center;
-  min-width: 64px;
-  min-height: var(--hit);
-  padding: 0 var(--sp-4);
-  border-radius: var(--r-sm);
-  background: var(--sheet);
-  color: var(--ink-mute);
-  font-family: var(--font-voice);
-  font-size: var(--fs-body);
-  letter-spacing: var(--ls-voice);
-  box-shadow: inset 0 0 0 var(--stroke-1) var(--line);
-  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out),
-    transform var(--dur-hover) var(--ease-out);
-}
-
-.indextabs__tab:hover { color: var(--ink); background: var(--paper-2); }
-
-.indextabs__tab[aria-selected="true"] {
-  background: var(--accent-wash);
-  color: var(--accent);
-  box-shadow: var(--shadow-1);
-}
-
-.indextabs__tab { flex: 1 1 0; }
 
 /* ---------------------------------------------------------------- 日期戳 */
 .dts { position: relative; flex: 1 1 auto; min-width: 0; padding-bottom: var(--sp-1); }
@@ -499,7 +471,6 @@
   .diary-page { padding: var(--sp-6) var(--sp-4) var(--sp-16); }
   .diary-page__inner { max-width: none; }
   .diary-page__controls { grid-template-columns: minmax(0, 1fr); gap: var(--sp-3); }
-  .indextabs { order: -1; }
 
   .diary-page__panel { width: 100%; }
 
@@ -512,7 +483,18 @@
   .leaf__weather .doodle { width: 44px; height: 44px; }
   .leaf__stamp { transform: scale(.8); transform-origin: top right; }
 
-  .pagebar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: var(--sp-1); width: 100%; }
+  .pagebar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); width: 100%; }
+  .pagebar:has(.pagebar__jump) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "prev range next" "jump jump today";
+  }
+  .pagebar:has(.pagebar__jump) .pagebar__step--prev { grid-area: prev; }
+  .pagebar:has(.pagebar__jump) .pagebar__step--next { grid-area: next; }
+  .pagebar:has(.pagebar__jump) .pagebar__range { grid-area: range; }
+  .pagebar:has(.pagebar__jump) .pagebar__jump { grid-area: jump; width: 9rem; min-width: 0; justify-self: start; }
+  .pagebar:has(.pagebar__jump) .pagebar__today { grid-area: today; justify-self: end; }
+  @media (max-width: 719px) { .pagebar:has(.pagebar__jump) .pagebar__jump { width: 100%; } }
   .pagebar__range { font-size: var(--fs-body); }
   .pagebar__today { margin-left: 0; }
   .diary-calendar { padding: var(--sp-2); }
@@ -540,13 +522,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .indextabs__tab,
   .pagebar__step,
   .diary-calendar__day,
   .mini__cell { transition: none; }
 }
 
-:root[data-motion="calm"] .indextabs__tab,
 :root[data-motion="calm"] .pagebar__step,
 :root[data-motion="calm"] .diary-calendar__day,
 :root[data-motion="calm"] .mini__cell { transition: none; }

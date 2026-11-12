@@ -56,7 +56,7 @@ import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { launchChrome } from "./browser.mjs";
-import { DEFAULT_LEVELS, stubApi } from "./ui-fixtures.mjs";
+import { DEFAULT_LEVELS, FIXTURES, stubApi } from "./ui-fixtures.mjs";
 import { firstScreen, kb, readBudget } from "./perf-budget.mjs";
 import { instrumentTimers, runningAnimations } from "./perf-idle.mjs";
 import { contrastRows, isCardStyleException, scanBannedUsage, stripComments } from "./contrast-check.mjs";
@@ -464,6 +464,89 @@ async function checkMobileKeyboard(browser) {
   }
   const detail = fails.length ? fails.join("；") : `外壳 ${before}→480；输入区 ${m.composer.top}–${m.composer.bottom}，输入框 ${m.input.top}–${m.input.bottom}，发送键 ${m.send.top}–${m.send.bottom}`;
   return record("手机键盘弹起：外壳 480px，输入框与发送键都在可视区内", fails.length === 0, detail);
+}
+
+/** 32. 聊天几何：scene-safe 不压小可画区；390 的输入条必须在底栏上方。 */
+async function checkChatGeometry(browser) {
+  const fails = [];
+  const notes = [];
+  const baseline = {
+    1440: { done: 452, thinking: 444, failed: 395 },
+    900: { done: 378, thinking: 378, failed: 378 },
+    390: { done: 323, thinking: 346, failed: 299 },
+  };
+  const json = (route, body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  for (const width of [1440, 900, 390]) {
+    for (const state of ["done", "thinking", "failed"]) {
+      const { context, page } = await openPage(browser, { width, height: width === 390 ? 844 : 900, touch: width === 390 });
+      await page.route("**/api/chat/sessions**", (route) => json(route, FIXTURES.chatSessions));
+      if (state === "thinking") await page.route(/\/api\/chat$/, () => new Promise(() => {}));
+      if (state === "failed") await page.route(/\/api\/chat$/, (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "stub failure" }) }));
+      await visit(page, "/");
+      if (state !== "done") {
+        await page.locator("#chat-input").fill("测试消息");
+        await page.locator("#chat-input").press("Enter");
+        await page.waitForTimeout(800);
+      }
+      await page.waitForTimeout(300);
+      const m = await page.evaluate(() => {
+        const rect = (selector) => {
+          const r = document.querySelector(selector)?.getBoundingClientRect();
+          return r ? { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height) } : null;
+        };
+        const scene = document.querySelector(".scene");
+        return {
+          scene: rect(".scene"),
+          composer: rect(".composer"),
+          nav: rect(".shell-nav"),
+          safe: scene ? Number.parseFloat(getComputedStyle(scene).getPropertyValue("--scene-safe")) || 0 : 0,
+          viewport: innerHeight,
+        };
+      });
+      await context.close();
+      const tag = `${width} ${state}`;
+      if (!m.scene || !m.composer) {
+        fails.push(`${tag} 找不到舞台或输入区`);
+        continue;
+      }
+      const drawable = m.scene.height - m.safe;
+      const min = baseline[width][state];
+      if (drawable < min - 1) fails.push(`${tag} 可画区 ${drawable}px < 基线 ${min}px`);
+      if (m.composer.bottom > m.viewport) fails.push(`${tag} 输入区底部 ${m.composer.bottom} > 视口 ${m.viewport}`);
+      if (width === 390 && m.nav && m.composer.bottom > m.nav.top) fails.push(`${tag} 输入区底部 ${m.composer.bottom} > 底栏 ${m.nav.top}`);
+      notes.push(`${tag} 可画区 ${drawable}/${min}，输入条 ${m.composer.bottom}${width === 390 ? `/底栏 ${m.nav?.top}` : ""}`);
+    }
+  }
+  return record("聊天几何：3 档宽度 × done/thinking/failed 可画区不低于 225e9e3；390 输入条不压底栏", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
+/** 33. 日记月/年导航：900 与 390 老人模式都不把「回到今天」孤立或挤掉年份。 */
+async function checkDiaryNav(browser) {
+  const fails = [];
+  const notes = [];
+  for (const [width, elder] of [[900, false], [390, true]]) {
+    const { context, page } = await openPage(browser, { width, height: 900, elder });
+    await visit(page, "/diary");
+    for (const mode of ["月", "年"]) {
+      await page.getByRole("tab", { name: mode }).click();
+      await page.waitForTimeout(250);
+      const m = await page.evaluate(() => {
+        const box = (selector) => {
+          const r = document.querySelector(selector)?.getBoundingClientRect();
+          return r ? { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } : null;
+        };
+        const bar = document.querySelector(".pagebar");
+        return { jump: box(".pagebar__jump"), today: box(".pagebar__today"), bar: bar ? { w: Math.round(bar.clientWidth), scroll: Math.round(bar.scrollWidth), h: Math.round(bar.getBoundingClientRect().height) } : null };
+      });
+      const tag = `${width}${elder ? " 老人" : ""} ${mode}`;
+      if (!m.jump || m.jump.w < 40 || m.jump.h < 24) fails.push(`${tag} 跳转控件不可见：${JSON.stringify(m.jump)}`);
+      if (!m.today || m.today.w < 40) fails.push(`${tag} 回到今天不可见：${JSON.stringify(m.today)}`);
+      if (!m.bar || m.bar.scroll > m.bar.w + 1) fails.push(`${tag} 时间导航横向溢出 ${m.bar?.scroll}/${m.bar?.w}`);
+      notes.push(`${tag} 跳转 ${m.jump?.w}×${m.jump?.h}，今日 ${m.today?.w}，栏高 ${m.bar?.h}`);
+    }
+    await context.close();
+  }
+  return record("日记月/年导航：900 与 390 老人模式跳转/今日可见、无横向溢出", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
 /** 30. 手机底栏文字：719px 及以下不能沿用 1179px 以下的隐藏规则。 */
@@ -1398,6 +1481,8 @@ if (STATIC_ONLY) {
       await checkHorizontalScroll(browser);
       await checkShellNav(browser);
       await checkMobileKeyboard(browser);
+      await checkChatGeometry(browser);
+      await checkDiaryNav(browser);
       await checkMobileTabLabels(browser);
       await checkElderRailTargets(browser);
       await checkAxe(browser, AxeBuilder);

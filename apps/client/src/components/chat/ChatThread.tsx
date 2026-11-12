@@ -1,61 +1,78 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card } from "../ui/Card";
+import { Button } from "../ui/Button";
 import { CharacterMark } from "../CharacterMark";
+import { stripEmotionTags } from "../../lib/emotion";
+import { clock, dayKey, dayLabel, visibleTurns } from "./chatThreadUtils";
 import type { Turn } from "./types";
 
 type Props = {
   name: string;
   turns: Turn[];
-  /** 当前正显示在舞台字幕里的那一条，避免和上面的列表重复。 */
+  /** 只在 streaming 时排除正在舞台字幕里显示的那一条。 */
   excludeKey?: string;
+  variant?: "aside" | "compact";
+  onOpenBacklog?: () => void;
+  /** done 状态给读屏播一次全文。 */
+  announce?: boolean;
+  announceText?: string;
 };
 
-const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-const pad = (n: number) => String(n).padStart(2, "0");
-
-function dayKey(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? "" : `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-}
-
-function dayLabel(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  const today = new Date();
-  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
-  if (dayKey(iso) === dayKey(today.toISOString())) return "今天";
-  if (dayKey(iso) === dayKey(yesterday.toISOString())) return "昨天";
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 · ${WEEKDAYS[date.getDay()]}`;
-}
-
-function clock(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-/** 舞台上方的一段近期对话，按天分隔；完整历史仍在「往回翻」。 */
-export function ChatThread({ name, turns, excludeKey }: Props) {
+/** astryx ChatLayout 风格的消息列表：宽屏右侧整栏，窄屏只留最近两条。 */
+export function ChatThread({ name, turns, excludeKey, variant = "aside", onOpenBacklog, announce = false, announceText = "" }: Props) {
+  const [open, setOpen] = useState(false);
   const list = useRef<HTMLDivElement>(null);
-  const visible = turns
-    .filter((turn) => turn.key !== excludeKey && turn.text.trim() !== "" && !(turn.role === "me" && turn.status === "failed"))
-    .slice(-3);
+  const atBottom = useRef(true);
+  const limit = variant === "aside" ? 40 : 2;
+  const visible = visibleTurns(turns, excludeKey, limit);
+  const last = visible[visible.length - 1];
+  const signature = last ? `${last.key}\u0000${last.text}` : "";
 
   useEffect(() => {
     const node = list.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [visible.length]);
+    if (!node || !atBottom.current) return;
+    node.scrollTop = node.scrollHeight;
+  }, [signature]);
 
   if (visible.length === 0) return null;
+  if (variant === "compact" && !open) {
+    return (
+      <Button variant="secondary" className="chat-thread__peek" aria-expanded={false} onClick={() => setOpen(true)}>
+        最近的 {visible.length} 条
+      </Button>
+    );
+  }
 
   let lastDay = "";
   return (
-    <Card variant="flat" padding="md" className="chat-thread" role="log" aria-label="之前的对话">
-      <div className="chat-thread__list" ref={list} tabIndex={0} aria-label="之前的对话">
+    <Card variant="flat" padding="md" className={`chat-thread chat-thread--${variant}`}>
+      {variant === "aside" ? (
+        <header className="chat-thread__head">
+          <h2 className="chat-thread__title">最近的对话</h2>
+          {onOpenBacklog && <Button variant="ghost" onClick={onOpenBacklog}>全部记录</Button>}
+        </header>
+      ) : (
+        <header className="chat-thread__head">
+          <h2 className="chat-thread__title">最近的对话</h2>
+          <Button variant="ghost" aria-expanded onClick={() => setOpen(false)}>收起</Button>
+        </header>
+      )}
+      <div
+        className="chat-thread__list"
+        ref={list}
+        tabIndex={0}
+        role="log"
+        aria-label="最近的对话"
+        onScroll={() => {
+          const node = list.current;
+          if (node) atBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24;
+        }}
+      >
         {visible.map((turn) => {
           const key = dayKey(turn.at);
           const divider = key && key !== lastDay ? dayLabel(turn.at) : "";
           if (key) lastDay = key;
+          const text = stripEmotionTags(turn.text);
           return (
             <div key={turn.key} className="chat-thread__item">
               {divider && (
@@ -70,13 +87,16 @@ export function ChatThread({ name, turns, excludeKey }: Props) {
                     <span>{turn.role === "her" ? name : "你"}</span>
                     <time dateTime={turn.at}>{clock(turn.at)}</time>
                   </div>
-                  <p className="chat-thread__bubble">{turn.text}</p>
+                  <p className="chat-thread__bubble">{text}</p>
                 </div>
               </div>
             </div>
           );
         })}
       </div>
+      {announce && announceText.trim() && (
+        <span className="sr-only" role="status" aria-live="polite">{stripEmotionTags(announceText)}</span>
+      )}
     </Card>
   );
 }

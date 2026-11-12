@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from "motion/react";
 import type { AvatarEmotion } from "../../avatar/model.config";
 import { calmFade, spring } from "../../motion/tokens";
 import { DialogBox } from "./DialogBox";
-import { ChatThread } from "./ChatThread";
 import { ComposerBar } from "./ComposerBar";
 import { Slip } from "./Slip";
 import { SuggestionChips } from "./SuggestionChips";
@@ -19,8 +18,6 @@ interface Props {
   firstEntry: boolean;
   progress?: Progress;
   pending?: Turn;
-  turns: Turn[];
-  currentKey?: string;
   showFloat: boolean;
   calm: boolean;
   draft: string;
@@ -63,8 +60,6 @@ export function ChatTranscript({
   firstEntry,
   progress,
   pending,
-  turns,
-  currentKey,
   showFloat,
   calm,
   draft,
@@ -95,7 +90,6 @@ export function ChatTranscript({
 }: Props) {
   return (
     <div className="scene__chrome">
-      <ChatThread name={name} turns={turns} excludeKey={state === "done" ? undefined : currentKey} />
       {state !== "done" && (
           <DialogBox
           name={name}

@@ -92,6 +92,17 @@ export function DiaryPage() {
     [pages, range.start, endExclusive.getTime()],
   );
 
+  const grouped = useMemo(() => {
+    const groups: Array<{ key: string; entries: DiaryPageEntry[] }> = [];
+    for (const entry of inRange) {
+      const key = isoDay(entry.at);
+      const last = groups[groups.length - 1];
+      if (last && last.key === key) last.entries.push(entry);
+      else groups.push({ key, entries: [entry] });
+    }
+    return groups;
+  }, [inRange]);
+
   const themesByDate = useMemo(() => {
     const themes = new Map<string, string[]>();
     for (const entry of inRange) {
@@ -149,6 +160,21 @@ export function DiaryPage() {
   ) : (
     <DiaryLeaf key={entry.id} item={entry.item} collapsed={collapsed} fresh={fresh === entry.id} fallbackTitle={fallbackTitle} />
   );
+
+  const renderDayGroup = (key: string, entries: DiaryPageEntry[]) => {
+    const date = entries[0]?.at;
+    const label = date ? `${date.getMonth() + 1} 月 ${date.getDate()} 日` : key;
+    const weekday = date ? ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()] : "";
+    return (
+      <section className="diary-day" key={key} aria-label={`${label}的日记`}>
+        <header className="diary-day__head">
+          <h2 className="diary-day__title">{label}</h2>
+          <span className="diary-day__meta">{weekday} · {entries.length} 篇</span>
+        </header>
+        <div className="diary-day__cards">{entries.map((entry) => renderEntry(entry, false))}</div>
+      </section>
+    );
+  };
 
   const write = async () => {
     if (writing) return;
@@ -319,7 +345,7 @@ export function DiaryPage() {
                 animate={{ x: 0, opacity: 1 }}
                 transition={env.calm ? { duration: 0 } : spring.page}
               >
-                {inRange.map((entry) => renderEntry(entry, false))}
+                {grouped.map((group) => renderDayGroup(group.key, group.entries))}
               </motion.div>
             )}
           </div>

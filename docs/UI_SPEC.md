@@ -765,7 +765,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 
 ### 6.10 日记与记忆专用组件
 - **DateStamp**：左 `Fraunces 56px` 日（"07"，`lining-nums`），右上 13px 大写感的“NOV · 周六”（`--ink-mute`，`letter-spacing:.06em`），下方一条 `InkLine`；整体可作为 `<time dateTime>`。
-- **IndexTabs**（周/月/年）：始终水平放在日记正文上方，切换时保留当前所选日期；`role="tablist"`，支持左右方向键、Home 和 End。
+- **Tabs（周/月/年）**：使用 `components/ui/Tabs` 的 segmented 变体，始终水平放在日记正文上方，切换时保留当前所选日期；支持左右方向键、Home 和 End。
 - **MiniCalendar**：紧凑日期选择器，供记忆筛选使用。日记主视图使用独立的 `DiaryCalendar`，在七列月历格中展示真实主题和记录状态（见 §7.2）。
 - **MemoryCard**：见 §7.3.2。
 - **QuotaMeter**：10 枚小贝壳排成一行，已用的变空壳（轮廓），剩余的实心；下方文字“本月还剩 7 / 10”；`role="meter"`，`aria-valuenow` 等。
@@ -1407,7 +1407,7 @@ API 侧其余能力全部用 Node 内置（`node:zlib` 的 `deflateRawSync` 与 
 | `src/motion/tokens.ts` | 弹簧与时长（§8.1） |
 | `src/styles/components.css`、`src/styles/paper.css`（纸纹/胶带/邮戳） | 新样式 |
 | `src/components/ink/{InkLine,InkFrame,Stamp,Tape}.tsx`、`Tide.tsx`、`Backdrop.tsx` | §5 |
-| `src/components/{Icon,Icons.baked,WhaleSticker,CompanionCorner,StateBlock,Onboarding,ConfirmDialog,Thinking,InkText,DialogBox,NameTab,ComposerBar,Backlog,Slip,CaptionBlock,MiniCalendar,QuotaMeter,MemoryCard,DateStamp,IndexTabs}.tsx` | §6 |
+| `src/components/{Icon,Icons.baked,WhaleSticker,CompanionCorner,StateBlock,Onboarding,ConfirmDialog,Thinking,InkText,DialogBox,NameTab,ComposerBar,Backlog,Slip,CaptionBlock,MiniCalendar,QuotaMeter,MemoryCard,DateStamp}.tsx` | §6 |
 | `src/components/{SurfStatus,PostcardCard,PostcardMini,PostcardDetail,TagInput}.tsx`、`src/pages/SurfPage.tsx` | §7.7 |
 | `src/components/ui/{Button,Field,Switch,Slider,ChoiceCard,Dialog,Sheet,Menu,Popover,Tooltip,Toaster}.tsx` | Radix 皮肤 |
 | `tests/ui/{screens.spec.ts,a11y.spec.ts,grep-rules.spec.ts,surf.spec.ts}`、`playwright.config.ts` | §12 |
@@ -1478,7 +1478,7 @@ API 侧其余能力全部用 Node 内置（`node:zlib` 的 `deflateRawSync` 与 
 | **P0 tokens / 字体 / 纹理**（≈2 天） | 依赖；`tokens.css`/`characters.css`/`base.css` 新版；`theme.ts`+`a11y.ts`+`theme-boot.js`；字体子集化与加载；纸纹；`ink.ts`+`InkLine`/`InkFrame`/`Tape`/`Stamp`；`Backdrop`+`Tide`；`WhaleSticker`；`check-contrast.mjs` | ① 现有 4 个页面在新 tokens 下无破版（旧 class 仍工作）；② `pnpm --dir apps/client typecheck` 与 `build` 通过；③ 对比度脚本全绿；④ 首屏字体 ≤220KB；⑤ `grep gradient` 为 0；⑥ 纸纹验收（§5.1）；⑦ 亮/暗 × 4 角色的“样品页”（隐藏路由 `/__kit`）截图入 PR |
 | **P-B 后端补齐**（≈4 天） | §10.5 的 B1–B6：额度、导出/删除全部、日记 mood/weather、记忆编号、昵称注入、健康检查 `schedule` | ① `pnpm --dir apps/api typecheck` 与 `pnpm --dir apps/api test` 全绿，新增测试见 §12.8；② 每个接口按 §10.5 的请求/响应 schema 返回（测试逐字段断言）；③ 旧库打开后自动迁移，旧数据可读、旧测试不改动即通过；④ 客户端 `lib/quota.ts`、`data.ts`、`profile.ts` 与类型扩展就绪（`typecheck` 通过）；⑤ 手动 curl 记录（每个接口一条）贴进 PR |
 | **P1 聊天**（≈4 天） | `Nav` 图标；`ChatPage` 重组；`DialogBox`/`NameTab`/`Thinking`/`InkText`/`Slip`/`Backlog`/`ComposerBar`；离线/失败/空态；`ConfirmDialog`（会话删除）；键盘 inset；`CompanionCorner` 框架；昵称问候 | §7.1 的 8 个状态截图齐全；无 `chat__status`、无三点、无模型名；流式有 ink-in；手机键盘弹起截图（模拟 `visualViewport`）；axe 0 严重 |
-| **P2 日记 + 记忆**（≈4 天） | `DateStamp`/`IndexTabs`/`MiniCalendar`/翻页；真实心情天气涂鸦；视频区降级；`MemoryCard`（真实 `No.`）+详情+忘掉流程（延迟删除、撤回）；筛选 Popover；空/加载/错误 | §7.2、§7.3 状态截图齐全；无 `window.confirm`；编号来自 `seq`；“忘掉”动画与撤回可用（Playwright 断言 5s 内撤回不发 DELETE） |
+| **P2 日记 + 记忆**（≈4 天） | `DateStamp`/`Tabs`/`MiniCalendar`/翻页；真实心情天气涂鸦；视频区降级；`MemoryCard`（真实 `No.`）+详情+忘掉流程（延迟删除、撤回）；筛选 Popover；空/加载/错误 | §7.2、§7.3 状态截图齐全；无 `window.confirm`；编号来自 `seq`；“忘掉”动画与撤回可用（Playwright 断言 5s 内撤回不发 DELETE） |
 | **P3 设置 / 引导 / 老人模式**（≈4 天） | 设置页重做；`ChoiceCard`/`Switch`/`Slider`；额度真实表；导出/删除全部/昵称接线；`Onboarding` 3 步；老人模式全站；`CompanionCorner` 全页接入 | 老人模式截图矩阵（§12.1）全齐；所有触控 ≥56；3 项导航；引导 3 步可完成/可跳过；导出得到有效 zip、删除全部后各页回到空态（e2e 对真实 API 的冒烟用例） |
 | **P4 打磨**（≈3 天） | 清理 `layout.css`；动效调参；插画/贴纸终稿；`docs/DESIGN.md` 终稿；完整验收与迭代循环 | §12.1–12.7 全部通过，或把差距报告写进 PR 后结束本阶段 |
 | **P5 自主冲浪**（≈7 天） | §10.6 的后端（设置、调度、B 站选片、网页冲浪、总结、分享、SSE）+ §7.7 的全部界面（舞台状态、`/surf` 见闻页、聊天里的明信片、设置两组、记忆第 5 类） | ① 后端：`surf-*` 测试全绿；② 一次手动触发（`POST /api/surf/run`）在本机真实跑完：至少产出 1 条 `surf_items`、对应 `experiences`（`sourceId` 以 `surf:` 开头）、`usage_ledger` 记账、SSE 事件顺序正确；③ 前端：§7.7 全部状态截图（含 `d`/`m`/亮/暗/老人）；④ `surf.spec.ts` 通过；⑤ 全量回归（P0–P4 的截图矩阵、a11y、grep 规则）仍然通过；⑥ 关闭开关后调度器不再触发（测试断言） |
@@ -2142,7 +2142,7 @@ const PAIRS = [
 阶段 P2。阅读 {SPEC} §6.9–6.10、§7.2、§7.3、§8。
 目标：日记像手帐，记忆像海边拾到的贝壳与瓶中纸条。
 要做：
-1. 日记：DateStamp、IndexTabs、横线本（36px 行距）、真实 mood/weather 涂鸦与小标题（B3 字段，为 null 时不画）、邮戳“写好啦”、翻页动效、MiniCalendar 取代原生 date input、来源/历史版本文案按 §7.2.4；视频区降级为页面底部“给她看的视频”，轮询仅在可见且有排队时进行；页顶“看她的见闻”大按钮（P5 前链接到占位路由）。
+1. 日记：DateStamp、Tabs、横线本（36px 行距）、真实 mood/weather 涂鸦与小标题（B3 字段，为 null 时不画）、邮戳“写好啦”、翻页动效、MiniCalendar 取代原生 date input、来源/历史版本文案按 §7.2.4；视频区降级为页面底部“给她看的视频”，轮询仅在可见且有排队时进行；页顶“看她的见闻”大按钮（P5 前链接到占位路由）。
 2. 记忆：分类（含第 5 类“她拾到的”，P5 前为空）、MemoryCard（胶带、锯齿、真实 No.{seq}）、详情 Dialog（layoutId）、忘掉流程（ConfirmDialog → 折进瓶子 → 便签撤回，5s 后真正 DELETE，pagehide 立即提交）、更多筛选 Popover、搜索与分页。
 3. 所有空/加载/错误用 StateBlock + 贴纸 + §7.2.5/§7.3.7 文案；日记空态里的写日记时间来自 /api/health 的 schedule。
 4. CompanionCorner 在日记/记忆页接入 mood 映射（§5.7 表）。

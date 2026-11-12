@@ -19,6 +19,7 @@ import type { Character } from "../characters";
 import { useModel } from "../characters";
 import { ChatScene } from "./chat/ChatScene";
 import { ChatTranscript } from "./chat/ChatTranscript";
+import { ChatThread } from "./chat/ChatThread";
 import { useInkEnv } from "./ink/useCalm";
 import { useSpeechAnimation } from "../avatar/live2d/useSpeechAnimation";
 import { useTapHint } from "./chat/useTapHint";
@@ -49,6 +50,7 @@ export function ChatPanel({ character }: Props) {
   const model = useModel();
   const avatar = useAvatarStatus();
   const wide = useMediaQuery("(min-width: 960px)");
+  const threadWide = useMediaQuery("(min-width: 1180px)");
   const calm = useInkEnv().calm;
   useKeyboardInset();
 
@@ -259,7 +261,7 @@ export function ChatPanel({ character }: Props) {
 
   return (
     <>
-      <div className="room" data-backlog={wide ? (backlogOpen ? "open" : "closed") : "closed"}>
+      <div className="room" data-backlog={threadWide || (wide && backlogOpen) ? "open" : "closed"}>
         <div className="room__main">
           <header className="mbar">
             <span className="mbar__name">{character.name}</span>
@@ -282,6 +284,17 @@ export function ChatPanel({ character }: Props) {
             onOpenBacklog={() => setBacklogOpen(true)}
           />
 
+          {!threadWide && (
+            <ChatThread
+              name={character.name}
+              turns={turns}
+              variant="compact"
+              excludeKey={phase === "streaming" ? lastHer?.key : undefined}
+              announce={state === "done"}
+              announceText={lastHer?.text}
+            />
+          )}
+
           <ChatTranscript
             name={character.name}
             state={state}
@@ -296,8 +309,6 @@ export function ChatPanel({ character }: Props) {
             firstEntry={firstEntry}
             progress={progress}
             pending={pending}
-            turns={turns}
-            currentKey={lastHer?.key}
             showFloat={showFloat}
             calm={calm}
             draft={draft}
@@ -324,7 +335,22 @@ export function ChatPanel({ character }: Props) {
           />
         </div>
 
-        {wide && <aside className="room__aside">{backlog}</aside>}
+        {threadWide && (
+          <aside className="room__aside">
+            {backlogOpen ? backlog : (
+              <ChatThread
+                name={character.name}
+                turns={turns}
+                variant="aside"
+                excludeKey={phase === "streaming" ? lastHer?.key : undefined}
+                announce={state === "done"}
+                announceText={lastHer?.text}
+                onOpenBacklog={() => setBacklogOpen(true)}
+              />
+            )}
+          </aside>
+        )}
+        {!threadWide && wide && backlogOpen && <aside className="room__aside">{backlog}</aside>}
       </div>
 
       {!wide && (

@@ -1,3 +1,4 @@
+import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
 import { Tooltip } from "../ui/Tooltip";
 import { rangeOf, shiftMonth, shiftYear, startOfDay, type RangeMode } from "./types";
@@ -55,15 +56,15 @@ export function PageBar({ mode, cursor, onCursor, onToday }: Props) {
   return (
     <nav className="pagebar" aria-label="日记时间导航">
       <Tooltip content={step.prev}>
-        <button
-          type="button"
-          className="pagebar__step"
+        <Button
+          variant="secondary"
+          className="pagebar__step pagebar__step--prev"
           aria-label={step.prev}
+          icon={<span aria-hidden="true">‹</span>}
           onClick={() => onCursor(startOfDay(step.shift(cursor, -1)))}
         >
-          <span aria-hidden="true">‹</span>
           <span className="pagebar__word">{step.prev}</span>
-        </button>
+        </Button>
       </Tooltip>
       {mode !== "year" && (
         <strong className="pagebar__range" aria-live="polite">
@@ -89,19 +90,19 @@ export function PageBar({ mode, cursor, onCursor, onToday }: Props) {
         />
       )}
       <Tooltip content={step.next}>
-        <button
-          type="button"
-          className="pagebar__step"
+        <Button
+          variant="secondary"
+          className="pagebar__step pagebar__step--next"
           aria-label={step.next}
+          icon={<span aria-hidden="true">›</span>}
           onClick={() => onCursor(startOfDay(step.shift(cursor, 1)))}
         >
           <span className="pagebar__word">{step.next}</span>
-          <span aria-hidden="true">›</span>
-        </button>
+        </Button>
       </Tooltip>
-      <button type="button" className="btn btn--quiet pagebar__today" onClick={onToday}>
+      <Button variant="ghost" className="pagebar__today" onClick={onToday}>
         回到今天
-      </button>
+      </Button>
     </nav>
   );
 }
