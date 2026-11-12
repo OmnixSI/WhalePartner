@@ -124,6 +124,87 @@
   --blink: 4.6s;           /* 眨眼：3–6s 一次，睁眼 120ms（97.4%→100%） */
   --lit: 1.2s;             /* 手机屏三道线依次点亮（§8.2 循环 1200ms） */
   --pen: 1.6s;             /* 笔尖在小报纸上移动（§8.2 循环 1600ms） */
+
+  /* ================= 语义层（#151 设计系统）=================
+     components/ui/* 只用这一层；页面迁移时也改用这一层，旧的 --paper/--ink 等退为调色板。
+     分层结构参照 meta/astryx（body / surface / card / popover / muted …），数值是鲸汐自己的。 */
+
+  /* -- 表面：由低到高，每一档比上一档「更靠近读者」 -- */
+  --color-bg-body: var(--paper);        /* 整页底 */
+  --color-bg-muted: var(--paper-2);     /* 凹陷：输入框、分段控件轨道 */
+  --color-surface: var(--sheet);        /* 分区底：侧栏、设置分组 */
+  --color-card: #FFFCF5;                /* 卡片 */
+  --color-popover: #FFFDF9;             /* 弹层：下拉、提示、对话框、吐司 */
+  --color-scrim: rgb(31 40 52 / .36);   /* 对话框背后的遮罩 */
+
+  /* -- 文字 -- */
+  --color-text-primary: var(--ink);
+  --color-text-secondary: var(--ink-soft);
+  --color-text-tertiary: var(--ink-mute);   /* 时间、说明；≥13px */
+  --color-text-disabled: #80878F;           /* 禁用字：WCAG 不要求对比度，这里仍 ≥3:1 */
+
+  /* -- 边 -- */
+  --color-border: var(--line);               /* 装饰性分隔 */
+  --color-border-strong: var(--line-strong); /* 控件边界 ≥3:1 */
+
+  /* -- 强调（随角色，见 characters.css） -- */
+  --color-accent: var(--accent);
+  --color-accent-muted: var(--accent-wash);
+  --color-on-accent: var(--accent-ink);
+
+  /* -- 状态色：前景 / 浅底 / 实底上的字，成对使用 -- */
+  --color-success: #2F6B3F; --color-success-muted: #E3EDDD; --color-on-success: #FBF7EE;
+  --color-warning: #7A5200; --color-warning-muted: #F6EACB; --color-on-warning: #FBF7EE;
+  --color-error: #A8372B;   --color-error-muted: #F5E1D9;   --color-on-error: #FBF7EE;
+  --color-info: #2F5C8C;    --color-info-muted: #E1E9F1;    --color-on-info: #FBF7EE;
+
+  /* -- 交互叠层：hover / 按下不换底色，盖一层 currentColor，只动 opacity -- */
+  --overlay-hover: .07;
+  --overlay-press: .13;
+
+  /* -- 字号：base × ratio 阶梯（rem 随根字号与 --scale 一起缩放；不用 pow()，旧 WebKit 不支持） -- */
+  --text-base: 1rem;
+  --text-ratio: 1.125;
+  --text-xs: .8125rem;                                                       /* 13 地板：只给编号/时间 */
+  --text-sm: calc(var(--text-base) / var(--text-ratio));                     /* ≈14.2 */
+  --text-md: var(--text-base);                                               /* 16 */
+  --text-lg: calc(var(--text-base) * var(--text-ratio));                     /* 18 */
+  --text-xl: calc(var(--text-lg) * var(--text-ratio));                       /* ≈20.3 */
+  --text-2xl: calc(var(--text-xl) * var(--text-ratio) * var(--text-ratio));  /* ≈25.6 */
+  --text-3xl: calc(var(--text-2xl) * var(--text-ratio) * var(--text-ratio)); /* ≈32.4 */
+  --text-display: calc(var(--text-3xl) * var(--text-ratio) * var(--text-ratio)); /* ≈41 */
+  --text-control: var(--text-md);   /* 按钮、输入框的字 */
+  --weight-regular: 400; --weight-medium: 500; --weight-strong: 600;
+
+  /* -- 圆角：语义四档 + 圆（嵌套时外层 ≈ 内层 + 内边距） -- */
+  --r-inner: 6px;       /* 控件里的小块：选中标记、分段滑块 */
+  --r-element: 12px;    /* 按钮、输入框、下拉 */
+  --r-container: 18px;  /* 卡片、弹层、吐司 */
+  --r-page: 26px;       /* 对话框、抽屉、整页面板 */
+  --r-full: 999px;      /* 开关、头像、状态点 */
+
+  /* -- 层级：4 档，组件的阴影只用这 4 个 -- */
+  --elev-flat: 0 0 0 1px var(--color-border);
+  --elev-raised: 0 0 0 1px var(--color-border), 0 1px 2px rgb(47 58 74 / .07);
+  --elev-floating: 0 0 0 1px var(--color-border), 0 6px 16px -6px rgb(47 58 74 / .18);
+  --elev-overlay: 0 0 0 1px var(--color-border), 0 18px 44px -16px rgb(47 58 74 / .32);
+
+  /* -- 控件尺寸（不低于触控下限） -- */
+  --control-h: max(var(--hit), 44px);
+  --control-h-lg: max(var(--field-h), var(--hit));
+  --control-px: 1.125rem;
+
+  /* -- 动效：三档时长 + 三条曲线；位移量也是 token，降级时归零 -- */
+  --dur-fast: 120ms;     /* hover、按下、开关 */
+  --dur-medium: 200ms;   /* 弹层、吐司、标签切换 */
+  --dur-slow: 320ms;     /* 对话框、抽屉 */
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(.05, .7, .1, 1);
+  --ease-exit: cubic-bezier(.3, 0, .8, .15);
+  --press-scale: .97;
+  --enter-scale: .96;
+  --enter-shift: 6px;
+  --lift: -2px;
 }
 
 /* ---- 深海夜（暗）：唯一一份 ---- */
@@ -153,6 +234,21 @@
   --sea-3: color-mix(in oklab, var(--accent) 40%, var(--sea-anchor)); /* 其上 --ink ≥4.6:1 */
   --shadow-1: 0 1px 0 rgb(0 0 0 / .35), 0 2px 4px -1px rgb(0 0 0 / .45);
   --shadow-2: 0 1px 0 rgb(0 0 0 / .35), 0 8px 12px -6px rgb(0 0 0 / .6);
+
+  /* 语义层 · 深海夜：越高越亮（夜里阴影看不清，层次靠表面提亮 + 细线） */
+  --color-card: #1F3448;
+  --color-popover: #243B51;
+  --color-scrim: rgb(3 8 14 / .58);
+  --color-text-disabled: #7D8995;
+  --color-success: #8FD3A0; --color-success-muted: #1C3A2E; --color-on-success: #0F1C2A;
+  --color-warning: #F2C14E; --color-warning-muted: #3A3320; --color-on-warning: #0F1C2A;
+  --color-error: #FF9C86;   --color-error-muted: #3D2A2C;   --color-on-error: #0F1C2A;
+  --color-info: #8FB6E0;    --color-info-muted: #1C3149;    --color-on-info: #0F1C2A;
+  --overlay-hover: .09;
+  --overlay-press: .16;
+  --elev-raised: 0 0 0 1px var(--color-border), 0 1px 2px rgb(0 0 0 / .3);
+  --elev-floating: 0 0 0 1px var(--color-border), 0 8px 18px -6px rgb(0 0 0 / .5);
+  --elev-overlay: 0 0 0 1px var(--color-border), 0 20px 48px -16px rgb(0 0 0 / .66);
 }
 
 /* ---- 老人模式 / 高对比 / 安静 ---- */
@@ -162,17 +258,30 @@
   --line-strong: var(--ink-mute);        /* 控件边界升到 ≥5:1 */
   --stroke-1: 2px; --stroke-2: 3px;
   --r-md: 16px;
+  --r-element: 14px; --r-container: 20px;
   --page-max: clamp(680px, 56vw, 960px);
 }
 :root[data-contrast="high"] { --ink-mute: var(--ink-soft); --line-strong: var(--ink-mute); }
-:root[data-motion="calm"] { --dur-press: 1ms; --dur-hover: 1ms; --dur-panel: 120ms; --dur-page: 120ms; }
+:root[data-motion="calm"] {
+  --dur-press: 1ms; --dur-hover: 1ms; --dur-panel: 120ms; --dur-page: 120ms;
+  --dur-fast: 1ms; --dur-medium: 120ms; --dur-slow: 120ms;   /* 只淡入淡出，不位移不缩放 */
+  --press-scale: 1; --enter-scale: 1; --enter-shift: 0px; --lift: 0px;
+}
+/* 触屏或窄屏：控件字不低于 16px（iOS 输入框小于 16px 会自动放大页面） */
+@media (pointer: coarse), (max-width: 959px) {
+  :root { --text-sm: max(var(--text-base) / var(--text-ratio), 16px); --text-control: max(var(--text-md), 16px); }
+}
 
 /* 流式根字号：窗口从 380 到 2560 在 16–18px 之间平滑变化，再乘用户字号 */
 html { font-size: calc(clamp(16px, .35vw + 12px, 18px) * var(--scale, 1)); }
 :root { -webkit-text-size-adjust: 100%; }
 
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-press: 1ms; --dur-hover: 1ms; --dur-panel: 120ms; --dur-page: 120ms; --dur-ink: 120ms; }
+  :root {
+    --dur-press: 1ms; --dur-hover: 1ms; --dur-panel: 120ms; --dur-page: 120ms; --dur-ink: 120ms;
+    --dur-fast: 1ms; --dur-medium: 120ms; --dur-slow: 120ms;
+    --press-scale: 1; --enter-scale: 1; --enter-shift: 0px; --lift: 0px;
+  }
 }
 }
 
