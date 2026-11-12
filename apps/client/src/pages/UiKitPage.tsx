@@ -78,6 +78,7 @@ export default function UiKitPage() {
   const [confirm, setConfirm] = useState(pinned === "confirm");
   const [sw, setSw] = useState(true);
   const [voice, setVoice] = useState("soft");
+  const [guard, setGuard] = useState({ submits: 0, clicks: 0 });
 
   useEffect(() => { document.documentElement.setAttribute("data-character", character); }, [character]);
   useEffect(() => { applyTheme(theme); }, [theme]);
@@ -167,6 +168,18 @@ export default function UiKitPage() {
             <Field label="展开的下拉"><Select options={VOICES} defaultValue="bright" open /></Field>
           </div>
         ) : null}
+      </Section>
+
+      <Section id="guard" title="不可用时不触发" note="loading 和 aria-disabled 的按钮仍能聚焦，但点击、回车都不提交、不回调；字段里控件自带 id 时，标签指向它。ui-check 第 16 项点这里，计数必须保持 0。">
+        <form className="uikit__grid" onSubmit={(e) => { e.preventDefault(); setGuard((g) => ({ ...g, submits: g.submits + 1 })); }}>
+          <Field label="自带 id 的输入框"><Input id="kit-own-id" defaultValue="回车试试" /></Field>
+          <div className="uikit__pair">
+            <Button type="submit" variant="primary" loading>提交中</Button>
+            <Button type="submit" aria-disabled onClick={() => setGuard((g) => ({ ...g, clicks: g.clicks + 1 }))}>暂不可用</Button>
+            <IconButton type="submit" label="暂不可用的图标按钮" aria-disabled onClick={() => setGuard((g) => ({ ...g, clicks: g.clicks + 1 }))}><Icon name="send" /></IconButton>
+          </div>
+          <p className="uikit__note" id="kit-guard-count">提交 {guard.submits} 次，点击 {guard.clicks} 次</p>
+        </form>
       </Section>
 
       <Section id="switches" title="开关">

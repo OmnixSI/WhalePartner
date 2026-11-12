@@ -26,7 +26,8 @@
  *  13  filter 按文件只减不增（backdrop-filter 由第 3 项拦）
  *  14  首屏 JS / CSS gzip 不超过 0.3.4（默认构建到 node_modules/.cache/ui-check-dist，--dist=… 复用现成构建）
  *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
- *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向
+ *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
+ *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
  *  （--shots 再加一项：截图）
  *
  * 退出码：0 全绿；1 有失败。
@@ -453,8 +454,20 @@ async function checkLazyStyles(browser) {
     for (const d of dangling) fails.push(`${name} 标签「${d}」的 aria-controls 指向不存在的面板`);
     for (const o of orphan) fails.push(`${name} 面板「${o}」的标签没写 aria-controls`);
   }
+  // 公共组件行为（/__kit 的「不可用时不触发」区）：loading / aria-disabled 按钮点了、回车了都不提交不回调；
+  // 每个字段标签都连到控件，控件自带 id 时连到它
+  await visit(p2, "/__kit");
+  const guard = p2.locator("#uikit-guard").locator("..");
+  for (const name of ["提交中", "暂不可用", "暂不可用的图标按钮"]) await guard.getByRole("button", { name, exact: true }).click({ force: true }); // aria-disabled 在 Playwright 眼里是禁用，要强点
+  await guard.locator("#kit-own-id").press("Enter");
+  const count = (await p2.locator("#kit-guard-count").textContent())?.trim() ?? "";
+  if (count !== "提交 0 次，点击 0 次") fails.push(`kit 不可用按钮仍触发了：${count}`);
+  const labels = await p2.evaluate(() => [...document.querySelectorAll("label.ui-field__label")].map((l) => ({ text: (l.textContent || "").trim(), control: l.control?.id ?? null })));
+  for (const l of labels.filter((l) => !l.control)) fails.push(`kit 字段「${l.text}」的标签没连到控件`);
+  const own = labels.find((l) => l.text === "自带 id 的输入框");
+  if (own?.control !== "kit-own-id") fails.push(`kit 自带 id 的字段标签指向 ${own?.control ?? "无"}`);
   await c2.close();
-  return record("懒加载页的共享样式 / 标签面板指向", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls，面板都有标签指向`);
+  return record("懒加载页共享样式 / 标签面板指向 / 不可用按钮 / 字段标签", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls，面板都有标签指向；不可用按钮 3 个点击 + 回车：${count}；${labels.length} 个字段标签都连到控件`);
 }
 
 async function shoot(browser) {

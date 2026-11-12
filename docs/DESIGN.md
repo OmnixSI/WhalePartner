@@ -220,7 +220,7 @@ pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印�
 13. 横向滚动（380px 与 `--scale=2`）
 14. axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）
 15. 静置 / 隐藏后动画停下（每页都等满 9.5 秒再查；加载转圈只在 `/__kit` 豁免，生产页静置后不许还在转）
-16. 懒加载页借用的组件样式还在（`/surf` 的便签是 fixed 小条），标签的 `aria-controls` 不悬空，渲染出的面板都有标签指向
+16. 懒加载页借用的组件样式还在（`/surf` 的便签是 fixed 小条），标签的 `aria-controls` 不悬空，渲染出的面板都有标签指向；`loading` / `aria-disabled` 的按钮点击和回车都不提交、不回调；字段标签都连到控件（控件自带 id 时连到它）
 17. 截图（只在 `--shots` 时）
 
 角色闪卡（`apps/client/src/card-preview/`）的镭射、光泽和光照是单独确认的卡面效果，不受渐变、圆角和动效时长这三条限制。
