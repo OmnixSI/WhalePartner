@@ -21,6 +21,9 @@ type Props = {
 /** astryx ChatLayout 风格的消息列表：宽屏右侧整栏，窄屏只留最近两条。 */
 export function ChatThread({ name, turns, excludeKey, variant = "aside", onOpenBacklog, announce = false, announceText = "" }: Props) {
   const [open, setOpen] = useState(false);
+  const peek = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const wasOpen = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
   const limit = variant === "aside" ? 40 : 2;
@@ -34,18 +37,42 @@ export function ChatThread({ name, turns, excludeKey, variant = "aside", onOpenB
     node.scrollTop = node.scrollHeight;
   }, [signature]);
 
+  useEffect(() => {
+    if (variant !== "compact") return;
+    if (open) panel.current?.focus();
+    else if (wasOpen.current) peek.current?.focus();
+    wasOpen.current = open;
+  }, [open, variant]);
+
   if (visible.length === 0) return null;
+  const status = announce && announceText.trim() ? (
+    <span className="sr-only" role="status" aria-live="polite" data-chat-announce>{stripEmotionTags(announceText)}</span>
+  ) : null;
   if (variant === "compact" && !open) {
     return (
-      <Button variant="secondary" className="chat-thread__peek" aria-expanded={false} onClick={() => setOpen(true)}>
-        最近的 {visible.length} 条
-      </Button>
+      <>
+        <Button ref={peek} variant="secondary" className="chat-thread__peek" aria-expanded={false} aria-controls="chat-thread-compact" onClick={() => setOpen(true)}>
+          最近的 {visible.length} 条
+        </Button>
+        {status}
+      </>
     );
   }
 
   let lastDay = "";
   return (
-    <Card variant="flat" padding="md" className={`chat-thread chat-thread--${variant}`}>
+    <Card
+      ref={panel}
+      variant="flat"
+      padding="md"
+      className={`chat-thread chat-thread--${variant}`}
+      id={variant === "compact" ? "chat-thread-compact" : undefined}
+      role={variant === "compact" ? "dialog" : undefined}
+      aria-label={variant === "compact" ? "最近的对话" : undefined}
+      aria-modal={variant === "compact" ? false : undefined}
+      tabIndex={variant === "compact" ? -1 : undefined}
+      onKeyDown={variant === "compact" ? (event) => { if (event.key === "Escape") setOpen(false); } : undefined}
+    >
       {variant === "aside" ? (
         <header className="chat-thread__head">
           <h2 className="chat-thread__title">最近的对话</h2>
@@ -94,9 +121,7 @@ export function ChatThread({ name, turns, excludeKey, variant = "aside", onOpenB
           );
         })}
       </div>
-      {announce && announceText.trim() && (
-        <span className="sr-only" role="status" aria-live="polite">{stripEmotionTags(announceText)}</span>
-      )}
+      {status}
     </Card>
   );
 }

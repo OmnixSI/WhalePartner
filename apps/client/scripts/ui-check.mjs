@@ -514,10 +514,48 @@ async function checkChatGeometry(browser) {
       if (drawable < min - 1) fails.push(`${tag} 可画区 ${drawable}px < 基线 ${min}px`);
       if (m.composer.bottom > m.viewport) fails.push(`${tag} 输入区底部 ${m.composer.bottom} > 视口 ${m.viewport}`);
       if (width === 390 && m.nav && m.composer.bottom > m.nav.top) fails.push(`${tag} 输入区底部 ${m.composer.bottom} > 底栏 ${m.nav.top}`);
+      if (width !== 1440) {
+        const bottom = width === 390 ? m.nav?.top ?? m.viewport : m.viewport;
+        if (m.composer.bottom < bottom - 16) fails.push(`${tag} 输入区底部 ${m.composer.bottom} 未贴近底部 ${bottom}（差 ${bottom - m.composer.bottom}px）`);
+      }
       notes.push(`${tag} 可画区 ${drawable}/${min}，输入条 ${m.composer.bottom}${width === 390 ? `/底栏 ${m.nav?.top}` : ""}`);
     }
   }
   return record("聊天几何：3 档宽度 × done/thinking/failed 可画区不低于 225e9e3；390 输入条不压底栏", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
+/** 33. 聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦，done 时 sr-only 全文常驻。 */
+async function checkChatThreadFocus(browser) {
+  const fails = [];
+  const notes = [];
+  for (const width of [900, 390]) {
+    const { context, page } = await openPage(browser, { width, height: width === 390 ? 844 : 900, touch: width === 390 });
+    await page.route("**/api/chat/sessions**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(FIXTURES.chatSessions) }));
+    await visit(page, "/");
+    const peek = page.getByRole("button", { name: /最近的 \d+ 条/ });
+    if ((await peek.count()) === 0) {
+      fails.push(`${width} 找不到「最近的 N 条」按钮`);
+      await context.close();
+      continue;
+    }
+    const status = (await page.locator("[data-chat-announce]").textContent())?.trim() ?? "";
+    if (!status.includes("我把昨天看到的那个视频写成了日记")) fails.push(`${width} done 收起时没有 sr-only 全文播报（「${status}」）`);
+    await peek.click();
+    await page.waitForTimeout(150);
+    const opened = await page.locator(".chat-thread--compact").count();
+    const focusInside = await page.evaluate(() => Boolean(document.querySelector(".chat-thread--compact")?.contains(document.activeElement)));
+    if (opened !== 1) fails.push(`${width} 点开后没有浮层`);
+    if (!focusInside) fails.push(`${width} 打开后焦点没有进入浮层`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(150);
+    const stillOpen = await page.locator(".chat-thread--compact").count();
+    const back = await page.evaluate(() => document.activeElement?.classList.contains("chat-thread__peek") ?? false);
+    if (stillOpen !== 0) fails.push(`${width} Escape 没有关闭浮层`);
+    if (!back) fails.push(`${width} 关闭后焦点没有回到「最近的 N 条」`);
+    notes.push(`${width} 焦点进入/Escape 关闭/回焦；播报 ${status.length} 字`);
+    await context.close();
+  }
+  return record("聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦；done sr-only 全文常驻", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
 /** 33. 日记月/年导航：900 与 390 老人模式都不把「回到今天」孤立或挤掉年份。 */
@@ -1482,6 +1520,7 @@ if (STATIC_ONLY) {
       await checkShellNav(browser);
       await checkMobileKeyboard(browser);
       await checkChatGeometry(browser);
+      await checkChatThreadFocus(browser);
       await checkDiaryNav(browser);
       await checkMobileTabLabels(browser);
       await checkElderRailTargets(browser);
