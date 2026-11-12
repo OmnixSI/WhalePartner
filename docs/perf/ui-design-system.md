@@ -7,7 +7,7 @@
 | 指标 | 0.3.4 | #151 | 变化 |
 |---|---|---|---|
 | 首屏 JS（gzip） | 433.6 KB | 277.9 KB | −35.9% |
-| 首屏 CSS（gzip） | 48.9 KB | 43.9 KB | −10.2% |
+| 首屏 CSS（gzip） | 48.9 KB | 44.3 KB | −9.4% |
 | 鲸汐聊天页 · 空闲 CPU | 9.12% | 0.45% | −95% |
 | 鲸汐聊天页 · 渲染进程 RSS | 160.9 MB | 153.3 MB | −4.7% |
 | 鲸汐聊天页 · JS 堆（GC 后） | 4.46 MB | 3.70 MB | −17% |
@@ -24,7 +24,7 @@
 - 机器：Apple M4，macOS 26.5.2，Google Chrome 157.0.8103.51（Playwright 无头）。
 - 构建：
   - 0.3.4：main@47518a3 的 `vite build`。
-  - #151：`feat/ui-design-system`@746afd3 的 `vite build`。之后的提交只改设置页样式和文档，不影响聊天页。
+  - #151：`feat/ui-design-system`@746afd3 的 `vite build`。之后的提交只调整样式归属（设置页、「她在逛」便签、日记状态块）和文档，不改聊天页的运行逻辑；首屏体积按最终提交重测。
   - Live2D 模型不进仓库，构建时临时链接本地模型目录，构建完就删掉链接。
 - 隔离：`env -i`，HOME 和 TMPDIR 都在 `.worktrees/ui-ds-iso/` 下。后端用 `scripts/ui-fixtures.mjs` 的假 API，不连 8787，不碰日常数据。
 - 首屏体积：`scripts/perf-budget.mjs`。计 `index.html` 一打开就会下载的入口脚本、modulepreload、样式表和它们的静态 import，不含懒加载 chunk、字体和图片。
