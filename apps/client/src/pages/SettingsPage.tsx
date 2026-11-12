@@ -70,13 +70,13 @@ type Backend = "checking" | "ok" | "down";
 
 export function SettingsPage() {
   const character = useCharacter();
-  const relationship = useRelationship(character.id);
+  const [charOpen, setCharOpen] = useState(false);
+  const relationship = useRelationship(character.id, charOpen);
   const { hash } = useLocation();
   const pageRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
   const [a11y, setA11y] = useState(readA11y);
   const [backend, setBackend] = useState<Backend>("checking");
-  const [charOpen, setCharOpen] = useState(false);
   const [nickname, setNickname] = useState("");
   const [savingNick, setSavingNick] = useState(false);
   const [nickFailed, setNickFailed] = useState(false);

@@ -943,6 +943,73 @@ async function checkCardLive(browser) {
   return record("好感度卡接真实等级：Lv3→4 播一次 / 刷新不重播 / 换角色互不影响", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
+/** 26b. 「换一位」里主卡和缩略卡共用一份等级（#160 返工）：接口全挂后点重试四张缩略卡一起恢复；弹窗开着时后端升档，切角色后主卡和缩略卡一致；打开弹窗每个角色只请求一次。 */
+async function checkCardShared(browser) {
+  const fails = [];
+  const notes = [];
+  const errors = [];
+  const thumbSel = ".set-char__thumb .acard";
+  const card = '.set-card .acard[data-size="md"]';
+
+  // 1) 全部 500 → 打开弹窗 → 点重试 → 4 张缩略卡 + 4 个等级字样都在
+  {
+    const levels = { ...DEFAULT_LEVELS };
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true, levels, character: "whale" });
+    page.on("pageerror", (e) => errors.push(String(e.message ?? e)));
+    let down = true;
+    await page.route(/\/api\/relationship/, (route) => (down ? route.fulfill({ status: 500, contentType: "application/json", body: "{}" }) : route.fallback()));
+    await visit(page, "/settings");
+    await page.locator(".set-her__swap").click();
+    const retry = page.getByRole("button", { name: "重试读取好感度" });
+    await retry.waitFor({ timeout: 6000 }).catch(() => fails.push("全部 500 时没有重试入口"));
+    await page.waitForTimeout(500);
+    if (await page.locator(thumbSel).count()) fails.push("全部 500 时缩略卡不该有卡面");
+    down = false;
+    await retry.click().catch(() => {});
+    await page.locator(card).waitFor({ timeout: 6000 }).catch(() => fails.push("点重试后主卡没有出来"));
+    await page.waitForFunction(() => document.querySelectorAll(".set-char__thumb .acard").length === 4 && document.querySelectorAll(".set-char__level").length === 4, null, { timeout: 6000 }).catch(() => {});
+    const thumbs = await page.locator(thumbSel).count();
+    const labels = await page.locator(".set-char__level").count();
+    if (thumbs !== 4 || labels !== 4) fails.push(`点重试后缩略卡 ${thumbs}/4、等级字样 ${labels}/4（必须关掉弹窗再开才恢复就是这个现象）`);
+    else notes.push("全部 500 → 重试：缩略卡 4/4、等级字样 4/4");
+    await context.close();
+  }
+
+  // 2) 弹窗开着时后端把大肥鱼 Lv2→Lv3，点大肥鱼：主卡和缩略卡等级一致；并数打开弹窗的请求
+  {
+    const levels = { ...DEFAULT_LEVELS };
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true, levels, character: "whale" });
+    page.on("pageerror", (e) => errors.push(String(e.message ?? e)));
+    let requests = 0;
+    page.on("request", (r) => { if (r.url().includes("/api/relationship")) requests += 1; });
+    await visit(page, "/settings");
+    requests = 0;
+    await page.locator(".set-her__swap").click();
+    await page.locator(card).waitFor({ timeout: 8000 });
+    await page.waitForFunction(() => document.querySelectorAll(".set-char__thumb .acard").length === 4, null, { timeout: 6000 }).catch(() => fails.push("打开弹窗后缩略卡没有出齐"));
+    await page.waitForTimeout(800);
+    if (requests > 4) fails.push(`打开弹窗发了 ${requests} 次 /api/relationship，最多一个角色一次（4）`);
+    notes.push(`打开弹窗请求 ${requests} 次`);
+    levels.deepseek = 3;
+    await page.locator(".set-char", { hasText: "大肥鱼" }).click();
+    await page.locator(`${card}[data-character="deepseek"]`).waitFor({ timeout: 4000 }).catch(() => fails.push("点大肥鱼后主卡没有换"));
+    for (let i = 0; i < 40; i += 1) {
+      if (!(await page.locator(`${card}[data-upgrading]`).count()) && (await page.locator(card).getAttribute("data-level")) === "3") break;
+      await page.waitForTimeout(150);
+    }
+    await page.waitForTimeout(400);
+    const main = await page.locator(card).getAttribute("data-level");
+    const thumb = await page.locator(".set-char", { hasText: "大肥鱼" }).locator(".acard").getAttribute("data-level");
+    const label = await page.locator(".set-char", { hasText: "大肥鱼" }).locator(".set-char__level").textContent();
+    if (main !== "3" || thumb !== main || !label?.includes("Lv.3")) fails.push(`点大肥鱼后主卡 Lv${main}、缩略卡 Lv${thumb}、字样「${label}」，应当都是 Lv3`);
+    else notes.push("弹窗里 Lv2→3 后切角色：主卡 / 缩略卡 / 字样都是 Lv3");
+    await context.close();
+  }
+
+  if (errors.length) fails.push(`页面报错：${errors.slice(0, 3).join(" | ")}`);
+  return record("「换一位」主卡与缩略卡共用等级：重试一起恢复 / 切角色一致 / 请求不多发", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
 async function shoot(browser) {
   mkdirSync(SHOTS, { recursive: true });
   const written = [];
@@ -1079,6 +1146,7 @@ if (STATIC_ONLY) {
     const browser = await launchChrome(chromium);
     if (ONLY === "card-live") {
       await checkCardLive(browser);
+      await checkCardShared(browser);
     } else {
       await checkTouch(browser);
       await checkHorizontalScroll(browser);
@@ -1088,6 +1156,7 @@ if (STATIC_ONLY) {
       await checkCardUpgrade(browser);
       await checkSettingsInteractions(browser);
       await checkCardLive(browser);
+      await checkCardShared(browser);
     }
     if (WITH_SHOTS && ONLY !== "card-live") {
       const written = await shoot(browser);

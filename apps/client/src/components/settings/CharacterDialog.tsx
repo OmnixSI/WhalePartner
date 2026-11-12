@@ -13,7 +13,7 @@ import { CharacterMark } from "../CharacterMark";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import { AffinityShowcase } from "./AffinityShowcase";
-import { useRelationship, type RelationshipState } from "./useRelationship";
+import type { RelationshipEntry, RelationshipState } from "./useRelationship";
 
 type Props = {
   open: boolean;
@@ -21,10 +21,9 @@ type Props = {
   relationship: RelationshipState;
 };
 
-/** 角色列表里的缩略卡（sm，静态）：显示这位角色自己的真实等级；读到之前、读不到时仍是徽记。 */
-function CharThumb({ id }: { id: CharacterId }) {
-  const { snapshot } = useRelationship(id);
-  const level = snapshot ? clampLevel(snapshot.level) : null;
+/** 角色列表里的缩略卡（sm，静态）：显示这位角色自己的真实等级，数据和主卡是同一份；读到之前、读不到时仍是徽记。 */
+function CharThumb({ id, entry }: { id: CharacterId; entry: RelationshipEntry | undefined }) {
+  const level = entry?.snapshot ? clampLevel(entry.snapshot.level) : null;
   const mark = <CharacterMark character={id} />;
   return (
     <>
@@ -40,15 +39,12 @@ export function CharacterDialog({ open, onOpenChange, relationship }: Props) {
   const character = useCharacter();
   const cardCharacter = CARD_CHARACTERS.find((item) => item.id === character.id) ?? CARD_CHARACTERS[0];
   const changed = useRef(false);
-  const { snapshot, status, retry, refresh } = relationship;
+  const { snapshot, status, retry, entries } = relationship;
 
+  // 每次打开，设置页会把四个角色的真实等级一起重读（见 useRelationship 的 watchAll）
   useEffect(() => {
-    if (open) {
-      changed.current = false;
-      // 每次打开都静默重读一次真实等级：上回之后升档了，卡面从上次看到的那一档接着播上来
-      refresh();
-    }
-  }, [open, refresh]);
+    if (open) changed.current = false;
+  }, [open]);
 
   const close = (next: boolean) => {
     if (!next && changed.current) setCompanionMood("wave", { ttl: 2400 });
@@ -91,7 +87,7 @@ export function CharacterDialog({ open, onOpenChange, relationship }: Props) {
                   changed.current = true;
                 }}
               >
-                <CharThumb id={item.id} />
+                <CharThumb id={item.id} entry={entries[item.id]} />
                 <span className="set-char__name">{item.name}</span>
                 <span className="set-char__tagline">{item.tagline}</span>
               </button>

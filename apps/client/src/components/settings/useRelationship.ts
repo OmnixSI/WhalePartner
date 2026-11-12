@@ -1,76 +1,82 @@
 /**
- * 当前角色的好感度快照。设置页只在这里读一次，顶部概览和「换一位」对话框共用；
- * 角色一换或点「重试」才从头重读；读不到就是 error，不编数字。
+ * 好感度快照。设置页只在这里读，四个角色放在同一份状态里：
+ * 顶部概览、「换一位」里的主卡和四张缩略卡都从这里取，不各读各的。
  *
- * refresh() 是静默重读：打开「换一位」、从别的窗口切回来时调用。重读期间留着旧值，
- * 读不到也不改状态（旧值仍然是最近一次读到的真实值），这样卡面不会闪成「读取中」。
+ * 什么时候读（每个角色一个请求，同一角色的新请求会作废上一个）：
+ * - 进设置页：读当前角色；
+ * - 「换一位」打开时（watchAll）：四个角色一起读，所以缩略卡和主卡等级一致；
+ * - 换角色、从别的窗口切回来：读当前（弹窗开着就四个一起）；
+ * - 点「重试」：把读失败的角色重读（至少含当前角色）。
+ *
+ * 重读期间留着旧值，读不到也不动旧值（它仍是最近一次读到的真实值），所以卡面不会闪成「读取中」；
+ * 一个角色从没读到过才算 error，不编数字。
  */
-import { useCallback, useEffect, useState } from "react";
-import { API_BASE } from "../../lib/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CHARACTERS, type CharacterId } from "../../characters";
+import { fetchRelationship } from "../../lib/relationship";
 import type { RelationshipProgress } from "../../card-preview/data";
 
-export type RelationshipState = {
+export type RelationshipEntry = {
   snapshot: RelationshipProgress | null;
   status: "loading" | "ready" | "error";
-  retry: () => void;
-  refresh: () => void;
 };
 
-async function fetchRelationship(characterId: string, signal: AbortSignal): Promise<RelationshipProgress> {
-  const response = await fetch(`${API_BASE}/api/relationship?character=${encodeURIComponent(characterId)}`, {
-    cache: "no-store",
-    signal,
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const snapshot = (await response.json()) as RelationshipProgress;
-  if (!Number.isFinite(snapshot.points) || !Number.isInteger(snapshot.level)) throw new Error("Invalid relationship snapshot");
-  return snapshot;
-}
+export type RelationshipState = RelationshipEntry & {
+  /** 四个角色各自的快照；还没请求过的角色不在里面（按 loading 处理） */
+  entries: Partial<Record<CharacterId, RelationshipEntry>>;
+  retry: () => void;
+};
 
-export function useRelationship(characterId: string): RelationshipState {
-  const [loaded, setLoaded] = useState<{ characterId: string; snapshot: RelationshipProgress } | null>(null);
-  const [status, setStatus] = useState<RelationshipState["status"]>("loading");
-  const [attempt, setAttempt] = useState(0);
-  const [refreshRev, setRefreshRev] = useState(0);
+const LOADING: RelationshipEntry = { snapshot: null, status: "loading" };
+const ALL: readonly CharacterId[] = CHARACTERS.map((c) => c.id);
 
+export function useRelationship(currentId: CharacterId, watchAll: boolean): RelationshipState {
+  const [entries, setEntries] = useState<Partial<Record<CharacterId, RelationshipEntry>>>({});
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const controllers = useRef(new Map<CharacterId, AbortController>());
+
+  const load = useCallback((ids: readonly CharacterId[]) => {
+    for (const id of ids) {
+      controllers.current.get(id)?.abort();
+      const controller = new AbortController();
+      controllers.current.set(id, controller);
+      fetchRelationship(id, controller.signal)
+        .then((snapshot) => setEntries((prev) => ({ ...prev, [id]: { snapshot, status: "ready" } })))
+        .catch((error: unknown) => {
+          if (controller.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+          setEntries((prev) => (prev[id]?.snapshot ? prev : { ...prev, [id]: { snapshot: null, status: "error" } }));
+        });
+    }
+  }, []);
+
+  // 进页面 / 换角色 / 打开弹窗时读；只是关弹窗不重读
+  const last = useRef<{ id: CharacterId; all: boolean } | null>(null);
   useEffect(() => {
-    const controller = new AbortController();
-    setLoaded(null);
-    setStatus("loading");
-    fetchRelationship(characterId, controller.signal)
-      .then((snapshot) => {
-        setLoaded({ characterId, snapshot });
-        setStatus("ready");
-      })
-      .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setStatus("error");
-      });
-    return () => controller.abort();
-  }, [characterId, attempt]);
+    const prev = last.current;
+    last.current = { id: currentId, all: watchAll };
+    if (prev && prev.id === currentId && prev.all && !watchAll) return;
+    load(watchAll ? ALL : [currentId]);
+  }, [currentId, watchAll, load]);
 
-  // 静默重读：成功就换新值，失败不动。角色换了、或又点了一次，上一次的结果作废。
-  useEffect(() => {
-    if (refreshRev === 0) return;
-    const controller = new AbortController();
-    fetchRelationship(characterId, controller.signal)
-      .then((snapshot) => {
-        setLoaded({ characterId, snapshot });
-        setStatus("ready");
-      })
-      .catch(() => { /* 保留旧值 */ });
-    return () => controller.abort();
-  }, [characterId, refreshRev]);
-
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  const refresh = useCallback(() => setRefreshRev((n) => n + 1), []);
+  useEffect(() => () => { for (const c of controllers.current.values()) c.abort(); }, []);
 
   // 回到这个页面（切回窗口或标签）时再读一次，升档了设置页上的数字和卡面都跟着变
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
+    const onVisible = () => { if (document.visibilityState === "visible") load(watchAll ? ALL : [currentId]); };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [refresh]);
+  }, [currentId, watchAll, load]);
 
-  return { snapshot: loaded?.characterId === characterId ? loaded.snapshot : null, status, retry, refresh };
+  const retry = useCallback(() => {
+    const failed = ALL.filter((id) => entriesRef.current[id]?.status === "error" || id === currentId);
+    setEntries((prev) => {
+      const next = { ...prev };
+      for (const id of failed) if (!next[id]?.snapshot) next[id] = LOADING;
+      return next;
+    });
+    load(failed);
+  }, [currentId, load]);
+
+  return { ...(entries[currentId] ?? LOADING), entries, retry };
 }
