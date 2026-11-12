@@ -4,7 +4,7 @@
  *
  *   pnpm --dir apps/client run ui:check                    全跑（会自己起 vite dev，跑完关掉）
  *   pnpm --dir apps/client run ui:check --static           只跑源码检查，不开浏览器
- *   pnpm --dir apps/client run ui:check --shots            另外拍 6 页 × 亮/暗和预览页，存到 apps/client/test-results/ui-check/
+ *   pnpm --dir apps/client run ui:check --shots            另外拍 7 页 × 亮/暗、预览页和好感度卡五档 / 升级帧，存到 apps/client/test-results/ui-check/
  *   pnpm --dir apps/client run ui:check --base=http://127.0.0.1:1420   复用已在跑的 dev server
  *   pnpm --dir apps/client run ui:check --debt             打印各文件的动效 / filter 存量（JSON），用来调低 perf-budget.json
  *
@@ -29,7 +29,15 @@
  *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
  *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
  *  17  设置页：存了 Codex 模型后顶部概览同步；点目录后亮的就是刚点的那项（桌面、手机 380 × 字号 2 倍）
- *  （--shots 再加一项：截图）
+ *  好感度卡（/__kit/cards）：
+ *  18  完整动效 1→5 逐档快进且 ≤3 秒、4→5 按时播完、中途能跳过；StrictMode 下每轮结束回调正好 1 次
+ *  19  跳过与到点的定时器同一拍：卡不复活、回调不多一次
+ *  20  安静模式开关与系统减少动态：只淡入、按时播完
+ *  21  缩略卡给了 upgradeFrom 也不播、不出提示和跳过、不回调
+ *  22  播放中清空 upgradeFrom / 卸载卡片：这一轮作废，到点也不回调
+ *  23  名字牌和档位点对读屏隐藏，主卡、缩略卡的 ariaSnapshot 只有卡根的 aria-label
+ *  24  触屏横向拖动倾斜，松手复位
+ *  （默认共 24 项；--shots 再加一项截图，共 25 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -270,6 +278,7 @@ const PAGES = [
   ["settings", "/settings"],
   ["surf", "/surf"],
   ["kit", "/__kit"],
+  ["cards", "/__kit/cards"],
 ];
 const CHARACTERS = ["whale", "deepseek", "claude", "chatgpt"];
 
@@ -303,8 +312,8 @@ async function loadPlaywright() {
   return { chromium, AxeBuilder };
 }
 
-async function openPage(browser, { width, height, elder = false, theme = null, character = null, motion = false }) {
-  const context = await browser.newContext({ viewport: { width, height }, reducedMotion: motion ? "no-preference" : "reduce", deviceScaleFactor: 1 });
+async function openPage(browser, { width, height, elder = false, theme = null, character = null, motion = false, touch = false }) {
+  const context = await browser.newContext({ viewport: { width, height }, reducedMotion: motion ? "no-preference" : "reduce", deviceScaleFactor: 1, ...(touch ? { hasTouch: true, isMobile: true } : {}) });
   const page = await context.newPage();
   await stubApi(page);
   // 引导是一次性全屏：截图与测量都要先标记「看过」，否则四页拍到的都是引导页
@@ -538,6 +547,240 @@ async function checkSettingsInteractions(browser) {
 }
 
 
+// 好感度卡（#159）：升级动画能播完、能跳过；减少动态时只淡入，连升也按时落到新卡面
+/** 卡上的定时器全部登记下来，竞态检查要能「先跳过、再执行已到点的那个回调」。 */
+const TIMER_SPY = () => {
+  const timers = (window.__cardTimers = []);
+  const set = window.setTimeout.bind(window);
+  const clear = window.clearTimeout.bind(window);
+  window.setTimeout = (fn, ms, ...rest) => {
+    const entry = { fn, ms: Number(ms) || 0, cleared: false, fired: false };
+    entry.id = set(() => { entry.fired = true; fn(...rest); }, ms);
+    if (typeof fn === "function" && entry.ms >= 300) timers.push(entry);
+    return entry.id;
+  };
+  window.clearTimeout = (id) => {
+    for (const t of timers) if (t.id === id) t.cleared = true;
+    clear(id);
+  };
+};
+
+/** 记下舞台卡 data-upgrading 的变化顺序，用来断言逐档快进。 */
+const WATCH_STAGE = () => {
+  const card = document.querySelector(".cardkit__stage .acard");
+  window.__upSeq = [];
+  new MutationObserver(() => {
+    const v = card.getAttribute("data-upgrading");
+    if (v && window.__upSeq[window.__upSeq.length - 1] !== v) window.__upSeq.push(v);
+  }).observe(card, { attributes: true, attributeFilter: ["data-upgrading"] });
+};
+
+async function checkCardUpgrade(browser) {
+  const lastText = async (page) => ((await page.locator("#cardkit-last").textContent()) ?? "").trim();
+  const ends = async (page) => Number(await page.locator("#cardkit-last").getAttribute("data-ends"));
+  const waitLast = async (page, want, ms) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if ((await lastText(page)).includes(want)) return Date.now() - t0;
+      await page.waitForTimeout(30);
+    }
+    return -1;
+  };
+  const play = (page, label) => page.getByRole("button", { name: label, exact: true }).click();
+
+  // ① 完整动效：1→5 逐档快进、4→5、跳过；dev 构建跑在 StrictMode 下，每次结束回调必须正好 1 次
+  {
+    const fails = [];
+    const notes = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: true });
+    await page.addInitScript(TIMER_SPY);
+    await visit(page, "/__kit/cards");
+    const stage = page.locator(".cardkit__stage .acard");
+    await page.evaluate(WATCH_STAGE);
+
+    await play(page, "连升 1→5");
+    const chain = await waitLast(page, "1→5 播完", 3000 + 1500);
+    const seq = await page.evaluate(() => window.__upSeq.join(","));
+    if (chain < 0) fails.push(`连升 1→5 4.5 秒内没播完（${await lastText(page)}）`);
+    else if (chain > 3000 + 600) fails.push(`连升 1→5 用了 ${chain}ms，超过 3 秒`);
+    else notes.push(`1→5 ${chain}ms`);
+    if (seq !== "2,3,4,5") fails.push(`逐档顺序是 ${seq || "空"}，应为 2,3,4,5`);
+    if ((await stage.getAttribute("data-level")) !== "5") fails.push(`连升停在 Lv.${await stage.getAttribute("data-level")}`);
+    await page.waitForTimeout(300);
+    if ((await ends(page)) !== 1) fails.push(`StrictMode 下连升结束回调 ${await ends(page)} 次，应为 1`);
+
+    await play(page, "4→5");
+    if (!(await stage.getAttribute("data-upgrading"))) fails.push("4→5 点了没开始播");
+    if (!((await stage.locator(".acard__notice").textContent().catch(() => "")) ?? "").includes("升到 Lv.5")) fails.push("4→5 没有「升到 Lv.5」提示");
+    const single = await waitLast(page, "4→5 播完", 1800 + 1500);
+    if (single < 0) fails.push("4→5 没播完");
+    else notes.push(`4→5 ${single}ms`);
+    await page.waitForTimeout(300);
+    if ((await ends(page)) !== 2) fails.push(`4→5 后回调累计 ${await ends(page)} 次，应为 2`);
+
+    await play(page, "2→3");
+    await page.getByRole("button", { name: "跳过" }).click();
+    if ((await waitLast(page, "2→3 已跳过", 500)) < 0) fails.push("跳过没有立即落到新卡面");
+    await page.waitForTimeout(1200);
+    if ((await ends(page)) !== 3) fails.push(`跳过后回调累计 ${await ends(page)} 次，应为 3`);
+    else notes.push("跳过即停，回调各 1 次");
+    await context.close();
+    record("好感度卡升级：1→5 逐档快进 / 4→5 / 跳过 / StrictMode 回调次数", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+  }
+
+  // ② 跳过和定时器同一拍：先点跳过，再执行那个已经到点的回调，卡不能复活、回调不能多一次
+  {
+    const fails = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: true });
+    await page.addInitScript(TIMER_SPY);
+    await visit(page, "/__kit/cards");
+    const stage = page.locator(".cardkit__stage .acard");
+    await play(page, "连升 1→5");
+    await page.waitForTimeout(150);
+    const raced = await page.evaluate(() => {
+      const pending = window.__cardTimers.filter((t) => !t.cleared && !t.fired);
+      const due = pending[pending.length - 1];
+      document.querySelector(".cardkit__stage .acard__skip").click();
+      if (!due) return false;
+      due.fn();
+      return true;
+    });
+    if (!raced) fails.push("没找到在跑的升级定时器");
+    await page.waitForTimeout(300);
+    if (await stage.getAttribute("data-upgrading")) fails.push(`跳过后又被定时器拉回 Lv.${await stage.getAttribute("data-upgrading")} 的动画`);
+    if ((await stage.getAttribute("data-level")) !== "5") fails.push(`跳过后停在 Lv.${await stage.getAttribute("data-level")}`);
+    await page.waitForTimeout(3200);
+    if (await stage.getAttribute("data-upgrading")) fails.push("3 秒后仍在播");
+    const n = await ends(page);
+    if (n !== 1) fails.push(`结束回调 ${n} 次，应为 1（${await lastText(page)}）`);
+    if (!(await lastText(page)).includes("1→5 已跳过")) fails.push(`最后一次是「${await lastText(page)}」，应为 1→5 已跳过`);
+    await context.close();
+    record("好感度卡升级：跳过与定时器同一拍不复活", fails.length === 0, fails.length ? fails.join("；") : "跳过后执行到点回调：不复活，回调 1 次");
+  }
+
+  // ③ 安静模式开关（不靠系统 reduced-motion）和系统减少动态
+  {
+    const fails = [];
+    const notes = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: true });
+    await visit(page, "/__kit/cards");
+    const stage = page.locator(".cardkit__stage .acard");
+    const calmSwitch = page.getByRole("switch", { name: "安静模式" });
+    await calmSwitch.click();
+    if ((await page.evaluate(() => document.documentElement.getAttribute("data-motion"))) !== "calm") fails.push("开关打开后根节点没有 data-motion=calm");
+    await play(page, "连升 1→5");
+    if ((await stage.getAttribute("data-calm")) !== "true") fails.push("安静模式下升级没有走 calm 分支");
+    if (!((await stage.locator(".acard__notice").textContent().catch(() => "")) ?? "").includes("升到 Lv.")) fails.push("安静模式没有「升到 Lv.N」提示");
+    const calmSpent = await waitLast(page, "1→5 播完", 4 * 450 + 1500);
+    if (calmSpent < 0) fails.push("安静模式 1→5 没播完");
+    else notes.push(`安静 1→5 ${calmSpent}ms`);
+    await calmSwitch.click();
+    await play(page, "4→5");
+    if ((await stage.getAttribute("data-calm")) === "true") fails.push("关掉安静模式后仍走 calm 分支");
+    if ((await waitLast(page, "4→5 播完", 1800 + 1500)) < 0) fails.push("关掉安静模式后 4→5 没播完");
+    else notes.push("关掉后恢复完整动效");
+    await context.close();
+
+    const reduced = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: false });
+    await visit(reduced.page, "/__kit/cards");
+    await play(reduced.page, "连升 1→5");
+    if ((await reduced.page.locator(".cardkit__stage .acard").getAttribute("data-calm")) !== "true") fails.push("系统减少动态下没有走 calm 分支");
+    const rSpent = await waitLast(reduced.page, "1→5 播完", 4 * 450 + 1500);
+    if (rSpent < 0) fails.push("减少动态 1→5 没播完");
+    else notes.push(`减少动态 1→5 ${rSpent}ms`);
+    await reduced.context.close();
+    record("好感度卡升级：安静模式开关 / 系统减少动态", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+  }
+
+  // ④ 缩略卡是静态的：给了 upgradeFrom 也不播、不出提示和跳过、不调回调
+  {
+    const fails = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: true });
+    await visit(page, "/__kit/cards");
+    const thumbs = page.getByTestId("card-thumbs");
+    await page.getByRole("button", { name: "缩略卡试播升级", exact: true }).click();
+    await page.waitForTimeout(100);
+    if ((await thumbs.locator(".acard[data-upgrading]").count()) > 0) fails.push("缩略卡开始播升级");
+    if ((await thumbs.locator(".acard__skip, .acard__notice").count()) > 0) fails.push("缩略卡渲染了跳过 / 提示");
+    await page.waitForTimeout(2200);
+    const n = Number(await thumbs.getAttribute("data-ends"));
+    if (n !== 0) fails.push(`缩略卡调了 ${n} 次 onUpgradeEnd`);
+    await context.close();
+    record("好感度卡：缩略卡不播升级", fails.length === 0, fails.length ? fails.join("；") : "无动画、无跳过、无回调");
+  }
+
+  // ⑥ 播放中打断：清空 upgradeFrom 或卸载卡片，这一轮作废，到点也不回调
+  {
+    const fails = [];
+    const notes = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: true });
+    await visit(page, "/__kit/cards");
+    const stage = page.locator(".cardkit__stage .acard");
+    for (const [label, action] of [["清空 upgradeFrom", "清空 upgradeFrom"], ["卸载", "卸载卡片"]]) {
+      const before = await ends(page);
+      await play(page, "连升 1→5");
+      await page.waitForTimeout(250);
+      if (!(await stage.getAttribute("data-upgrading"))) fails.push(`${label}前 1→5 没开始播`);
+      await page.getByRole("button", { name: action, exact: true }).click();
+      await page.waitForTimeout(50);
+      if (label !== "卸载" && (await stage.getAttribute("data-upgrading"))) fails.push(`${label}后还在播 Lv.${await stage.getAttribute("data-upgrading")}`);
+      await page.waitForTimeout(3000 + 600);
+      const n = (await ends(page)) - before;
+      if (n !== 0) fails.push(`${label}后旧一轮又回调了 ${n} 次（${await lastText(page)}）`);
+      else notes.push(`${label}：停播、0 次回调`);
+      if (label === "卸载") await page.getByRole("button", { name: "挂回卡片", exact: true }).click();
+    }
+    await context.close();
+    record("好感度卡升级：播放中清空 upgradeFrom / 卸载不回调", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+  }
+
+  // ⑦ 读屏只念卡根的 aria-label：名字牌和档位点对读屏隐藏（主卡、缩略卡都查）
+  {
+    const fails = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: true });
+    await visit(page, "/__kit/cards");
+    const cards = [["主卡", page.getByTestId("card-tiers").locator(".acard").nth(2)], ["缩略卡", page.getByTestId("card-thumbs").locator(".acard").nth(2)]];
+    let snap = "";
+    for (const [label, card] of cards) {
+      snap = await card.ariaSnapshot();
+      const lines = snap.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!/^- group "鲸汐的好感度卡，Lv\.3 默契，潮光卡面"/.test(lines[0] ?? "")) fails.push(`${label}根节点是 ${lines[0]}`);
+      const extra = lines.slice(1).filter((l) => l !== "- status");
+      if (extra.length) fails.push(`${label}卡内还会念：${extra.join(" / ")}`);
+    }
+    await context.close();
+    record("好感度卡：名字牌不重复念（ariaSnapshot）", fails.length === 0, fails.length ? fails.join("；") : `主卡、缩略卡都只念卡根：${snap.split("\n")[0].trim()}`);
+  }
+
+  // ⑤ 触屏横向拖动能倾斜，松手复位（390 宽，真实触摸序列）
+  {
+    const fails = [];
+    const { context, page } = await openPage(browser, { width: 390, height: 844, theme: "light", motion: true, touch: true });
+    await visit(page, "/__kit/cards");
+    const card = page.getByTestId("card-tiers").locator(".acard").nth(2);
+    await card.scrollIntoViewIfNeeded();
+    const box = await card.boundingBox();
+    const cdp = await context.newCDPSession(page);
+    const at = (x, y) => [{ x, y, id: 1, radiusX: 4, radiusY: 4, force: 1 }];
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: at(cx, cy) });
+    for (let i = 1; i <= 8; i++) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: at(cx + i * 10, cy + i * 2) });
+      await page.waitForTimeout(16);
+    }
+    const mid = await card.evaluate((el) => ({ px: el.style.getPropertyValue("--px"), on: el.dataset.pointer ?? "" }));
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(100);
+    const after = await card.evaluate((el) => el.style.getPropertyValue("--px") || "0");
+    const touchAction = await card.evaluate((el) => getComputedStyle(el).touchAction);
+    if (!(Number(mid.px) > 0.1)) fails.push(`拖动中 --px=${mid.px || "0"}，没有倾斜（touch-action: ${touchAction}）`);
+    if (Number(after) !== 0) fails.push(`松手后 --px=${after}，没有复位`);
+    await context.close();
+    record("好感度卡：触屏拖动倾斜 / 松手复位", fails.length === 0, fails.length ? fails.join("；") : `拖动中 --px=${mid.px}，松手归 0，touch-action: ${touchAction}`);
+  }
+}
+
 async function shoot(browser) {
   mkdirSync(SHOTS, { recursive: true });
   const written = [];
@@ -565,6 +808,43 @@ async function shoot(browser) {
     if (shot.query) await page.evaluate(() => document.querySelector(".uikit__pinned")?.scrollIntoView({ block: "center" }));
     const file = join(SHOTS, `kit-${shot.tag}.png`);
     await page.screenshot({ path: file, fullPage: !shot.query });
+    written.push(rel(file));
+    await context.close();
+  }
+  // 好感度卡（#159）：五档并排 × 亮/暗、四位角色 Lv4/Lv5、手机宽整页，外加四段升级各取中间一帧
+  for (const theme of ["light", "dark"]) {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme, motion: true });
+    await visit(page, "/__kit/cards");
+    const tiers = join(SHOTS, `cards-tiers-${theme}.png`);
+    await page.locator('[data-testid="card-tiers"]').screenshot({ path: tiers });
+    written.push(rel(tiers));
+    if (theme === "light") {
+      const sig = join(SHOTS, "cards-signatures.png");
+      await page.locator('[data-testid="card-signatures"]').screenshot({ path: sig });
+      written.push(rel(sig));
+      const stage = page.locator(".cardkit__stage .acard");
+      for (const [from, to] of [[1, 2], [2, 3], [3, 4], [4, 5]]) {
+        await page.getByRole("button", { name: `${from}→${to}`, exact: true }).click();
+        await page.evaluate(() => {
+          for (const a of document.getAnimations()) {
+            const t = a.effect?.getComputedTiming();
+            a.pause();
+            if (t && Number.isFinite(t.duration)) a.currentTime = (t.delay || 0) + t.duration * 0.45;
+          }
+        });
+        const file = join(SHOTS, `cards-up-${from}${to}.png`);
+        await stage.screenshot({ path: file });
+        written.push(rel(file));
+        await page.getByRole("button", { name: "跳过" }).click();
+      }
+    }
+    await context.close();
+  }
+  {
+    const { context, page } = await openPage(browser, { width: 390, height: 844, theme: "light" });
+    await visit(page, "/__kit/cards");
+    const file = join(SHOTS, "cards-390.png");
+    await page.screenshot({ path: file, fullPage: true });
     written.push(rel(file));
     await context.close();
   }
@@ -604,9 +884,10 @@ if (STATIC_ONLY) {
     await checkIdleAndHidden(browser);
     await checkLazyStyles(browser);
     await checkSettingsInteractions(browser);
+    await checkCardUpgrade(browser);
     if (WITH_SHOTS) {
       const written = await shoot(browser);
-      record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层）`, true, `${rel(SHOTS)}/`);
+      record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层，好感度卡五档 / 角色 / 升级帧）`, true, `${rel(SHOTS)}/`);
     }
     await browser.close();
   } catch (error) {

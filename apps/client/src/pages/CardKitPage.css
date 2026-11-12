@@ -1,0 +1,10 @@
+/* /__kit/cards 预览页版式；卡面本身的样式在 card-preview/tier/affinity-card.css。 */
+.cardkit { max-width: 84rem; }
+.cardkit__row { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(13.5rem, 100%), 1fr)); gap: var(--sp-8) var(--sp-6); justify-items: center; padding: var(--sp-4) 0; }
+.cardkit__row--sm { grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: var(--sp-4); }
+.cardkit__fig { margin: 0; display: flex; flex-direction: column; align-items: center; gap: var(--sp-4); width: 100%; }
+.cardkit__fig figcaption { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); font-size: var(--text-sm); color: var(--color-text-secondary); }
+.cardkit__fig figcaption strong { font-family: var(--font-voice); font-size: var(--text-md); font-weight: 400; color: var(--color-text-primary); }
+.cardkit__stage { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-8); padding: var(--sp-4) 0; }
+.cardkit__stage > .acard { flex: none; }
+.cardkit__controls { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }

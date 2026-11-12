@@ -183,7 +183,8 @@
 | `styles/layout.css` | 外框、导航、内容页通用排版、账号接入 |
 | `styles/kit.css` | 手绘基元样品页 `/__kit/ink`（只看，不进导航） |
 | `components/ui/*` | 设计系统基础组件，见上文「设计系统」 |
-| `pages/UiKitPage.tsx` | 组件预览页 `/__kit` |
+| `pages/UiKitPage.tsx` | 组件预览页 `/__kit`；`/__kit/cards` 由它懒加载 `pages/CardKitPage.tsx` |
+| `card-preview/tier/*` | 好感度卡五档与升级动画（#159），见 `docs/CHARACTER_CARDS.md` |
 | `scripts/perf-budget.json` | 性能预算：首屏基线、运行时依赖清单、动效/filter 存量 |
 | `scripts/perf-idle.mjs` | 空闲 CPU、渲染进程内存、定时器与动画计数 |
 | `scripts/ui-fixtures.mjs` | ui:check 和性能脚本共用的假 API |
@@ -203,7 +204,7 @@ pnpm --dir apps/client run ui:check --debt     # 打印各文件的动效 / filt
 pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印比值
 ```
 
-默认跑 16 项，带 `--shots` 再加第 17 项截图；任何一项失败退出码为 1。浏览器检查覆盖聊天、日记、记忆、设置、见闻和预览页 6 页：
+默认跑 23 项，带 `--shots` 再加第 24 项截图；任何一项失败退出码为 1。浏览器检查覆盖聊天、日记、记忆、设置、见闻、预览页和好感度卡预览页 7 页：
 
 1. 对比度 172 组
 2. 淘汰 token
@@ -221,7 +222,14 @@ pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印�
 14. axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）
 15. 静置 / 隐藏后动画停下（每页都等满 9.5 秒再查；加载转圈只在 `/__kit` 豁免，生产页静置后不许还在转）
 16. 懒加载页借用的组件样式还在（`/surf` 的便签是 fixed 小条），标签的 `aria-controls` 不悬空，渲染出的面板都有标签指向；`loading` / `aria-disabled` 的按钮点击和回车都不提交、不回调；字段标签都连到控件（控件自带 id 时连到它）
-17. 截图（只在 `--shots` 时）
+17. 好感度卡升级（`/__kit/cards`，dev 构建即 StrictMode）：1→5 按 2、3、4、5 逐档快进且 ≤3 秒，4→5 按时播完，跳过即停，每轮结束回调正好 1 次
+18. 好感度卡升级竞态：先跳过、再执行已到点的定时器回调，卡不复活、回调不多一次
+19. 好感度卡升级：安静模式开关和系统减少动态都只淡入，并按时播完；关掉开关后恢复完整动效
+20. 好感度卡缩略卡（`size="sm"`）：给了 `upgradeFrom` 也不播、不出跳过和提示、不回调
+21. 好感度卡升级被打断：播放中清空 `upgradeFrom`、卸载卡片，这一轮立即作废，到点也不回调
+22. 好感度卡读屏：名字牌和档位点对读屏隐藏，主卡、缩略卡的 ariaSnapshot 只有卡根的 `aria-label`
+23. 好感度卡触屏：390 宽、真实触摸序列横向拖动能倾斜（`touch-action: pan-y`），松手复位
+24. 截图（只在 `--shots` 时）
 
 角色闪卡（`apps/client/src/card-preview/`）的镭射、光泽和光照是单独确认的卡面效果，不受渐变、圆角和动效时长这三条限制。
 
