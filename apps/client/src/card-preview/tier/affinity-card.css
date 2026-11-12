@@ -1,0 +1,463 @@
+/* ============================================================================
+   好感度卡五档（#159）。卡面属于「角色闪卡」豁免区（docs/DESIGN.md）：允许渐变、镭射与发光；
+   但仍守三条：动画只动 transform / opacity；静置时 0 个循环动画；不用 CSS filter。
+
+   Lv1 相识 · 素纸     纸底 + 一圈墨线 + 一道角色色细描边，平放
+   Lv2 相熟 · 银衬     加厚的银色衬框，内外两层框之间留缝；卡片常态微微立起，人物、名牌分层（触屏也看得出）
+   Lv3 默契 · 潮光     深海底、焦散水纹、人物脚下一圈光环；框换成角色色流光边；6 颗气泡
+   Lv4 亲近 · 金缘     金边 + 角色色内发光；顶部一束光；每位角色一套专属纹样；18 颗星芒；指针高光
+   Lv5 相依 · 鎏金箔   整张卡贴鎏金碎箔，拉丝金框，镭射膜随指针移动；30 颗粒子含闪点
+   ============================================================================ */
+
+.acard {
+  --px: 0;
+  --py: 0;
+  --rest-x: 0deg;
+  --rest-y: 0deg;
+  --tilt: 0;
+  --gold-1: #F7E3A4;
+  --gold-2: #C99A3D;
+  --gold-3: #FFF4CF;
+  --gold-4: #A2761F;
+  --deep: #0B1B2A;
+  position: relative;
+  width: min(240px, 100%);
+  aspect-ratio: 5 / 7;
+  perspective: 900px;
+  isolation: isolate;
+  font-family: var(--font-ui);
+  -webkit-tap-highlight-color: transparent;
+}
+.acard[data-size="sm"] { width: min(112px, 100%); }
+
+/* 角色强调色：卡内自己设，不跟随页面当前角色；--accent-hi 是深底上用的浅色版 */
+.acard[data-character="whale"]    { --accent: #1A6670; --accent-hi: #7CCBD2; }
+.acard[data-character="deepseek"] { --accent: #2E4BB8; --accent-hi: #9DB2FF; }
+.acard[data-character="claude"]   { --accent: #9F4326; --accent-hi: #F2A582; }
+.acard[data-character="chatgpt"]  { --accent: #0A6B53; --accent-hi: #79D9BC; }
+:root[data-theme="dark"] .acard[data-character="whale"]    { --accent: #7CCBD2; }
+:root[data-theme="dark"] .acard[data-character="deepseek"] { --accent: #9DB2FF; }
+:root[data-theme="dark"] .acard[data-character="claude"]   { --accent: #F2A582; }
+:root[data-theme="dark"] .acard[data-character="chatgpt"]  { --accent: #79D9BC; }
+.acard { --accent-wash: color-mix(in oklab, var(--accent) 14%, var(--sheet)); }
+
+/* Lv2 起常态微微立起：不用悬停也看得出层次 */
+.acard[data-size="md"]:not([data-level="1"]) { --rest-x: 7deg; --rest-y: -9deg; --tilt: 1; }
+
+.acard__body {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-container);
+  transform-style: preserve-3d;
+  transform: rotateX(calc(var(--rest-x) - var(--py) * 16deg * var(--tilt))) rotateY(calc(var(--rest-y) + var(--px) * 20deg * var(--tilt)));
+  transition: transform var(--dur-slow) var(--ease-standard);
+  box-shadow: 0 1px 2px rgb(20 30 44 / .10);
+}
+.acard[data-level="2"] .acard__body { box-shadow: 0 2px 3px rgb(20 30 44 / .10), 10px 16px 24px -10px rgb(20 30 44 / .38); }
+.acard[data-level="3"] .acard__body { box-shadow: 0 2px 4px rgb(4 14 24 / .18), 12px 20px 30px -12px rgb(4 20 34 / .55); }
+.acard[data-level="4"] .acard__body,
+.acard[data-level="5"] .acard__body { box-shadow: 0 2px 4px rgb(4 14 24 / .2), 14px 22px 34px -12px rgb(30 20 4 / .55); }
+.acard[data-size="sm"] .acard__body { box-shadow: 0 1px 2px rgb(20 30 44 / .14); }
+
+/* ---------- 皮：底 / 窗 / 粒子 / 框 ---------- */
+.acard__skin {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.acard__skin > * { position: absolute; }
+.acard__base { inset: 0; }
+.acard__pane { inset: 9% 9% 25% 9%; overflow: hidden; border-radius: var(--r-element); }
+.acard__svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.acard__frame, .acard__frame-inner { inset: 0; border-radius: inherit; }
+
+/* Lv1 素纸 */
+.acard__skin[data-level="1"] .acard__base { background: var(--sheet); }
+.acard__skin[data-level="1"] .acard__frame {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--ink) 22%, transparent),
+    inset 0 0 0 7px var(--sheet),
+    inset 0 0 0 8px color-mix(in oklab, var(--accent) 75%, transparent);
+}
+.acard__horizon { position: absolute; left: 0; right: 0; bottom: 6%; height: 14%; }
+.acard__horizon path { fill: none; stroke: var(--ink); stroke-width: 1.2; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .45; }
+.acard__horizon .acard__horizon-ripple { opacity: .3; }
+
+/* Lv2 银衬：外框 9px 银面，内缝 4px，再一圈细线 */
+.acard__skin[data-level="2"] .acard__base { background: color-mix(in oklab, var(--sheet) 90%, var(--accent)); }
+.acard__skin[data-level="2"] .acard__pane { background: var(--sheet); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 35%, transparent); }
+.acard__skin[data-level="2"] .acard__frame {
+  padding: 9px;
+  background: linear-gradient(135deg, #F4F6F8 0%, #AEB8C3 22%, #FDFEFF 40%, #8F9BA8 58%, #E6EAEE 78%, #A4AFBA 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.acard__skin[data-level="2"] .acard__frame-inner {
+  inset: 13px;
+  border-radius: var(--r-element);
+  box-shadow: inset 0 0 0 1px rgb(120 132 146 / .55), 0 0 0 1px rgb(255 255 255 / .7);
+}
+:root[data-theme="dark"] .acard__skin[data-level="2"] .acard__frame-inner { box-shadow: inset 0 0 0 1px rgb(200 210 220 / .45), 0 0 0 1px rgb(0 0 0 / .35); }
+
+/* Lv3 潮光：深海底 + 角色色流光边 */
+.acard__skin[data-level="3"] .acard__base { background: linear-gradient(168deg, color-mix(in oklab, var(--accent-hi) 34%, #12344C) 0%, #0D2638 58%, #091B29 100%); }
+.acard__skin[data-level="3"] .acard__pane { background: radial-gradient(120% 80% at 50% 30%, color-mix(in oklab, var(--accent-hi) 30%, transparent), transparent 70%); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent-hi) 40%, transparent); }
+.acard__skin[data-level="3"] .acard__frame,
+.acard__skin[data-level="4"] .acard__frame,
+.acard__skin[data-level="5"] .acard__frame {
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+.acard__skin[data-level="3"] .acard__frame {
+  padding: 4px;
+  background: linear-gradient(140deg, var(--accent-hi) 0%, #EAF8F9 24%, color-mix(in oklab, var(--accent-hi) 60%, #0D2638) 48%, #F2FBFB 70%, var(--accent-hi) 100%);
+}
+.acard__skin[data-level="3"] .acard__frame-inner { inset: 7px; border-radius: var(--r-element); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent-hi) 45%, transparent); }
+.acard__caustics { position: absolute; inset: 0; }
+.acard__caustics path { fill: none; stroke: var(--accent-hi); stroke-width: 1; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .4; }
+.acard__caustics .acard__caustics-net { opacity: .22; }
+.acard__halo {
+  left: 14%; right: 14%; bottom: 6%;
+  height: 18%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, color-mix(in oklab, var(--accent-hi) 55%, transparent), transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--accent-hi) 70%, transparent);
+}
+
+/* Lv4 金缘：金框 + 角色色内发光 + 顶光 */
+.acard__skin[data-level="4"] .acard__base { background: linear-gradient(180deg, var(--deep) 0%, color-mix(in oklab, var(--accent-hi) 28%, var(--deep)) 62%, #08131E 100%); }
+.acard__skin[data-level="4"] .acard__pane { background: radial-gradient(110% 70% at 50% 34%, color-mix(in oklab, var(--accent-hi) 34%, transparent), transparent 72%); box-shadow: inset 0 0 22px 2px color-mix(in oklab, var(--accent-hi) 55%, transparent), inset 0 0 0 1px rgb(247 227 164 / .55); }
+.acard__skin[data-level="4"] .acard__frame {
+  padding: 6px;
+  background: linear-gradient(160deg, var(--gold-1) 0%, var(--gold-2) 26%, var(--gold-3) 46%, var(--gold-4) 68%, var(--gold-1) 100%);
+}
+.acard__skin[data-level="4"] .acard__frame-inner,
+.acard__skin[data-level="5"] .acard__frame-inner { inset: 9px; border-radius: var(--r-element); box-shadow: inset 0 0 0 1px rgb(247 227 164 / .7), inset 0 0 18px color-mix(in oklab, var(--accent-hi) 40%, transparent); }
+.acard__beam {
+  left: 0; right: 0; top: 0;
+  height: 78%;
+  clip-path: polygon(40% 0, 60% 0, 92% 100%, 8% 100%);
+  background: linear-gradient(180deg, rgb(255 246 214 / .5), rgb(255 246 214 / .12) 55%, transparent);
+  mix-blend-mode: screen;
+}
+.acard__signature { position: absolute; inset: 0; }
+.acard__signature .sig-line { fill: none; stroke: var(--gold-1); stroke-width: 1.3; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .75; }
+.acard__signature .sig-line--soft { opacity: .5; }
+.acard__signature .sig-line--faint { opacity: .3; }
+.acard__signature .sig-fill { fill: color-mix(in oklab, var(--accent-hi) 70%, var(--gold-1)); opacity: .8; }
+.acard__signature .sig-fill--soft { opacity: .45; }
+.acard__signature .sig-bubble { fill: none; stroke: var(--accent-hi); stroke-width: .8; opacity: .8; }
+
+/* Lv5 鎏金箔：碎箔底 + 深色窗 + 拉丝金框 */
+.acard__skin[data-level="5"] .acard__base { background: linear-gradient(135deg, #8E6B26 0%, #E9C977 22%, #FFF1C4 38%, #C9973A 55%, #F2D88E 74%, #9A7228 100%); }
+.acard__foil { position: absolute; inset: 0; mix-blend-mode: soft-light; }
+.acard__foil .foil-flake { stroke: rgb(110 78 20 / .35); stroke-width: .3; vector-effect: non-scaling-stroke; }
+.acard__foil .foil-flake--0 { fill: rgb(255 250 230 / .55); }
+.acard__foil .foil-flake--1 { fill: rgb(120 84 20 / .35); }
+.acard__foil .foil-flake--2 { fill: rgb(255 236 170 / .3); }
+.acard__foil .foil-flake--3 { fill: rgb(70 48 10 / .2); }
+.acard__foil .foil-crease { fill: none; stroke: rgb(255 255 255 / .7); stroke-width: .6; vector-effect: non-scaling-stroke; }
+.acard__skin[data-level="5"] .acard__pane { background: linear-gradient(180deg, var(--deep) 0%, color-mix(in oklab, var(--accent-hi) 30%, var(--deep)) 70%, #08131E 100%); box-shadow: inset 0 0 0 1.5px var(--gold-1), inset 0 0 24px 2px color-mix(in oklab, var(--accent-hi) 55%, transparent); }
+.acard__skin[data-level="5"] .acard__frame {
+  padding: 7px;
+  background:
+    repeating-linear-gradient(90deg, rgb(255 255 255 / .22) 0 1px, transparent 1px 3px),
+    linear-gradient(150deg, var(--gold-3) 0%, var(--gold-4) 24%, var(--gold-1) 44%, #FFFBEA 52%, var(--gold-2) 70%, var(--gold-3) 100%);
+}
+.acard__skin[data-level="5"] .acard__frame-inner { box-shadow: inset 0 0 0 1px rgb(90 62 12 / .55), 0 0 0 1px rgb(255 248 220 / .6); }
+
+/* 粒子：静态摆位；hover 时一起往上漂一点（过渡，不循环） */
+.acard__sparks { inset: 0; }
+.acard__sparks span {
+  position: absolute;
+  width: calc(10px * var(--s));
+  height: calc(10px * var(--s));
+  margin: calc(-5px * var(--s));
+  transition: transform var(--dur-slow) var(--ease-standard);
+}
+.acard__skin[data-level="3"] .acard__sparks span { border-radius: 50%; box-shadow: inset 0 0 0 1px rgb(234 248 249 / .75); background: radial-gradient(circle at 35% 30%, rgb(255 255 255 / .55), transparent 60%); }
+.acard__skin[data-level="4"] .acard__sparks span,
+.acard__skin[data-level="5"] .acard__sparks span {
+  clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%);
+  background: #FFF6D6;
+}
+.acard__skin[data-level="5"] .acard__sparks .acard__glint { clip-path: none; border-radius: 50%; width: calc(5px * var(--s)); height: calc(5px * var(--s)); background: #FFFFFF; box-shadow: 0 0 6px 2px rgb(255 255 255 / .7); }
+
+/* ---------- 立绘 ---------- */
+.acard__art {
+  position: absolute;
+  left: 50%;
+  top: 13%;
+  width: 66%;
+  aspect-ratio: 1;
+  transform: translateX(-50%) translateZ(calc(26px * var(--tilt)));
+}
+.acard__mark { width: 100%; height: 100%; }
+/* 深色材质上，徽记按白天的纸色印，像压在卡上的一枚章 */
+.acard:is([data-level="3"], [data-level="4"], [data-level="5"]) .acard__art { --ink: #2F3A4A; --sheet: #FBF7EE; --accent-wash: color-mix(in oklab, var(--accent-hi) 22%, #FBF7EE); }
+.acard:is([data-level="3"], [data-level="4"], [data-level="5"]) .acard__art .mark { --accent: color-mix(in oklab, var(--accent-hi) 45%, #12344C); }
+
+/* ---------- 光：镭射膜 / 指针高光 / 扫光 ---------- */
+.acard__shine {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.acard__shine > span { position: absolute; }
+.acard__holo {
+  inset: -50%;
+  background: linear-gradient(115deg, transparent 28%, rgb(255 140 210 / .55) 38%, rgb(140 225 255 / .55) 46%, rgb(255 244 150 / .55) 54%, rgb(170 140 255 / .5) 62%, transparent 72%);
+  mix-blend-mode: color-dodge;
+  opacity: .5;
+  transform: translate(calc(var(--px) * -36%), calc(var(--py) * -36%));
+  transition: transform var(--dur-slow) var(--ease-standard), opacity var(--dur-slow) var(--ease-standard);
+}
+.acard[data-pointer="on"] .acard__holo { opacity: .8; }
+.acard__sheen {
+  inset: -40% -60%;
+  background: linear-gradient(105deg, transparent 42%, rgb(255 255 255 / .55) 50%, transparent 58%);
+  mix-blend-mode: soft-light;
+  opacity: 0;
+  transform: translateX(-60%);
+}
+.acard[data-level="2"] .acard__sheen { mix-blend-mode: normal; background: linear-gradient(105deg, transparent 44%, rgb(255 255 255 / .38) 50%, transparent 56%); }
+.acard[data-level="4"] .acard__sheen,
+.acard[data-level="5"] .acard__sheen { mix-blend-mode: overlay; background: linear-gradient(105deg, transparent 40%, rgb(255 246 214 / .85) 50%, transparent 60%); }
+
+/* 精确指针 hover：扫光一次，粒子往上漂；静置不动 */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion="calm"]) .acard[data-size="md"]:not([data-upgrading]):hover .acard__sheen { animation: acard-sheen 1100ms var(--ease-standard) 1 both; }
+  :root:not([data-motion="calm"]) .acard[data-size="md"]:not([data-upgrading]):hover .acard__sparks span { transform: translateY(calc(-8px * var(--s))); }
+}
+@keyframes acard-sheen {
+  0% { opacity: 0; transform: translateX(-60%); }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translateX(60%); }
+}
+
+/* ---------- 档位刻度与名牌 ---------- */
+.acard__pips {
+  position: absolute;
+  left: 50%;
+  top: 4.2%;
+  display: flex;
+  gap: 5px;
+  transform: translateX(-50%) translateZ(calc(14px * var(--tilt)));
+}
+.acard__pips span { width: 6px; height: 6px; transform: rotate(45deg); background: color-mix(in oklab, var(--ink) 18%, transparent); }
+.acard__pips span[data-on="true"] { background: var(--accent); }
+.acard:is([data-level="3"]) .acard__pips span { background: rgb(234 248 249 / .25); }
+.acard:is([data-level="3"]) .acard__pips span[data-on="true"] { background: var(--accent-hi); }
+.acard:is([data-level="4"], [data-level="5"]) .acard__pips span { background: rgb(60 40 8 / .35); }
+.acard:is([data-level="4"], [data-level="5"]) .acard__pips span[data-on="true"] { background: var(--gold-3); }
+.acard[data-size="sm"] .acard__pips { gap: 3px; top: 3.4%; }
+.acard[data-size="sm"] .acard__pips span { width: 4px; height: 4px; }
+
+.acard__plate {
+  position: absolute;
+  left: 11%;
+  right: 11%;
+  bottom: 6%;
+  height: 15%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: var(--r-inner);
+  background: var(--sheet);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ink) 16%, transparent);
+  transform: translateZ(calc(34px * var(--tilt)));
+  text-align: center;
+  line-height: 1.15;
+}
+.acard__name { font-family: var(--font-voice); font-size: var(--text-lg); letter-spacing: .12em; text-indent: .12em; }
+.acard__tier { font-size: var(--text-xs); letter-spacing: .08em; color: var(--ink-soft); }
+.acard[data-level="2"] .acard__plate { box-shadow: inset 0 0 0 1px rgb(143 155 168 / .8), 0 4px 8px -4px rgb(20 30 44 / .35); }
+.acard[data-level="3"] .acard__plate,
+.acard[data-level="4"] .acard__plate { background: #0A1C2B; color: #F3EEE2; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent-hi) 55%, transparent); }
+.acard[data-level="3"] .acard__tier { color: #CFE9EC; }
+.acard[data-level="4"] .acard__plate { box-shadow: inset 0 0 0 1px rgb(247 227 164 / .75); }
+.acard[data-level="4"] .acard__tier { color: var(--gold-1); }
+.acard[data-level="5"] .acard__plate { background: #2B1F0A; color: #FFF4D6; box-shadow: inset 0 0 0 1px var(--gold-1), 0 0 0 1px rgb(90 62 12 / .6); }
+.acard[data-level="5"] .acard__tier { color: var(--gold-1); }
+.acard[data-size="sm"] .acard__name { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.acard[data-size="sm"] .acard__plate { height: 13%; left: 9%; right: 9%; bottom: 5%; }
+
+/* ---------- 升级：提示条与跳过 ---------- */
+.acard__notice {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  z-index: 3;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-inner);
+  background: var(--sheet);
+  color: var(--ink);
+  box-shadow: var(--elev-floating);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: up-notice var(--up-dur) linear both;
+}
+.acard__skip {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  z-index: 4;
+  min-width: var(--hit);
+  min-height: var(--hit);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-inner);
+  background: var(--sheet);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.acard__skip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+@keyframes up-notice {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* ---------- 升级动画（完整动效） ----------
+   每一步都用同一个 --up-dur（JS 按档位给，跨多档时等比缩短），关键帧百分比负责分镜。 */
+.acard__up { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: 2; }
+.acard__up > span { position: absolute; }
+.acard[data-upgrading] .acard__skin--ghost { animation: up-ghost var(--up-dur) linear both; }
+.acard[data-upgrading] .acard__sheen { animation: up-sheen-late var(--up-dur) linear both; }
+
+/* 1→2 立起：卡从平放翻起、回弹到常态倾角；名牌和立绘晚一拍分层；衬框由外向内收紧 */
+.acard[data-upgrading="2"] .acard__body { animation: up-stand var(--up-dur) cubic-bezier(.2, .8, .25, 1) both; }
+.acard[data-upgrading="2"] .acard__skin--ghost { animation-name: up-ghost-2; }
+.acard[data-upgrading="2"] .acard__skin:not(.acard__skin--ghost) .acard__frame { animation: up-frame-in var(--up-dur) cubic-bezier(.2, .8, .25, 1) both; }
+.acard[data-upgrading="2"] .acard__plate { animation: up-lift var(--up-dur) cubic-bezier(.2, .8, .25, 1) both; }
+@keyframes up-stand {
+  0% { transform: rotateX(0deg) rotateY(0deg) scale(.97); }
+  55% { transform: rotateX(16deg) rotateY(-14deg) scale(1.03); }
+  80% { transform: rotateX(5deg) rotateY(-7deg) scale(.995); }
+  100% { transform: rotateX(var(--rest-x)) rotateY(var(--rest-y)) scale(1); }
+}
+@keyframes up-ghost-2 { 0% { opacity: 1; } 45% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes up-frame-in { 0% { opacity: 0; transform: scale(1.08); } 50% { opacity: 1; } 100% { opacity: 1; transform: scale(1); } }
+@keyframes up-lift { 0%, 30% { transform: translateZ(0); } 100% { transform: translateZ(34px); } }
+
+/* 2→3 潮光：卡心推出两圈水波；一道光沿边绕一周；光环最后亮起 */
+.acard[data-upgrading="3"] .acard__skin--ghost { animation-name: up-ghost-3; }
+.acard[data-upgrading="3"] .acard__halo { animation: up-halo var(--up-dur) cubic-bezier(.2, .8, .25, 1) both; }
+.up-ripple {
+  left: 50%; top: 42%;
+  width: 70%;
+  aspect-ratio: 1;
+  margin: -35% 0 0 -35%;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--accent-hi), 0 0 18px color-mix(in oklab, var(--accent-hi) 60%, transparent);
+  animation: up-ripple var(--up-dur) cubic-bezier(.15, .7, .3, 1) both;
+}
+.up-ripple--late { animation-name: up-ripple-late; }
+.up-edge {
+  inset: 0;
+  border-radius: inherit;
+  padding: 4px;
+  overflow: hidden;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  animation: up-edge var(--up-dur) linear both;
+}
+.up-edge__spin {
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 180%;
+  aspect-ratio: 1;
+  margin: -90% 0 0 -90%;
+  background: conic-gradient(from 0deg, transparent 0deg 290deg, color-mix(in oklab, var(--accent-hi) 50%, #FFFFFF) 335deg, #FFFFFF 352deg, transparent 360deg);
+  animation: up-spin var(--up-dur) cubic-bezier(.4, 0, .3, 1) both;
+}
+@keyframes up-ghost-3 { 0%, 15% { opacity: 1; } 60% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes up-ripple { 0% { opacity: .95; transform: scale(.08); } 70% { opacity: 0; transform: scale(2.1); } 100% { opacity: 0; transform: scale(2.1); } }
+@keyframes up-ripple-late { 0%, 18% { opacity: 0; transform: scale(.08); } 22% { opacity: .8; } 85% { opacity: 0; transform: scale(2); } 100% { opacity: 0; transform: scale(2); } }
+@keyframes up-edge { 0%, 20% { opacity: 0; } 30% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes up-spin { 0%, 20% { transform: rotate(0deg); } 90%, 100% { transform: rotate(360deg); } }
+@keyframes up-halo { 0%, 55% { opacity: 0; transform: scale(.4); } 85% { opacity: 1; transform: scale(1.08); } 100% { opacity: 1; transform: scale(1); } }
+
+/* 3→4 金缘：光点从卡底升起；金边自下而上点亮（底边→两侧→顶边）；最后顶光落下 */
+.acard[data-upgrading="4"] .acard__skin--ghost { animation-name: up-ghost-4; }
+.acard[data-upgrading="4"] .acard__beam { animation: up-beam var(--up-dur) cubic-bezier(.2, .8, .25, 1) both; }
+.up-gold { background: linear-gradient(90deg, var(--gold-1), var(--gold-3), var(--gold-2)); box-shadow: 0 0 12px 2px rgb(255 230 160 / .7); }
+.up-gold--b { left: 0; right: 0; bottom: 0; height: 6px; transform-origin: 50% 50%; animation: up-gold-b var(--up-dur) cubic-bezier(.3, .6, .3, 1) both; }
+.up-gold--l, .up-gold--r { top: 0; bottom: 0; width: 6px; transform-origin: 50% 100%; animation: up-gold-side var(--up-dur) cubic-bezier(.3, .6, .3, 1) both; }
+.up-gold--l { left: 0; }
+.up-gold--r { right: 0; }
+.up-gold--t { left: 0; right: 0; top: 0; height: 6px; transform-origin: 50% 50%; animation: up-gold-t var(--up-dur) cubic-bezier(.3, .6, .3, 1) both; }
+.up-rise {
+  bottom: 4%;
+  left: calc(10% + var(--i) * 8.6%);
+  width: 6px; height: 6px;
+  margin-left: -3px;
+  border-radius: 50%;
+  background: #FFF6D6;
+  box-shadow: 0 0 8px 2px rgb(255 236 170 / .8);
+  animation: up-rise var(--up-dur) cubic-bezier(.2, .6, .3, 1) both;
+  animation-delay: calc(var(--up-dur) * .025 * var(--i));
+}
+@keyframes up-ghost-4 { 0%, 35% { opacity: 1; } 75% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes up-gold-b { 0% { opacity: 1; transform: scaleX(0); } 25% { transform: scaleX(1); } 82% { opacity: 1; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1); } }
+@keyframes up-gold-side { 0%, 20% { opacity: 1; transform: scaleY(0); } 60% { transform: scaleY(1); } 82% { opacity: 1; transform: scaleY(1); } 100% { opacity: 0; transform: scaleY(1); } }
+@keyframes up-gold-t { 0%, 55% { opacity: 1; transform: scaleX(0); } 78% { transform: scaleX(1); } 86% { opacity: 1; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1); } }
+@keyframes up-rise { 0% { opacity: 0; transform: translateY(0); } 15% { opacity: 1; } 70% { opacity: .9; } 100% { opacity: 0; transform: translateY(-3200%); } }
+@keyframes up-beam { 0%, 58% { opacity: 0; transform: translateY(-60%); } 88% { opacity: 1; transform: translateY(4%); } 100% { opacity: 1; transform: translateY(0); } }
+
+/* 4→5 鎏金：闪白一帧 → 镭射膜从左上扫到右下，旧卡面随之褪去 → 闪点逐个亮起 → 收尾一道高光 */
+.acard[data-upgrading="5"] .acard__skin--ghost { animation-name: up-ghost-5; }
+.acard[data-upgrading="5"] .acard__holo { animation: up-holo var(--up-dur) linear both; }
+.acard[data-upgrading="5"] .acard__glint { animation: up-pop var(--up-dur) cubic-bezier(.2, .8, .25, 1) both; animation-delay: calc(var(--up-dur) * .012 * (var(--i) - 18)); }
+.up-flash { inset: 0; background: #FFFFFF; animation: up-flash var(--up-dur) linear both; }
+.up-sweep {
+  inset: -60%;
+  background: linear-gradient(135deg, transparent 38%, rgb(255 236 170 / .9) 46%, rgb(255 170 230 / .7) 49%, rgb(160 230 255 / .7) 52%, rgb(255 250 220 / .9) 55%, transparent 63%);
+  mix-blend-mode: screen;
+  animation: up-sweep var(--up-dur) cubic-bezier(.45, .05, .35, 1) both;
+}
+@keyframes up-ghost-5 { 0%, 8% { opacity: 1; } 10% { opacity: .55; } 55% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes up-flash { 0% { opacity: 0; } 4% { opacity: .92; } 12% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes up-sweep { 0%, 10% { opacity: 0; transform: translate(-45%, -45%); } 16% { opacity: 1; } 60% { opacity: 1; } 68% { opacity: 0; transform: translate(45%, 45%); } 100% { opacity: 0; transform: translate(45%, 45%); } }
+@keyframes up-holo { 0%, 30% { opacity: 0; } 70% { opacity: .5; } 100% { opacity: .5; } }
+@keyframes up-pop { 0%, 55% { opacity: 0; transform: scale(0); } 72% { opacity: 1; transform: scale(1.5); } 84%, 100% { opacity: 1; transform: scale(1); } }
+
+@keyframes up-ghost { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes up-sheen-late { 0%, 70% { opacity: 0; transform: translateX(-60%); } 78% { opacity: 1; } 94% { opacity: 1; } 100% { opacity: 0; transform: translateX(60%); } }
+
+/* ---------- 降级：只淡入新卡面 + 一行「升到 Lv.N」 ---------- */
+.acard[data-calm] .acard__up,
+.acard[data-calm] .acard__body,
+.acard[data-calm] .acard__sheen,
+.acard[data-calm] .acard__halo,
+.acard[data-calm] .acard__beam,
+.acard[data-calm] .acard__holo,
+.acard[data-calm] .acard__glint,
+.acard[data-calm] .acard__plate,
+.acard[data-calm] .acard__skin .acard__frame { animation: none; }
+.acard[data-calm] .acard__up { display: none; }
+.acard[data-calm] .acard__skin--ghost { animation: up-ghost var(--up-dur) var(--ease-standard) both; }
+.acard[data-calm] .acard__notice { animation: none; }
+:root[data-motion="calm"] .acard__body,
+:root[data-motion="calm"] .acard__holo,
+:root[data-motion="calm"] .acard__sparks span { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .acard__body, .acard__holo, .acard__sparks span { transition: none; }
+}
