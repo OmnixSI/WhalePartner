@@ -18,6 +18,11 @@
   background: var(--color-bg-body);
 }
 
+/* 桌面手动收起：父级列宽跟着 232px → 72px，主内容不留在右侧 160px 空白 */
+@media (min-width: 1180px) {
+  .app-shell.is-nav-collapsed { grid-template-columns: var(--shell-nav-rail) minmax(0, 1fr); }
+}
+
 .app-shell__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .app-shell__skip {
   position: absolute;
@@ -110,17 +115,19 @@
 .shell-nav__toggle:hover { color: var(--color-text-primary); background: var(--color-bg-muted); }
 .shell-nav__toggle:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 
-/* 收起：只留图标 */
-.shell-nav.is-collapsed { padding-inline: var(--sp-2); }
-.shell-nav.is-collapsed .shell-nav__head { justify-content: center; padding-inline: 0; }
-.shell-nav.is-collapsed .shell-nav__brand,
-.shell-nav.is-collapsed .shell-nav__group-label,
-.shell-nav.is-collapsed .shell-nav__label,
-.shell-nav.is-collapsed .shell-nav__her-text { display: none; }
-.shell-nav.is-collapsed .shell-nav__item { justify-content: center; padding-inline: 0; }
-.shell-nav.is-collapsed .shell-nav__item[aria-current="page"]::before { display: none; }
-.shell-nav.is-collapsed .shell-nav__her { justify-content: center; padding: var(--sp-1); }
-.shell-nav.is-collapsed .shell-nav__toggle { align-self: center; }
+/* 收起：只留图标。只在桌面生效；窄窗和手机由下面的断点自动收起。 */
+@media (min-width: 1180px) {
+  .shell-nav.is-collapsed { padding-inline: var(--sp-2); }
+  .shell-nav.is-collapsed .shell-nav__head { justify-content: center; padding-inline: 0; }
+  .shell-nav.is-collapsed .shell-nav__brand,
+  .shell-nav.is-collapsed .shell-nav__group-label,
+  .shell-nav.is-collapsed .shell-nav__label,
+  .shell-nav.is-collapsed .shell-nav__her-text { display: none; }
+  .shell-nav.is-collapsed .shell-nav__item { justify-content: center; padding-inline: 0; }
+  .shell-nav.is-collapsed .shell-nav__item[aria-current="page"]::before { display: none; }
+  .shell-nav.is-collapsed .shell-nav__her { justify-content: center; padding: var(--sp-1); }
+  .shell-nav.is-collapsed .shell-nav__toggle { align-self: center; }
+}
 
 /* 窄窗自动收起（不依赖 JS，900px 也走这一档） */
 @media (max-width: 1179px) {

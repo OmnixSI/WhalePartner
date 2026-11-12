@@ -42,7 +42,8 @@
  *      换角色互不影响（各记各的，一位升档不动另一位的记录）；首次、清掉存储不播；读取失败有重试，重试后不播
  *  26  换一位：主卡与缩略卡共用等级；单卡失败可重试，重试一起恢复，切角色不多发请求
  *  27  聊天页跨档提示一次、同一档不重复；点「去看看」打开设置页卡面并播升级
- *  （默认共 27 项；--shots 再加一项截图，共 28 项）
+ *  28  外壳：1440 点「收起导航」后 nav 72px、main 从 x=72 起；再展开回 232；900 图标栏链接有可访问名称
+ *  （默认共 28 项；--shots 再加一项截图，共 29 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -385,6 +386,45 @@ async function checkHorizontalScroll(browser) {
     await context.close();
   }
   return record("横向滚动 ≤ 视口（380px 与 --scale=2）", fails.length === 0, fails.length ? fails.join("；") : "0 处");
+}
+
+/** 28. 外壳：桌面手动收起后父级列宽跟到 72px；900 图标栏的链接仍有可访问名称。 */
+async function checkShellNav(browser) {
+  const fails = [];
+  const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+  await visit(page, "/settings");
+  const measure = () => page.evaluate(() => {
+    const nav = document.querySelector(".shell-nav")?.getBoundingClientRect();
+    const main = document.querySelector("#main")?.getBoundingClientRect();
+    return { nav: Math.round(nav?.width ?? -1), mainX: Math.round(main?.x ?? -1) };
+  });
+
+  const before = await measure();
+  if (before.nav !== 232 || before.mainX !== 232) fails.push(`展开时 nav ${before.nav} / main x ${before.mainX}，应为 232 / 232`);
+  await page.getByRole("button", { name: "收起导航" }).click();
+  await page.waitForTimeout(200);
+  const after = await measure();
+  if (after.nav !== 72) fails.push(`收起后 nav ${after.nav}px，应为 72`);
+  if (after.mainX !== 72) fails.push(`收起后 main x ${after.mainX}px，应为 72`);
+  const expanded = await page.getByRole("button", { name: "展开导航" }).getAttribute("aria-expanded");
+  if (expanded !== "false") fails.push(`收起后 aria-expanded=${expanded}，应为 false`);
+  await page.getByRole("button", { name: "展开导航" }).click();
+  await page.waitForTimeout(200);
+  const reopened = await measure();
+  if (reopened.nav !== 232 || reopened.mainX !== 232) fails.push(`再展开后 nav ${reopened.nav} / main x ${reopened.mainX}，应为 232 / 232`);
+  await context.close();
+
+  const narrow = await openPage(browser, { width: 900, height: 900 });
+  await visit(narrow.page, "/settings");
+  for (const name of ["聊天", "日记", "记忆", "见闻", "设置"]) {
+    if ((await narrow.page.getByRole("link", { name, exact: true }).count()) !== 1) fails.push(`900 图标栏读不到链接「${name}」`);
+  }
+  const labels = await narrow.page.locator(".shell-nav__item").evaluateAll((els) => els.map((el) => el.getAttribute("aria-label")));
+  if (labels.some((label) => !label)) fails.push(`900 图标栏有链接缺 aria-label：${labels.map((v) => v ?? "null").join("、")}`);
+  await narrow.context.close();
+
+  const detail = fails.length ? fails.join("；") : `展开 ${before.nav}/${before.mainX} → 收起 ${after.nav}/${after.mainX} → 再展开 ${reopened.nav}/${reopened.mainX}；900 链接名称 5/5`;
+  return record("外壳：1440 收起导航列宽 72、main 从 72 起；900 图标栏链接可访问", fails.length === 0, detail);
 }
 
 async function checkAxe(browser, AxeBuilder) {
@@ -1264,6 +1304,7 @@ if (STATIC_ONLY) {
     } else {
       await checkTouch(browser);
       await checkHorizontalScroll(browser);
+      await checkShellNav(browser);
       await checkAxe(browser, AxeBuilder);
       await checkIdleAndHidden(browser);
       await checkLazyStyles(browser);
