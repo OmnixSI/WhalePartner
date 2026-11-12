@@ -4,7 +4,7 @@ import { CompanionCorner, setCompanionMood } from "../components/CompanionCorner
 import { PageHeader } from "../components/shell/PageHeader";
 import { useMediaQuery } from "../components/chat/useViewport";
 import { StatePanel } from "../components/pages/StatePanel";
-import { Button, Card, ConfirmDialog, Toaster, toast } from "../components/ui";
+import { Button, Card, ConfirmDialog, toast } from "../components/ui";
 import { FilterBar } from "../components/memory/FilterBar";
 import { MemoryRow } from "../components/memory/MemoryRow";
 import { MemoryDialog } from "../components/memory/MemoryDialog";
@@ -25,7 +25,7 @@ import "../styles/memory.css";
 /** 一页最多几行：桌面 10 行，手机 6 行。 */
 const PAGE_WIDE = 10;
 const PAGE_NARROW = 6;
-/** 撤回窗口（规范 §7.3.5）：5 秒内不删，超时才真删。 */
+/** 撤回窗口（规范 §7.3.5）：吐司显示 5 秒，它在期间不删，一走才真删。 */
 const UNDO_MS = 5000;
 const FOLD_MS = 240;
 
@@ -49,7 +49,8 @@ export function MemoryPage() {
   const [filters, setFilters] = useState<OwnFilters>(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
 
-  const deleteTimers = useRef(new Map<string, number>());
+  /** 还在撤回窗口里的删除：记忆 id → 吐司 id。吐司走了才真删（见 toast-store 的 onDismiss）。 */
+  const pending = useRef(new Map<string, number>());
   const foldTimers = useRef(new Map<string, number>());
 
   const load = useCallback((signal?: AbortSignal) => {
@@ -71,15 +72,16 @@ export function MemoryPage() {
 
   useHubRefresh(["memory.updated", "diary.updated"], () => load());
 
-  // 离开页面 / 关标签：还没到 5 秒的那几条立刻提交，别把用户的意图丢掉。
+  // 离开页面 / 关标签：还在撤回窗口里的那几条立刻提交，别把用户的意图丢掉。
+  // 先把它们从 pending 摘掉再收吐司，吐司的 onDismiss 就不会再提交第二次。
   useEffect(() => {
-    const timers = deleteTimers.current;
+    const waiting = pending.current;
     const flush = () => {
-      timers.forEach((timer, id) => {
-        window.clearTimeout(timer);
+      for (const [id, toastId] of [...waiting]) {
+        waiting.delete(id);
+        toast.dismiss(toastId);
         void deleteMemory(id).catch(() => undefined);
-      });
-      timers.clear();
+      }
     };
     window.addEventListener("pagehide", flush);
     return () => {
@@ -133,7 +135,6 @@ export function MemoryPage() {
   const visible = filtered.slice(current * pageSize, current * pageSize + pageSize);
 
   const commit = useCallback(async (id: string) => {
-    deleteTimers.current.delete(id);
     try {
       await deleteMemory(id);
       setEntries((prev) => prev?.filter((entry) => entry.id !== id) ?? null);
@@ -175,19 +176,21 @@ export function MemoryPage() {
     }, FOLD_MS);
     foldTimers.current.set(entry.id, fold);
 
-    const timer = window.setTimeout(() => void commit(entry.id), UNDO_MS);
-    deleteTimers.current.set(entry.id, timer);
-
-    toast({
+    // 删除不再另起定时器：跟吐司同生共死。吐司在（含悬停暂停时），「撤回」都还作数；吐司一走才真删。
+    const toastId = toast({
       title: "已经忘掉了",
       description: "5 秒内可以撤回。",
       duration: UNDO_MS,
+      onDismiss: () => {
+        if (pending.current.delete(entry.id)) void commit(entry.id);
+      },
       action: {
         label: "撤回",
         onClick: () => {
-          const pending = deleteTimers.current.get(entry.id);
-          if (pending) window.clearTimeout(pending);
-          deleteTimers.current.delete(entry.id);
+          if (!pending.current.delete(entry.id)) {
+            toast({ title: "已经删掉了，撤不回", tone: "warning" });
+            return;
+          }
           const folding = foldTimers.current.get(entry.id);
           if (folding) window.clearTimeout(folding);
           foldTimers.current.delete(entry.id);
@@ -204,6 +207,7 @@ export function MemoryPage() {
         },
       },
     });
+    pending.current.set(entry.id, toastId);
   };
 
   const clearAll = () => {
@@ -214,7 +218,8 @@ export function MemoryPage() {
     setPage(0);
   };
 
-  const emptySearch = searching && filtered.length === 0;
+  // 搜索 / 筛选没结果，或者点进了一个计数为 0 的分类
+  const emptySearch = (searching || group !== "all") && filtered.length === 0;
   const total = alive.length;
 
   return (
@@ -223,8 +228,7 @@ export function MemoryPage() {
         <PageHeader
           eyebrow="手帐 · 记忆"
           title="她记得的事"
-          lead={entries !== null ? `已收好 ${total} 条，点开一条看详情，也可以让她忘掉。` : undefined}
-          actions={entries !== null ? <span className="page-head__meta">{total} 条</span> : undefined}
+          lead={entries !== null && total > 0 ? `已收好 ${total} 条，点开一条看详情，也可以让她忘掉。` : undefined}
         />
 
         {note && (
@@ -274,8 +278,14 @@ export function MemoryPage() {
           <StatePanel
             kind="empty"
             icon="bottle"
-            title={applied.trim() ? `没找到带「${applied.trim()}」的记忆` : "这几种筛选下，暂时没有记忆"}
-            body="换个词试试，或者把筛选清掉。"
+            title={
+              applied.trim()
+                ? `没找到带「${applied.trim()}」的记忆`
+                : searching
+                  ? "这几种筛选下，暂时没有记忆"
+                  : "这个分类还没有记忆"
+            }
+            body={searching ? "换个词试试，或者把筛选清掉。" : "换个分类看看，或者回到全部。"}
           >
             <Button variant="secondary" onClick={clearAll}>清掉筛选</Button>
           </StatePanel>
@@ -331,7 +341,6 @@ export function MemoryPage() {
         }}
       />
 
-      <Toaster />
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { StatePanel } from "../components/pages/StatePanel";
 import { SurfCard } from "../components/surf/SurfCard";
 import { SurfFilters } from "../components/surf/SurfFilters";
 import { SurfDetail } from "../components/surf/SurfDetail";
-import { Button, ConfirmDialog, Input, Toaster, toast } from "../components/ui";
+import { Button, ConfirmDialog, Input, toast } from "../components/ui";
 import { SurfStatus, type SurfPhase } from "../components/surf/SurfStatus";
 import { useHubRefresh } from "../lib/useHubRefresh";
 import { useSurfEvents, type SurfShareEvent } from "../components/surf/useSurfEvents";
@@ -400,7 +400,6 @@ export function SurfPage() {
           setConfirming(null);
         }}
       />
-      <Toaster />
     </div>
   );
 }

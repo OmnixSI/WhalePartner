@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   Button, Card, CardButton, ConfirmDialog, Dialog, Field, IconButton, Input, Select, Switch, TabPanel, Tabs, Textarea,
-  ToastPreview, Toaster, Tooltip, toast,
+  ToastPreview, Tooltip, toast,
 } from "../components/ui";
 import { Icon } from "../icons";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
@@ -29,6 +29,7 @@ const VARIANTS = [
   ["secondary", "次按钮", "导出"],
   ["ghost", "幽灵按钮", "稍后"],
   ["danger", "危险按钮", "删除"],
+  ["danger-outline", "危险（描边）", "忘掉这条"],
 ] as const;
 const STATES = [
   ["default", "默认"],
@@ -285,7 +286,6 @@ function UiKitBody() {
         confirmLabel="删除日记"
         onConfirm={() => { toast({ title: "已删除", tone: "error" }); }}
       />
-      <Toaster />
     </div>
   );
 }

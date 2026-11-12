@@ -1,6 +1,6 @@
 /**
  * 记忆详情（参照 astryx 的 Dialog）：ui/Dialog 里放分类徽章、正文、来源和原话。
- * 底部：「回到当时的聊天」（有链接才出现）+「忘掉这条」（近况类不出现）。
+ * 底部：危险入口「忘掉这条」（描边，近况类不出现）靠左，安全动作「回到当时的聊天」（有链接才出现）靠右；真正执行在确认框里。
  * 后端没有「改记忆」的接口，所以这里只读，不画编辑框。
  */
 import { Button, Dialog } from "../ui";
@@ -40,7 +40,7 @@ export function MemoryDialog({ entry, onClose, onForget }: Props) {
         entry && (
           <>
             {canForget(entry) && (
-              <Button variant="danger" onClick={() => onForget(entry)}>忘掉这条</Button>
+              <Button variant="danger-outline" className="mdetail__forget" onClick={() => onForget(entry)}>忘掉这条</Button>
             )}
             {entry.url && (
               <a className="ui-btn ui-press ui-focus ui-btn--secondary" href={entry.url} target="_blank" rel="noreferrer">

@@ -35,6 +35,9 @@
 .ui-tabs__tab[data-state="active"] .mfilters__n { background: var(--color-accent-muted); color: var(--color-accent); }
 
 .mdate { display: flex; flex-direction: column; gap: var(--sp-3); }
+/* 老人模式格子 56px：7 格放不进 390 宽的弹层，宁可横向滚动也不叠在一起 */
+.mdate__cal { overflow-x: auto; }
+.mdate .mini { width: 100%; min-width: calc(7 * var(--hit) + 6 * 2px); }
 .mdate__ends { display: flex; align-items: center; justify-content: center; gap: var(--sp-3); color: var(--color-text-secondary); }
 
 /* ---------------------------------------------------------------- 列表（表格式） */
@@ -89,6 +92,8 @@
 .mpager__no { font-size: var(--text-sm); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 
 /* ---------------------------------------------------------------- 详情 */
+.mdetail__forget { margin-inline-end: auto; }
+@media (max-width: 559px) { .mdetail__forget { margin-inline-end: 0; } }
 .mdetail { display: flex; flex-direction: column; gap: var(--sp-4); }
 .mdetail__badges { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .mdetail__text { margin: 0; font-size: var(--text-md); line-height: 1.75; color: var(--color-text-primary); white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -48,9 +48,9 @@
 .ptool { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 .ptool__search { display: flex; flex: 1 1 260px; gap: var(--sp-2); min-width: 0; }
 .ptool__input { position: relative; flex: 1; min-width: 0; }
-.ptool__input .ui-input { width: 100%; padding-inline-start: 36px; padding-inline-end: 36px; }
+.ptool__input .ui-input { width: 100%; padding-inline-start: 36px; padding-inline-end: var(--control-h); }
 .ptool__glass { position: absolute; inset-block: 0; inset-inline-start: 11px; display: grid; place-items: center; color: var(--color-text-tertiary); pointer-events: none; }
-.ptool__clear { position: absolute; inset-block: 0; inset-inline-end: 4px; display: grid; place-items: center; width: 32px; background: none; border: 0; border-radius: var(--r-element); color: var(--color-text-tertiary); cursor: pointer; }
+.ptool__clear { position: absolute; inset-block: 0; inset-inline-end: 0; display: grid; place-items: center; width: var(--control-h); min-width: var(--control-h); background: none; border: 0; border-radius: var(--r-element); color: var(--color-text-tertiary); cursor: pointer; }
 .ptool__count { margin: 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
 
 /* 工具条里的下拉 / 日期框：按内容定宽，不撑满整行 */

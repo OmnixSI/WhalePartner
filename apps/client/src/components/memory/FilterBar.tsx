@@ -56,7 +56,7 @@ function DateDialog({ open, onOpenChange, filters, onFilters }: {
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      size="sm"
+      size="md"
       title="哪一段时间"
       description="先点开始的那天，再点结束的那天。"
       footer={
@@ -76,14 +76,16 @@ function DateDialog({ open, onOpenChange, filters, onFilters }: {
             {dayText(filters.to) || "到哪天"}
           </Button>
         </div>
-        <MiniCalendar
-          month={month}
-          value={picking === "from" ? filters.from : filters.to}
-          marks={new Set()}
-          onMonthChange={setMonth}
-          onSelect={pick}
-          label={picking === "from" ? "选开始的那天" : "选结束的那天"}
-        />
+        <div className="mdate__cal">
+          <MiniCalendar
+            month={month}
+            value={picking === "from" ? filters.from : filters.to}
+            marks={new Set()}
+            onMonthChange={setMonth}
+            onSelect={pick}
+            label={picking === "from" ? "选开始的那天" : "选结束的那天"}
+          />
+        </div>
       </div>
     </Dialog>
   );
@@ -145,7 +147,7 @@ export function FilterBar({
               enterKeyHint="search"
             />
             {query && (
-              <button type="button" className="ptool__clear" aria-label="清掉搜索" onClick={onClearSearch}>
+              <button type="button" className="ptool__clear ui-press ui-focus" aria-label="清掉搜索" onClick={onClearSearch}>
                 ✕
               </button>
             )}

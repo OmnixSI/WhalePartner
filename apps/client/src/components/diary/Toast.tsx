@@ -1,8 +1,9 @@
 /**
- * 便签小提示（规范 §7.2.5「写好 toast」/ §7.3.5「已经忘掉了。+ 撤回」）。
+ * 日记页的便签小提示（规范 §7.2.5「写好 toast」）。
  *
- * 全站没有挂 Toaster（不引第三方），所以这里就一张贴纸样的便签：`role="status"`，
- * 固定底部居中，最多一个操作（撤回），到时间自己收起来；calm/老人模式下不做位移。
+ * 一张贴纸样的便签：`role="status"`，固定底部居中，最多一个操作，到时间自己收起来；calm/老人模式下不做位移。
+ * 记忆页、见闻页、设置页已改用 ui 的 toast()（App 根部的 ToastHost 画，见 components/ui/Toast.tsx）；
+ * 日记页只剩这一处，等它也改了就整个删掉。
  */
 import { useEffect, useRef } from "react";
 import { InkFrame } from "../ink";
