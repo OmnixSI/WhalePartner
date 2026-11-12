@@ -943,7 +943,7 @@ async function checkCardLive(browser) {
   return record("好感度卡接真实等级：Lv3→4 播一次 / 刷新不重播 / 换角色互不影响", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
-/** 26b. 「换一位」里主卡和缩略卡共用一份等级（#160 返工）：接口全挂后点重试四张缩略卡一起恢复；弹窗开着时后端升档，切角色后主卡和缩略卡一致；打开弹窗每个角色只请求一次。 */
+/** 26b. 「换一位」里主卡和缩略卡共用一份等级（#160 返工）：接口全挂后点重试四张缩略卡一起恢复；只有一个非当前角色失败时也有重试入口、重试只重读它；弹窗开着时后端升档，切角色后主卡和缩略卡一致；打开弹窗每个角色只请求一次，开着换角色只读新的当前角色。 */
 async function checkCardShared(browser) {
   const fails = [];
   const notes = [];
@@ -1006,8 +1006,60 @@ async function checkCardShared(browser) {
     await context.close();
   }
 
+  // 3) 只有一个非当前角色（小克）的请求失败：主卡正常，仍有重试入口；点重试后它的缩略卡和等级字样回来，且只重读它一个
+  {
+    const levels = { ...DEFAULT_LEVELS };
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true, levels, character: "whale" });
+    page.on("pageerror", (e) => errors.push(String(e.message ?? e)));
+    let down = true;
+    await page.route(/\/api\/relationship\?character=claude/, (route) => (down ? route.fulfill({ status: 500, contentType: "application/json", body: "{}" }) : route.fallback()));
+    const asked = [];
+    page.on("request", (r) => { const m = r.url().match(/\/api\/relationship\?character=(\w+)/); if (m) asked.push(m[1]); });
+    await visit(page, "/settings");
+    await page.locator(".set-her__swap").click();
+    await page.locator(card).waitFor({ timeout: 8000 });
+    await page.waitForFunction(() => document.querySelectorAll(".set-char__thumb .acard").length === 3, null, { timeout: 6000 }).catch(() => {});
+    const claude = page.locator(".set-char", { hasText: "小克" });
+    const retry = page.getByRole("button", { name: "重试读取好感度" });
+    if ((await page.locator(thumbSel).count()) !== 3 || (await claude.locator(".acard").count())) fails.push("小克 500 时应只缺小克一张缩略卡");
+    if (!(await retry.isVisible().catch(() => false))) fails.push("只有小克的缩略卡读取失败时没有重试入口（要关掉弹窗再开才恢复就是这个现象）");
+    down = false;
+    asked.length = 0;
+    await retry.click({ timeout: 2000 }).catch(() => {});
+    await claude.locator(".acard").waitFor({ timeout: 4000 }).catch(() => fails.push("点重试后小克的缩略卡没有回来"));
+    await page.waitForTimeout(500);
+    if (!(await claude.locator(".set-char__level").count())) fails.push("点重试后小克的等级字样没有回来");
+    if (asked.join() !== "claude") fails.push(`重试只该重读失败的小克，实际请求：${asked.join(",") || "无"}`);
+    if (await retry.count()) fails.push("全部恢复后重试入口还在");
+    else if (!fails.length) notes.push("单个缩略卡 500：有重试入口，点后只重读它（1 次），缩略卡 + 字样回来");
+    await context.close();
+  }
+
+  // 4) 弹窗开着连续换角色：每次只读新的当前角色，不重读全部四个；只有打开弹窗读全部
+  {
+    const levels = { ...DEFAULT_LEVELS };
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true, levels, character: "whale" });
+    page.on("pageerror", (e) => errors.push(String(e.message ?? e)));
+    const asked = [];
+    page.on("request", (r) => { const m = r.url().match(/\/api\/relationship\?character=(\w+)/); if (m) asked.push(m[1]); });
+    await visit(page, "/settings");
+    await page.locator(".set-her__swap").click();
+    await page.locator(card).waitFor({ timeout: 8000 });
+    await page.waitForFunction(() => document.querySelectorAll(".set-char__thumb .acard").length === 4, null, { timeout: 6000 }).catch(() => {});
+    await page.waitForTimeout(600);
+    asked.length = 0;
+    for (const [name, id] of [["大肥鱼", "deepseek"], ["小克", "claude"], ["小智", "chatgpt"]]) {
+      await page.locator(".set-char", { hasText: name }).click();
+      await page.locator(`${card}[data-character="${id}"]`).waitFor({ timeout: 4000 }).catch(() => fails.push(`点${name}后主卡没有换`));
+      await page.waitForTimeout(500);
+    }
+    if (asked.join() !== "deepseek,claude,chatgpt") fails.push(`弹窗开着连续换 3 次角色，应只请求 deepseek,claude,chatgpt，实际 ${asked.length} 次：${asked.join(",")}`);
+    else notes.push("弹窗开着连续换 3 个角色：各 1 次请求（只读新的当前角色）");
+    await context.close();
+  }
+
   if (errors.length) fails.push(`页面报错：${errors.slice(0, 3).join(" | ")}`);
-  return record("「换一位」主卡与缩略卡共用等级：重试一起恢复 / 切角色一致 / 请求不多发", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+  return record("「换一位」主卡与缩略卡共用等级：重试一起恢复 / 单卡失败可重试 / 切角色一致 / 请求不多发", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
 /** 26c. 聊天页升档提示（#160 返工）：一轮聊天结束好感度跨档，出现一次吐司；同一档不再提示、刷新后不再出现；提示不改「上次看到的等级」；点「去看看」到设置页打开卡面。 */

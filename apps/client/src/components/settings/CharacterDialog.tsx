@@ -40,6 +40,8 @@ export function CharacterDialog({ open, onOpenChange, relationship }: Props) {
   const cardCharacter = CARD_CHARACTERS.find((item) => item.id === character.id) ?? CARD_CHARACTERS[0];
   const changed = useRef(false);
   const { snapshot, status, retry, entries } = relationship;
+  // 当前角色或任何一张缩略卡读不到，都给重试入口
+  const anyFailed = CHARACTERS.some((item) => entries[item.id]?.status === "error");
 
   // 每次打开，设置页会把四个角色的真实等级一起重读（见 useRelationship 的 watchAll）
   useEffect(() => {
@@ -62,7 +64,7 @@ export function CharacterDialog({ open, onOpenChange, relationship }: Props) {
       footer={<Button variant="secondary" onClick={() => close(false)}>好</Button>}
     >
       <AffinityShowcase character={cardCharacter} snapshot={snapshot} status={status} />
-      {status === "error" && (
+      {anyFailed && (
         <div className="set-dialog__relationship-retry">
           <p>好感度服务暂时没有响应，角色切换仍可正常使用。</p>
           <Button variant="secondary" onClick={retry}>
