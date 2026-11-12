@@ -13,7 +13,7 @@ const TIERS = [
   { level: 2, label: "相熟", finish: "银衬" },
   { level: 3, label: "默契", finish: "潮光" },
   { level: 4, label: "亲近", finish: "金缘" },
-  { level: 5, label: "相依", finish: "鎏金箔" },
+  { level: 5, label: "相依", finish: "镀闪" },
 ];
 const CHARACTERS = [
   { id: "whale", name: "鲸汐" },
@@ -123,19 +123,22 @@ try {
   assert.equal(await page.locator(STAGE).getAttribute("data-upgrading"), null);
 
   assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-theme")), "light");
+  assert.equal(await page.evaluate(() => localStorage.getItem("wp.theme")), "light");
   const lightBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   await page.screenshot({ path: `${shots}/desktop-light-1440x960.png` });
   await page.getByTestId("card-tiers").screenshot({ path: `${shots}/tiers-light.png` });
 
   await page.getByRole("button", { name: "暗色" }).click();
   assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-theme")), "dark");
-  assert.equal(await page.evaluate(() => localStorage.getItem("wp.theme")), "dark");
+  assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-theme-pref")), "dark");
+  assert.equal(await page.evaluate(() => localStorage.getItem("wp.theme")), "light", "预览页切暗色不应写 wp.theme");
   const darkBackground = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   assert.notEqual(darkBackground, lightBackground, "亮色与暗色的页面底色相同");
   await page.screenshot({ path: `${shots}/desktop-dark-1440x960.png` });
   await page.getByTestId("card-tiers").screenshot({ path: `${shots}/tiers-dark.png` });
   await page.getByRole("button", { name: "亮色" }).click();
   assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-theme")), "light");
+  assert.equal(await page.evaluate(() => localStorage.getItem("wp.theme")), "light");
 
   let expectedEnds = 0;
   for (const upgrade of UPGRADES) {

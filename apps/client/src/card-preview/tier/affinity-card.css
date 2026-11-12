@@ -6,7 +6,7 @@
    Lv2 相熟 · 银衬     加厚的银色衬框，内外两层框之间留缝；卡片常态微微立起，人物、名牌分层（触屏也看得出）
    Lv3 默契 · 潮光     深海底、焦散水纹、人物脚下一圈光环；框换成角色色流光边；6 颗气泡
    Lv4 亲近 · 金缘     金边 + 角色色内发光；顶部一束光；每位角色一套专属纹样；18 颗星芒；指针高光
-   Lv5 相依 · 鎏金箔   整张卡贴鎏金碎箔，拉丝金框，镭射膜随指针移动；30 颗粒子含闪点
+   Lv5 相依 · 镀闪   整张卡贴鎏金碎箔，拉丝金框，镭射膜随指针移动；30 颗粒子含闪点
    ============================================================================ */
 
 .acard {
@@ -154,7 +154,7 @@
 .acard__signature .sig-fill--soft { opacity: .45; }
 .acard__signature .sig-bubble { fill: none; stroke: var(--accent-hi); stroke-width: .8; opacity: .8; }
 
-/* Lv5 鎏金箔：碎箔底 + 深色窗 + 拉丝金框 */
+/* Lv5 镀闪：碎箔底 + 深色窗 + 拉丝金框 */
 .acard__skin[data-level="5"] .acard__base { background: linear-gradient(135deg, #8E6B26 0%, #E9C977 22%, #FFF1C4 38%, #C9973A 55%, #F2D88E 74%, #9A7228 100%); }
 .acard__foil { position: absolute; inset: 0; mix-blend-mode: soft-light; }
 .acard__foil .foil-flake { stroke: rgb(110 78 20 / .35); stroke-width: .3; vector-effect: non-scaling-stroke; }

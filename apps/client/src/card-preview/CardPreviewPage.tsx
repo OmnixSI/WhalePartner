@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CharacterId } from "../characters";
-import { applyTheme } from "../lib/theme";
 import { AffinityCard, type UpgradeEnd } from "./tier/AffinityCard";
 import { CARD_TIERS, tierOf, type CardLevel } from "./tier/tiers";
 import "./card-preview.css";
@@ -31,6 +30,23 @@ export function CardPreviewPage() {
   const [stage, setStage] = useState<Stage>({ run: 0, level: 2 });
   const [last, setLast] = useState("还没播过");
   const [ends, setEnds] = useState(0);
+  const originalTheme = useRef<{ theme: string | null; pref: string | null } | null>(null);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    originalTheme.current = {
+      theme: root.getAttribute("data-theme"),
+      pref: root.getAttribute("data-theme-pref"),
+    };
+    return () => {
+      const original = originalTheme.current;
+      if (!original) return;
+      if (original.theme === null) root.removeAttribute("data-theme");
+      else root.setAttribute("data-theme", original.theme);
+      if (original.pref === null) root.removeAttribute("data-theme-pref");
+      else root.setAttribute("data-theme-pref", original.pref);
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-character", character);
@@ -38,7 +54,9 @@ export function CardPreviewPage() {
 
   const chooseTheme = (next: Theme) => {
     setTheme(next);
-    applyTheme(next);
+    const root = document.documentElement;
+    root.setAttribute("data-theme", next);
+    root.setAttribute("data-theme-pref", next);
   };
 
   const play = (from: CardLevel, to: CardLevel) => {
@@ -58,7 +76,7 @@ export function CardPreviewPage() {
           <p className="card-preview__eyebrow">WHALEPARTNER · CHARACTER CARDS</p>
           <h1>角色闪卡</h1>
           <p className="card-preview__lead">
-            五档好感度卡：素纸、银衬、潮光、金缘、鎏金箔。四位角色共用同一套卡面语言，
+            五档好感度卡：素纸、银衬、潮光、金缘、镀闪。四位角色共用同一套卡面语言，
             升级动画逐档播放。所有点数和等级都是固定演示值，不读取真实账号。
           </p>
         </div>
@@ -177,7 +195,7 @@ export function CardPreviewPage() {
               <AffinityCard character={item.id} level={5} />
               <figcaption>
                 <strong>{item.name}</strong>
-                <span>Lv.5 相依 · 鎏金箔</span>
+                <span>Lv.5 相依 · 镀闪</span>
               </figcaption>
             </figure>
           ))}

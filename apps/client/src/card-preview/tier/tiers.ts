@@ -19,7 +19,7 @@ export const CARD_TIERS: readonly CardTier[] = [
   { level: 2, label: "相熟", threshold: 25, finish: "银衬" },
   { level: 3, label: "默契", threshold: 100, finish: "潮光" },
   { level: 4, label: "亲近", threshold: 250, finish: "金缘" },
-  { level: 5, label: "相依", threshold: 500, finish: "鎏金箔" },
+  { level: 5, label: "相依", threshold: 500, finish: "镀闪" },
 ];
 
 export const MAX_CARD_LEVEL: CardLevel = 5;
