@@ -206,6 +206,7 @@
   .chat-page { padding: var(--sp-4) var(--sp-4) var(--sp-2); }
 }
 
-/* 手机键盘弹起：外壳跟可视高度缩；房间只占扣掉页头后的剩余空间 */
-html[data-kb="on"] .app-shell { height: var(--vvh, 100dvh); }
+/* 手机键盘弹起：外壳跟可视高度缩；房间只占扣掉页头后的剩余空间
+   导航隐藏后必须同时收成单列，否则 720–1179px 的平板仍保留 72px 导航列，main 会被挤进那一列 */
+html[data-kb="on"] .app-shell { grid-template-columns: minmax(0, 1fr); height: var(--vvh, 100dvh); }
 html[data-kb="on"] .shell-nav { display: none; }

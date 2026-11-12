@@ -43,7 +43,7 @@
  *  26  换一位：主卡与缩略卡共用等级；单卡失败可重试，重试一起恢复，切角色不多发请求
  *  27  聊天页跨档提示一次、同一档不重复；点「去看看」打开设置页卡面并播升级
  *  28  外壳：1440 点「收起导航」后 nav 72px、main 从 x=72 起；再展开回 232；900 图标栏链接有可访问名称
- *  29  手机键盘弹起（可视高 480）：外壳收到 480，输入框和发送键都在可视区内
+ *  29  键盘弹起（390/720/900，可视高 480）：外壳收到 480，720/900 主栏占满宽度，输入框和发送键都在可视区内
  *  30  手机底栏：719px 及以下文字标签可见（390 / 719 / 390 老人）
  *  31  老人模式图标栏：900 / 720 / 1440 收起后链接都不小于 56×56
  *  （默认共 31 项；--shots 再加一项截图，共 32 项）
@@ -430,40 +430,51 @@ async function checkShellNav(browser) {
   return record("外壳：1440 收起导航列宽 72、main 从 72 起；900 图标栏链接可访问", fails.length === 0, detail);
 }
 
-/** 29. 手机键盘：模拟可视高度 480px，外壳收到 480，输入框和发送键都在可视区内。 */
+/** 29. 键盘弹起：390/720/900 三种宽度，模拟可视高度 480px；外壳收到 480，720/900 主栏占满宽度，输入框和发送键都在可视区内。 */
 async function checkMobileKeyboard(browser) {
   const fails = [];
-  const { context, page } = await openPage(browser, { width: 390, height: 844, touch: true });
-  await visit(page, "/");
-  const before = await page.evaluate(() => Math.round(document.querySelector(".app-shell")?.getBoundingClientRect().height ?? -1));
-  await page.evaluate(() => {
-    Object.defineProperty(window.visualViewport, "height", { configurable: true, get: () => 480 });
-    window.visualViewport.dispatchEvent(new Event("resize"));
-  });
-  await page.waitForTimeout(400);
-  const m = await page.evaluate(() => {
-    const box = (sel) => {
-      const el = document.querySelector(sel);
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) };
-    };
-    return {
-      kb: document.documentElement.dataset.kb,
-      vvh: getComputedStyle(document.documentElement).getPropertyValue("--vvh").trim(),
-      shell: box(".app-shell"), composer: box(".composer"), input: box(".composer__input"), send: box(".composer__send"),
-    };
-  });
-  await context.close();
+  const details = [];
+  for (const width of [390, 720, 900]) {
+    const { context, page } = await openPage(browser, { width, height: 844, touch: width === 390 });
+    await visit(page, "/");
+    const before = await page.evaluate(() => Math.round(document.querySelector(".app-shell")?.getBoundingClientRect().height ?? -1));
+    await page.evaluate(() => {
+      Object.defineProperty(window.visualViewport, "height", { configurable: true, get: () => 480 });
+      window.visualViewport.dispatchEvent(new Event("resize"));
+    });
+    await page.waitForTimeout(400);
+    const m = await page.evaluate(() => {
+      const box = (sel) => {
+        const el = document.querySelector(sel);
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right), width: Math.round(r.width) };
+      };
+      return {
+        kb: document.documentElement.dataset.kb,
+        vvh: getComputedStyle(document.documentElement).getPropertyValue("--vvh").trim(),
+        shell: box(".app-shell"),
+        main: box(".app-shell__main"),
+        composer: box(".composer"),
+        input: box(".composer__input"),
+        send: box(".composer__send"),
+      };
+    });
+    await context.close();
 
-  if (m.kb !== "on" || m.vvh !== "480px") fails.push(`键盘状态 ${m.kb}/${m.vvh || "无 --vvh"}，应为 on/480px`);
-  if (m.shell?.bottom !== 480) fails.push(`外壳高 ${m.shell?.bottom}px，应为 480`);
-  for (const [name, b] of [["输入区", m.composer], ["输入框", m.input], ["发送键", m.send]]) {
-    if (!b) fails.push(`${name}不存在`);
-    else if (b.top < 0 || b.bottom > 480) fails.push(`${name} ${b.top}–${b.bottom}，超出 0–480`);
+    if (m.kb !== "on" || m.vvh !== "480px") fails.push(`${width}px 键盘状态 ${m.kb}/${m.vvh || "无 --vvh"}，应为 on/480px`);
+    if (m.shell?.bottom !== 480) fails.push(`${width}px 外壳高 ${m.shell?.bottom}px，应为 480`);
+    if (width >= 720) {
+      if (!m.main) fails.push(`${width}px 主栏不存在`);
+      else if (m.main.left !== 0 || m.main.width !== width) fails.push(`${width}px 主栏 ${m.main.left}–${m.main.right}（${m.main.width}px），应占满 ${width}px`);
+    }
+    for (const [name, b] of [["输入区", m.composer], ["输入框", m.input], ["发送键", m.send]]) {
+      if (!b) fails.push(`${width}px ${name}不存在`);
+      else if (b.top < 0 || b.bottom > 480) fails.push(`${width}px ${name} ${b.top}–${b.bottom}，超出 0–480`);
+    }
+    details.push(`${width}px：外壳 ${before}→${m.shell?.bottom}，主栏 ${m.main?.left}–${m.main?.right}（${m.main?.width}），发送键底 ${m.send?.bottom}`);
   }
-  const detail = fails.length ? fails.join("；") : `外壳 ${before}→480；输入区 ${m.composer.top}–${m.composer.bottom}，输入框 ${m.input.top}–${m.input.bottom}，发送键 ${m.send.top}–${m.send.bottom}`;
-  return record("手机键盘弹起：外壳 480px，输入框与发送键都在可视区内", fails.length === 0, detail);
+  return record("键盘弹起：外壳 480px，720/900 主栏占满宽度，输入框与发送键在可视区内", fails.length === 0, fails.length ? fails.join("；") : details.join("；"));
 }
 
 /** 30. 手机底栏文字：719px 及以下不能沿用 1179px 以下的隐藏规则。 */
