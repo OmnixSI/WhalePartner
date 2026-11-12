@@ -4,7 +4,7 @@
  *
  *   pnpm --dir apps/client run ui:check                    全跑（会自己起 vite dev，跑完关掉）
  *   pnpm --dir apps/client run ui:check --static           只跑源码检查，不开浏览器
- *   pnpm --dir apps/client run ui:check --shots            另外拍 6 页 × 亮/暗和预览页，存到 apps/client/test-results/ui-check/
+ *   pnpm --dir apps/client run ui:check --shots            另外拍 7 页 × 亮/暗、预览页和好感度卡五档 / 升级帧，存到 apps/client/test-results/ui-check/
  *   pnpm --dir apps/client run ui:check --base=http://127.0.0.1:1420   复用已在跑的 dev server
  *   pnpm --dir apps/client run ui:check --debt             打印各文件的动效 / filter 存量（JSON），用来调低 perf-budget.json
  *
@@ -28,6 +28,7 @@
  *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
  *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
  *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
+ *  17  好感度卡升级（/__kit/cards）：完整动效 4→5 按时播完、中途能跳过；减少动态时连升 1→5 只淡入并按时播完
  *  （--shots 再加一项：截图）
  *
  * 退出码：0 全绿；1 有失败。
@@ -269,6 +270,7 @@ const PAGES = [
   ["settings", "/settings"],
   ["surf", "/surf"],
   ["kit", "/__kit"],
+  ["cards", "/__kit/cards"],
 ];
 const CHARACTERS = ["whale", "deepseek", "claude", "chatgpt"];
 
@@ -470,6 +472,44 @@ async function checkLazyStyles(browser) {
   return record("懒加载页共享样式 / 标签面板指向 / 不可用按钮 / 字段标签", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls，面板都有标签指向；不可用按钮 3 个点击 + 回车：${count}；${labels.length} 个字段标签都连到控件`);
 }
 
+// 好感度卡（#159）：升级动画能播完、能跳过；减少动态时只淡入，连升也按时落到新卡面
+async function checkCardUpgrade(browser) {
+  const fails = [];
+  const notes = [];
+  const lastText = async (page) => ((await page.locator("#cardkit-last").textContent()) ?? "").trim();
+  const waitLast = async (page, want, ms) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      if ((await lastText(page)).includes(want)) return Date.now() - t0;
+      await page.waitForTimeout(50);
+    }
+    return -1;
+  };
+  for (const motion of [true, false]) {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion });
+    await visit(page, "/__kit/cards");
+    const stage = page.locator(".cardkit__stage .acard");
+    const [from, to, budget] = motion ? [4, 5, 1800] : [1, 5, 4 * 450];
+    await page.getByRole("button", { name: motion ? "4→5" : "连升 1→5", exact: true }).click();
+    const upgrading = await stage.getAttribute("data-upgrading");
+    if (!upgrading) fails.push(`${motion ? "完整" : "减少动态"} ${from}→${to} 点了没开始播`);
+    const notice = (await stage.locator(".acard__notice").textContent().catch(() => "")) ?? "";
+    if (!notice.includes("升到 Lv.")) fails.push(`${motion ? "完整" : "减少动态"}：没有「升到 Lv.N」提示`);
+    const spent = await waitLast(page, `${from}→${to} 播完`, budget + 1500);
+    if (spent < 0) fails.push(`${motion ? "完整" : "减少动态"} ${from}→${to} ${budget + 1500}ms 内没播完（${await lastText(page)}）`);
+    else notes.push(`${motion ? "完整" : "减少动态"} ${from}→${to} ${spent}ms`);
+    if ((await stage.getAttribute("data-level")) !== String(to)) fails.push(`播完停在 Lv.${await stage.getAttribute("data-level")}`);
+    if (motion) {
+      await page.getByRole("button", { name: "2→3", exact: true }).click();
+      await page.getByRole("button", { name: "跳过" }).click();
+      if ((await waitLast(page, "2→3 已跳过", 500)) < 0) fails.push("跳过没有立即落到新卡面");
+      else notes.push("跳过即停");
+    }
+    await context.close();
+  }
+  return record("好感度卡升级：播完 / 跳过 / 减少动态", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
 async function shoot(browser) {
   mkdirSync(SHOTS, { recursive: true });
   const written = [];
@@ -497,6 +537,43 @@ async function shoot(browser) {
     if (shot.query) await page.evaluate(() => document.querySelector(".uikit__pinned")?.scrollIntoView({ block: "center" }));
     const file = join(SHOTS, `kit-${shot.tag}.png`);
     await page.screenshot({ path: file, fullPage: !shot.query });
+    written.push(rel(file));
+    await context.close();
+  }
+  // 好感度卡（#159）：五档并排 × 亮/暗、四位角色 Lv4/Lv5、手机宽整页，外加四段升级各取中间一帧
+  for (const theme of ["light", "dark"]) {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme, motion: true });
+    await visit(page, "/__kit/cards");
+    const tiers = join(SHOTS, `cards-tiers-${theme}.png`);
+    await page.locator('[data-testid="card-tiers"]').screenshot({ path: tiers });
+    written.push(rel(tiers));
+    if (theme === "light") {
+      const sig = join(SHOTS, "cards-signatures.png");
+      await page.locator('[data-testid="card-signatures"]').screenshot({ path: sig });
+      written.push(rel(sig));
+      const stage = page.locator(".cardkit__stage .acard");
+      for (const [from, to] of [[1, 2], [2, 3], [3, 4], [4, 5]]) {
+        await page.getByRole("button", { name: `${from}→${to}`, exact: true }).click();
+        await page.evaluate(() => {
+          for (const a of document.getAnimations()) {
+            const t = a.effect?.getComputedTiming();
+            a.pause();
+            if (t && Number.isFinite(t.duration)) a.currentTime = (t.delay || 0) + t.duration * 0.45;
+          }
+        });
+        const file = join(SHOTS, `cards-up-${from}${to}.png`);
+        await stage.screenshot({ path: file });
+        written.push(rel(file));
+        await page.getByRole("button", { name: "跳过" }).click();
+      }
+    }
+    await context.close();
+  }
+  {
+    const { context, page } = await openPage(browser, { width: 390, height: 844, theme: "light" });
+    await visit(page, "/__kit/cards");
+    const file = join(SHOTS, "cards-390.png");
+    await page.screenshot({ path: file, fullPage: true });
     written.push(rel(file));
     await context.close();
   }
@@ -535,9 +612,10 @@ if (STATIC_ONLY) {
     await checkAxe(browser, AxeBuilder);
     await checkIdleAndHidden(browser);
     await checkLazyStyles(browser);
+    await checkCardUpgrade(browser);
     if (WITH_SHOTS) {
       const written = await shoot(browser);
-      record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层）`, true, `${rel(SHOTS)}/`);
+      record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层，好感度卡五档 / 角色 / 升级帧）`, true, `${rel(SHOTS)}/`);
     }
     await browser.close();
   } catch (error) {

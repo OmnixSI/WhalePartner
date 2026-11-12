@@ -51,3 +51,51 @@ pnpm --dir apps/client run card-preview:check
 截图保存在 `apps/client/test-results/card-preview/`（已被 git 忽略，不入库）：Lv.1 基础卡面、Lv.2 视差、Lv.3 动态灯光、Lv.4 专属特效、角色选择弹窗、独立主卡特写、390 × 844 窄屏概览与触摸选中状态；桌面图包含大肥鱼的 Live2D 主卡。
 
 2026-11-09 复测通过：四档卡面均由真实 Live2D 主舞台渲染，等级切换不重复创建模型，角色切换符合模型归属，卡面内部无编号、姓名、模型或等级文字。共享 Pixi ticker 在三秒观察窗内运行 180 帧（60 FPS）；桌面和移动布局、Reduced Motion、键盘/触摸交互及无 API 请求检查通过。截图可用上面的命令重新生成。
+
+## 五档好感度卡与升级动画（#159）
+
+新卡面组件在 `apps/client/src/card-preview/tier/`，和上面的四档闪卡预览互不影响；预览页是 `/__kit/cards`（`pages/CardKitPage.tsx`，由 `/__kit` 页按路径懒加载，首屏不加载卡面代码）。档位名和门槛跟后端 `RELATIONSHIP_STAGES` 一致，Lv5 来自 #158。
+
+| 档位 | 门槛 | 卡面 | 静置时 | 悬停 / 指针 |
+| --- | --- | --- | --- | --- |
+| Lv1 相识 | 0 | 素纸：纸面、细线框、一条海平线 | 平放 | 无 |
+| Lv2 相熟 | 25 | 银衬：拉丝银框 + 内框，卡片微微立起，画面与名牌分层 | 固定斜角 | 跟指针倾斜，扫一道光 |
+| Lv3 默契 | 100 | 潮光：角色色深海底、焦散水纹、光环、气泡，Live2D 可开待机 | 同上 | 同上 |
+| Lv4 亲近 | 250 | 金缘：金框、顶光、星芒，每位角色一套专属纹样 | 同上 | 同上，星芒上浮 |
+| Lv5 相依 | 500 | 鎏金箔：碎箔拼成的金底与折痕、拉丝框、暗色画框 | 同上 | 同上，镭射层随指针移动 |
+
+专属纹样：鲸汐是鲸尾掀起的水纹和气泡，大肥鱼是水柱和水珠，小克是翻飞的书页和茶气，小智是抽枝的藤叶。所有纹样都是内联 SVG 和 CSS，没有位图。
+
+升级动画逐档播放，每一步只播一次：
+
+- 1→2（650ms）：旧卡面淡出，银框从外向内收拢，卡片抬起到斜角。
+- 2→3（950ms）：卡心荡开两圈涟漪，边缘一道光转一圈，卡底由纸面转成深海，光环亮起。
+- 3→4（1250ms）：四段金线从底边沿两侧合拢到顶边，十颗金点上浮，顶光落下。
+- 4→5（1800ms）：一次闪白，一道光从左上扫到右下，镭射层渐亮，碎箔上的闪点逐颗弹出。
+- 跨多档（如 1→5）逐档快进，整段等比压到 3 秒以内。点卡面或「跳过」立即落到新卡面。
+
+规则：动画只动 `transform` / `opacity`，不用 CSS `filter`；静置时没有循环动画，光泽只在升级瞬间和精确指针悬停时各播一次；`prefers-reduced-motion` 或安静模式下升级只淡入新卡面（每步 450ms）并显示「升到 Lv.N」，不倾斜、不闪。
+
+### 接口（给 #160）
+
+```tsx
+import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview/tier";
+
+<Suspense fallback={null}>
+  <LazyAffinityCard
+    character="deepseek"          // CharacterId
+    level={level}                 // 1–5，越界会夹住
+    upgradeFrom={prevLevel}       // 可选：小于 level 时播 prevLevel→level；不升级时传 undefined
+    onUpgradeEnd={(e: UpgradeEnd) => setPrevLevel(undefined)}  // { from, to, skipped }
+    art={<Live2DStage />}         // 可选：立绘槽，默认画角色徽记；整张卡只渲染一次，升级时不会重建
+    size="md"                     // "md" 主卡 | "sm" 缩略卡（静态）
+  />
+</Suspense>
+```
+
+- 触发：拿到新等级比上次看过的高时，把 `level` 设成新等级、`upgradeFrom` 设成旧等级；`onUpgradeEnd` 里把 `upgradeFrom` 清回 `undefined`。同一对 from/to 要重播，先清再设。
+- 动画进行中根元素带 `data-upgrading="<目标档>"`，读屏会念「升到 Lv.N 相依」。
+- `tierFeatures(level)` 给出 `{ tilt, live2dIdle, signature, foil }`，用来决定要不要开 Live2D 待机（Lv3 起）。
+- 「上次看过的等级」存在哪里由 #160 决定，组件不读写存储、不请求接口。
+
+`ui:check` 会打开 `/__kit/cards` 跑触控、横向滚动、axe、静置检查，并检查升级能播完、能跳过、减少动态时按时落到新卡面；`--shots` 另拍 `cards-tiers-{light,dark}.png`、`cards-signatures.png`、`cards-up-{12,23,34,45}.png`（每段取 45% 处一帧）和 `cards-390.png` 到 `apps/client/test-results/ui-check/`。
