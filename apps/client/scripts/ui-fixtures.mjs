@@ -49,6 +49,11 @@ export async function stubApi(page) {
     if (url.includes("/api/note")) return json({ note: { text: "今天在窗台上发现一只小螃蟹。", updatedAt: NOW } });
     if (url.includes("/api/quota")) return json(FIXTURES.quota);
     if (url.includes("/api/profile")) return json({ nickname: "阿明" });
+    // 设置页读这两项设置，缺了会整页白屏（0.3.4 起 ui-check 拍到的设置页一直是空白）
+    if (url.includes("/api/companion/settings")) return json({ enabled: true, frequency: "normal", quiet: { start: "23:00", end: "08:00" } });
+    if (url.includes("/api/surf/settings")) return json({ character: "whale", enabled: true, frequency: "normal", interests: ["海洋", "手作"], blocked: [], quiet: { start: "23:00", end: "08:00" }, video: true, web: true, shareToChat: true, webAvailable: true, browser: { state: "ready", percent: null, message: "" } });
+    if (url.includes("/api/surf/status")) return json({ running: false, sessionId: null, stage: null, todayCount: 2, lastRunAt: NOW, nextRunAt: null, pausedReason: null, webAvailable: true });
+    if (url.includes("/api/devices")) return json({ devices: [] });
     if (url.includes("/api/accounts")) return json({ accounts: [{ platform: "bilibili", name: "哔哩哔哩", connected: false, valid: null, savedAt: null }] });
     return json({});
   });

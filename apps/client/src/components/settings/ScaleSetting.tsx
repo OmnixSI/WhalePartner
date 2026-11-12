@@ -36,7 +36,7 @@ export function ScaleSetting({ scale, min, onConfirm }: Props) {
         <p className="set-scale__preview" style={{ fontSize: `${Math.round(18 * draft)}px` }}>
           预览：今天天气很好
         </p>
-        <button type="button" className="btn btn--secondary btn--sm" disabled={!dirty} onClick={() => onConfirm(draft)}>
+        <button type="button" className="btn btn--secondary" disabled={!dirty} onClick={() => onConfirm(draft)}>
           确认
         </button>
       </div>

@@ -38,7 +38,7 @@ export function SurfBrowserNote({ character, initial = null, enabled }: Props) {
       {text}
       {browser.state === "installing" && browser.percent !== null && (
         <span className="surf-browser-note__bar" aria-hidden>
-          <span style={{ width: `${browser.percent}%` }} />
+          <span style={{ transform: `scaleX(${browser.percent / 100})` }} />
         </span>
       )}
     </p>

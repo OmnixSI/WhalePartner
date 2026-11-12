@@ -79,6 +79,8 @@
 }
 .set-row__control { display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: var(--sp-3); }
 .set-row[data-stacked="on"] .set-row__control { flex-direction: column; align-items: stretch; }
+.set-fields { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; min-width: 0; }
+.set-fields .field { width: 100%; min-width: 0; }
 .set-row__bad { margin-top: var(--sp-2); font-size: var(--fs-small); color: var(--alert); }
 
 .set-offline {
@@ -709,3 +711,48 @@
 .voice-env__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--sp-3); padding: var(--sp-3) 0; }
 .voice-env__actions .btn { min-height: var(--hit); }
 .voice-env__note { max-width: 42em; font-size: var(--fs-small); line-height: var(--lh-body); color: var(--ink-soft); }
+
+/* 下面两段原在 surf.css；冲浪页改成懒加载后设置页拿不到它们，搬到这里 */
+/* ---------------------------------------------------------------- 设置里的两组（§7.7.6） */
+.tagfield { display: flex; flex-direction: column; gap: var(--sp-2); width: 100%; }
+.tagfield__row { display: flex; gap: var(--sp-2); }
+.tagfield__input { flex: 1; min-width: 0; }
+.tagfield__list { display: flex; flex-wrap: wrap; gap: var(--sp-2); list-style: none; margin: 0; padding: 0; }
+.tagfield__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 0 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--paper-2);
+  font-size: var(--fs-small);
+}
+.tagfield__x {
+  min-width: var(--hit);
+  min-height: var(--hit);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+}
+.tagfield__x:hover { background: var(--sheet); color: var(--alert); }
+.tagfield__x:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.tagfield__hint { font-size: var(--fs-small); color: var(--ink-mute); }
+
+.set-surf-toggles { display: inline-flex; gap: var(--sp-4); flex-wrap: wrap; }
+.set-surf-legend { margin: -8px 0 var(--sp-2); font-size: var(--fs-micro); color: var(--ink-mute); }
+.set-surf-quiet { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.set-surf-time { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-small); }
+.set-surf-time .field { width: 9rem; }
+.set-surf-quiet__hint { flex-basis: 100%; font-size: var(--fs-small); color: var(--ink-mute); }
+.set-surf-quota { padding: var(--sp-3) 0 0; font-size: var(--fs-small); color: var(--ink-mute); }
+.set-fold--inline { border-top: 1px solid var(--line); padding-top: var(--sp-3); }
+
+/* ---------------------------------------------------------------- 设置里的浏览器进度 */
+.surf-browser-note { margin: calc(var(--sp-2) * -1) 0 var(--sp-2); font-size: var(--fs-micro); line-height: var(--lh-body); color: var(--ink-mute); }
+.surf-browser-note[data-state="failed"] { color: var(--alert); }
+.surf-browser-note__bar { display: block; height: 4px; margin-top: var(--sp-1); border-radius: var(--r-round); background: var(--paper-2); overflow: hidden; }
+.surf-browser-note__bar span { display: block; height: 100%; background: var(--accent); transform-origin: left; transition: transform var(--dur-hover) var(--ease-out); }
+
