@@ -28,6 +28,7 @@
  *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
  *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
  *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
+ *  17  设置页：存了 Codex 模型后顶部概览同步；点目录后亮的就是刚点的那项（桌面、手机 380 × 字号 2 倍）
  *  （--shots 再加一项：截图）
  *
  * 退出码：0 全绿；1 有失败。
@@ -470,6 +471,73 @@ async function checkLazyStyles(browser) {
   return record("懒加载页共享样式 / 标签面板指向 / 不可用按钮 / 字段标签", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls，面板都有标签指向；不可用按钮 3 个点击 + 回车：${count}；${labels.length} 个字段标签都连到控件`);
 }
 
+/** 17. 设置页两处交互：存了 Codex 模型后顶部概览跟着变；点目录后亮的就是刚点的那个（手机 380 × 字号 2 倍，吸顶目录会挡住标题）。 */
+async function checkSettingsInteractions(browser) {
+  const fails = [];
+  const notes = [];
+
+  // 1) 概览与模型设置共用一份结果：存成功后概览不用重进页面
+  {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+    const saved = { model: "model-a", effort: "medium" };
+    const entry = (model) => ({ model, displayName: model, defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "low", description: "" }, { reasoningEffort: "medium", description: "" }], isDefault: model === "model-a" });
+    await page.route(/\/api\/setup(\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (path.endsWith("/codex/models")) return json({ models: [entry("model-a"), entry("model-b")] });
+      if (path.endsWith("/setup/codex") && request.method() === "PUT") {
+        Object.assign(saved, JSON.parse(request.postData() ?? "{}"));
+        return json({});
+      }
+      return json({ deepseek: { configured: false, masked: null }, codex: { ...saved, configPath: "/tmp/codex.toml", present: true }, chain: ["codex"] });
+    });
+    await visit(page, "/settings");
+    const chip = () => page.locator(".set-chip", { hasText: "当前模型" }).locator(".set-chip__value").innerText();
+    const before = await chip();
+    await page.selectOption("#mset-model", "model-b");
+    await page.locator(".mset__save").last().click();
+    let after = before;
+    for (let i = 0; i < 20 && !after.includes("model-b"); i += 1) {
+      await page.waitForTimeout(150);
+      after = await chip();
+    }
+    if (!before.includes("model-a")) fails.push(`保存前概览应显示 model-a，实际「${before}」`);
+    if (!after.includes("model-b")) fails.push(`保存 model-b 后概览仍是「${after}」`);
+    notes.push(`概览 ${before.replace(/\s+/g, " ")}→${after.replace(/\s+/g, " ")}`);
+    await context.close();
+  }
+
+  // 2) 点目录 → 滚动稳定后，目录亮的就是刚点的那项
+  for (const [label, width, height, scale] of [["桌面", 1440, 900, 1], ["手机 380×560 ×2", 380, 560, 2]]) {
+    const { context, page } = await openPage(browser, { width, height });
+    await page.addInitScript((value) => localStorage.setItem("wp.scale", String(value)), scale);
+    await visit(page, "/settings");
+    const items = page.locator(".set-nav__item");
+    const count = await items.count();
+    const wrong = [];
+    for (let i = 0; i < count; i += 1) {
+      const name = (await items.nth(i).innerText()).trim();
+      await items.nth(i).click();
+      let last = -1;
+      for (let tries = 0; tries < 20; tries += 1) {
+        await page.waitForTimeout(150);
+        const top = await page.evaluate(() => document.querySelector(".page--settings").scrollTop);
+        if (top === last) break;
+        last = top;
+      }
+      await page.waitForTimeout(200);
+      const lit = (await page.locator('.set-nav__item[aria-current="true"]').allInnerTexts()).map((t) => t.trim()).join("/");
+      if (lit !== name) wrong.push(`点「${name}」亮「${lit || "无"}」`);
+    }
+    if (wrong.length) fails.push(`${label}：${wrong.join("、")}`);
+    notes.push(`${label} ${count - wrong.length}/${count}`);
+    await context.close();
+  }
+  return record("设置页：存模型后概览同步；点目录后亮的是刚点的", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
+
 async function shoot(browser) {
   mkdirSync(SHOTS, { recursive: true });
   const written = [];
@@ -535,6 +603,7 @@ if (STATIC_ONLY) {
     await checkAxe(browser, AxeBuilder);
     await checkIdleAndHidden(browser);
     await checkLazyStyles(browser);
+    await checkSettingsInteractions(browser);
     if (WITH_SHOTS) {
       const written = await shoot(browser);
       record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层）`, true, `${rel(SHOTS)}/`);

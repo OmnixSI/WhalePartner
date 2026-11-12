@@ -107,9 +107,11 @@ type Props = {
   /** 后端探测不到：输入和按钮一并禁用 */
   offline: boolean;
   onToast: (text: string) => void;
+  /** 模型相关设置存成功后通知上层（设置页顶部的概览据此重读当前模型）。 */
+  onSaved?: () => void;
 };
 
-export function ModelSetup({ offline, onToast }: Props) {
+export function ModelSetup({ offline, onToast, onSaved }: Props) {
   const [state, setState] = useState<Phase>({ phase: "loading" });
   const [key, setKey] = useState("");
   const [savingKey, setSavingKey] = useState(false);
@@ -203,6 +205,7 @@ export function ModelSetup({ offline, onToast }: Props) {
       setKey("");
       onToast("DeepSeek key 记下了。重启后端才会用上新的。");
       await load();
+      onSaved?.();
     } catch (error) {
       setKeyError(describeNetError(error, "key 没存上"));
     } finally {
@@ -230,6 +233,7 @@ export function ModelSetup({ offline, onToast }: Props) {
       if (!response.ok) throw new Error(await errorText(response));
       onToast("已保存。下一轮会按选中的模型和推理档位调用。");
       await load();
+      onSaved?.();
     } catch (error) {
       setCodexError(describeNetError(error, "没存上"));
     } finally {

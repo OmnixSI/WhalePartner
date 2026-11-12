@@ -83,6 +83,7 @@ export function SettingsPage() {
   /** 昵称没存上的原因（人话，不再是英文 Load failed） */
   const [nickError, setNickError] = useState("");
   const [activeCat, setActiveCat] = useState<string>(CATEGORIES[0].id);
+  const [setupRev, setSetupRev] = useState(0);
   const [surf, setSurf] = useState<SurfSettings | null>(null);
   const [companion, setCompanion] = useState<CompanionSettings | null>(null);
   const [surfError, setSurfError] = useState("");
@@ -141,19 +142,23 @@ export function SettingsPage() {
     setActiveCat(ANCHOR_CATEGORY[id] ?? id.replace(/^cat-/, ""));
   }, [hash]);
 
-  // 目录高亮跟着滚动走：标题越过视口上 10% 的那一组最后一个亮；滚到底直接亮最后一组（它太短，标题上不去）。
+  // 目录高亮跟着滚动走：分类标题越过它「点目录后停靠的位置」就算到了，最后一个到了的亮；滚到底直接亮最后一组（它太短，标题上不去）。
+  // 停靠位置读各分类的 scroll-margin-top（手机上是吸顶目录的高度 + 间距，随字号缩放），不写死比例，
+  // 这样点目录滚到位后，亮的一定是刚点的那个。
   useEffect(() => {
     const scroller = pageRef.current;
     if (!scroller) return;
     let frame = 0;
     const update = () => {
       frame = 0;
-      const line = scroller.getBoundingClientRect().top + scroller.clientHeight * 0.1;
+      const top = scroller.getBoundingClientRect().top;
       const atBottom = scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 2;
       let current: string = CATEGORIES[0].id;
       for (const item of CATEGORIES) {
         const node = document.getElementById(`cat-${item.id}`);
-        if (node && node.getBoundingClientRect().top <= line) current = item.id;
+        if (!node) continue;
+        const dock = top + (Number.parseFloat(getComputedStyle(node).scrollMarginTop) || 0);
+        if (node.getBoundingClientRect().top <= dock + 2) current = item.id;
       }
       setActiveCat(atBottom ? CATEGORIES[CATEGORIES.length - 1].id : current);
     };
@@ -274,7 +279,7 @@ export function SettingsPage() {
           </div>
         )}
 
-        <HerOverview character={character} relationship={relationship} onSwap={() => setCharOpen(true)} />
+        <HerOverview character={character} relationship={relationship} setupRev={setupRev} onSwap={() => setCharOpen(true)} />
 
         <div className="set-layout">
           <nav className="set-nav" aria-label="设置分类">
@@ -527,7 +532,7 @@ export function SettingsPage() {
               <h2 className="set-cat__title" id="cat-model-h">模型与额度</h2>
 
               <SettingGroup title="模型接入" id="model" note="接哪家模型、用多大强度，都在这儿改；以前只能翻 .env 和本机配置。">
-                <ModelSetup offline={offline} onToast={notify} />
+                <ModelSetup offline={offline} onToast={notify} onSaved={() => setSetupRev((n) => n + 1)} />
               </SettingGroup>
 
               <SettingGroup title="额度" id="quota">

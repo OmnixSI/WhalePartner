@@ -41,11 +41,12 @@ function Chip({ label, state, children }: { label: string; state: "loading" | "o
   );
 }
 
-export function HerOverview({ character, relationship: rel, onSwap }: { character: Character; relationship: RelationshipState; onSwap: () => void }) {
+export function HerOverview({ character, relationship: rel, setupRev, onSwap }: { character: Character; relationship: RelationshipState; /** 模型设置存成功后加一：概览重读 /api/setup，不用重进页面。 */ setupRev: number; onSwap: () => void }) {
   const relationship: Load<RelationshipProgress> = rel.snapshot ? { phase: "ok", value: rel.snapshot } : rel.status === "error" ? { phase: "down" } : { phase: "loading" };
   const [setup, setSetup] = useState<Load<SetupLite>>({ phase: "loading" });
   const [quota, setQuota] = useState<Load<{ remaining: number; total: number }>>({ phase: "loading" });
 
+  // 模型设置存成功后 setupRev 变了就重读；重读期间留着旧值，读不到才改成「暂时看不到」。
   useEffect(() => {
     const ctrl = new AbortController();
     getJson<SetupLite>("/api/setup", ctrl.signal)
@@ -56,6 +57,11 @@ export function HerOverview({ character, relationship: rel, onSwap }: { characte
       .catch(() => {
         if (!ctrl.signal.aborted) setSetup({ phase: "down" });
       });
+    return () => ctrl.abort();
+  }, [setupRev]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
     getQuota(ctrl.signal).then((value) => {
       if (ctrl.signal.aborted) return;
       setQuota(value && typeof value.remaining === "number" && typeof value.total === "number" ? { phase: "ok", value } : { phase: "down" });
