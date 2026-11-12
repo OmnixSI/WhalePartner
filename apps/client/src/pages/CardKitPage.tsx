@@ -42,6 +42,9 @@ export default function CardKitPage() {
   const [calm, setCalm] = useState(() => readA11y().calm);
   const [stage, setStage] = useState<{ level: CardLevel; from?: CardLevel }>({ level: 2 });
   const [last, setLast] = useState("还没播过");
+  const [ends, setEnds] = useState(0);
+  const [thumbFrom, setThumbFrom] = useState<CardLevel | undefined>();
+  const [thumbEnds, setThumbEnds] = useState(0);
 
   useEffect(() => { applyTheme(theme); }, [theme]);
   useEffect(() => {
@@ -54,6 +57,7 @@ export default function CardKitPage() {
   const ended = (info: UpgradeEnd) => {
     setStage((s) => ({ level: s.level }));
     setLast(`${info.from}→${info.to} ${info.skipped ? "已跳过" : "播完"}`);
+    setEnds((n) => n + 1);
   };
 
   return (
@@ -93,15 +97,19 @@ export default function CardKitPage() {
                 </Button>
               ))}
             </div>
-            <p className="uikit__note" id="cardkit-last">上一次：{last}</p>
+            <p className="uikit__note" id="cardkit-last" data-ends={ends}>上一次：{last} · 结束回调共 {ends} 次</p>
           </div>
         </div>
       </Section>
 
-      <Section id="thumbs" title="缩略卡" note="同一套卡面的静态缩小版：不倾斜、不响应悬停、不挂 Live2D。">
-        <div className="cardkit__row cardkit__row--sm">
-          {CARD_TIERS.map((t) => <AffinityCard key={t.level} character={character} level={t.level} size="sm" />)}
+      <Section id="thumbs" title="缩略卡" note="同一套卡面的静态缩小版：不倾斜、不响应悬停、不挂 Live2D，给了 upgradeFrom 也不播升级动画、不调 onUpgradeEnd。">
+        <div className="cardkit__row cardkit__row--sm" data-testid="card-thumbs" data-ends={thumbEnds}>
+          {CARD_TIERS.map((t) => (
+            <AffinityCard key={t.level} character={character} level={t.level} size="sm"
+              upgradeFrom={t.level === 5 ? thumbFrom : undefined} onUpgradeEnd={() => setThumbEnds((n) => n + 1)} />
+          ))}
         </div>
+        <Button variant="ghost" onClick={() => setThumbFrom((f) => (f === 1 ? 4 : 1))}>缩略卡试播升级</Button>
       </Section>
 
       <Section id="signature" title="四位角色 · Lv4 与 Lv5" note="Lv4 起每位角色一套专属纹样：鲸汐是鲸尾掀起的水纹和气泡，大肥鱼是水柱和水珠，小克是翻飞的书页和茶气，小智是抽枝的藤叶。">

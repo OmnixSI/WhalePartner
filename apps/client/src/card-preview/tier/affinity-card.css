@@ -28,6 +28,8 @@
   font-family: var(--font-ui);
   -webkit-tap-highlight-color: transparent;
 }
+/* 主卡在触屏上横向拖动用来倾斜：只把竖向交给页面滚动，否则浏览器接管手势、发 pointercancel，倾斜永远是 0 */
+.acard[data-size="md"] { touch-action: pan-y; }
 .acard[data-size="sm"] { width: min(112px, 100%); }
 
 /* 角色强调色：卡内自己设，不跟随页面当前角色；--accent-hi 是深底上用的浅色版 */

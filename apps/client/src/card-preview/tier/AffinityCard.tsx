@@ -6,6 +6,7 @@
  *   跨多档时整段等比快进到 ≤3 秒。点卡面或「跳过」立即落到新卡面。
  * - 动画只动 transform / opacity。静置时没有任何循环动画；光泽只在升级瞬间和精确指针 hover 时播放一次。
  * - `prefers-reduced-motion` 或 `data-motion="calm"`：升级只淡入新卡面，并显示「升到 Lv.N」，不位移、不闪；也不跟指针倾斜。
+ * - `size="sm"` 是静态缩略卡：忽略 `upgradeFrom`，不播动画、不出提示和跳过、不调 `onUpgradeEnd`。
  * - `art` 是立绘槽：不传就画角色徽记。整张卡只渲染一次 `art`（升级时旧卡面只复制底和框），所以可以放 Live2D。
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
@@ -26,7 +27,7 @@ export type AffinityCardProps = {
   onUpgradeEnd?: (info: UpgradeEnd) => void;
   /** 立绘槽，默认是角色徽记 */
   art?: ReactNode;
-  /** md：主卡；sm：缩略卡（静态，不倾斜、不响应 hover） */
+  /** md：主卡；sm：缩略卡（静态：不倾斜、不响应 hover，忽略 upgradeFrom） */
   size?: "md" | "sm";
   /** 卡上的名字，默认取角色名 */
   name?: string;
@@ -105,44 +106,68 @@ function UpgradeLayers({ to }: { to: CardLevel }) {
   );
 }
 
+type Run = { steps: UpgradeStep[]; i: number; calm: boolean };
+
 export function AffinityCard({ character, level, upgradeFrom, onUpgradeEnd, art, size = "md", name, className = "" }: AffinityCardProps) {
   const target = clampLevel(level);
-  const [run, setRun] = useState<{ steps: UpgradeStep[]; i: number; calm: boolean } | null>(null);
+  const animated = size === "md";
+  const [run, setRun] = useState<Run | null>(null);
+  // 真正的播放状态放在 ref 里：结束只认 runRef，结束时同步清掉定时器，所以 StrictMode 的双调用、
+  // 跳过和定时器同一拍到点，都不会多调一次 onUpgradeEnd，也不会把已结束的动画拉回来。
+  const runRef = useRef<Run | null>(null);
+  const timerRef = useRef<number | undefined>(undefined);
   const endRef = useRef(onUpgradeEnd);
   endRef.current = onUpgradeEnd;
 
-  useEffect(() => {
-    if (upgradeFrom === undefined || upgradeFrom === null) return;
-    const calm = isCalm();
-    const steps = upgradeSteps(upgradeFrom, target, calm);
-    if (steps.length) setRun({ steps, i: 0, calm });
-  }, [upgradeFrom, target]);
+  const clearTimer = () => {
+    if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
+    timerRef.current = undefined;
+  };
 
   const finish = useCallback((skipped: boolean) => {
-    setRun((current) => {
-      if (current) {
-        const info = { from: current.steps[0].from, to: current.steps[current.steps.length - 1].to, skipped };
-        queueMicrotask(() => endRef.current?.(info));
-      }
-      return null;
-    });
+    const current = runRef.current;
+    if (!current) return;
+    runRef.current = null;
+    clearTimer();
+    setRun(null);
+    endRef.current?.({ from: current.steps[0].from, to: current.steps[current.steps.length - 1].to, skipped });
   }, []);
 
   useEffect(() => {
+    if (!animated || upgradeFrom === undefined || upgradeFrom === null) return;
+    const calm = isCalm();
+    const steps = upgradeSteps(upgradeFrom, target, calm);
+    if (!steps.length) return;
+    const next = { steps, i: 0, calm };
+    clearTimer();
+    runRef.current = next;
+    setRun(next);
+  }, [animated, upgradeFrom, target]);
+
+  useEffect(() => {
     if (!run) return;
-    const step = run.steps[run.i];
-    const t = window.setTimeout(() => {
-      if (run.i + 1 < run.steps.length) setRun({ ...run, i: run.i + 1 });
-      else finish(false);
-    }, step.ms);
-    return () => window.clearTimeout(t);
+    const id = window.setTimeout(() => {
+      // 跳过 / 换了一轮之后，已经排进队列的这次回调作废
+      if (timerRef.current !== id || runRef.current !== run) return;
+      timerRef.current = undefined;
+      if (run.i + 1 < run.steps.length) {
+        const next = { ...run, i: run.i + 1 };
+        runRef.current = next;
+        setRun(next);
+      } else finish(false);
+    }, run.steps[run.i].ms);
+    timerRef.current = id;
+    return () => {
+      window.clearTimeout(id);
+      if (timerRef.current === id) timerRef.current = undefined;
+    };
   }, [run, finish]);
 
-  const step = run?.steps[run.i] ?? null;
+  const step = animated ? (run?.steps[run.i] ?? null) : null;
   const shown = step ? step.to : target;
   const tier = tierOf(shown);
   const displayName = name ?? CHARACTERS.find((c) => c.id === character)?.name ?? "";
-  const interactive = size === "md" && shown >= 2 && !step;
+  const interactive = animated && shown >= 2 && !step;
 
   const onMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!interactive || isCalm()) return;
