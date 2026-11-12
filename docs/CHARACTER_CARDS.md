@@ -1,10 +1,14 @@
-# 角色闪卡网页预览
+# 角色闪卡
+
+**现行规范是下文「五档好感度卡与升级动画（#159）」**：五档、名字牌规则、升级动画和接口都以那一节为准。下面「Legacy：四档闪卡预览」描述的是旧的 `character-cards.html` 和设置页里的 `CardShowcase`，只在接入新卡面之前保留，按 #160 / #158 一起替换；两者冲突时以新五档为准。
+
+## Legacy：四档闪卡预览（character-cards.html）
 
 独立预览使用当前客户端的字体、色彩、角色徽记与卡牌材质，不挂载聊天页，不调用 API，也不连接 SQLite。页面内的角色选择和关系阶段仅保存在当前页内存；切换卡片不会改动应用角色。
 
 当前只有大肥鱼绑定可用的 Live2D 模型。预览在唯一的主卡舞台中真实加载该模型，支持触摸互动和已配置的表情；牌库缩略卡不会初始化额外渲染器。小克、小智和鲸汐继续展示各自固定的矢量默认形象，不借用大肥鱼模型。模型署名与许可可在主卡详情展开查看。
 
-## 启动
+### 启动（legacy）
 
 在仓库根目录运行：
 
@@ -14,12 +18,12 @@ pnpm --dir apps/client dev -- --host 127.0.0.1 --port 1420
 
 打开 <http://127.0.0.1:1420/character-cards.html>。不需要启动 API。
 
-## 演示内容
+### 演示内容（legacy）
 
 - 四位角色的牌库、选择反馈及各自模型归属。
 - 主卡中的真实 Live2D 舞台、预配置表情、点击动作和可见载入/失败状态；目前只有大肥鱼模型可以这样显示。
 - 四级卡面效果与关系样本联动：Lv.1 基础图像、Lv.2 倾斜与分层视差、Lv.3 动态灯光和立体光环、Lv.4 专属星芒粒子。
-- 卡面内部只呈现角色形象和等级对应的视觉效果，不绘制编号、角色名、模型名或等级说明；角色名称、好感度、模型状态与署名位于卡面外，卡牌选择按钮仍带有完整辅助技术标签。
+- （仅限旧四档预览，新五档卡已改为卡内有名字牌，见下文）卡面内部只呈现角色形象和等级对应的视觉效果，不绘制编号、角色名、模型名或等级说明；角色名称、好感度、模型状态与署名位于卡面外，卡牌选择按钮仍带有完整辅助技术标签。
 - 深海蓝立绘底、金属层叠卡框、能量光环与动态光照；Live2D 目标高度为卡面舞台的 116%、宽度为 130%，超出部分由卡面边缘裁切，模型占据卡面主要区域。
 - 卡面倾斜时，金属背板、场景光、Live2D 人物和光环按不同幅度视差移动；最高档以专属光环、动态光照和星芒粒子呈现。
 - 四档固定关系样本。阶段名称、点数和阈值仅供网页演示，不代表真实关系规则或用户数据。
@@ -30,7 +34,7 @@ pnpm --dir apps/client dev -- --host 127.0.0.1 --port 1420
 
 卡面截图中的模型署名：角色原作上善无形，DeepSeek 女仆设计 ZipZipPipe，Live2D 建模氵六青，发布仓库 [A8Chann/dsh-pet-live2d](https://github.com/A8Chann/dsh-pet-live2d)；模型适用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)。
 
-## 卡面效果依据
+### 卡面效果依据（legacy）
 
 公开资料将《王者万象棋》效果描述为五级：基础卡面、立体、动态画面、专属特效和镀闪（[效果说明](https://www.sohu.com/a/1057939968_122743460)）；版本更新记录了 17 个英雄的卡面升级特效迭代（[体验服更新公告转载](https://a.4399.cn/gg/53760390_250086.html)），另有公告记录过 3 级以上卡面特定角度显示异常的修复（[卡面问题修复](https://wzwxq.com/updates/official/18731495)）。好感度五档；卡面视觉当前四档，Lv5 镀闪待 #159（Lv5 相依，500 点，见 [`RELATIONSHIP.md`](RELATIONSHIP.md)），期间 Lv5 暂按 Lv4 的卡面显示；公开检索未找到游戏卡面渲染源码或直接复刻项目，预览只复刻视觉层级，不复制游戏资源或宣称还原官方 Shader。
 
@@ -38,7 +42,7 @@ pnpm --dir apps/client dev -- --host 127.0.0.1 --port 1420
 
 应用设置页“换一位”会读取当前人格的真实好感度，并在卡外显示关系阶段、进度和下一档解锁点；闪卡只呈现角色形象与对应档位特效。独立预览页使用固定关系样本，不连接账号或业务数据。
 
-## 浏览器检查与截图
+### 浏览器检查与截图（legacy）
 
 保持 Vite 页面运行，在仓库根目录执行：
 
@@ -54,7 +58,7 @@ pnpm --dir apps/client run card-preview:check
 
 ## 五档好感度卡与升级动画（#159）
 
-新卡面组件在 `apps/client/src/card-preview/tier/`，和上面的四档闪卡预览互不影响；预览页是 `/__kit/cards`（`pages/CardKitPage.tsx`，由 `/__kit` 页按路径懒加载，首屏不加载卡面代码）。档位名和门槛跟后端 `RELATIONSHIP_STAGES` 一致，Lv5 来自 #158。
+这是好感度卡的现行规范。新卡面组件在 `apps/client/src/card-preview/tier/`，和上面的 legacy 四档预览互不影响；预览页是 `/__kit/cards`（`pages/CardKitPage.tsx`，由 `/__kit` 页按路径懒加载，首屏不加载卡面代码）。档位名和门槛跟后端 `RELATIONSHIP_STAGES` 一致，Lv5 来自 #158。
 
 | 档位 | 门槛 | 卡面 | 静置时 | 悬停 / 指针 |
 | --- | --- | --- | --- | --- |
@@ -63,6 +67,10 @@ pnpm --dir apps/client run card-preview:check
 | Lv3 默契 | 100 | 潮光：角色色深海底、焦散水纹、光环、气泡，Live2D 可开待机 | 同上 | 同上 |
 | Lv4 亲近 | 250 | 金缘：金框、顶光、星芒，每位角色一套专属纹样 | 同上 | 同上，星芒上浮 |
 | Lv5 相依 | 500 | 鎏金箔：碎箔拼成的金底与折痕、拉丝框、暗色画框 | 同上 | 同上，镭射层随指针移动 |
+
+名字牌：每张卡底部有一块名字牌，写角色名（默认取角色名，`name` 可改）和「Lv.N 档位名」，名字牌上方是五颗档位点，亮几颗就是几档。卡内只有这两行字，不写分数、门槛、模型名或编号；分数和下一档进度留在卡外由页面显示。整张卡的 `aria-label` 是「<角色名>的好感度卡，Lv.N 档位名，<卡面材质>卡面」，名字牌和档位点对读屏隐藏，不重复念。
+
+取舍：#159 原文写了 Lv2 自动摆动、Lv3 焦散流动、Lv5 静置高光，它们和性能要求「静置时没有循环动画」冲突，以性能为准：这三处都做成静态（Lv2 是固定斜角，Lv3 焦散是静态水纹，Lv5 高光只在悬停和升级时出现）。GitHub issue 的文字暂未改。
 
 专属纹样：鲸汐是鲸尾掀起的水纹和气泡，大肥鱼是水柱和水珠，小克是翻飞的书页和茶气，小智是抽枝的藤叶。所有纹样都是内联 SVG 和 CSS，没有位图。
 
@@ -88,14 +96,17 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
     upgradeFrom={prevLevel}       // 可选：小于 level 时播 prevLevel→level；不升级时传 undefined
     onUpgradeEnd={(e: UpgradeEnd) => setPrevLevel(undefined)}  // { from, to, skipped }
     art={<Live2DStage />}         // 可选：立绘槽，默认画角色徽记；整张卡只渲染一次，升级时不会重建
-    size="md"                     // "md" 主卡 | "sm" 缩略卡（静态）
+    size="md"                     // "md" 主卡 | "sm" 缩略卡（静态，忽略 upgradeFrom）
   />
 </Suspense>
 ```
 
 - 触发：拿到新等级比上次看过的高时，把 `level` 设成新等级、`upgradeFrom` 设成旧等级；`onUpgradeEnd` 里把 `upgradeFrom` 清回 `undefined`。同一对 from/to 要重播，先清再设。
+- `onUpgradeEnd` 每轮升级正好调一次（播完或跳过；StrictMode 下也是一次）。播放中换了 `upgradeFrom` / `level`，旧一轮直接作废、不回调，从新的一轮开始；卸载时也不回调。
+- `size="sm"` 是静态缩略卡：忽略 `upgradeFrom`，不播动画、不出「升到 Lv.N」和「跳过」、不调 `onUpgradeEnd`。升级动画只在 `md` 主卡上播。
+- 触屏：主卡设了 `touch-action: pan-y`，横向拖动用来倾斜，竖向仍交给页面滚动；松手或手势被取消时倾斜复位。
 - 动画进行中根元素带 `data-upgrading="<目标档>"`，读屏会念「升到 Lv.N 相依」。
 - `tierFeatures(level)` 给出 `{ tilt, live2dIdle, signature, foil }`，用来决定要不要开 Live2D 待机（Lv3 起）。
 - 「上次看过的等级」存在哪里由 #160 决定，组件不读写存储、不请求接口。
 
-`ui:check` 会打开 `/__kit/cards` 跑触控、横向滚动、axe、静置检查，并检查升级能播完、能跳过、减少动态时按时落到新卡面；`--shots` 另拍 `cards-tiers-{light,dark}.png`、`cards-signatures.png`、`cards-up-{12,23,34,45}.png`（每段取 45% 处一帧）和 `cards-390.png` 到 `apps/client/test-results/ui-check/`。
+`ui:check` 会打开 `/__kit/cards` 跑触控、横向滚动、axe、静置检查，另有五项卡面专项：1→5 按 2、3、4、5 逐档快进且 ≤3 秒，4→5 播完，跳过即停，StrictMode 下每轮结束回调正好 1 次；跳过和已到点的定时器在同一拍时卡不复活、回调不多一次；安静模式开关和系统减少动态都走淡入；缩略卡给了 `upgradeFrom` 也不播、不回调；390 宽触屏横向拖动能倾斜、松手复位。`--shots` 另拍 `cards-tiers-{light,dark}.png`、`cards-signatures.png`、`cards-up-{12,23,34,45}.png`（每段取 45% 处一帧）和 `cards-390.png` 到 `apps/client/test-results/ui-check/`。

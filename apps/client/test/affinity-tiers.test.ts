@@ -51,3 +51,12 @@ test("calm mode uses the short fade for every step", () => {
   assert.equal(steps.length, 4);
   assert.ok(steps.every((s) => s.ms === CALM_STEP_MS));
 });
+
+test("card tiers match the backend relationship stages end to end", async () => {
+  const { RELATIONSHIP_STAGES } = await import("../../api/src/relationship/policy.ts");
+  assert.deepEqual(
+    CARD_TIERS.map((t) => [t.level, t.label, t.threshold]),
+    RELATIONSHIP_STAGES.map((s) => [s.level, s.label, s.threshold]),
+  );
+  assert.deepEqual(RELATIONSHIP_STAGES.at(-1), { level: 5, threshold: 500, label: "相依", effect: "镀闪卡面" });
+});
