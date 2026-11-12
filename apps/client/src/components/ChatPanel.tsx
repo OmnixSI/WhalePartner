@@ -38,6 +38,8 @@ import "../styles/chat.css";
 
 // 只有点「清空」才用得到，不进首屏
 const ConfirmDialog = lazy(() => import("./ui/Dialog").then((m) => ({ default: m.ConfirmDialog })));
+// 只有好感度跨档才用得到（吐司 + Toaster），不进首屏
+const LevelUpToast = lazy(() => import("./chat/LevelUpToast"));
 
 interface Props {
   character: Character;
@@ -133,6 +135,19 @@ export function ChatPanel({ character }: Props) {
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [levelUp, setLevelUp] = useState<{ level: number; n: number } | null>(null);
+  // 一轮聊天正常结束（不是失败）后，看一眼好感度有没有跨档
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (busy) { wasBusy.current = true; return; }
+    if (!wasBusy.current) return;
+    wasBusy.current = false;
+    if (phase === "failed") return;
+    const id = character.id;
+    void import("../lib/level-up").then(({ checkLevelUp }) => checkLevelUp(id)).then((level) => {
+      if (level !== null) setLevelUp((prev) => ({ level, n: (prev?.n ?? 0) + 1 }));
+    });
+  }, [busy, phase, character.id]);
   const [confirmUsed, setConfirmUsed] = useState(false);
   const speaking = speech.speaking || voiceOutput.speaking;
   const voiceMessage = voice.phase === "error"
@@ -322,6 +337,12 @@ export function ChatPanel({ character }: Props) {
             </Dialog.Content>
           </Dialog.Portal>
         </Dialog.Root>
+      )}
+
+      {levelUp && (
+        <Suspense fallback={null}>
+          <LevelUpToast key={levelUp.n} level={levelUp.level} />
+        </Suspense>
       )}
 
       {confirmUsed && (

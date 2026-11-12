@@ -121,7 +121,7 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
 | --- | --- | --- |
 | 设置页「换一位」弹窗主卡 | `CardShowcase`（四档、只读） | `settings/AffinityShowcase`（`LazyAffinityCard` md + 右侧细节 + 大肥鱼 Lv3 起的 Live2D 立绘） |
 | 弹窗里的角色列表 | 贴纸缩略图 | `CharThumb`（`LazyAffinityCard` sm，右下角标当前等级） |
-| 等级数据 | `useRelationship` 只在打开时取一次 | 同一个 hook，加静默 `refresh()`，回到标签页（`visibilitychange`）和打开弹窗时各刷新一次 |
+| 等级数据 | `useRelationship` 只在打开时取一次 | 同一个 hook 一次管四个角色（`entries`），主卡、缩略卡、概览读同一份；进页面读当前角色，打开弹窗、弹窗开着时换角色或切回标签页（`visibilitychange`）读四个（每个角色一个请求），点「重试」重读读失败的 |
 
 `CardShowcase`、`character-cards.html`、`card-preview-check` 没动（旧预览页仍用 `CardShowcase`）。`HerOverview` 没动。
 
@@ -131,9 +131,16 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
 - 没有记录（首次、清过存储、值不合法）：记下当前等级，不播。
 - 记录 < 当前：播 记录→当前，播完或点「跳过」后记成当前。动画播到一半关掉弹窗，下次打开会重播。
 - 记录 ≥ 当前（后端数据重置、等级变低）：只把记录对齐到当前，不播。
-- localStorage 不可用（隐私模式等）：退到内存里记，同一次打开页面内不会重播。
+- localStorage 不可用（隐私模式等）：退到内存里记，同一次打开页面内不会重播。只有写失败（`setItem` 抛错、`getItem` 正常）时同样：记下写失败的角色，读它时用内存值，写成功后清掉标记。
 - `upgradeFrom` 在渲染时就算出来，升级那一帧卡面直接从旧档开始，不会先闪一下新卡面。
+
+### 聊天页升档提示
+
+一轮聊天正常结束后（失败不算），聊天页读一次 `/api/relationship`（`lib/level-up.ts`，懒加载）。有「上次看到的等级」且低于当前、并且这一档还没提示过，就用 `components/ui/Toast` 弹「好感度升到 Lv.N，去看看她的新卡面」，点「去看看」跳 `/settings?card=1`，设置页打开「换一位」并清掉参数，升级动画在那里播。
+
+- 「已提示的等级」单独存 `wp.cardToastLevel.<角色 id>`，同一档只提示一次，再升一档可以再提示。提示不改「上次看到的等级」；没有记录时只对齐、不提示（和卡面一致）。判断在 `seen-level.ts` 的 `announceUpgrade`。
+- 吐司组件和 `Toaster` 在 `components/chat/LevelUpToast.tsx`，只在真的升档时才下载，卡面代码不进聊天页首屏。
 
 ### 检查
 
-`ui:check` 第 25 项确认卡面不进首屏（首屏文件里没有 `acard`，gzip 在 #160 上限内：JS ≤ 284,826 B，CSS ≤ 45,363 B）；第 26 项用假接口跑：鲸汐 Lv3 首次打开不播 → 接口改成 Lv4 并触发刷新，播一次 3→4 → 再开、刷新页面都不重播 → 换到大肥鱼（2→3）只播它自己、鲸汐记录不动 → 清存储或读取失败后重试都不播。只跑这一项：`node scripts/ui-check.mjs --only=card-live`。`--shots` 另拍 `settings-card-{light,dark}.png`、`settings-card-up.png`（升级中一帧）、`settings-card-thumbs.png`。
+`ui:check` 第 25 项确认卡面不进首屏（首屏文件里没有 `acard`，gzip 在 #160 上限内：JS ≤ 284,826 B，CSS ≤ 45,363 B）；第 26 项用假接口跑：鲸汐 Lv3 首次打开不播 → 接口改成 Lv4 并触发刷新，播一次 3→4 → 再开、刷新页面都不重播 → 换到大肥鱼（2→3）只播它自己、鲸汐记录不动 → 清存储或读取失败后重试都不播。另有两项：「换一位」主卡与缩略卡共用等级（接口全 500 后点重试四张缩略卡和四个等级字样一起恢复；弹窗里大肥鱼 Lv2→3 后切角色，主卡、缩略卡、字样都是 Lv3；打开弹窗请求不超过 4 次），以及聊天页升档提示（Lv3 不提示，升到 Lv4 提示一次且 seen 仍是 3，再聊、刷新后都不再提示，点「去看看」到设置页卡面并播 3→4）。只跑这些：`node scripts/ui-check.mjs --only=card-live`。`--shots` 另拍 `settings-card-{light,dark}.png`、`settings-card-up.png`（升级中一帧）、`settings-card-thumbs.png`。

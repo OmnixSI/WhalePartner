@@ -6,7 +6,7 @@
  * 页面自己绝不编一个数字出来。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { version as clientVersion } from "../../package.json";
 import { fetchHealth } from "../lib/api";
 import { describeNetError, isNetworkFailure } from "../lib/net";
@@ -71,6 +71,15 @@ type Backend = "checking" | "ok" | "down";
 export function SettingsPage() {
   const character = useCharacter();
   const [charOpen, setCharOpen] = useState(false);
+  // 聊天页的升档提示带 ?card=1 过来：直接打开「换一位」里的卡面，读完就把参数清掉
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (!searchParams.has("card")) return;
+    setCharOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("card");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const relationship = useRelationship(character.id, charOpen);
   const { hash } = useLocation();
   const pageRef = useRef<HTMLDivElement>(null);

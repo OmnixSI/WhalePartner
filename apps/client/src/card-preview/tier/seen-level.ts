@@ -98,6 +98,22 @@ export function shouldAnnounceUpgrade(seenLevel: number | null, notifiedLevel: n
   return seenLevel !== null && seenLevel < level && (notifiedLevel === null || notifiedLevel < level);
 }
 
+/**
+ * 聊天页一轮结束、读到当前等级后调用：该提示就返回要提示的等级（并记下「这一档已提示」），否则返回 null。
+ * 不改「上次看到的等级」——卡面动画仍在设置页播；唯一的例外是第一次（没有记录），和 planUpgrade 一样只对齐不提示。
+ */
+export function announceUpgrade(characterId: string, current: number, store: Store | null = browserStore()): number | null {
+  const level = clampLevel(current);
+  const seenLevel = seen.read(characterId, store);
+  if (seenLevel === null) {
+    seen.write(characterId, level, store);
+    return null;
+  }
+  if (!shouldAnnounceUpgrade(seenLevel, notified.read(characterId, store), level)) return null;
+  notified.write(characterId, level, store);
+  return level;
+}
+
 /** 测试用：清掉内存里的兜底记录。 */
 export function resetSeenMemory(): void {
   seen.reset();

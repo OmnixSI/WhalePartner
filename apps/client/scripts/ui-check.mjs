@@ -1010,6 +1010,81 @@ async function checkCardShared(browser) {
   return record("「换一位」主卡与缩略卡共用等级：重试一起恢复 / 切角色一致 / 请求不多发", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
+/** 26c. 聊天页升档提示（#160 返工）：一轮聊天结束好感度跨档，出现一次吐司；同一档不再提示、刷新后不再出现；提示不改「上次看到的等级」；点「去看看」到设置页打开卡面。 */
+async function checkChatLevelUp(browser) {
+  const fails = [];
+  const notes = [];
+  const errors = [];
+  const toasts = (page) => page.locator(".ui-toast");
+  const open = async () => {
+    const levels = { ...DEFAULT_LEVELS, whale: 3 };
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true, levels, character: "whale" });
+    page.on("pageerror", (e) => errors.push(String(e.message ?? e)));
+    let turn = 0;
+    await page.route(/\/api\/chat$/, (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      turn += 1;
+      const ev = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+      return route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: ev("ack", { sessionId: "s1" }) + ev("emotion", { emotion: "happy" }) + ev("delta", { text: `第${turn}轮：你好呀。` }) + ev("done", { messageId: turn, sessionId: "s1", emotion: "happy" }),
+      });
+    });
+    await visit(page, "/");
+    // 设置页「上次看到的等级」是 Lv3（看过 Lv3 的卡面）
+    await page.evaluate(() => localStorage.setItem("wp.cardSeenLevel.whale", "3"));
+    const say = async () => {
+      const next = turn + 1; // 先取下一轮的编号，再发送（路由会立刻把 turn 加一）
+      const box = page.locator("textarea").first();
+      await box.fill("在吗");
+      await box.press("Enter");
+      await page.waitForFunction((n) => document.body.innerText.includes(`第${n}轮`), next, { timeout: 6000 }).catch(() => fails.push("这一轮聊天没有回复完"));
+      await page.waitForTimeout(900);
+    };
+    return { context, page, levels, say };
+  };
+
+  // 1) 同一档（Lv3）：不提示；后端升到 Lv4：这一轮结束提示一次；再聊一轮（仍 Lv4）不重复；刷新后再聊也不再提示
+  {
+    const { context, page, levels, say } = await open();
+    await say();
+    if (await toasts(page).count()) fails.push("没升档却出现了提示");
+    levels.whale = 4;
+    await say();
+    const shown = await toasts(page).count();
+    const text = shown ? await toasts(page).first().innerText() : "";
+    if (shown !== 1 || !text.includes("好感度升到 Lv.4") || !text.includes("去看看她的新卡面")) fails.push(`升到 Lv4 应出现 1 条提示，实际 ${shown} 条「${text.replace(/\s+/g, " ")}」`);
+    const seen = await page.evaluate(() => localStorage.getItem("wp.cardSeenLevel.whale"));
+    if (seen !== "3") fails.push(`提示不该改「上次看到的等级」，实际 ${seen}`);
+    await say();
+    if ((await toasts(page).count()) !== 1) fails.push(`同一档不该再提示，当前 ${await toasts(page).count()} 条`);
+    await page.reload({ waitUntil: "networkidle" });
+    await page.waitForTimeout(500);
+    await say();
+    if (await toasts(page).count()) fails.push("刷新后同一档不该再提示");
+    notes.push("Lv3 不提示；升到 Lv4 提示 1 次、seen 仍是 3；再聊 / 刷新后都不再提示");
+    await context.close();
+  }
+
+  // 2) 点「去看看」：到设置页并打开「换一位」里的卡面，升级动画在那里播，播完才记成 Lv4
+  {
+    const { context, page, levels, say } = await open();
+    levels.whale = 4;
+    await say();
+    await page.getByRole("button", { name: "去看看" }).click().catch(() => fails.push("提示里没有「去看看」"));
+    await page.locator(".set-dialog--chars").waitFor({ timeout: 6000 }).catch(() => fails.push("点「去看看」后没有打开设置页的卡面"));
+    if (!new URL(page.url()).pathname.startsWith("/settings")) fails.push(`点「去看看」应到设置页，实际 ${page.url()}`);
+    if (new URL(page.url()).searchParams.has("card")) fails.push("进设置页后 ?card 参数没有清掉");
+    await page.locator('.set-card .acard[data-upgrading="4"]').waitFor({ timeout: 6000 }).catch(() => fails.push("设置页卡面没有播 3→4"));
+    notes.push("点「去看看」→ 设置页卡面打开并播 3→4");
+    await context.close();
+  }
+
+  if (errors.length) fails.push(`页面报错：${errors.slice(0, 3).join(" | ")}`);
+  return record("聊天页升档提示：跨档提示一次 / 同一档不重复 / 刷新不再出现 / 点击打开卡面", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
 async function shoot(browser) {
   mkdirSync(SHOTS, { recursive: true });
   const written = [];
@@ -1147,6 +1222,7 @@ if (STATIC_ONLY) {
     if (ONLY === "card-live") {
       await checkCardLive(browser);
       await checkCardShared(browser);
+      await checkChatLevelUp(browser);
     } else {
       await checkTouch(browser);
       await checkHorizontalScroll(browser);
@@ -1157,6 +1233,7 @@ if (STATIC_ONLY) {
       await checkSettingsInteractions(browser);
       await checkCardLive(browser);
       await checkCardShared(browser);
+      await checkChatLevelUp(browser);
     }
     if (WITH_SHOTS && ONLY !== "card-live") {
       const written = await shoot(browser);

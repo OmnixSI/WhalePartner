@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
-import { notifiedKey, planUpgrade, readNotifiedLevel, readSeenLevel, resetSeenMemory, seenKey, shouldAnnounceUpgrade, writeNotifiedLevel, writeSeenLevel } from "../src/card-preview/tier/seen-level.ts";
+import { announceUpgrade, notifiedKey, planUpgrade, readNotifiedLevel, readSeenLevel, resetSeenMemory, seenKey, shouldAnnounceUpgrade, writeNotifiedLevel, writeSeenLevel } from "../src/card-preview/tier/seen-level.ts";
 
 function fakeStore(initial: Record<string, string> = {}) {
   const data = { ...initial };
@@ -106,4 +106,27 @@ test("announce: only for an unseen upgrade whose level was not announced yet", (
   assert.equal(shouldAnnounceUpgrade(4, null, 4), false); // 没升
   assert.equal(shouldAnnounceUpgrade(null, null, 4), false); // 没有记录：只对齐，不提示
   assert.equal(shouldAnnounceUpgrade(5, null, 2), false); // 等级变低
+});
+
+test("announceUpgrade: a crossed tier is announced once, and never touches the seen level", () => {
+  const store = fakeStore({ [seenKey("whale")]: "3" });
+  assert.equal(announceUpgrade("whale", 3, store), null); // 没升
+  assert.equal(announceUpgrade("whale", 4, store), 4); // 跨档：提示
+  assert.equal(announceUpgrade("whale", 4, store), null); // 同一档只提示一次
+  assert.equal(store.data[seenKey("whale")], "3"); // 提示不改「上次看到的等级」
+  assert.equal(announceUpgrade("whale", 5, store), 5); // 再升一档可以再提示
+});
+
+test("announceUpgrade: no seen record yet only aligns it (first time never announces)", () => {
+  const store = fakeStore();
+  assert.equal(announceUpgrade("whale", 4, store), null);
+  assert.equal(store.data[seenKey("whale")], "4");
+  assert.equal(announceUpgrade("whale", 5, store), 5);
+});
+
+test("announceUpgrade: once settings has played the upgrade (seen caught up) there is nothing to announce", () => {
+  const store = fakeStore({ [seenKey("whale")]: "3" });
+  assert.equal(announceUpgrade("whale", 4, store), 4);
+  writeSeenLevel("whale", 4, store); // 设置页播完
+  assert.equal(announceUpgrade("whale", 4, store), null);
 });
