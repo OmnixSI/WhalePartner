@@ -6,6 +6,7 @@
  * 小字 aria-hidden，对辅助技术只读一次「她在想」。
  */
 import { useEffect, useState } from "react";
+import { Button } from "../ui/Button";
 import { InkLine } from "../ink";
 import { useInkEnv } from "../ink/useCalm";
 import type { Progress } from "./types";
@@ -76,9 +77,7 @@ export function Thinking({ progress, onGiveUp }: Props) {
       <InkLine id="dlg-think" size={2.4} draw={calm ? "none" : "loop"} className="think__ink" />
       {tooLong && <p className="think__hint">{hint}</p>}
       {giveUp && onGiveUp && (
-        <button type="button" className="btn btn--quiet think__giveup" onClick={onGiveUp}>
-          不等了
-        </button>
+        <Button variant="ghost" className="think__giveup" onClick={onGiveUp}>不等了</Button>
       )}
     </div>
   );

@@ -6,10 +6,10 @@ import { Nav } from "./components/Nav";
 import { Ocean } from "./components/Ocean";
 import { Onboarding, useOnboardingOpen } from "./components/Onboarding";
 import { ChatPage } from "./pages/ChatPage";
-import { SettingsPage } from "./pages/SettingsPage";
 
 // 首屏只带聊天页（和引导要用到的设置页样式）；日记、记忆、见闻按需加载，
 // 它们的 JS 和 CSS 不进首屏（#151 性能预算）。本地资源，切页时的加载在一帧之内。
+const SettingsPage = lazy(() => import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })));
 const DiaryPage = lazy(() => import("./pages/DiaryPage").then((m) => ({ default: m.DiaryPage })));
 const MemoryPage = lazy(() => import("./pages/MemoryPage").then((m) => ({ default: m.MemoryPage })));
 const SurfPage = lazy(() => import("./pages/SurfPage").then((m) => ({ default: m.SurfPage })));
@@ -40,7 +40,7 @@ export default function App() {
               <Route path="/diary" element={<Suspense fallback={null}><DiaryPage /></Suspense>} />
               <Route path="/memory" element={<Suspense fallback={null}><MemoryPage /></Suspense>} />
               <Route path="/surf" element={<Suspense fallback={null}><SurfPage /></Suspense>} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings" element={<Suspense fallback={null}><SettingsPage /></Suspense>} />
               <Route path="/__kit/*" element={<Suspense fallback={null}><UiKitPage /></Suspense>} />
               <Route path="/__kit/ink" element={<Suspense fallback={null}><KitPage /></Suspense>} />
             </Routes>

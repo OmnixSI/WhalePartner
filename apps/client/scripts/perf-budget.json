@@ -26,12 +26,11 @@
   "motionDebt": {
     "src/card-preview/card-preview.css": 4,
     "src/card-preview/card-showcase.css": 1,
-    "src/styles/chat.css": 6,
+    "src/styles/chat.css": 1,
     "src/styles/diary.css": 6,
     "src/styles/ink.css": 2,
     "src/styles/layout.css": 5,
     "src/styles/memory.css": 3,
-    "src/styles/settings.css": 3,
     "src/styles/surf.css": 1
   },
   "filterDebt": {

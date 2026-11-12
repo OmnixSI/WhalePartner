@@ -11,6 +11,7 @@ import { useState } from "react";
 import { clearHistory } from "../../lib/chat";
 import { clearLocalPreferences, deleteAll, exportAll } from "../../lib/data";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Button } from "../ui/Button";
 
 type Props = {
   /** 后端探测不到（fetchHealth 失败）：导出/删除一并禁用 */
@@ -78,31 +79,30 @@ export function DataSection({ offline, onToast, onUnavailable }: Props) {
       <div className="set-data__row">
         <p className="set-data__title">导出我的全部数据</p>
         <p className="set-data__desc">聊天、她记得的事、日记、她逛到的东西，整包导出到下载文件夹。</p>
-        <button type="button" className="btn btn--secondary" disabled={exportBlocked} onClick={() => void runExport()}>
+        <Button variant="secondary" disabled={exportBlocked} onClick={() => void runExport()}>
           {exporting ? "正在打包…" : "导出我的全部数据"}
-        </button>
+        </Button>
         {(offline || exportFailed) && <p className="set-data__bad">现在拿不到，等服务起来再导出。</p>}
       </div>
 
       <div className="set-data__row">
         <p className="set-data__title">清空聊天记录</p>
         <p className="set-data__desc">只删聊天和只从聊天里记住的事；日记、看过的视频网页都留着。</p>
-        <button type="button" className="btn btn--secondary" disabled={clearing} onClick={() => setClearOpen(true)}>
+        <Button variant="secondary" disabled={clearing} onClick={() => setClearOpen(true)}>
           清空聊天记录
-        </button>
+        </Button>
       </div>
 
       <div className="set-data__row" data-tone="danger">
         <p className="set-data__title">删除我的全部数据</p>
         <p className="set-data__desc">删掉就找不回来。删之前建议先导出一份。</p>
-        <button
-          type="button"
-          className="btn btn--danger"
+        <Button
+          variant="danger"
           disabled={offline || deleting}
           onClick={() => setDeleteOpen(true)}
         >
           {deleting ? "正在删…" : "删除我的全部数据"}
-        </button>
+        </Button>
         {(offline || deleteFailed) && <p className="set-data__bad">现在拿不到，什么都没删。</p>}
       </div>
 

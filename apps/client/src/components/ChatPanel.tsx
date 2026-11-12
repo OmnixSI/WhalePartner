@@ -12,7 +12,7 @@
  * 页面里不出现模型名、服务名、技术状态点。
  */
 import { Dialog } from "radix-ui";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAvatarStatus } from "../avatar/avatar-state";
 import type { Character } from "../characters";
@@ -30,11 +30,14 @@ import { PREFS_EVENT, readPace } from "../lib/chat-prefs";
 import { sliceChunks } from "../lib/reply";
 import type { CharacterMood } from "./CharacterMark";
 import { Backlog } from "./chat/Backlog";
-import { ConfirmDialog } from "./chat/ConfirmDialog";
+import { Button } from "./ui/Button";
 import { stripEmotionTags } from "../lib/emotion";
 import { useKeyboardInset, useMediaQuery } from "./chat/useViewport";
 import type { DialogState } from "./chat/types";
 import "../styles/chat.css";
+
+// 只有点「清空」才用得到，不进首屏
+const ConfirmDialog = lazy(() => import("./ui/Dialog").then((m) => ({ default: m.ConfirmDialog })));
 
 interface Props {
   character: Character;
@@ -130,6 +133,7 @@ export function ChatPanel({ character }: Props) {
   const [backlogOpen, setBacklogOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [confirmUsed, setConfirmUsed] = useState(false);
   const speaking = speech.speaking || voiceOutput.speaking;
   const voiceMessage = voice.phase === "error"
     ? voice.message
@@ -233,7 +237,7 @@ export function ChatPanel({ character }: Props) {
       name={character.name}
       turns={turns}
       variant={wide ? "aside" : "sheet"}
-      onClear={() => setConfirmClear(true)}
+      onClear={() => { setConfirmUsed(true); setConfirmClear(true); }}
       onClose={wide ? () => setBacklogOpen(false) : undefined}
     />
   );
@@ -244,9 +248,7 @@ export function ChatPanel({ character }: Props) {
         <div className="room__main">
           <header className="mbar">
             <span className="mbar__name">{character.name}</span>
-            <button type="button" className="mbar__backlog" onClick={() => setSheetOpen(true)}>
-              往回翻
-            </button>
+            <Button variant="ghost" onClick={() => setSheetOpen(true)}>往回翻</Button>
           </header>
 
           <ChatScene
@@ -316,22 +318,26 @@ export function ChatPanel({ character }: Props) {
               <Dialog.Title className="sr-only">往回翻</Dialog.Title>
               <div className="sheet__grip" aria-hidden />
               {backlog}
-              <Dialog.Close className="btn btn--secondary sheet__close">关上</Dialog.Close>
+              <Dialog.Close asChild><Button className="sheet__close">关上</Button></Dialog.Close>
             </Dialog.Content>
           </Dialog.Portal>
         </Dialog.Root>
       )}
 
-      <ConfirmDialog
-        open={confirmClear}
-        onOpenChange={setConfirmClear}
-        title="清空聊天记录？"
-        body="这里的每一句话都会消失，她也不会再记得聊过什么。日记和「记忆」里收着的东西不受影响。"
-        cancelLabel="先留着"
-        confirmLabel="清掉"
-        danger
-        onConfirm={clearAll}
-      />
+      {confirmUsed && (
+        <Suspense fallback={null}>
+          <ConfirmDialog
+            open={confirmClear}
+            onOpenChange={setConfirmClear}
+            title="清空聊天记录？"
+            description="这里的每一句话都会消失，她也不会再记得聊过什么。日记和「记忆」里收着的东西不受影响。"
+            cancelLabel="先留着"
+            confirmLabel="清掉"
+            tone="danger"
+            onConfirm={clearAll}
+          />
+        </Suspense>
+      )}
     </>
   );
 }

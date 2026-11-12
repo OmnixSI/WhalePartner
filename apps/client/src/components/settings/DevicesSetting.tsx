@@ -5,6 +5,7 @@ import { API_BASE } from "../../lib/api";
 import { describeNetError } from "../../lib/net";
 import { useHubRefresh } from "../../lib/useHubRefresh";
 import { SettingRow } from "./Row";
+import { Button } from "../ui/Button";
 
 interface Device { id: string; name: string; createdAt: string; lastSeenAt: string | null }
 interface Pairing { code: string; expiresAt: string; image: string; address: string; addresses: string[] }
@@ -78,34 +79,34 @@ export function DevicesSetting({ offline = false }: { offline?: boolean }) {
 
   return (
     <>
-      <SettingRow icon="phone" title="添加设备" desc="手机或另一台电脑扫码，或在「连接到我的鲸汐」里输入地址和配对码；数据都留在这台，各设备实时同步。" stacked={Boolean(pairing)}>
+      <SettingRow title="添加设备" desc="手机或另一台电脑扫码，或在「连接到我的鲸汐」里输入地址和配对码；数据都留在这台，各设备实时同步。" stacked={Boolean(pairing)}>
         {!pairing ? (
-          <button type="button" className="btn btn--secondary" onClick={() => void add()} disabled={offline}>
+          <Button variant="secondary" onClick={() => void add()} disabled={offline}>
             添加设备
-          </button>
+          </Button>
         ) : (
           <div className="set-fields">
             <img src={pairing.image} alt="配对二维码" width={220} height={220} />
             <p className="set-row__title" aria-live="polite">配对码 {pairing.code}</p>
             <p className="set-row__desc">{left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} 内有效，只能用一次。` : "已过期，重新生成一个。"}</p>
             {pairing.addresses.length > 1 && (
-              <select className="field" value={pairing.address} aria-label="对方用哪个地址访问" onChange={(e) => void render(pairing.code, pairing.expiresAt, pairing.addresses, e.target.value)}>
+              <select className="ui-input set-select" value={pairing.address} aria-label="对方用哪个地址访问" onChange={(e) => void render(pairing.code, pairing.expiresAt, pairing.addresses, e.target.value)}>
                 {pairing.addresses.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>
             )}
             <p className="set-row__desc">对方要能访问到 {pairing.address}。不在同一个 Wi-Fi 时，请先看 docs/DEPLOY.md 把这台暴露出去。</p>
-            <div className="pop__actions">
-              <button type="button" className="btn btn--quiet" onClick={() => setPairing(null)}>收起</button>
-              <button type="button" className="btn btn--secondary" onClick={() => void add()}>换一个码</button>
+            <div className="set-actions">
+              <Button variant="ghost" onClick={() => setPairing(null)}>收起</Button>
+              <Button variant="secondary" onClick={() => void add()}>换一个码</Button>
             </div>
           </div>
         )}
       </SettingRow>
       {devices.map((device) => (
         <SettingRow key={device.id} title={device.name} desc={`加入于 ${dayLabel(device.createdAt)} · 最近使用 ${dayLabel(device.lastSeenAt)}`}>
-          <button type="button" className="btn btn--quiet" onClick={() => void revoke(device)}>
+          <Button variant="ghost" onClick={() => void revoke(device)}>
             撤销
-          </button>
+          </Button>
         </SettingRow>
       ))}
       {error && <p className="set-row__desc" role="alert">{error}</p>}

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { AvatarStatus } from "../../avatar/avatar-state";
 import type { AvatarEmotion, AvatarModel } from "../../avatar/model.config";
 import type { Character } from "../../characters";
-import { Tide } from "../ink";
+import { Button } from "../ui/Button";
 import { SurfStatus, type SurfPhase } from "../surf/SurfStatus";
 import { useSurfEvents } from "../surf/useSurfEvents";
 import { CharacterMark, type CharacterMood } from "../CharacterMark";
@@ -69,10 +69,7 @@ export function ChatScene({
     <section className="scene" aria-label="角色舞台" ref={sceneRef}>
       <SurfStatus phase={surfPhase} onDismiss={() => setSurfPhase(null)} />
       <div className="scene__safe">
-        <div className="scene__glow" aria-hidden />
-        <div className="scene__sea scene__sea--back">
-          <Tide variant="stage" layers="back" />
-        </div>
+        <div className="scene__horizon" aria-hidden />
         <div
           className="scene__figure"
           role="button"
@@ -105,17 +102,11 @@ export function ChatScene({
             </Suspense>
           )}
         </div>
-        <div className="scene__sea scene__sea--front">
-          <div className="scene__sheen" aria-hidden />
-          <Tide variant="stage" layers="front" />
-        </div>
       </div>
 
       {(model ? avatar === "ready" : true) && !hintSeen && <p className="scene__tip">点一点她，她会看你哦。</p>}
       {wide && !backlogOpen && (
-        <button type="button" className="scene__corner" onClick={onOpenBacklog}>
-          往回翻
-        </button>
+        <Button className="scene__corner" onClick={onOpenBacklog}>往回翻</Button>
       )}
     </section>
   );

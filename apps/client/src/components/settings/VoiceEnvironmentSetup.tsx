@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { API_BASE } from "../../lib/api";
 import { describeNetError } from "../../lib/net";
 import { SettingRow } from "./Row";
+import { Button } from "../ui/Button";
 
 type ModelStatus = {
   state: "idle" | "waiting_reference" | "loading" | "ready" | "failed";
@@ -98,13 +99,13 @@ export function VoiceEnvironmentSetup({ offline }: Props) {
       </SettingRow>
       <div className="voice-env__actions">
         {!allReady && (
-          <button type="button" className="btn btn--primary" disabled={offline || busy !== null} onClick={() => void run("setup")}>
+          <Button variant="primary" disabled={offline || busy !== null} onClick={() => void run("setup")}>
             {busy === "setup" ? "正在配置…" : "一键配置"}
-          </button>
+          </Button>
         )}
-        <button type="button" className="btn btn--secondary" disabled={offline || busy !== null} onClick={() => void run("rebuild")}>
+        <Button variant="secondary" disabled={offline || busy !== null} onClick={() => void run("rebuild")}>
           {busy === "rebuild" ? "正在重建…" : "重建语音环境"}
-        </button>
+        </Button>
       </div>
       {error && <p className="set-row__bad" role="alert">{error}</p>}
       <p className="voice-env__note">首次配置需要联网下载约 2.8 GB 语音权重并构建本机运行时。CosyVoice 需要 macOS 15 或更新版本的 Apple Silicon Mac。重建只替换语音模型与运行时，不会删除音色、记忆或聊天数据。</p>

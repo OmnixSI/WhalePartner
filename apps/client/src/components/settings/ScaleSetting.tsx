@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { SettingRow } from "./Row";
 import { SCALE_MAX } from "./prefs";
+import { Button } from "../ui/Button";
 
 type Props = {
   scale: number;
@@ -36,9 +37,9 @@ export function ScaleSetting({ scale, min, onConfirm }: Props) {
         <p className="set-scale__preview" style={{ fontSize: `${Math.round(18 * draft)}px` }}>
           预览：今天天气很好
         </p>
-        <button type="button" className="btn btn--secondary" disabled={!dirty} onClick={() => onConfirm(draft)}>
+        <Button variant="secondary" disabled={!dirty} onClick={() => onConfirm(draft)}>
           确认
-        </button>
+        </Button>
       </div>
     </SettingRow>
   );

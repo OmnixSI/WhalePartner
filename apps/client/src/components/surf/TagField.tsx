@@ -3,6 +3,8 @@
  * 输入框 + 回车/加号添加，已加的标签是一个带 ✕ 的纸片；到上限后输入框失效并说明原因。
  */
 import { useState } from "react";
+import { Button } from "../ui/Button";
+import { Input } from "../ui/Field";
 
 type Props = {
   label: string;
@@ -45,8 +47,7 @@ export function TagField({ label, hint, placeholder, values, max, maxChars, disa
   return (
     <div className="tagfield">
       <div className="tagfield__row">
-        <input
-          className="field tagfield__input"
+        <Input className="tagfield__input"
           type="text"
           value={draft}
           placeholder={full ? `已经有 ${max} 个了` : placeholder}
@@ -61,9 +62,9 @@ export function TagField({ label, hint, placeholder, values, max, maxChars, disa
             }
           }}
         />
-        <button type="button" className="btn btn--secondary" disabled={disabled || full} onClick={add}>
+        <Button variant="secondary" disabled={disabled || full} onClick={add}>
           加上
-        </button>
+        </Button>
       </div>
       {values.length > 0 && (
         <ul className="tagfield__list" aria-label={`已加的${label}`}>

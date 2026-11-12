@@ -36,7 +36,8 @@
  *  21  播放中清空 upgradeFrom / 卸载卡片：这一轮作废，到点也不回调
  *  22  名字牌和档位点对读屏隐藏，主卡、缩略卡的 ariaSnapshot 只有卡根的 aria-label
  *  23  触屏横向拖动倾斜，松手复位
- *  （默认共 23 项；--shots 再加一项截图，共 24 项）
+ *  24  设置页：存了 Codex 模型后顶部概览同步；点目录后亮的就是刚点的那项（桌面、手机 380 × 字号 2 倍）
+ *  （--shots 再加一项：截图）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -713,6 +714,74 @@ async function checkCardUpgrade(browser) {
   }
 }
 
+
+/** 17. 设置页两处交互：存了 Codex 模型后顶部概览跟着变；点目录后亮的就是刚点的那个（手机 380 × 字号 2 倍，吸顶目录会挡住标题）。 */
+async function checkSettingsInteractions(browser) {
+  const fails = [];
+  const notes = [];
+
+  // 1) 概览与模型设置共用一份结果：存成功后概览不用重进页面
+  {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+    const saved = { model: "model-a", effort: "medium" };
+    const entry = (model) => ({ model, displayName: model, defaultReasoningEffort: "medium", supportedReasoningEfforts: [{ reasoningEffort: "low", description: "" }, { reasoningEffort: "medium", description: "" }], isDefault: model === "model-a" });
+    await page.route(/\/api\/setup(\/|\?|$)/, async (route) => {
+      const request = route.request();
+      const path = new URL(request.url()).pathname;
+      const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+      if (path.endsWith("/codex/models")) return json({ models: [entry("model-a"), entry("model-b")] });
+      if (path.endsWith("/setup/codex") && request.method() === "PUT") {
+        Object.assign(saved, JSON.parse(request.postData() ?? "{}"));
+        return json({});
+      }
+      return json({ deepseek: { configured: false, masked: null }, codex: { ...saved, configPath: "/tmp/codex.toml", present: true }, chain: ["codex"] });
+    });
+    await visit(page, "/settings");
+    const chip = () => page.locator(".set-chip", { hasText: "当前模型" }).locator(".set-chip__value").innerText();
+    const before = await chip();
+    await page.selectOption("#mset-model", "model-b");
+    await page.locator(".mset__save").last().click();
+    let after = before;
+    for (let i = 0; i < 20 && !after.includes("model-b"); i += 1) {
+      await page.waitForTimeout(150);
+      after = await chip();
+    }
+    if (!before.includes("model-a")) fails.push(`保存前概览应显示 model-a，实际「${before}」`);
+    if (!after.includes("model-b")) fails.push(`保存 model-b 后概览仍是「${after}」`);
+    notes.push(`概览 ${before.replace(/\s+/g, " ")}→${after.replace(/\s+/g, " ")}`);
+    await context.close();
+  }
+
+  // 2) 点目录 → 滚动稳定后，目录亮的就是刚点的那项
+  for (const [label, width, height, scale] of [["桌面", 1440, 900, 1], ["手机 380×560 ×2", 380, 560, 2]]) {
+    const { context, page } = await openPage(browser, { width, height });
+    await page.addInitScript((value) => localStorage.setItem("wp.scale", String(value)), scale);
+    await visit(page, "/settings");
+    const items = page.locator(".set-nav__item");
+    const count = await items.count();
+    const wrong = [];
+    for (let i = 0; i < count; i += 1) {
+      const name = (await items.nth(i).innerText()).trim();
+      await items.nth(i).click();
+      let last = -1;
+      for (let tries = 0; tries < 20; tries += 1) {
+        await page.waitForTimeout(150);
+        const top = await page.evaluate(() => document.querySelector(".page--settings").scrollTop);
+        if (top === last) break;
+        last = top;
+      }
+      await page.waitForTimeout(200);
+      const lit = (await page.locator('.set-nav__item[aria-current="true"]').allInnerTexts()).map((t) => t.trim()).join("/");
+      if (lit !== name) wrong.push(`点「${name}」亮「${lit || "无"}」`);
+    }
+    if (wrong.length) fails.push(`${label}：${wrong.join("、")}`);
+    notes.push(`${label} ${count - wrong.length}/${count}`);
+    await context.close();
+  }
+  return record("设置页：存模型后概览同步；点目录后亮的是刚点的", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
+
 async function shoot(browser) {
   mkdirSync(SHOTS, { recursive: true });
   const written = [];
@@ -816,6 +885,7 @@ if (STATIC_ONLY) {
     await checkIdleAndHidden(browser);
     await checkLazyStyles(browser);
     await checkCardUpgrade(browser);
+    await checkSettingsInteractions(browser);
     if (WITH_SHOTS) {
       const written = await shoot(browser);
       record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层，好感度卡五档 / 角色 / 升级帧）`, true, `${rel(SHOTS)}/`);
