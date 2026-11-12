@@ -6,7 +6,7 @@ import { DEFAULT_CHARACTER, isCharacterId } from "../persona/persona.ts";
 import type { ServerDeps } from "../server/types.ts";
 import { text } from "./input.ts";
 import type { ChatSessionRequests } from "./chat-session-requests.ts";
-import { pauseBackgroundJobs, queueReflection } from "../chat/background.ts";
+import { pauseBackgroundJobs, queueReflection, resetReflectionSchedule } from "../chat/background.ts";
 import type { CharacterId } from "../persona/persona.ts";
 
 export async function handleChatHistoryRoute(
@@ -163,6 +163,7 @@ export async function handleChatHistoryRoute(
       await waitForMemoryJobs(deps.store);
       const vectorIds = [...deps.store.factVectorIds(), ...deps.store.chatDerivedExperienceVectorIds()];
       deps.store.clear();
+      resetReflectionSchedule();
       let memoriesCleared = true;
       if (deps.memory) {
         for (const id of vectorIds) {

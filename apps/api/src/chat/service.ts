@@ -6,7 +6,7 @@ import { buildChatContext } from "../memory/context.ts";
 import { scheduleMemoryJobs } from "../memory/jobs.ts";
 import { beginForegroundChat } from "../memory/priority.ts";
 import { recallChatMemory } from "../memory/recall.ts";
-import { queueLearning, queueReflection } from "./background.ts";
+import { queueChatLearningIfDue, queueLearning, queueReflectionIfDue } from "./background.ts";
 import { readWeb, watchVideo } from "./materials.ts";
 import { extractVideoTarget, type VideoService } from "../video/service.ts";
 import { extractWebTarget, type WebService } from "../webpage/service.ts";
@@ -191,7 +191,8 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
     }
     store.enqueueMemoryJob({ sessionId: session.id, character, userMessageId: userMessage.id, assistantMessageId: saved.id });
     void scheduleMemoryJobs({ store, provider, memory });
-    queueReflection(deps, character, false);
+    queueChatLearningIfDue(deps, character);
+    queueReflectionIfDue(deps, character);
     bus.publish("message.created", { ...scope, streamId, message: wire(saved) });
     bus.publish("message.done", { ...scope, streamId, messageId: saved.id, emotion, provider: usedProvider });
     yield { type: "done", messageId: saved.id, sessionId: session.id, emotion, provider: usedProvider, usage, userMessageId: userMessage.id };

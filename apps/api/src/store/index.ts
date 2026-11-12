@@ -63,6 +63,7 @@ export class ChatStore {
   deleteSession(id: string, character: string): SessionDeletion | undefined { return deleteChatSession(this.#db, id, character); }
   add(role: StoredRole, content: string, emotion?: string | null, character?: string, sessionId?: string) { return this.#sessions.add(role, content, emotion, character, sessionId); }
   recent(limit: number, character?: string, sessionId?: string) { return this.#sessions.recent(limit, character, sessionId); }
+  messagesSince(since: string, limit: number) { return this.#sessions.messagesSince(since, limit); }
   messagesBetween(sessionId: string, fromId: number, throughId: number) { return this.#sessions.messagesBetween(sessionId, fromId, throughId); }
   messagesAround(sessionId: string, messageId: number, radius?: number) { return this.#sessions.messagesAround(sessionId, messageId, radius); }
   message(id: number) { return this.#sessions.message(id); }
@@ -72,7 +73,12 @@ export class ChatStore {
   listMemoryExplorer(filters: MemoryExplorerFilters) { return listMemoryExplorer(this.#db, filters); }
   journalSources(_character: string | undefined, from: string, to: string) { return journalSourcesForDay(this.#db, undefined, from, to); }
   getNote(character: string) { return this.#sessions.getNote(character); }
+  reflectionState() { return this.#sessions.reflectionState(); }
+  chatLearningState() { return this.#sessions.chatLearningState(); }
+  markChatLearned(assistantCount: number) { return this.#sessions.markChatLearned(assistantCount); }
   setNote(character: string, text: string, assistantCount: number) { return this.#sessions.setNote(character, text, assistantCount); }
+  listNoteHistory() { return this.#sessions.listNoteHistory(); }
+  listSessionObservations() { return this.#observations.list(); }
   countAssistant(character?: string) { return this.#sessions.countAssistant(character); }
   recordCompletedInteraction(input: { userMessageId: number; assistantMessageId: number; character: string; emotion: import("../chat/emotion.ts").Emotion }, now?: Date) {
     return this.#relationship.recordCompletedInteraction(input, now);

@@ -166,10 +166,30 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
     vectorIndexed: experience.vectorIndexed,
     lastError: experience.lastError,
   }));
+  // 她的近况：小记的每一版（第一条是当前版，其余标为以前的）和每个会话的观察，都只读不删。
+  const notes = store.listNoteHistory().map((note, index) => ({
+    id: `note:${note.id}`,
+    kind: "experience" as const,
+    text: note.text,
+    createdAt: note.createdAt,
+    source: "reflection",
+    title: index === 0 ? "她现在的近况" : "她以前的近况",
+    status: index === 0 ? "active" as const : "superseded" as const,
+  }));
+  const observations = store.listSessionObservations().map((observation) => ({
+    id: `observation:${observation.sessionId}`,
+    kind: "experience" as const,
+    text: observation.summary,
+    createdAt: observation.updatedAt,
+    source: "reflection",
+    title: `聊天观察 · ${observation.sessionTitle}`,
+  }));
+  const reflections = [...notes, ...observations].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const indexedSources = new Set(archivedExperiences.map((experience) => experience.sourceId));
   const all = [
     ...facts,
     ...experiences,
+    ...reflections,
     ...entries.filter((entry) => (!entry.sourceId || !indexedSources.has(entry.sourceId)) && !(entry.kind === "fact" && structuredValues.some((value) => entry.text.includes(value)))),
   ];
   // B4：给每条分配共享图鉴 No. 编号（单调、删了也不复用）。

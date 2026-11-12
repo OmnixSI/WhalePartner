@@ -5,6 +5,7 @@ import type { AvatarEmotion } from "../avatar/model.config";
 import { CharacterMark } from "../components/CharacterMark";
 import { CardParticles } from "./CardParticles";
 import { RELATIONSHIP_SAMPLES, type CardCharacter, type RelationshipProgress, type RelationshipSample } from "./data";
+import { levelIntro, nextStageText } from "./relationship-copy";
 import "./card-showcase.css";
 
 type Props = {
@@ -125,7 +126,7 @@ export function CardShowcase({ character, sample, showProgress = true, relations
         <p className="card-preview__showcase-intro">
           {showProgress
             ? model
-              ? `这张卡直接使用应用里已绑定给大肥鱼的 Live2D 模型，悬停和卡面特效不会重载。Lv.${sample.level} ${sample.effect}：${sample.detail}。`
+              ? `这张卡直接使用应用里已绑定给大肥鱼的 Live2D 模型，悬停和卡面特效不会重载。${levelIntro(sample, relationship)}。`
               : "此人格目前没有可合法接入的 Live2D 文件，预览保留自己的固定默认形象，不借用其他角色的模型。"
             : relationshipStatus === "loading"
               ? "当前角色卡使用已绑定的默认形象，正在读取真实好感度与对应卡面等级。"
@@ -150,15 +151,13 @@ export function CardShowcase({ character, sample, showProgress = true, relations
               <span style={{ width: `${relationship.progress}%` }} />
             </div>
             <p className="card-preview__tier-next">
-              {relationship.nextThreshold === null
-                ? "已解锁最高级专属特效"
-                : `下一阶段还需 ${Math.max(0, relationship.nextThreshold - relationship.points)} 点好感`}
+              {nextStageText(relationship)}
             </p>
           </div>
         )}
         {relationshipStatus === "loading" && <p className="card-preview__tier-next" role="status">正在读取好感度…</p>}
         {relationshipStatus === "error" && <p className="card-preview__tier-next" role="status">好感度暂不可读取，请重试。</p>}
-        {showProgress && (
+        {showProgress && !relationship && (
           <p className="card-preview__tier-next">
             {nextSample ? `下一阶段：Lv.${nextSample.level} ${nextSample.effect} · 待解锁` : "最高级专属特效已解锁"}
           </p>

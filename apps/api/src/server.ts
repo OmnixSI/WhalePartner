@@ -15,6 +15,7 @@ import { createChatProvider } from "./llm/index.ts";
 import { LazyMemoryStore } from "./memory/mem0.ts";
 import { scheduleMemoryJobs, waitForMemoryJobs } from "./memory/jobs.ts";
 import { DEFAULT_CHARACTER, isCharacterId } from "./persona/persona.ts";
+import { queueReflectionIfDue } from "./chat/background.ts";
 import { ChatStore } from "./store/index.ts";
 import { createVideoService } from "./video/service.ts";
 import { createAccountService } from "./bilibili/accounts.ts";
@@ -354,6 +355,7 @@ if (import.meta.main) {
     if (config.surfEnabled) stopSurfScheduler = surf.start();
     void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));
     void scheduleMemoryJobs({ store, provider, memory });
+    queueReflectionIfDue({ store, provider, memory }, DEFAULT_CHARACTER);
     stopDiaryScheduler = startDiaryScheduler(config.diaryCron, diary);
     stopJournalScheduler = startDailyJournalScheduler(config.journalCron, journal);
     void journal.resumeInterrupted();

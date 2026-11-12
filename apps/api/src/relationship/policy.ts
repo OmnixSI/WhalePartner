@@ -9,6 +9,7 @@ export const RELATIONSHIP_STAGES = [
   { level: 2, threshold: 25, label: "相熟", effect: "立体效果" },
   { level: 3, threshold: 100, label: "默契", effect: "动态画面" },
   { level: 4, threshold: 250, label: "亲近", effect: "专属特效" },
+  { level: 5, threshold: 500, label: "相依", effect: "镀闪卡面" },
 ] as const;
 type RelationshipStage = (typeof RELATIONSHIP_STAGES)[number];
 
@@ -35,8 +36,9 @@ export function relationshipSnapshot(points: number, mood: RelationshipMood): Re
     if (boundedPoints >= candidate.threshold) stage = candidate;
   }
   const next = RELATIONSHIP_STAGES.find((candidate) => candidate.level === stage.level + 1);
+  // 未满级时最高 99：进度 100 只表示已到最高档（nextThreshold 为 null）。
   const progress = next
-    ? Math.min(100, Math.max(0, ((boundedPoints - stage.threshold) / (next.threshold - stage.threshold)) * 100))
+    ? Math.min(99, Math.max(0, Math.round(((boundedPoints - stage.threshold) / (next.threshold - stage.threshold)) * 100)))
     : 100;
   return {
     points: boundedPoints,
@@ -44,7 +46,7 @@ export function relationshipSnapshot(points: number, mood: RelationshipMood): Re
     label: stage.label,
     effect: stage.effect,
     nextThreshold: next?.threshold ?? null,
-    progress: Math.round(progress),
+    progress,
     mood,
   };
 }

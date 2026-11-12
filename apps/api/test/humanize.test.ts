@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runChat, type ChatEvent } from "../src/chat/service.ts";
+import { resetReflectionSchedule, resetReflectionScheduleForTests, waitForBackgroundJobs } from "../src/chat/background.ts";
+import { waitForMemoryJobs } from "../src/memory/jobs.ts";
 import { humanizeText } from "../src/diary/humanize.ts";
 import { parseLearnings } from "../src/chat/learning.ts";
 import { FallbackChatProvider } from "../src/llm/router.ts";
@@ -113,7 +115,8 @@ test("a page that cannot be read is reported honestly", async () => {
   assert.ok(system.includes("没能读成") && system.includes("内部地址") && system.includes("不要编造"));
 });
 
-test("every few turns she writes a note about herself and it reaches the next prompt", async () => {
+test("a new user gets the first note after 12 replies, and it reaches the next prompt", async () => {
+  resetReflectionScheduleForTests();
   const store = new ChatStore(":memory:");
   const seen: ChatMessage[][] = [];
   const model: ChatProvider = {
@@ -125,12 +128,173 @@ test("every few turns she writes a note about herself and it reaches the next pr
       else yield { text: "[emotion:happy]嗯嗯" };
     },
   };
-  for (let i = 0; i < 12; i++) await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, `第 ${i} 句`));
-  await tick();
-  assert.equal(store.getNote("claude")?.text, "最近老被问到猫的事，开始有点想养一只了。");
-  assert.equal(store.getNote("deepseek")?.text, "最近老被问到猫的事，开始有点想养一只了。");
-  await collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, "再聊一句"));
-  const last = [...seen].reverse().find((m) => m[0].content.startsWith("# 角色设定"))!;
-  const prompt = last.filter((message) => message.role === "system").map((message) => message.content).join("\n");
-  assert.ok(prompt.includes("## 角色近况") && prompt.includes("想养一只"));
+  const chat = (text: string) => collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, text));
+  try {
+    for (let i = 0; i < 11; i++) await chat(`第 ${i} 句`);
+    await waitForBackgroundJobs();
+    assert.equal(store.getNote("claude"), undefined, "11 条回复还不写");
+    await chat("第 11 句");
+    await waitForBackgroundJobs();
+    assert.equal(store.getNote("claude")?.text, "最近老被问到猫的事，开始有点想养一只了。");
+    assert.equal(store.getNote("deepseek")?.text, "最近老被问到猫的事，开始有点想养一只了。");
+    await chat("再聊一句");
+    const last = [...seen].reverse().find((m) => m[0].content.startsWith("# 角色设定"))!;
+    const prompt = last.filter((message) => message.role === "system").map((message) => message.content).join("\n");
+    assert.ok(prompt.includes("## 角色近况") && prompt.includes("想养一只"));
+  } finally {
+    await waitForBackgroundJobs();
+    await waitForMemoryJobs(store);
+    store.close();
+  }
+});
+
+test("learning from the user's words runs every 12 replies and never rewrites the note", async () => {
+  resetReflectionScheduleForTests();
+  const store = new ChatStore(":memory:");
+  store.setNote("claude", "刚写好的近况。", 0);
+  const learningInputs: string[] = [];
+  let reflections = 0;
+  const model: ChatProvider = {
+    id: "fake", model: "m",
+    async *stream(messages) {
+      const system = messages[0].content;
+      if (system.startsWith("你是整理笔记的助手")) {
+        learningInputs.push(messages.at(-1)?.content ?? "");
+        yield { text: "[]" };
+      } else if (system.startsWith("你在替一个聊天角色写")) {
+        reflections += 1;
+        yield { text: "不该出现的新近况。" };
+      } else yield { text: "[emotion:happy]嗯嗯" };
+    },
+  };
+  const chat = (text: string) => collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, text));
+  try {
+    for (let i = 0; i < 11; i++) await chat(`第 ${i} 句`);
+    await waitForBackgroundJobs();
+    assert.equal(learningInputs.length, 0, "11 条回复还不学");
+    await chat("第 11 句");
+    await waitForBackgroundJobs();
+    assert.equal(learningInputs.length, 1);
+    // 读的是最近 14 条消息里用户说的话（7 条），不是全部 12 条。
+    assert.match(learningInputs[0]!, /第 11 句/);
+    assert.match(learningInputs[0]!, /第 5 句/);
+    assert.doesNotMatch(learningInputs[0]!, /第 4 句/);
+    for (let i = 12; i < 24; i++) await chat(`第 ${i} 句`);
+    await waitForBackgroundJobs();
+    assert.equal(learningInputs.length, 2);
+    assert.equal(reflections, 0);
+    assert.equal(store.getNote("claude")?.text, "刚写好的近况。");
+  } finally {
+    await waitForBackgroundJobs();
+    await waitForMemoryJobs(store);
+    store.close();
+  }
+});
+
+for (const mode of ["clear", "clearAll"] as const) {
+  test(`after ${mode}, learning restarts from zero and runs again at the 12th reply`, async () => {
+    resetReflectionScheduleForTests();
+    const store = new ChatStore(":memory:");
+    store.setNote("claude", "刚写好的近况。", 0);
+    let learnings = 0;
+    const model: ChatProvider = {
+      id: "fake", model: "m",
+      async *stream(messages) {
+        const system = messages[0].content;
+        if (system.startsWith("你是整理笔记的助手")) {
+          learnings += 1;
+          yield { text: "[]" };
+        } else if (system.startsWith("你在替一个聊天角色写")) yield { text: "清除后的第一版近况。" };
+        else yield { text: "[emotion:happy]嗯嗯" };
+      },
+    };
+    const chat = (text: string) => collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, text));
+    try {
+      for (let i = 0; i < 12; i++) await chat(`第 ${i} 句`);
+      await waitForBackgroundJobs();
+      assert.equal(learnings, 1);
+      await waitForMemoryJobs(store);
+      store[mode]();
+      assert.equal(store.chatLearningState().learnedAt, 0, "清除后学习进度归零");
+      for (let i = 0; i < 12; i++) await chat(`清除后第 ${i} 句`);
+      await waitForBackgroundJobs();
+      assert.equal(learnings, 2, "清除后第 12 条回复就学，不推到第 13 条");
+    } finally {
+      await waitForBackgroundJobs();
+      await waitForMemoryJobs(store);
+      store.close();
+    }
+  });
+
+  test(`after ${mode}, the first note is written at the 12th reply even right after a successful note`, async () => {
+    resetReflectionScheduleForTests();
+    const store = new ChatStore(":memory:");
+    let version = 0;
+    const model: ChatProvider = {
+      id: "fake", model: "m",
+      async *stream(messages) {
+        const system = messages[0].content;
+        if (system.startsWith("你在替一个聊天角色写")) {
+          version += 1;
+          yield { text: `第 ${version} 版近况，最近在聊猫。` };
+        } else if (system.startsWith("你是整理笔记的助手")) yield { text: "[]" };
+        else yield { text: "[emotion:happy]嗯嗯" };
+      },
+    };
+    const chat = (text: string) => collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, text));
+    try {
+      for (let i = 0; i < 12; i++) await chat(`第 ${i} 句`);
+      await waitForBackgroundJobs();
+      assert.equal(store.getNote("claude")?.text, "第 1 版近况，最近在聊猫。");
+      await waitForMemoryJobs(store);
+      store[mode]();
+      assert.equal(store.getNote("claude"), undefined);
+      for (let i = 0; i < 12; i++) await chat(`清除后第 ${i} 句`);
+      await waitForBackgroundJobs();
+      assert.equal(store.getNote("claude")?.text, "第 2 版近况，最近在聊猫。", "成功生成不留冷却，清除后满 12 条就写第一版");
+    } finally {
+      await waitForBackgroundJobs();
+      await waitForMemoryJobs(store);
+      store.close();
+    }
+  });
+}
+
+test("a failed note keeps the retry cooldown, and clearing lifts it", async () => {
+  resetReflectionScheduleForTests();
+  const store = new ChatStore(":memory:");
+  let failing = true;
+  let attempts = 0;
+  const model: ChatProvider = {
+    id: "fake", model: "m",
+    async *stream(messages) {
+      const system = messages[0].content;
+      if (system.startsWith("你在替一个聊天角色写")) {
+        attempts += 1;
+        if (failing) throw new Error("模型暂时不可用");
+        yield { text: "恢复后写好的近况。" };
+      } else if (system.startsWith("你是整理笔记的助手")) yield { text: "[]" };
+      else yield { text: "[emotion:happy]嗯嗯" };
+    },
+  };
+  const chat = (text: string) => collect(runChat({ provider: new FallbackChatProvider([model]), store, character: "claude" }, text));
+  try {
+    for (let i = 0; i < 12; i++) await chat(`第 ${i} 句`);
+    await waitForBackgroundJobs();
+    assert.equal(attempts, 1);
+    failing = false;
+    await chat("第 12 句");
+    await waitForBackgroundJobs();
+    assert.equal(attempts, 1, "失败后冷却期内不重试");
+    await waitForMemoryJobs(store);
+    store.clear();
+    resetReflectionSchedule();
+    for (let i = 0; i < 12; i++) await chat(`清除后第 ${i} 句`);
+    await waitForBackgroundJobs();
+    assert.equal(store.getNote("claude")?.text, "恢复后写好的近况。");
+  } finally {
+    await waitForBackgroundJobs();
+    await waitForMemoryJobs(store);
+    store.close();
+  }
 });
