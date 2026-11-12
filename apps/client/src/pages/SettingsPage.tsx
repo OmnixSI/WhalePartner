@@ -31,7 +31,7 @@ import { HerOverview } from "../components/settings/HerOverview";
 import { useRelationship } from "../components/settings/useRelationship";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Field";
-import { Toaster, toast } from "../components/ui/Toast";
+import { toast } from "../components/ui/toast-store";
 import { SendKeySetting } from "../components/settings/SendKeySetting";
 import { DevicesSetting } from "../components/settings/DevicesSetting";
 import { ConnectServerSetting } from "../components/settings/ConnectServerSetting";
@@ -594,7 +594,6 @@ export function SettingsPage() {
       </div>
 
       <CharacterDialog open={charOpen} onOpenChange={setCharOpen} relationship={relationship} />
-      <Toaster />
     </div>
   );
 }

@@ -1,14 +1,10 @@
 /**
- * 记忆详情（规范 §7.3.4「纸条展开」）：点卡片 → 纸条摊开。
- *
- * 规范里的共享元素（layoutId + domMax）在这个阶段先降成「淡入 + 轻微上浮」：
- * 桌面居中、手机底部抽屉，都是令牌里的时长；reduced-motion / calm 下只淡入。
- * 底部按钮：secondary「回到当时的聊天」（有链接才出现）+ danger-outline「忘掉这条」（近况类不出现），
- * 两者间距 ≥16，危险按钮永远不是实心。
+ * 记忆详情（参照 astryx 的 Dialog）：ui/Dialog 里放分类徽章、正文、来源和原话。
+ * 底部：危险入口「忘掉这条」（描边，近况类不出现）靠左，安全动作「回到当时的聊天」（有链接才出现）靠右；真正执行在确认框里。
+ * 后端没有「改记忆」的接口，所以这里只读，不画编辑框。
  */
-import { Dialog } from "radix-ui";
+import { Button, Dialog } from "../ui";
 import { Icon } from "../ink-icons";
-import { InkFrame } from "../ink";
 import {
   bodyOf,
   canForget,
@@ -21,6 +17,7 @@ import {
   titleOf,
   type MemoryEntryP2,
 } from "./types";
+import "../pages/pages.css";
 
 type Props = {
   entry: MemoryEntryP2 | null;
@@ -29,67 +26,50 @@ type Props = {
 };
 
 export function MemoryDialog({ entry, onClose, onForget }: Props) {
-  const open = Boolean(entry);
   const group = entry ? groupInfo(groupOf(entry)) : null;
   const seq = entry ? seqLabel(entry.seq) : null;
   const quote = entry?.quote?.trim();
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="overlay" />
-        <Dialog.Content className="mdlg" aria-describedby={entry ? "mdlg-body" : undefined}>
-          {entry && group && (
-            <InkFrame radius={20} stroke={2} tone="ink" fill="sheet" openCorner className="mdlg__panel">
-              <header className="mdlg__head">
-                <span className="mdlg__badge">
-                  <span className="mdlg__icon" aria-hidden>
-                    <Icon name={group.icon} size={24} />
-                  </span>
-                  <span className="mdlg__cat">{group.label}</span>
-                  {seq && <span className="mdlg__seq">No.{seq}</span>}
-                </span>
-                <Dialog.Close className="btn btn--quiet mdlg__close" aria-label="关上">
-                  关上
-                </Dialog.Close>
-              </header>
-
-              <Dialog.Title className="mdlg__title">{titleOf(entry)}</Dialog.Title>
-              <p className="mdlg__text" id="mdlg-body">
-                {bodyOf(entry)}
-              </p>
-
-              <p className="mdlg__meta">
-                {dayLabel(entry.createdAt)}
-                {entry.createdAt ? " · " : ""}
-                {sourceLabel(entry)}
-                {isSuperseded(entry) ? " · 以前的记忆" : ""}
-              </p>
-
-              {quote && (
-                <blockquote className="mdlg__quote">
-                  <p>{quote}</p>
-                </blockquote>
-              )}
-
-              {entry.sourceMissing && <p className="mdlg__missing">原话已不在了，只剩下这一条摘要。</p>}
-
-              <div className="mdlg__actions">
-                {entry.url && (
-                  <a className="btn btn--secondary" href={entry.url} target="_blank" rel="noreferrer">
-                    回到当时的聊天
-                  </a>
-                )}
-                {canForget(entry) && (
-                  <button type="button" className="btn mdlg__forget" onClick={() => onForget(entry)}>
-                    忘掉这条
-                  </button>
-                )}
-              </div>
-            </InkFrame>
-          )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog
+      open={Boolean(entry)}
+      onOpenChange={(next) => !next && onClose()}
+      size="md"
+      title={entry ? titleOf(entry) : "记忆"}
+      footer={
+        entry && (
+          <>
+            {canForget(entry) && (
+              <Button variant="danger-outline" className="mdetail__forget" onClick={() => onForget(entry)}>忘掉这条</Button>
+            )}
+            {entry.url && (
+              <a className="ui-btn ui-press ui-focus ui-btn--secondary" href={entry.url} target="_blank" rel="noreferrer">
+                回到当时的聊天
+              </a>
+            )}
+          </>
+        )
+      }
+    >
+      {entry && group && (
+        <div className="mdetail">
+          <div className="mdetail__badges">
+            <span className="pbadge" data-tone="accent">
+              <Icon name={group.icon} size={16} />
+              {group.label}
+            </span>
+            {seq && <span className="pbadge">No.{seq}</span>}
+            {isSuperseded(entry) && <span className="pbadge" data-tone="warning">以前的记忆</span>}
+          </div>
+          {bodyOf(entry) && bodyOf(entry) !== titleOf(entry) && <p className="mdetail__text">{bodyOf(entry)}</p>}
+          <dl className="mdetail__meta">
+            <div><dt>时间</dt><dd>{dayLabel(entry.createdAt) || "—"}</dd></div>
+            <div><dt>来源</dt><dd>{sourceLabel(entry)}</dd></div>
+          </dl>
+          {quote && <blockquote className="mdetail__quote">{quote}</blockquote>}
+          {entry.sourceMissing && <p className="mdetail__missing">原话已不在了，只剩下这一条摘要。</p>}
+        </div>
+      )}
+    </Dialog>
   );
 }

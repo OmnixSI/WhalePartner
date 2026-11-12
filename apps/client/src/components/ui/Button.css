@@ -29,6 +29,8 @@
 .ui-btn--primary { --btn-bg: var(--color-accent); --btn-fg: var(--color-on-accent); }
 .ui-btn--secondary { --btn-bg: var(--color-card); --btn-edge: var(--color-border-strong); }
 .ui-btn--ghost { --btn-fg: var(--color-text-primary); }
+/* 需要保留、但不宜抢眼的危险入口（详情里的「忘掉这条」）；真正执行时才用实心 danger */
+.ui-btn--danger-outline { --btn-fg: var(--color-error); --btn-edge: var(--color-error); --ui-ring: var(--color-error); }
 .ui-btn--danger { --btn-bg: var(--color-error); --btn-fg: var(--color-on-error); --ui-ring: var(--color-error); }
 
 /* 焦点环：在按钮自己的边线外再画双环（.ui-focus 的通用版会盖掉内边线，这里合并） */

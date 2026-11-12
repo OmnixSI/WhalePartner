@@ -1,4 +1,4 @@
-/* 便签小提示（components/diary/Toast）：日记、记忆、见闻三页都用，样式跟着组件走，不放在懒加载页面的 CSS 里 */
+/* 便签小提示（components/diary/Toast）：现在只有日记页还在用；记忆页、见闻页已改用 ui 的 toast（App 根部的 ToastHost）。样式跟着组件走，不放在懒加载页面的 CSS 里 */
 .toast {
   position: fixed;
   left: 50%;

@@ -711,7 +711,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 - **DropdownMenu**（Radix）：`.sheet` + `--shadow-2`，项高 48（老人 56），图标 20 + 文字 16px；危险项文字 `--alert`；支持字母跳转；打开 `scale .98→1 + opacity` 160ms。取代 `<details>` “···”（`ChatSessionControls.tsx`）。
 - **Popover**：话题列表、日历、筛选。外点/Esc 关闭，焦点陷入，打开 200ms。
 - **Tooltip**（Radix）：延迟 400ms；底 `--ink`、字 `--sheet`（10.76:1）、`--r-sm`、14px；**只给“有可见文字的元素”补充**，不承载唯一信息。
-- **Toast = 便签**（Radix Toast；本条已由 DESIGN.md 取代，sonner 已移除）：底 `--slip`、字 `--ink`（10.15:1）、`--r-xs` 的上缘 + 顶部一小条胶带；宽 `min(360px, 100vw-32px)`；位置桌面右下、手机顶部居中避开 tabbar；显示 4s（老人 8s 且带关闭按钮 ≥44px）；同时只显示 1 条（`visibleToasts={1}`）；`role="status"`，错误便签 `role="alert"`，底 `--alert-wash` + `1.5px --alert`。入场 `y 16→0, 280ms --ease-out`。带“撤回”的便签用 quiet 按钮。
+- **Toast**（现状：`components/ui/Toast.tsx`，Radix Toast，队列在 `ui/toast-store.ts`，只在 App 根部由 `ToastHost` 挂一次，切页清空；记忆、见闻、设置、聊天升档提示都用它，日记页暂时还是 `diary/Toast` 的便签）。下面是最初的便签规格（已由 DESIGN.md 取代，sonner 已移除）：底 `--slip`、字 `--ink`（10.15:1）、`--r-xs` 的上缘 + 顶部一小条胶带；宽 `min(360px, 100vw-32px)`；位置桌面右下、手机顶部居中避开 tabbar；显示 4s（老人 8s 且带关闭按钮 ≥44px）；同时只显示 1 条（`visibleToasts={1}`）；`role="status"`，错误便签 `role="alert"`，底 `--alert-wash` + `1.5px --alert`。入场 `y 16→0, 280ms --ease-out`。带“撤回”的便签用 quiet 按钮。
 
 ### 6.6 思考指示 `<Thinking/>`（取代三点 typing）
 - 组成：① 角色进入 `think` 姿态（Live2D：`ParamAngleZ` 以 3s 周期在 ±4° 摆动，`ParamEyeBallY +0.4`，不改表情；VRM：lookAt 抬高 + `relaxed` 0.2；贴纸：`mood="think"`）；② 对话框内一行 14px `--ink-mute` 小字，**每 2400ms 轮换**（淡入淡出 160ms，`aria-hidden`，对辅助技术只读一次“她在想”）；③ 小字下一条 `InkLine draw="loop"`（宽 96px）。
@@ -767,7 +767,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 - **DateStamp**：左 `Fraunces 56px` 日（"07"，`lining-nums`），右上 13px 大写感的“NOV · 周六”（`--ink-mute`，`letter-spacing:.06em`），下方一条 `InkLine`；整体可作为 `<time dateTime>`。
 - **IndexTabs**（周/月/年）：始终水平放在日记正文上方，切换时保留当前所选日期；`role="tablist"`，支持左右方向键、Home 和 End。
 - **MiniCalendar**：紧凑日期选择器，供记忆筛选使用。日记主视图使用独立的 `DiaryCalendar`，在七列月历格中展示真实主题和记录状态（见 §7.2）。
-- **MemoryCard**：见 §7.3.2。
+- **MemoryRow**（原 `MemoryCard`，已删除）：见 §7.3.3。
 - **QuotaMeter**：10 枚小贝壳排成一行，已用的变空壳（轮廓），剩余的实心；下方文字“本月还剩 7 / 10”；`role="meter"`，`aria-valuenow` 等。
 - **StateBlock**（空/加载/错误/离线通用）：贴纸 120px + 标题 20px 文楷 + 正文 16px + 至多 1 个 primary 按钮 + 可选 quiet“详情”（展开技术细节）；居中，最大宽 360px。`loading` 用 `role="status"`，`error` 用 `role="alert"`。
 
@@ -781,7 +781,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 |---|---|
 | `Ocean.tsx` → `Backdrop.tsx` | 纸底（§5.1）+ 非聊天页底部“潮线”（§5.5）。聊天页的浪画在舞台里（`ChatPage` 内的 `<Tide/>`），不再用 fixed 背景。 |
 | `Nav.tsx` | 加图标（§5.6）、高亮“荧光笔块”、日记新条目与见闻新内容的小红点（用 `--alert` 实心 10px，不用珊瑚）。≥960px 左侧竖排 112px，<960px 底部 tab（5 项，每项 `flex:1; min-width:64px`）。老人模式只渲染 3 项（§9）。 |
-| `App.tsx` | `<LazyMotion features={domAnimation}>` 包裹；`<Toaster/>`（Radix Toast，`components/ui/Toast.tsx`；已由 DESIGN.md 取代，sonner 已移除）；路由内容用 `AnimatePresence mode="popLayout"` 做页面切换；非聊天页挂 `<CompanionCorner/>`；`useEffect` 里首次运行检测 `wp.onboarded`，没有则渲染 `<Onboarding/>`（§7.5）。 |
+| `App.tsx` | `<LazyMotion features={domAnimation}>` 包裹；`<ToastHost/>`（挂 Radix Toast 的 `Toaster`，`components/ui/ToastHost.tsx`，第一次有吐司时才加载，切页清空队列；已由 DESIGN.md 取代，sonner 已移除）；路由内容用 `AnimatePresence mode="popLayout"` 做页面切换；非聊天页挂 `<CompanionCorner/>`；`useEffect` 里首次运行检测 `wp.onboarded`，没有则渲染 `<Onboarding/>`（§7.5）。 |
 | 页面切换 | 有 `document.startViewTransition` 时用它做 200ms 交叉淡入（封装在 `lib/vt.ts`：`withVT(fn)`，不支持直接 `fn()`）；**功能不得依赖它**（部分 WebView 没有此 API，此时直接切换）。无 VT 时用 `motion` 的 `opacity 0→1, y 6→0, 280ms`。 |
 
 导航项（桌面 88×76 命中区；手机每项 `flex:1; min-width:72px; min-height:64px`）：
@@ -1011,6 +1011,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 手机 390：搜索全宽 → 分类芯片横向滚动（每个 ≥44 高）→ 卡片单列（宽 `100% - 32px`）→ 底部分页；“更多筛选”为 Sheet。
 
 #### 7.3.3 卡片 `MemoryCard`
+> **现状（feat/pages-memory-surf）**：手账便签卡已换成 `components/memory/MemoryRow` 的列表行（一张 `ui/Card` 里的表格式列表：图标 / 标题与摘要 / 分类徽标 / 来源 / 编号与日期），筛选是 `ui/Tabs` + `ui/Select` + 日期范围 `ui/Dialog`，详情是 `ui/Dialog`（`MemoryDialog`），确认是 `ui/ConfirmDialog`，撤回是 `ui/toast`。下面的卡片规格（胶带、锯齿、旋转）不再适用；编号、历史记忆、来源缺失的规则不变。
 - 结构：`<li><button class="memory-card">`（整张可点，打开详情 Dialog）。顶：胶带（颜色按分类固定 a/b/c/d）、`No.0042`（`--font-num` 13px `--ink-mute`）、分类图标 24px；中：标题 `--font-voice 18px/1.5`（2 行省略）；正文 `--font-ui 16px/1.7`（3 行省略，`--ink-soft`）；底：日期 13px + 来源类型小字（“聊天/视频/网页/日记”）。
 - 外形：`.sheet`；上缘用 `clip-path` 做 8 个锯齿（深 4px）；旋转 `hash(id)%5 - 2` × 0.5°（老人 0°）；`--shadow-1`；圆角 `--r-md`。
 - 状态：悬停=上浮 2px + `--shadow-2`（160ms）；按下=`scale .98`；聚焦=`--focus-ring`；历史记忆（`status==="superseded"`）=整体底色 `--paper-2` 且标题前加 13px“以前的记忆”标签（**不靠降低不透明度**）；来源缺失（`sourceMissing`）=底部“原话已不在了”。
@@ -1024,7 +1025,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 #### 7.3.5 “忘掉”流程
 1. 点“忘掉这条”→ `ConfirmDialog`（标题“要忘掉这条吗？”，正文见 §6.9，“先留着”默认聚焦）。
 2. 确认→ 卡片 480ms 折成纸团落入底部小瓶（`scale 1→.2, y→+80, rotate→20°, opacity→0`，`--ease-inout`），列表其余卡片 `layout` 动画补位（弹簧 300/30）；`CompanionCorner` 变 `sorry` 2s。
-3. 出便签 toast：“已经忘掉了。” + quiet“撤回”。**真正的删除请求延迟到 5s 后**（`setTimeout`，期间点“撤回”则取消；`pagehide`/路由切换时立即提交）。
+3. 出便签 toast：“已经忘掉了。” + quiet“撤回”。**真正的删除请求跟便签同生共死**（现状：放在 `toast` 的 `onDismiss` 里，便签还在、含悬停暂停时，“撤回”都还作数；便签一走才 DELETE；`pagehide`/路由切换时立即提交）。
 4. 失败→ 卡片弹回原位（弹簧 400/17）+ 错误便签“没能忘掉，再试一次？”
 
 #### 7.3.6 筛选与搜索
@@ -1208,6 +1209,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 - 分页：每页 20 张；底部 quiet 按钮“再往前翻翻”加载下一页（`page+1`），没有更多时变成文字“翻到头了。”。
 
 **`PostcardCard`（剪报 / 明信片卡片，`components/PostcardCard.tsx`）**
+> **现状（feat/pages-memory-surf）**：`PostcardCard`、`PostcardDetail`、`SurfEmpty` 已删除，换成 `components/surf/SurfCard`（`ui/Card` 封面网格卡）、`SurfDetail`（`ui/Dialog` lg）和通用的 `components/pages/StatePanel`；筛选是 `ui/Tabs`（segmented）+ `ui/Select`。下面的剪报规格（胶带、锯齿、旋转、邮戳）不再适用。
 - 外形：`.sheet` + 上缘锯齿（同 `MemoryCard`）+ 左上 `Tape`；旋转 `hash(id)%5 - 2` × 0.5°（老人 0°）；`--shadow-1`；圆角 `--r-md`；内边距 16。
 - 缩略图：16:9，宽 100% 内缩 12px，**照片白边** 6px `--sheet` + 轻微旋转 ±0.6°；图片来自 `GET /api/surf/thumb/:id`；无缩略图时显示纸色占位：网站首字大号 Fraunces/文楷（如“哔”“J”）+ 手绘小框；右下压一枚 `Stamp`（圆形 72，行1=站点简称“B站”或域名主体，行2=`MM.DD`）。
 - 文字：标题 `--font-voice 18px/1.5`（2 行省略）；“她说：”前缀 14px `--ink-mute`，感想 `--font-voice 17px/1.8`，左侧 2px `--accent` 竖线；标签芯片（≤3，14px，`--paper-2` 底）。
@@ -1407,8 +1409,8 @@ API 侧其余能力全部用 Node 内置（`node:zlib` 的 `deflateRawSync` 与 
 | `src/motion/tokens.ts` | 弹簧与时长（§8.1） |
 | `src/styles/components.css`、`src/styles/paper.css`（纸纹/胶带/邮戳） | 新样式 |
 | `src/components/ink/{InkLine,InkFrame,Stamp,Tape}.tsx`、`Tide.tsx`、`Backdrop.tsx` | §5 |
-| `src/components/{Icon,Icons.baked,WhaleSticker,CompanionCorner,StateBlock,Onboarding,ConfirmDialog,Thinking,InkText,DialogBox,NameTab,ComposerBar,Backlog,Slip,CaptionBlock,MiniCalendar,QuotaMeter,MemoryCard,DateStamp,IndexTabs}.tsx` | §6 |
-| `src/components/{SurfStatus,PostcardCard,PostcardMini,PostcardDetail,TagInput}.tsx`、`src/pages/SurfPage.tsx` | §7.7 |
+| `src/components/{Icon,Icons.baked,WhaleSticker,CompanionCorner,StateBlock,Onboarding,ConfirmDialog,Thinking,InkText,DialogBox,NameTab,ComposerBar,Backlog,Slip,CaptionBlock,MiniCalendar,QuotaMeter,DateStamp,IndexTabs}.tsx` | §6 |
+| `src/components/{SurfStatus,PostcardMini,TagInput}.tsx`、`src/components/surf/{SurfCard,SurfDetail,SurfFilters}.tsx`（原 `PostcardCard`/`PostcardDetail`）、`src/pages/SurfPage.tsx` | §7.7 |
 | `src/components/ui/{Button,Field,Switch,Slider,ChoiceCard,Dialog,Sheet,Menu,Popover,Tooltip,Toaster}.tsx` | Radix 皮肤 |
 | `tests/ui/{screens.spec.ts,a11y.spec.ts,grep-rules.spec.ts,surf.spec.ts}`、`playwright.config.ts` | §12 |
 

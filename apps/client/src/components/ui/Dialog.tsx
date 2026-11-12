@@ -5,12 +5,31 @@
  * 窄屏（<560px）从底部升起，桌面居中。进出场只动 opacity / transform。
  */
 import { AlertDialog as A, Dialog as D } from "radix-ui";
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Button } from "./Button";
 import { cx } from "./cx";
 import { Close } from "./glyphs";
 import "./shared.css";
 import "./Dialog.css";
+
+/**
+ * 受控打开（没有 Trigger）时，Radix 不知道该把焦点还给谁，关闭后会落到 body。
+ * 打开的那一刻（弹层还没挂上，焦点还在触发它的元素上）记下来，关闭时还回去；那个元素已经不在了就交给 Radix 默认处理。
+ */
+function useRestoreFocus(open: boolean | undefined) {
+  const opener = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (open) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }, [open]);
+  return (event: Event) => {
+    const el = opener.current;
+    opener.current = null;
+    if (el?.isConnected && el !== document.body) {
+      event.preventDefault();
+      el.focus();
+    }
+  };
+}
 
 export function Dialog({ open, onOpenChange, title, description, children, footer, trigger, size = "md", className }: {
   open?: boolean;
@@ -25,12 +44,13 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
+  const restoreFocus = useRestoreFocus(open);
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       {trigger ? <D.Trigger asChild>{trigger}</D.Trigger> : null}
       <D.Portal>
         <D.Overlay className="ui-dialog__scrim" />
-        <D.Content className={cx("ui-dialog", `ui-dialog--${size}`, className)} {...(description ? {} : { "aria-describedby": undefined })}>
+        <D.Content className={cx("ui-dialog", `ui-dialog--${size}`, className)} onCloseAutoFocus={restoreFocus} {...(description ? {} : { "aria-describedby": undefined })}>
           <header className="ui-dialog__head">
             <D.Title className="ui-dialog__title">{title}</D.Title>
             <D.Close asChild>
@@ -58,11 +78,12 @@ export function ConfirmDialog({ open, onOpenChange, title, description, confirmL
   onConfirm: () => void | Promise<void>;
   busy?: boolean;
 }) {
+  const restoreFocus = useRestoreFocus(open);
   return (
     <A.Root open={open} onOpenChange={onOpenChange}>
       <A.Portal>
         <A.Overlay className="ui-dialog__scrim" />
-        <A.Content className="ui-dialog ui-dialog--sm">
+        <A.Content className="ui-dialog ui-dialog--sm" onCloseAutoFocus={restoreFocus}>
           <A.Title className="ui-dialog__title">{title}</A.Title>
           {description ? <A.Description className="ui-dialog__desc">{description}</A.Description> : null}
           <footer className="ui-dialog__foot">

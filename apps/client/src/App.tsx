@@ -6,6 +6,7 @@ import { AppShell } from "./components/shell/AppShell";
 import { Ocean } from "./components/Ocean";
 import { Onboarding, useOnboardingOpen } from "./components/Onboarding";
 import { ChatPage } from "./pages/ChatPage";
+import { ToastHost } from "./components/ui/ToastHost";
 
 // 首屏只带聊天页（和引导要用到的设置页样式）；日记、记忆、见闻按需加载，
 // 它们的 JS 和 CSS 不进首屏（#151 性能预算）。本地资源，切页时的加载在一帧之内。
@@ -46,6 +47,7 @@ export default function App() {
         </AppShell>
       )}
       <Onboarding />
+      <ToastHost />
     </>
   );
 }

@@ -1,0 +1,67 @@
+/* 记忆页 / 见闻页共用：状态面板、小徽章、工具条。全部走语义层令牌。 */
+
+.spanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-block: var(--sp-10);
+  text-align: center;
+}
+.spanel__icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--sp-2);
+  border-radius: var(--r-container);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+}
+.spanel[data-state="error"] .spanel__icon { background: var(--color-error-muted); color: var(--color-error); }
+.spanel__title { margin: 0; font-size: var(--text-lg); font-weight: 600; color: var(--color-text-primary); }
+.spanel__body { margin: 0; max-width: 36ch; font-size: var(--text-sm); line-height: 1.6; color: var(--color-text-secondary); }
+.spanel__detail { margin-top: var(--sp-1); font-size: var(--text-xs); color: var(--color-text-tertiary); }
+.spanel__detail summary { cursor: pointer; }
+.spanel__detail code { display: block; margin-top: var(--sp-1); font-family: var(--font-num, monospace); overflow-wrap: anywhere; }
+.spanel__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+
+/* 徽章：类型 / 状态的小标签。tone 决定底色，字色永远是对应的文字色 */
+.pbadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-full);
+  background: var(--color-bg-muted);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.pbadge[data-tone="accent"] { background: var(--color-accent-muted); color: var(--color-accent); }
+.pbadge[data-tone="info"] { background: var(--color-info-muted); color: var(--color-info); }
+.pbadge[data-tone="warning"] { background: var(--color-warning-muted); color: var(--color-warning); }
+.pbadge[data-tone="success"] { background: var(--color-success-muted); color: var(--color-success); }
+
+.ptool { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.ptool__search { display: flex; flex: 1 1 260px; gap: var(--sp-2); min-width: 0; }
+.ptool__input { position: relative; flex: 1; min-width: 0; }
+.ptool__input .ui-input { width: 100%; padding-inline-start: 36px; padding-inline-end: var(--control-h); }
+.ptool__glass { position: absolute; inset-block: 0; inset-inline-start: 11px; display: grid; place-items: center; color: var(--color-text-tertiary); pointer-events: none; }
+.ptool__clear { position: absolute; inset-block: 0; inset-inline-end: 0; display: grid; place-items: center; width: var(--control-h); min-width: var(--control-h); background: none; border: 0; border-radius: var(--r-element); color: var(--color-text-tertiary); cursor: pointer; }
+.ptool__count { margin: 0; font-size: var(--text-sm); color: var(--color-text-secondary); }
+
+/* 工具条里的下拉 / 日期框：按内容定宽，不撑满整行 */
+.ptool .ui-select,
+.surf-filters .ui-select,
+.surf-filters .ui-input { width: auto; min-width: 150px; }
+@media (max-width: 767px) {
+  .ptool .ui-select,
+  .surf-filters .ui-select,
+  .surf-filters .ui-input { width: 100%; }
+  .ptool__search { flex-basis: 100%; }
+}
+
+a.ui-btn { text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }

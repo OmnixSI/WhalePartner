@@ -6,13 +6,14 @@
  * 她的进度靠 `useSurfEvents` 的 SSE 推过来，页不可见时断开、回来先对齐一次状态。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ConfirmDialog } from "../components/chat/ConfirmDialog";
 import { PageHeader } from "../components/shell/PageHeader";
-import { Toast } from "../components/diary/Toast";
-import { PostcardCard } from "../components/surf/PostcardCard";
-import { SurfEmpty } from "../components/surf/SurfEmpty";
+import { Glass } from "../components/pages/Glass";
+import { StatePanel } from "../components/pages/StatePanel";
+import { SurfCard } from "../components/surf/SurfCard";
 import { SurfFilters } from "../components/surf/SurfFilters";
-import { PostcardDetail } from "../components/surf/PostcardDetail";
+import { SurfDetail } from "../components/surf/SurfDetail";
+import { Button, ConfirmDialog, Input } from "../components/ui";
+import { toast } from "../components/ui/toast-store";
 import { SurfStatus, type SurfPhase } from "../components/surf/SurfStatus";
 import { useHubRefresh } from "../lib/useHubRefresh";
 import { useSurfEvents, type SurfShareEvent } from "../components/surf/useSurfEvents";
@@ -60,7 +61,6 @@ export function SurfPage() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
   const [phase, setPhase] = useState<SurfPhase | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
   const [detail, setDetail] = useState<SurfFeedItem | null>(null);
   const [confirming, setConfirming] = useState<SurfFeedItem | null>(null);
   const [busy, setBusy] = useState(false);
@@ -68,7 +68,7 @@ export function SurfPage() {
   const openSourceUrl = (url: string) => {
     void openExternalUrl(url).catch((cause: unknown) => {
       console.warn("Could not open surf source URL", cause);
-      setToast(cause instanceof Error ? `没能打开原链接：${cause.message}` : "没能打开原链接，请检查系统默认浏览器。");
+      toast({ title: "没能打开原链接", description: cause instanceof Error ? cause.message : "请检查系统默认浏览器。", tone: "error" });
     });
   };
 
@@ -189,26 +189,26 @@ export function SurfPage() {
     const answer = await runSurf(character.id);
     if (answer.ok) {
       setPhase({ kind: "browsing", stage: "searching" });
-      setToast("她出门了，逛逛就回来。");
+      toast({ title: "她出门了，逛逛就回来。" });
       void refreshStatus();
       return;
     }
     setBusy(false);
-    if (answer.code === "too_soon") setToast(answer.message ?? "她刚回来不久，歇一会儿再去吧。");
-    else if (answer.code === "already_running") setToast("她正在逛呢。");
-    else if (answer.code === "quota") setToast("这个月的贝壳快用完了，她先歇着。");
-    else setToast(answer.message ?? "现在叫不动她。");
+    if (answer.code === "too_soon") toast({ title: answer.message ?? "她刚回来不久，歇一会儿再去吧。", tone: "warning" });
+    else if (answer.code === "already_running") toast({ title: "她正在逛呢。" });
+    else if (answer.code === "quota") toast({ title: "这个月的贝壳快用完了，她先歇着。", tone: "warning" });
+    else toast({ title: answer.message ?? "现在叫不动她。", tone: "error" });
   };
 
   const enableBack = async () => {
     try {
       const saved = await putSurfSettings(character.id, { enabled: true });
       setStatus((prev) => (prev ? { ...prev, pausedReason: null } : prev));
-      setToast("打开啦，她会自己出去逛。");
+      toast({ title: "打开啦，她会自己出去逛。", tone: "success" });
       void saved;
       void refreshStatus();
     } catch {
-      setToast("现在改不了设置。");
+      toast({ title: "现在改不了设置。", tone: "error" });
     }
   };
 
@@ -217,9 +217,9 @@ export function SurfPage() {
       await deleteSurfItem(item.id);
       setItems((prev) => prev.filter((entry) => entry.id !== item.id));
       setTotal((prev) => Math.max(0, prev - 1));
-      setToast("已经忘掉了。");
+      toast({ title: "已经忘掉了。" });
     } catch {
-      setToast("现在忘不掉，等会儿再试。");
+      toast({ title: "现在忘不掉，等会儿再试。", tone: "error" });
     }
   };
 
@@ -278,109 +278,91 @@ export function SurfPage() {
           />
 
           <form
-            className="surf-search"
+            className="ptool__search surf-search"
+            role="search"
             onSubmit={(event) => {
               event.preventDefault();
               setApplied(query);
               setPage(1);
             }}
           >
-            <input
-              className="field surf-search__field"
-              type="search"
-              value={query}
-              placeholder="找找她逛到的东西…"
-              aria-label="搜她的见闻"
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            <button type="submit" className="btn btn--secondary btn--sm">
-              找
-            </button>
+            <div className="ptool__input">
+              <span className="ptool__glass"><Glass /></span>
+              <Input
+                type="search"
+                value={query}
+                placeholder="找找她逛到的东西…"
+                aria-label="搜她的见闻"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+            <Button type="submit" variant="secondary">找</Button>
           </form>
 
-          <button
-            type="button"
-            className="btn btn--primary surf-run"
+          <Button
+            variant="primary"
+            className="surf-run"
             onClick={() => void trigger()}
             disabled={running || disabled}
-            aria-busy={running}
+            loading={running}
           >
             {running ? "她正在逛…" : "让她现在去逛逛"}
-          </button>
+          </Button>
         </div>
 
         {state === "error" ? (
-          <SurfEmpty
-            kind="error"
-            icon="bottle"
-            title="见闻翻不开了"
-            body="网络好像不太好，我再试一次？"
-            detail={error}
-            action={{ label: "再试一次", onClick: () => void load(1) }}
-          />
+          <StatePanel kind="error" title="见闻翻不开了" body="网络好像不太好，我再试一次？" detail={error}>
+            <Button variant="primary" onClick={() => void load(1)}>再试一次</Button>
+          </StatePanel>
         ) : state === "loading" ? (
-          <SurfEmpty kind="loading" icon="newspaper" title="我在整理剪报…" />
+          <StatePanel kind="loading" title="我在整理剪报…" />
         ) : items.length === 0 ? (
           applied.trim() ? (
-            <SurfEmpty
+            <StatePanel
               kind="empty"
               icon="newspaper"
               title={`没翻到带「${applied.trim()}」的`}
               body="换个词试试，或者等我下次出去逛的时候留意一下。"
-              action={{
-                label: "清掉搜索",
-                onClick: () => {
+            >
+              <Button
+                variant="secondary"
+                onClick={() => {
                   setQuery("");
                   setApplied("");
                   setPage(1);
-                },
-              }}
-            />
+                }}
+              >
+                清掉搜索
+              </Button>
+            </StatePanel>
           ) : filtered ? (
-            <SurfEmpty
-              kind="empty"
-              icon="newspaper"
-              title="这个范围里我还没带回东西"
-              body="换个来源或者日期看看。"
-              action={{ label: "清掉筛选", onClick: clearFilters }}
-            />
+            <StatePanel kind="empty" icon="newspaper" title="这个范围里我还没带回东西" body="换个来源或者日期看看。">
+              <Button variant="secondary" onClick={clearFilters}>清掉筛选</Button>
+            </StatePanel>
           ) : lowQuota ? (
-            <SurfEmpty
-              kind="empty"
-              icon="conch"
-              title="这个月的贝壳快用完了"
-              body="我先歇着，下个月 1 号再去逛。"
-              action={{ label: "去看看额度", onClick: () => window.location.assign("/settings#quota") }}
-            />
+            <StatePanel kind="empty" icon="conch" title="这个月的贝壳快用完了" body="我先歇着，下个月 1 号再去逛。">
+              <Button variant="secondary" onClick={() => window.location.assign("/settings#quota")}>去看看额度</Button>
+            </StatePanel>
           ) : disabled ? (
-            <SurfEmpty
-              kind="empty"
-              icon="lighthouse"
-              title="我现在不出门了"
-              body="你打开之后，我会自己去看视频、翻网页，回来讲给你听。"
-              action={{ label: "打开", onClick: () => void enableBack() }}
-            />
+            <StatePanel kind="empty" icon="lighthouse" title="我现在不出门了" body="你打开之后，我会自己去看视频、翻网页，回来讲给你听。">
+              <Button variant="primary" onClick={() => void enableBack()}>打开</Button>
+            </StatePanel>
           ) : (
-            <SurfEmpty
-              kind="empty"
-              icon="phone"
-              title="还没出去逛过呢"
-              body="我会挑个时间去看看视频、翻翻网页，把有意思的剪下来给你。"
-              action={{ label: "让她现在去逛逛", onClick: () => void trigger() }}
-            />
+            <StatePanel kind="empty" icon="phone" title="还没出去逛过呢" body="我会挑个时间去看看视频、翻翻网页，把有意思的剪下来给你。">
+              <Button variant="primary" onClick={() => void trigger()}>让她现在去逛逛</Button>
+            </StatePanel>
           )
         ) : (
           <>
             {groups.map(([label, list]) => (
               <section className="surf-day" key={label} aria-label={label}>
                 <h2 className="surf-day__date">
-                  <span className="surf-day__line" aria-hidden />
                   <span className="surf-day__text">{label}</span>
-                  <span className="surf-day__line" aria-hidden />
+                  <span className="surf-day__count">{list.length} 条</span>
                 </h2>
                 <ul className="surf-grid">
                   {list.map((item) => (
-                    <PostcardCard
+                    <SurfCard
                       key={item.id}
                       item={item}
                       fresh={isFresh(item, seenAtMount.current)}
@@ -394,13 +376,9 @@ export function SurfPage() {
             ))}
             {items.length < total ? (
               <div className="surf-more">
-                <button
-                  type="button"
-                  className="btn btn--quiet"
-                  onClick={() => void load(page + 1, { append: true })}
-                >
+                <Button variant="secondary" onClick={() => void load(page + 1, { append: true })}>
                   再往前翻翻
-                </button>
+                </Button>
               </div>
             ) : (
               <p className="surf-end">翻到头了。</p>
@@ -409,21 +387,20 @@ export function SurfPage() {
         )}
       </div>
 
-      <PostcardDetail item={detail} onClose={() => setDetail(null)} onForget={setConfirming} onOpenUrl={openSourceUrl} />
+      <SurfDetail item={detail} onClose={() => setDetail(null)} onForget={setConfirming} onOpenUrl={openSourceUrl} />
       <ConfirmDialog
         open={Boolean(confirming)}
         onOpenChange={(open) => !open && setConfirming(null)}
         title={`要忘掉「${confirming?.title ?? ""}」吗？`}
-        body="她会连同这段记忆一起忘掉，以后也不会再逛回来。"
+        description="她会连同这段记忆一起忘掉，以后也不会再逛回来。"
         cancelLabel="先留着"
         confirmLabel="忘掉这条"
-        danger
+        tone="danger"
         onConfirm={() => {
           if (confirming) void forget(confirming);
           setConfirming(null);
         }}
       />
-      {toast && <Toast open text={toast} onClose={() => setToast(null)} />}
     </div>
   );
 }

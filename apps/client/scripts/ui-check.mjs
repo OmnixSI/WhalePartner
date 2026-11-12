@@ -28,6 +28,8 @@
  *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
  *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
  *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
+ *  记忆页返工（初审 8 条）：撤回跟删除同生共死（悬停超过 5 秒撤回仍在、DELETE 未发）/ 撤回不发 DELETE / 切页结算无残留 /
+ *      空分类有空态 / 清空 ✕ ≥44 / 弹层关闭焦点回到触发处 / 老人模式 390 日期格不叠 / 危险入口描边靠左 / 头部条数一处
  *  好感度卡（/__kit/cards）：
  *  17  完整动效 1→5 逐档快进且 ≤3 秒、4→5 按时播完、中途能跳过；StrictMode 下每轮结束回调正好 1 次
  *  18  跳过与到点的定时器同一拍：卡不复活、回调不多一次
@@ -600,11 +602,11 @@ async function checkLazyStyles(browser) {
   await visit(page, "/surf");
   // 假后端对 /api/surf/run 回 200（不是 202），页面会弹「现在叫不动她」的便签
   await page.getByRole("button", { name: "让她现在去逛逛" }).first().click();
-  const toast = await page.waitForSelector(".toast", { timeout: 3000 }).catch(() => null);
+  const toast = await page.waitForSelector(".ui-toast", { timeout: 3000 }).catch(() => null);
   let toastNote = "没弹出";
   if (!toast) fails.push("surf 点「让她现在去逛逛」后没有便签");
   else {
-    const box = await toast.evaluate((el) => ({ position: getComputedStyle(el).position, width: Math.round(el.getBoundingClientRect().width) }));
+    const box = await toast.evaluate((el) => ({ position: getComputedStyle(el.closest(".ui-toast__viewport") ?? el).position, width: Math.round(el.getBoundingClientRect().width) }));
     toastNote = `${box.position} ${box.width}px`;
     if (box.position !== "fixed" || box.width > 420) fails.push(`surf 便签样式丢了：${toastNote}`);
   }
@@ -641,6 +643,214 @@ async function checkLazyStyles(browser) {
   if (own?.control !== "kit-own-id") fails.push(`kit 自带 id 的字段标签指向 ${own?.control ?? "无"}`);
   await c2.close();
   return record("懒加载页共享样式 / 标签面板指向 / 不可用按钮 / 字段标签", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls，面板都有标签指向；不可用按钮 3 个点击 + 回车：${count}；${labels.length} 个字段标签都连到控件`);
+}
+
+/** 17. 记忆页 / 见闻页按 astryx 模式重做：用的是 components/ui（Tabs / Card / Dialog / ConfirmDialog），没有旧的手账卡；点条目开详情，忘掉要二次确认。 */
+async function checkMemorySurfPages(browser) {
+  const fails = [];
+  const notes = [];
+  for (const [label, path, opener, tabsMin] of [["记忆页", "/memory", "[data-memory-card]", 1], ["见闻页", "/surf", "[data-surf-open]", 1]]) {
+    for (const width of [1440, 900]) {
+      const { context, page } = await openPage(browser, { width, height: 900 });
+      await visit(page, path);
+      const tag = `${label}@${width}`;
+      const have = await page.evaluate((opener) => ({
+        tabs: document.querySelectorAll(".ui-tabs").length,
+        cards: document.querySelectorAll(".ui-card").length,
+        items: document.querySelectorAll(opener).length,
+        old: document.querySelectorAll(".mcard, .postcard, .postcard-card, .tape").length,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }), opener);
+      if (have.tabs < tabsMin) fails.push(`${tag} 没有 ui Tabs`);
+      if (have.cards < 1) fails.push(`${tag} 没有 ui Card`);
+      if (have.items < 1) fails.push(`${tag} 没有可点的条目`);
+      if (have.old) fails.push(`${tag} 还有 ${have.old} 个旧手账卡元素`);
+      if (have.overflow > 0) fails.push(`${tag} 横向溢出 ${have.overflow}px`);
+      if (width === 1440) {
+        await page.locator(opener).first().click();
+        const dialog = await page.waitForSelector(".ui-dialog", { timeout: 3000 }).catch(() => null);
+        if (!dialog) fails.push(`${tag} 点条目没有打开 ui Dialog`);
+        else {
+          await page.getByRole("button", { name: /^忘掉/ }).first().click().catch(() => {});
+          const confirm = await page.getByRole("alertdialog").count();
+          if (!confirm) fails.push(`${tag} 点「忘掉」后没有二次确认`);
+        }
+      }
+      notes.push(`${tag} 条目 ${have.items}`);
+      await context.close();
+    }
+  }
+  return record("记忆页 / 见闻页用 ui 组件（Tabs / Card / Dialog / 确认框），无旧手账卡", fails.length === 0, fails.length ? fails.join("；") : notes.join("、"));
+}
+
+/** 18. 记忆页返工（初审 8 条）：撤回跟删除同生共死 / 切页结算 / 空分类有空态 / ✕ ≥44 / 弹层关闭焦点回到触发处 / 老人模式日期格不叠 / 危险入口是描边且靠左。 */
+async function checkMemoryRework(browser) {
+  const fails = [];
+  const notes = [];
+  const sleep = (page, ms) => page.waitForTimeout(ms);
+  const openDetail = async (page, text) => {
+    await page.locator("[data-memory-card]", { hasText: text }).first().click();
+    await page.waitForSelector(".ui-dialog", { timeout: 3000 });
+  };
+  const forgetFromDetail = async (page, text) => {
+    await openDetail(page, text);
+    await page.locator(".ui-dialog").getByRole("button", { name: "忘掉这条" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "忘掉这条" }).click();
+    await page.waitForSelector(".ui-toast", { timeout: 4000 });
+  };
+
+  // ---- 桌面 1440 ----
+  {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+    const deletes = [];
+    page.on("request", (r) => { if (r.method() === "DELETE" && r.url().includes("/api/memories/")) deletes.push(decodeURIComponent(r.url().split("/").pop())); });
+    await visit(page, "/memory");
+
+    // 8. 头部条数只出现一处
+    const head = await page.evaluate(() => ({ meta: document.querySelectorAll(".page-head__meta").length, text: (document.querySelector(".page-head")?.textContent ?? "") }));
+    if (head.meta) fails.push("记忆页头部还有右上角计数");
+    if ((head.text.match(/\d+ 条/g) ?? []).length !== 1) fails.push(`记忆页头部条数出现 ${(head.text.match(/\d+ 条/g) ?? []).length} 次：${head.text.slice(0, 40)}`);
+
+    // 6. 详情里危险入口：描边（非实心）、靠左，安全动作在右
+    await openDetail(page, "海边捡到玻璃");
+    const foot = await page.evaluate(() => {
+      const f = [...document.querySelectorAll(".ui-dialog button")].find((b) => b.textContent.trim() === "忘掉这条");
+      const link = [...document.querySelectorAll(".ui-dialog a")].find((a) => a.textContent.trim() === "回到当时的聊天");
+      if (!f || !link) return null;
+      const cs = getComputedStyle(f);
+      return { outline: f.classList.contains("ui-btn--danger-outline"), bg: cs.backgroundColor, left: f.getBoundingClientRect().left, linkLeft: link.getBoundingClientRect().left };
+    });
+    if (!foot) fails.push("详情里没找到「忘掉这条」和「回到当时的聊天」");
+    else {
+      if (!foot.outline || !/rgba\(0, 0, 0, 0\)|transparent/.test(foot.bg)) fails.push(`「忘掉这条」还是实心：${foot.bg}`);
+      if (!(foot.left < foot.linkLeft)) fails.push("危险入口没在安全动作左边");
+    }
+    // 4. 关详情后焦点回到点开的那一行
+    await page.keyboard.press("Escape");
+    await sleep(page, 400);
+    const back = await page.evaluate(() => document.activeElement?.hasAttribute("data-memory-card") ? (document.activeElement.textContent ?? "").slice(0, 8) : `落在 ${document.activeElement?.tagName}`);
+    if (!back.includes("海边捡到")) fails.push(`关闭详情后焦点：${back}`);
+    // 4. 日期弹层
+    const dateBtn = page.getByRole("button", { name: /时间不限/ });
+    await dateBtn.click();
+    await page.waitForSelector(".ui-dialog", { timeout: 3000 });
+    await page.keyboard.press("Escape");
+    await sleep(page, 400);
+    const dateBack = await page.evaluate(() => (document.activeElement?.textContent ?? "").trim());
+    if (dateBack !== "时间不限") fails.push(`关闭日期弹层后焦点：${dateBack || document.activeElement}`);
+    // 4. 确认框取消后焦点回到「忘掉这条」
+    await openDetail(page, "海边捡到玻璃");
+    await page.locator(".ui-dialog").getByRole("button", { name: "忘掉这条" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "先留着" }).click();
+    await sleep(page, 400);
+    const cancelBack = await page.evaluate(() => (document.activeElement?.textContent ?? "").trim());
+    if (cancelBack !== "忘掉这条") fails.push(`取消确认后焦点：${cancelBack}`);
+    await page.keyboard.press("Escape");
+    await sleep(page, 400);
+
+    // 2. 计数为 0 的分类有空态
+    const emptyTab = page.getByRole("tab", { name: /她学到的/ });
+    await emptyTab.click();
+    const emptyText = await page.locator(".spanel").first().innerText().catch(() => "");
+    if (!emptyText.includes("这个分类还没有记忆") || !emptyText.includes("清掉筛选")) fails.push(`空分类没有空态：${emptyText.slice(0, 30) || "空白"}`);
+    await page.getByRole("tab", { name: /^全部/ }).click();
+
+    // 3. 搜索清空按钮 ≥44
+    await page.getByRole("searchbox").or(page.locator("#mem-search")).first().fill("玻璃");
+    const clearBox = await page.locator(".ptool__clear").boundingBox();
+    if (!clearBox || clearBox.width < 44 || clearBox.height < 44) fails.push(`清空 ✕ 只有 ${clearBox ? `${Math.round(clearBox.width)}×${Math.round(clearBox.height)}` : "没出现"}`);
+    await page.locator(".ptool__clear").click();
+
+    // 1a. 悬停超过 5 秒：撤回还在、DELETE 还没发
+    await forgetFromDetail(page, "你说累的时候");
+    await page.locator(".ui-toast").first().hover();
+    await sleep(page, 6500);
+    const stillUndo = await page.getByRole("button", { name: "撤回" }).count();
+    if (!stillUndo) fails.push("悬停 6.5 秒后撤回按钮没了");
+    if (deletes.length) fails.push(`悬停期间 DELETE 已发出：${deletes.join(",")}`);
+    // 1b. 移开后吐司走，DELETE 才发，且只发一次
+    await page.mouse.move(5, 5);
+    await page.waitForSelector(".ui-toast", { state: "detached", timeout: 9000 }).catch(() => fails.push("移开后吐司没收起"));
+    await sleep(page, 300);
+    if (deletes.length !== 1) fails.push(`吐司走后 DELETE ${deletes.length} 次（应为 1）`);
+    notes.push(`悬停 6.5s 撤回仍在、DELETE 0 → 吐司走后 ${deletes.length}`);
+
+    // 1c. 撤回：行回来、不发 DELETE
+    deletes.length = 0;
+    await forgetFromDetail(page, "你下班回家");
+    await page.getByRole("button", { name: "撤回" }).click();
+    await sleep(page, 6500);
+    const rowBack = await page.locator("[data-memory-card]", { hasText: "你下班回家" }).count();
+    if (!rowBack) fails.push("点撤回后那一条没回来");
+    if (deletes.length) fails.push(`撤回后仍发了 DELETE：${deletes.join(",")}`);
+    notes.push(`撤回后行回来、DELETE ${deletes.length}`);
+
+    // 1e. 折叠动画（240ms）没走完就关吐司，DELETE 立刻 500：错误提示出来，条目必须还在，不能被没取消的折叠定时器又藏起来
+    {
+      const fail500 = (route) => (route.request().method() === "DELETE" ? route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"boom"}' }) : route.fallback());
+      await page.route("**/api/memories/**", fail500);
+      deletes.length = 0;
+      const key = "你下班回家";
+      await openDetail(page, key);
+      await page.locator(".ui-dialog").getByRole("button", { name: "忘掉这条" }).click();
+      const closedAt = await page.evaluate(async () => {
+        const t0 = performance.now();
+        document.querySelector('[role="alertdialog"] button.ui-btn--danger')?.click();
+        let close = null;
+        while (!close && performance.now() - t0 < 1000) {
+          close = [...document.querySelectorAll(".ui-toast button")].find((b) => b.textContent.trim() === "关掉");
+          if (!close) await new Promise((r) => requestAnimationFrame(r));
+        }
+        close?.click();
+        return close ? Math.round(performance.now() - t0) : -1;
+      });
+      if (closedAt < 0) fails.push("1e 没找到吐司的「关掉」");
+      else if (closedAt >= 200) fails.push(`1e 关吐司用了 ${closedAt}ms，没赶在折叠结束前`);
+      await page.getByText("没能忘掉").first().waitFor({ timeout: 3000 }).catch(() => fails.push("1e 没出现「没能忘掉」"));
+      await sleep(page, 600);
+      const kept = await page.locator("[data-memory-card]", { hasText: key }).count();
+      if (!kept) fails.push("DELETE 失败后条目仍被藏着");
+      if (deletes.length !== 1) fails.push(`1e DELETE ${deletes.length} 次（应为 1）`);
+      notes.push(`折叠中关吐司 ${closedAt}ms、DELETE 失败后条目${kept ? "还在" : "不见了"}`);
+      await page.unroute("**/api/memories/**", fail500);
+      deletes.length = 0;
+    }
+
+    // 1d. 切页：吐司随页面走，删除在切页时结算，不留着一个失效的「撤回」
+    await forgetFromDetail(page, "你不太喜欢在晚上做决定");
+    await page.locator('a[href="/surf"]').first().click();
+    await page.waitForSelector("[data-surf-open]", { timeout: 4000 });
+    await sleep(page, 600);
+    const leftover = await page.getByRole("button", { name: "撤回" }).count();
+    if (leftover) fails.push("切到见闻页后撤回按钮还在");
+    if (deletes.length !== 1) fails.push(`切页后 DELETE ${deletes.length} 次（应为 1）`);
+    notes.push(`切页后无残留撤回、DELETE ${deletes.length}`);
+    await context.close();
+  }
+
+  // ---- 老人模式 390：日期格不叠 ----
+  {
+    const { context, page } = await openPage(browser, { width: 390, height: 844, elder: true });
+    await visit(page, "/memory");
+    await page.getByRole("button", { name: /时间不限/ }).click();
+    await page.waitForSelector(".mdate .mini__cell", { timeout: 3000 });
+    const cells = await page.evaluate(() => {
+      const rows = new Map();
+      for (const el of document.querySelectorAll(".mdate .mini__grid .mini__cell")) {
+        const r = el.getBoundingClientRect();
+        const key = Math.round(r.top);
+        (rows.get(key) ?? rows.set(key, []).get(key)).push([r.left, r.right]);
+      }
+      let overlap = 0;
+      for (const row of rows.values()) for (let i = 1; i < row.length; i++) if (row[i][0] < row[i - 1][1] - 0.5) overlap++;
+      const cal = document.querySelector(".mdate__cal");
+      return { overlap, scroll: cal ? cal.scrollWidth > cal.clientWidth : null, rows: rows.size };
+    });
+    if (cells.overlap) fails.push(`老人模式 390 日期格重叠 ${cells.overlap} 处`);
+    notes.push(`老人 390 日期格重叠 ${cells.overlap} 处（${cells.rows} 行，${cells.scroll ? "横向滚动" : "放得下"}）`);
+    await context.close();
+  }
+  return record("记忆页返工：撤回与删除同步 / 空分类 / ✕ 尺寸 / 焦点回退 / 老人日期格 / 危险入口", fails.length === 0, fails.length ? fails.map((f) => f.slice(0, 80)).join("；") : notes.join("；"));
 }
 
 // 好感度卡（#159）：升级动画能播完、能跳过；减少动态时只淡入，连升也按时落到新卡面
@@ -1502,7 +1712,10 @@ if (STATIC_ONLY) {
     server = loaded.child;
     const { chromium, AxeBuilder } = await loadPlaywright();
     const browser = await launchChrome(chromium);
-    if (ONLY === "card-live") {
+    if (ONLY === "memory") {
+      await checkMemorySurfPages(browser);
+      await checkMemoryRework(browser);
+    } else if (ONLY === "card-live") {
       await checkCardLive(browser);
       await checkCardShared(browser);
       await checkChatLevelUp(browser);
@@ -1517,6 +1730,8 @@ if (STATIC_ONLY) {
       await checkAxe(browser, AxeBuilder);
       await checkIdleAndHidden(browser);
       await checkLazyStyles(browser);
+      await checkMemorySurfPages(browser);
+      await checkMemoryRework(browser);
       await checkCardUpgrade(browser);
       await checkSettingsInteractions(browser);
       await checkCardLive(browser);
@@ -1524,7 +1739,7 @@ if (STATIC_ONLY) {
       await checkChatLevelUp(browser);
       await checkCardView(browser);
     }
-    if (WITH_SHOTS && ONLY !== "card-live") {
+    if (WITH_SHOTS && ONLY !== "card-live" && ONLY !== "memory") {
       const written = await shoot(browser);
       record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层，好感度卡五档 / 角色 / 升级帧）`, true, `${rel(SHOTS)}/`);
     }

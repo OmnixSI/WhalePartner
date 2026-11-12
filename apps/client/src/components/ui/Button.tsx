@@ -13,7 +13,7 @@ import { Spinner } from "./glyphs";
 import "./shared.css";
 import "./Button.css";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "danger-outline";
 export type ButtonSize = "md" | "lg";
 
 type Common = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
