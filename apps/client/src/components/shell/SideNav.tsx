@@ -42,8 +42,9 @@ function useElderMode() {
   return elder;
 }
 
-export function SideNav() {
-  const [collapsed, setCollapsed] = useState(false);
+type Props = { collapsed: boolean; onToggle: () => void };
+
+export function SideNav({ collapsed, onToggle }: Props) {
   const elder = useElderMode();
   const character = useCharacter();
   const groups = GROUPS.map((group) => ({
@@ -68,7 +69,7 @@ export function SideNav() {
             <ul className="shell-nav__list">
               {group.items.map((item) => (
                 <li key={item.to}>
-                  <NavLink to={item.to} end={item.end} className="shell-nav__item" title={item.label}>
+                  <NavLink to={item.to} end={item.end} className="shell-nav__item" title={item.label} aria-label={item.label}>
                     <Icon name={item.icon} size={20} className="shell-nav__icon" />
                     <span className="shell-nav__label">{item.label}</span>
                   </NavLink>
@@ -92,7 +93,7 @@ export function SideNav() {
           className="shell-nav__toggle"
           aria-label={collapsed ? "展开导航" : "收起导航"}
           aria-expanded={!collapsed}
-          onClick={() => setCollapsed((value) => !value)}
+          onClick={onToggle}
         >
           <span aria-hidden="true">{collapsed ? "›" : "‹"}</span>
         </button>
