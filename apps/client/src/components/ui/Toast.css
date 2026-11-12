@@ -1,0 +1,53 @@
+.ui-toast__viewport {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(26rem, 100vw);
+  max-height: 100dvh;
+  margin: 0;
+  padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom));
+  list-style: none;
+  outline: none;
+}
+.ui-toast {
+  --tone: var(--color-text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--control-h-lg);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+  border-radius: var(--r-container);
+  background: var(--color-popover);
+  color: var(--color-text-primary);
+  box-shadow: var(--elev-floating);
+}
+.ui-toast--success { --tone: var(--color-success); }
+.ui-toast--warning { --tone: var(--color-warning); }
+.ui-toast--error { --tone: var(--color-error); }
+.ui-toast__mark { flex: none; width: .5rem; height: .5rem; border-radius: 50%; background: var(--tone); }
+.ui-toast__text { flex: 1; min-width: 0; padding-block: var(--sp-1); }
+.ui-toast__title { font-size: var(--text-md); font-weight: var(--weight-medium); line-height: 1.4; }
+.ui-toast__desc { font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.5; }
+.ui-toast__btn {
+  --ui-radius: var(--r-element);
+  flex: none;
+  min-width: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-element);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+.ui-toast__btn--action { color: var(--color-accent); font-weight: var(--weight-strong); }
+
+.ui-toast[data-state="open"] { --ui-from-y: var(--enter-shift); animation: ui-pop-in var(--dur-medium) var(--ease-enter); }
+.ui-toast[data-state="closed"] { animation: ui-fade-out var(--dur-fast) var(--ease-exit) forwards; }
+.ui-toast[data-swipe="move"] { transform: translateX(var(--radix-toast-swipe-move-x)); }
+.ui-toast[data-swipe="cancel"] { transform: translateX(0); transition: transform var(--dur-medium) var(--ease-standard); }
+.ui-toast[data-swipe="end"] { animation: ui-fade-out var(--dur-fast) var(--ease-exit) forwards; }
+
+@media (forced-colors: active) { .ui-toast { border: 1px solid CanvasText; } }

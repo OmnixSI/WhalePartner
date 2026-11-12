@@ -1,0 +1,15 @@
+/* 反色小签：墨底纸字（对比度同正文 ≥7:1） */
+.ui-tooltip {
+  z-index: var(--z-toast);
+  max-width: 18rem;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-inner);
+  background: var(--color-text-primary);
+  color: var(--color-bg-body);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  box-shadow: var(--elev-floating);
+}
+.ui-pop.ui-tooltip[data-side="left"] { --ui-from-y: 0; transform-origin: right; }
+.ui-pop.ui-tooltip[data-side="right"] { --ui-from-y: 0; transform-origin: left; }
+@media (forced-colors: active) { .ui-tooltip { border: 1px solid CanvasText; } }

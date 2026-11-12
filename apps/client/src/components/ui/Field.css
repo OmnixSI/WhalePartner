@@ -1,0 +1,36 @@
+/* 输入框与表单字段。边线 ≥3:1；状态切换是瞬时的（不对颜色做过渡）。 */
+.ui-field { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.ui-field__label { font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-text-primary); }
+.ui-field__hint { font-size: var(--text-sm); color: var(--color-text-secondary); }
+.ui-field__error { font-size: var(--text-sm); color: var(--color-error); }
+.ui-field[data-disabled] .ui-field__label { color: var(--color-text-disabled); }
+
+.ui-input {
+  --edge: var(--color-border-strong);
+  width: 100%;
+  min-height: var(--control-h-lg);
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-element);
+  background: var(--color-card);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 1px var(--edge);
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  line-height: 1.4;
+}
+.ui-input--area { min-height: calc(var(--control-h-lg) * 2); padding-block: var(--sp-3); resize: vertical; }
+.ui-input::placeholder { color: var(--color-text-tertiary); opacity: 1; }
+@media (hover: hover) { .ui-input:hover:not(:disabled, :focus) { --edge: var(--color-text-tertiary); } }
+.ui-input[data-preview="hover"] { --edge: var(--color-text-tertiary); }
+.ui-input:focus-visible, .ui-input:focus, .ui-input[data-preview="focus"] {
+  outline: none;
+  border-radius: var(--r-element);
+  box-shadow: inset 0 0 0 2px var(--color-accent), 0 0 0 3px var(--color-accent-muted);
+}
+.ui-input[aria-invalid="true"] { --edge: var(--color-error); }
+.ui-input[aria-invalid="true"]:focus { box-shadow: inset 0 0 0 2px var(--color-error), 0 0 0 3px var(--color-error-muted); }
+.ui-input:disabled { opacity: .5; cursor: not-allowed; background: var(--color-bg-muted); }
+.ui-input:is(input, textarea):read-only:not(:disabled) { background: var(--color-bg-muted); }
+
+@media (forced-colors: active) { .ui-input { border: 1px solid CanvasText; } }

@@ -1,0 +1,60 @@
+/* 按钮。四种外观只改 4 个变量；hover / 按下 / 焦点 / 禁用四种状态对所有变体是同一套规则。 */
+.ui-btn {
+  --btn-bg: transparent;
+  --btn-fg: var(--color-text-primary);
+  --btn-edge: transparent;
+  --ui-ring: var(--color-accent);
+  --ui-radius: var(--r-element);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 var(--control-px);
+  border-radius: var(--r-element);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  box-shadow: inset 0 0 0 1px var(--btn-edge);
+  font-family: var(--font-ui);
+  font-size: var(--text-control);
+  font-weight: var(--weight-medium);
+  line-height: 1.25;
+  white-space: nowrap;
+  user-select: none;
+  transition: transform var(--dur-fast) var(--ease-standard), opacity var(--dur-fast) var(--ease-standard);
+}
+.ui-btn--lg { min-height: var(--control-h-lg); padding-inline: calc(var(--control-px) * 1.25); font-size: var(--text-lg); }
+.ui-btn--block { display: flex; width: 100%; }
+
+.ui-btn--primary { --btn-bg: var(--color-accent); --btn-fg: var(--color-on-accent); }
+.ui-btn--secondary { --btn-bg: var(--color-card); --btn-edge: var(--color-border-strong); }
+.ui-btn--ghost { --btn-fg: var(--color-text-primary); }
+.ui-btn--danger { --btn-bg: var(--color-error); --btn-fg: var(--color-on-error); --ui-ring: var(--color-error); }
+
+/* 焦点环：在按钮自己的边线外再画双环（.ui-focus 的通用版会盖掉内边线，这里合并） */
+.ui-btn:focus-visible, .ui-btn[data-preview="focus"] {
+  border-radius: var(--r-element);
+  box-shadow: inset 0 0 0 1px var(--btn-edge), 0 0 0 2px var(--color-bg-body), 0 0 0 4px var(--ui-ring);
+}
+
+/* 按下：精确指针下微缩；触屏上手指盖着看不到，还会和滚动打架，不缩（参照 astryx） */
+@media (pointer: fine) {
+  .ui-btn:active:not(:disabled, [aria-disabled="true"]), .ui-btn[data-preview="active"] { transform: scale(var(--press-scale)); }
+}
+
+.ui-btn:disabled, .ui-btn[aria-disabled="true"]:not([data-loading]) { opacity: .5; cursor: not-allowed; }
+.ui-btn[data-loading] { cursor: progress; }
+
+.ui-btn__body { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.ui-btn__icon { display: inline-flex; flex: none; }
+.ui-btn__icon svg { width: 1.25em; height: 1.25em; }
+.ui-btn__spin { position: absolute; inset: 0; display: grid; place-items: center; }
+.ui-btn[data-loading] .ui-btn__body { opacity: 0; }  /* 文字留着撑宽度，不跳 */
+
+.ui-btn--icon { padding: 0; width: var(--control-h); }
+.ui-btn--icon.ui-btn--lg { width: var(--control-h-lg); }
+
+@media (forced-colors: active) {
+  .ui-btn { border: 1px solid ButtonText; }
+  .ui-btn:disabled { border-color: GrayText; color: GrayText; }
+}

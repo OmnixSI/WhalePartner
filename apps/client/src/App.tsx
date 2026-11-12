@@ -13,6 +13,8 @@ import { SurfPage } from "./pages/SurfPage";
 
 // 隐藏样品页：只在 /__kit 打到时才加载，不进主包（规范 §10.4 P0-⑦）
 const KitPage = lazy(() => import("./pages/KitPage"));
+// 设计系统组件预览（#151）；手绘基元样品页挪到 /__kit/ink
+const UiKitPage = lazy(() => import("./pages/UiKitPage"));
 
 export default function App() {
   const { pathname } = useLocation();
@@ -21,7 +23,7 @@ export default function App() {
   // 也避免同一页跑两个 Live2D 舞台（运行库的着色器是全局单例，两个舞台会互相打断）。
   const onboarding = useOnboardingOpen();
   // 聊天页有自己的舞台，日记页与记忆页自己挂了小角（§5.7）；剩下的页面在这一层补上。
-  const cornerHere = pathname !== "/" && !pathname.startsWith("/diary") && !pathname.startsWith("/memory") && !pathname.startsWith("/settings");
+  const cornerHere = pathname !== "/" && !pathname.startsWith("/diary") && !pathname.startsWith("/memory") && !pathname.startsWith("/settings") && !pathname.startsWith("/__kit");
 
   return (
     <>
@@ -36,7 +38,8 @@ export default function App() {
               <Route path="/memory" element={<MemoryPage />} />
               <Route path="/surf" element={<SurfPage />} />
               <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/__kit" element={<Suspense fallback={null}><KitPage /></Suspense>} />
+              <Route path="/__kit" element={<Suspense fallback={null}><UiKitPage /></Suspense>} />
+              <Route path="/__kit/ink" element={<Suspense fallback={null}><KitPage /></Suspense>} />
             </Routes>
             {cornerHere && <CompanionCorner />}
           </main>

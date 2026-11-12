@@ -1,0 +1,56 @@
+/* components/ui 共用的几条规则：交互叠层、焦点环、弹层进出场。
+   性能约定（#151）：动画与过渡只动 transform / opacity；没有常驻动画。
+   交互叠层的做法改写自 meta/astryx（MIT，见 THIRD_PARTY_NOTICES）：hover / 按下不换底色，
+   在元素里垫一层 currentColor，只改它的 opacity——不触发重绘底色，也不需要每个变体各写一套 hover 色。 */
+
+.ui-press { position: relative; isolation: isolate; -webkit-tap-highlight-color: transparent; }
+.ui-press::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-standard);
+}
+@media (hover: hover) {
+  .ui-press:hover:not(:disabled, [aria-disabled="true"], [data-disabled])::before { opacity: var(--overlay-hover); }
+}
+.ui-press:active:not(:disabled, [aria-disabled="true"], [data-disabled])::before,
+.ui-press[data-highlighted]::before { opacity: var(--overlay-hover); }
+.ui-press:active:not(:disabled, [aria-disabled="true"], [data-disabled])::before { opacity: var(--overlay-press); }
+
+/* 焦点环：双环（内圈底色、外圈强调色），任何底色上都看得见；只在键盘焦点时出现 */
+.ui-focus:focus-visible {
+  outline: none;
+  border-radius: var(--ui-radius, var(--r-element));
+  box-shadow: 0 0 0 2px var(--color-bg-body), 0 0 0 4px var(--ui-ring, var(--color-accent));
+}
+
+/* 预览页 /__kit 用：把某个状态钉住拍图（data-preview="hover|active|focus"），正式页面不用 */
+.ui-press[data-preview="hover"]::before { opacity: var(--overlay-hover); }
+.ui-press[data-preview="active"]::before { opacity: var(--overlay-press); }
+.ui-focus[data-preview="focus"] { box-shadow: 0 0 0 2px var(--color-bg-body), 0 0 0 4px var(--ui-ring, var(--color-accent)); }
+
+/* 弹层进出场：淡入 + 轻微缩放/位移。降级（reduced-motion / calm）时位移与缩放 token 归 0/1，只剩淡入 */
+@keyframes ui-pop-in { from { opacity: 0; transform: translateY(var(--ui-from-y, 0)) scale(var(--enter-scale)); } }
+@keyframes ui-pop-out { to { opacity: 0; transform: scale(var(--enter-scale)); } }
+@keyframes ui-fade-in { from { opacity: 0; } }
+@keyframes ui-fade-out { to { opacity: 0; } }
+@keyframes ui-spin { to { transform: rotate(1turn); } }
+
+.ui-pop[data-state="open"], .ui-pop[data-state="delayed-open"], .ui-pop[data-state="instant-open"] {
+  animation: ui-pop-in var(--dur-medium) var(--ease-enter);
+}
+.ui-pop[data-state="closed"] { animation: ui-pop-out var(--dur-fast) var(--ease-exit) forwards; }
+.ui-pop[data-side="bottom"] { --ui-from-y: calc(-1 * var(--enter-shift)); transform-origin: var(--radix-popper-transform-origin, top); }
+.ui-pop[data-side="top"] { --ui-from-y: var(--enter-shift); transform-origin: var(--radix-popper-transform-origin, bottom); }
+
+.ui-spinner { animation: ui-spin var(--dur-spin) linear infinite; }
+
+@media (forced-colors: active) {
+  .ui-press::before { display: none; }
+  .ui-focus:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+}

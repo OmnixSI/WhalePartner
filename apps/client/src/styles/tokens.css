@@ -205,6 +205,7 @@
   --enter-scale: .96;
   --enter-shift: 6px;
   --lift: -2px;
+  --dur-spin: 900ms;     /* 加载中的转圈；只在 loading 时存在，不是常驻动画 */
 }
 
 /* ---- 深海夜（暗）：唯一一份 ---- */
