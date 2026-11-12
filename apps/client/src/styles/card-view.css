@@ -1,0 +1,23 @@
+/* 「换一位」主卡旁的切档：Lv.1–Lv.5，已解锁的可点，没解锁的灰掉。跟设置页懒加载块一起下载。 */
+.card-view { display: grid; gap: 8px; margin-top: 14px; }
+.card-view__label, .card-view__note { margin: 0; font-size: var(--text-sm); color: var(--ink-soft); }
+.card-view__levels { display: flex; flex-wrap: wrap; gap: 6px; }
+.card-view__btn {
+  min-width: 56px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-element);
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.card-view__btn:hover:not(:disabled) { border-color: var(--accent); }
+.card-view__btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.card-view__btn:disabled { cursor: not-allowed; opacity: .5; }
+
+/* 卡面立绘槽里的 Live2D 构图：Live2DStage 从宿主读这几个比例（geometry.ts placeModel）。
+   默认值按聊天舞台定，放进竖长卡面会偏小，这里放大到几乎贴宽，脚底留一点给各档的地台。 */
+.acard__art .live2d { --stage-char-w: 1.12; --stage-char-h: 0.92; --stage-char-max: 0.98; --stage-char-gap: 0.04; }

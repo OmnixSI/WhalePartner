@@ -27,9 +27,9 @@ test("levels are clamped into 1–5", () => {
 });
 
 test("tier features grow with the level", () => {
-  assert.deepEqual(tierFeatures(1), { tilt: false, live2dIdle: false, signature: false, foil: false });
-  assert.deepEqual(tierFeatures(3), { tilt: true, live2dIdle: true, signature: false, foil: false });
-  assert.deepEqual(tierFeatures(5), { tilt: true, live2dIdle: true, signature: true, foil: true });
+  assert.deepEqual(tierFeatures(1), { tilt: false, signature: false, foil: false });
+  assert.deepEqual(tierFeatures(3), { tilt: true, signature: false, foil: false });
+  assert.deepEqual(tierFeatures(5), { tilt: true, signature: true, foil: true });
 });
 
 test("a single step uses its own duration; no step when not going up", () => {

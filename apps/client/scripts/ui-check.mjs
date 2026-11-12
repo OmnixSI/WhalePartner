@@ -42,7 +42,9 @@
  *      换角色互不影响（各记各的，一位升档不动另一位的记录）；首次、清掉存储不播；读取失败有重试，重试后不播
  *  26  换一位：主卡与缩略卡共用等级；单卡失败可重试，重试一起恢复，切角色不多发请求
  *  27  聊天页跨档提示一次、同一档不重复；点「去看看」打开设置页卡面并播升级
- *  （默认共 27 项；--shots 再加一项截图，共 28 项）
+ *  28  切档看低档卡面：只能切已解锁的档；只改卡面，卡外真实等级、「上次看到的等级」不动，不发写请求；
+ *      Live2D 舞台切档不重建；刷新后保留；真升档时播动画并回到最高档
+ *  （默认共 28 项；--shots 再加一项截图，共 29 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -929,6 +931,91 @@ async function checkCardLive(browser) {
   return record("好感度卡接真实等级：Lv3→4 播一次 / 刷新不重播 / 换角色互不影响", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
+/** 28. 切档看低档卡面：只在已解锁档位内切；只改卡面显示，真实等级、进度、「上次看到的等级」不动；不发写请求；刷新后保留；真升档时回到最高档播动画。 */
+async function checkCardView(browser) {
+  const fails = [];
+  const notes = [];
+  const errors = [];
+  const levels = { ...DEFAULT_LEVELS, deepseek: 4 };
+  const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true, levels, character: "deepseek" });
+  await page.addInitScript(() => { if (!sessionStorage.__cv) { sessionStorage.__cv = "1"; localStorage.setItem("wp.cardSeenLevel.deepseek", "4"); } });
+  page.on("pageerror", (e) => errors.push(String(e.message ?? e)));
+  const writes = [];
+  page.on("request", (r) => { if (r.url().includes("/api/") && r.method() !== "GET") writes.push(`${r.method()} ${new URL(r.url()).pathname}`); });
+  const card = '.set-card .acard[data-size="md"]';
+  const store = (k) => page.evaluate((key) => localStorage.getItem(key), k);
+  const shown = () => page.locator(card).getAttribute("data-level");
+  const btn = (n) => page.locator(".card-view__btn", { hasText: `Lv.${n}` });
+  const open = async () => {
+    await page.locator(".set-her__swap").click();
+    await page.locator(card).waitFor({ timeout: 8000 });
+    await page.waitForTimeout(500);
+  };
+  const close = async () => {
+    await page.keyboard.press("Escape");
+    await page.locator(".set-dialog--chars").waitFor({ state: "detached", timeout: 4000 });
+  };
+
+  await visit(page, "/settings");
+  await open();
+  if ((await shown()) !== "4") fails.push(`默认应显示真实等级 Lv4，实际 ${await shown()}`);
+  const states = await page.locator(".card-view__btn").evaluateAll((els) => els.map((e) => `${e.textContent}:${e.disabled ? "锁" : "开"}`));
+  if (states.join() !== "Lv.1:开,Lv.2:开,Lv.3:开,Lv.4:开,Lv.5:锁") fails.push(`切档按钮状态 ${states.join(" ")}，应为 Lv1–4 可点、Lv5 锁住`);
+  // 没解锁的 Lv5：按钮是 disabled，点不动；直接派发 click 也不换档
+  await btn(5).evaluate((el) => el.click());
+  await page.waitForTimeout(200);
+  if ((await shown()) !== "4" || (await store("wp.cardViewLevel.deepseek")) !== null) fails.push("点了没解锁的 Lv5 却换了档或写了记录");
+
+  // Live2D 舞台在切档前后是同一个节点（不重建）
+  const hasStage = await page.locator(`${card} .acard__art .live2d`).count();
+  if (!hasStage) fails.push("大肥鱼 Lv4 的卡面立绘槽里没有 Live2D 舞台");
+  await page.locator(`${card} .acard__art .live2d`).evaluate((el) => { el.__mark = 1; }).catch(() => {});
+
+  await btn(2).click();
+  await page.waitForTimeout(300);
+  if ((await shown()) !== "2") fails.push(`点 Lv.2 后卡面应是 Lv2，实际 ${await shown()}`);
+  if ((await btn(2).getAttribute("aria-pressed")) !== "true") fails.push("Lv.2 按钮没有标成选中");
+  if (await page.locator(`${card}[data-upgrading]`).count()) fails.push("切到低档不该播升级动画");
+  const title = await page.locator(".set-card__title").innerText();
+  const head = await page.locator(".set-card__progress-head").innerText();
+  if (!title.includes("Lv.4") || !head.includes("Lv.4")) fails.push(`切档后卡外的真实等级变了：「${title.replace(/\s+/g, " ")}」「${head.replace(/\s+/g, " ")}」`);
+  if ((await store("wp.cardSeenLevel.deepseek")) !== "4") fails.push(`切档动了「上次看到的等级」：${await store("wp.cardSeenLevel.deepseek")}`);
+  if ((await store("wp.cardViewLevel.deepseek")) !== "2") fails.push(`显示档位应存 2，实际 ${await store("wp.cardViewLevel.deepseek")}`);
+  const same = await page.locator(`${card} .acard__art .live2d`).evaluate((el) => el.__mark === 1).catch(() => false);
+  if (hasStage && !same) fails.push("切档后 Live2D 舞台被重建了");
+  notes.push("Lv5 锁住；切到 Lv2：卡面 2，卡外仍 Lv4，seen 仍 4，Live2D 未重建");
+
+  // 重启（刷新页面）后仍是 Lv2，不播
+  await close();
+  await page.reload({ waitUntil: "networkidle" });
+  await open();
+  if ((await shown()) !== "2") fails.push(`刷新后应保留 Lv2，实际 ${await shown()}`);
+  if (await page.locator(`${card}[data-upgrading]`).count()) fails.push("刷新后不该播");
+  // 选回 Lv4：删掉记录，跟着真实等级
+  await btn(4).click();
+  await page.waitForTimeout(200);
+  if ((await shown()) !== "4" || (await store("wp.cardViewLevel.deepseek")) !== null) fails.push(`选回 Lv4 应删掉记录，实际卡面 ${await shown()}、记录 ${await store("wp.cardViewLevel.deepseek")}`);
+  await btn(3).click();
+  notes.push("刷新后保留 Lv2；选回最高档删记录");
+
+  // 真升档（4→5）：回到最高档播 4→5，删掉显示档位记录，seen 记 5
+  await close();
+  levels.deepseek = 5;
+  await open();
+  await page.locator(`${card}[data-upgrading="5"]`).waitFor({ timeout: 4000 }).catch(() => fails.push("固定看 Lv3 时升到 Lv5，没有播 4→5"));
+  for (let i = 0; i < 40 && (await page.locator(`${card}[data-upgrading]`).count()); i += 1) await page.waitForTimeout(150);
+  await page.waitForTimeout(300);
+  if ((await shown()) !== "5") fails.push(`升档播完应显示 Lv5，实际 ${await shown()}`);
+  if ((await store("wp.cardViewLevel.deepseek")) !== null) fails.push("升档后显示档位记录没删");
+  if ((await store("wp.cardSeenLevel.deepseek")) !== "5") fails.push(`升档后 seen 应是 5，实际 ${await store("wp.cardSeenLevel.deepseek")}`);
+  notes.push("看 Lv3 时升到 Lv5：播 4→5 后显示 Lv5");
+
+  if (writes.length) fails.push(`切档发了写请求：${writes.join(", ")}`);
+  if (errors.length) fails.push(`页面报错：${errors.slice(0, 3).join(" | ")}`);
+  await context.close();
+  return record("好感度卡切档：只在已解锁内切、不动真实等级、刷新后保留、升档回最高档", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
 /** 26b. 「换一位」里主卡和缩略卡共用一份等级（#160 返工）：接口全挂后点重试四张缩略卡一起恢复；只有一个非当前角色失败时也有重试入口、重试只重读它；弹窗开着时后端升档，切角色后主卡和缩略卡一致；打开弹窗每个角色只请求一次，开着换角色只读新的当前角色。 */
 async function checkCardShared(browser) {
   const fails = [];
@@ -1261,6 +1348,7 @@ if (STATIC_ONLY) {
       await checkCardLive(browser);
       await checkCardShared(browser);
       await checkChatLevelUp(browser);
+      await checkCardView(browser);
     } else {
       await checkTouch(browser);
       await checkHorizontalScroll(browser);
@@ -1272,6 +1360,7 @@ if (STATIC_ONLY) {
       await checkCardLive(browser);
       await checkCardShared(browser);
       await checkChatLevelUp(browser);
+      await checkCardView(browser);
     }
     if (WITH_SHOTS && ONLY !== "card-live") {
       const written = await shoot(browser);
