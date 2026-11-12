@@ -5,6 +5,7 @@ import base64
 import json
 import re
 import sys
+import threading
 
 import numpy as np
 from sherpa_onnx import OfflineRecognizer, OnlineRecognizer
@@ -160,16 +161,29 @@ def finish_utterance(recognizer, offline_recognizer, state):
     return utterance_text
 
 
+def load_recognizers(streaming_dir, offline_dir):
+    """两个模型并行载入（#149）：sherpa-onnx 载入时释放 GIL，比先后载入省约 0.7 秒。"""
+    offline = {}
+
+    def load_offline():
+        try:
+            offline["recognizer"] = create_offline_recognizer(offline_dir)
+        except Exception as error:
+            print(f"X-ASR 整句精修模型载入失败：{error}", file=sys.stderr)
+
+    loader = threading.Thread(target=load_offline, daemon=True) if offline_dir else None
+    if loader:
+        loader.start()
+    recognizer = create_recognizer(streaming_dir)
+    if loader:
+        loader.join()
+    return recognizer, offline.get("recognizer")
+
+
 def main():
     if len(sys.argv) != 3:
         raise ValueError("Usage: xasr_worker.py STREAMING_MODEL_DIRECTORY OFFLINE_MODEL_DIRECTORY")
-    recognizer = create_recognizer(sys.argv[1])
-    offline_recognizer = None
-    if sys.argv[2]:
-        try:
-            offline_recognizer = create_offline_recognizer(sys.argv[2])
-        except Exception as error:
-            print(f"X-ASR 整句精修模型载入失败：{error}", file=sys.stderr)
+    recognizer, offline_recognizer = load_recognizers(sys.argv[1], sys.argv[2])
     streams = {}
     emit({"type": "ready", "refinementReady": offline_recognizer is not None})
 
