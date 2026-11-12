@@ -109,6 +109,11 @@ export function bodyOf(entry: MemoryEntryP2): string {
   return rest || text;
 }
 
+/** 「她的近况」是她自己写的小记和会话观察，后端不支持单条删除，所以不给「忘掉这条」。 */
+export function canForget(entry: MemoryEntryP2): boolean {
+  return groupOf(entry) !== "now";
+}
+
 export function isSuperseded(entry: MemoryEntryP2): boolean {
   return entry.status === "superseded";
 }

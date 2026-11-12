@@ -73,6 +73,8 @@ export class ChatStore {
   journalSources(_character: string | undefined, from: string, to: string) { return journalSourcesForDay(this.#db, undefined, from, to); }
   getNote(character: string) { return this.#sessions.getNote(character); }
   setNote(character: string, text: string, assistantCount: number) { return this.#sessions.setNote(character, text, assistantCount); }
+  listNoteHistory() { return this.#sessions.listNoteHistory(); }
+  listSessionObservations() { return this.#observations.list(); }
   countAssistant(character?: string) { return this.#sessions.countAssistant(character); }
   recordCompletedInteraction(input: { userMessageId: number; assistantMessageId: number; character: string; emotion: import("../chat/emotion.ts").Emotion }, now?: Date) {
     return this.#relationship.recordCompletedInteraction(input, now);

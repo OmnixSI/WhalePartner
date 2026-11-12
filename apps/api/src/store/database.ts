@@ -34,6 +34,7 @@ export function openChatDatabase(path: string): DatabaseSync {
 
   migrateMessages(db);
   migrateSessions(db);
+  migrateNoteHistory(db);
   db.exec(`
     INSERT OR IGNORE INTO chat_sessions (id, character, title, created_at, updated_at)
     SELECT 'legacy:' || character, character, '历史聊天', MIN(created_at), MAX(created_at)
@@ -261,6 +262,26 @@ function migrateMessages(db: DatabaseSync) {
   if (!columns.some((column) => column.name === "attachment_json")) {
     db.exec("ALTER TABLE messages ADD COLUMN attachment_json TEXT");
   }
+}
+
+/**
+ * 近况小记的历史版本：character_notes 仍只存当前一版（提示词和顶部便签读它），
+ * 每次写入另在这里追加一行。第一次建表时把已有的小记当作最早的历史导入，升级后分区里马上能看到。
+ */
+function migrateNoteHistory(db: DatabaseSync) {
+  const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'character_note_history'").get();
+  if (exists) return;
+  db.exec(`
+    CREATE TABLE character_note_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      text TEXT NOT NULL,
+      assistant_count INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+    );
+    INSERT INTO character_note_history (text, assistant_count, created_at)
+    SELECT text, assistant_count, updated_at FROM character_notes
+    ORDER BY CASE WHEN character = 'shared' THEN 1 ELSE 0 END, updated_at, character;
+  `);
 }
 
 function migrateSessions(db: DatabaseSync) {

@@ -21,6 +21,7 @@ const USER_DATA_TABLES = [
   "memory_core_sources",
   "memory_core",
   "character_notes",
+  "character_note_history",
   "character_moods",
   "fact_search",
   "memory_fact_sources",
@@ -90,6 +91,7 @@ export function clearChatData(db: DatabaseSync) {
       DELETE FROM memory_topics;
       DELETE FROM memory_core;
       DELETE FROM character_notes;
+      DELETE FROM character_note_history;
       DELETE FROM memory_facts;
       DELETE FROM fact_search;
       DELETE FROM experience_search WHERE rowid IN (SELECT id FROM memory_experiences WHERE kind = 'chat' OR source_id LIKE 'chat:%' OR source_id LIKE 'learned:chat:%' OR source_id LIKE 'journal:%');

@@ -195,11 +195,30 @@ export class SessionRepository {
   }
 
   setNote(_character: string, text: string, assistantCount: number) {
-    this.db.prepare(`
-      INSERT INTO character_notes (character, text, assistant_count) VALUES (?, ?, ?)
-      ON CONFLICT(character) DO UPDATE SET text = excluded.text, assistant_count = excluded.assistant_count,
-        updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-    `).run("shared", text, assistantCount);
+    const now = new Date().toISOString();
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.prepare(`
+        INSERT INTO character_notes (character, text, assistant_count, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(character) DO UPDATE SET text = excluded.text, assistant_count = excluded.assistant_count,
+          updated_at = excluded.updated_at
+      `).run("shared", text, assistantCount, now);
+      this.db.prepare("INSERT INTO character_note_history (text, assistant_count, created_at) VALUES (?, ?, ?)")
+        .run(text, assistantCount, now);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  /** 近况小记的所有版本，新的在前；第一条就是当前这一版。 */
+  listNoteHistory(): Array<{ id: number; text: string; assistantCount: number; createdAt: string }> {
+    const rows = this.db.prepare(`
+      SELECT id, text, assistant_count AS assistantCount, created_at AS createdAt
+      FROM character_note_history ORDER BY created_at DESC, id DESC
+    `).all() as unknown as Array<{ id: number; text: string; assistantCount: number; createdAt: string }>;
+    return rows.map((row) => ({ ...row }));
   }
 
   countAssistant(_character?: string): number {

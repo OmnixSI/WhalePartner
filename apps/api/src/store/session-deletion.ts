@@ -122,6 +122,7 @@ export function deleteChatSession(db: DatabaseSync, sessionId: string, _characte
     }
 
     db.prepare("DELETE FROM character_notes WHERE character = 'shared'").run();
+    db.prepare("DELETE FROM character_note_history").run();
     if (hasJournalSources) {
       db.prepare(`
         DELETE FROM daily_journals WHERE id IN (

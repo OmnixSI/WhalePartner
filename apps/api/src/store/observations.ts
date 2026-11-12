@@ -64,4 +64,14 @@ export class ObservationRepository {
         through_message_id = excluded.through_message_id, updated_at = excluded.updated_at
     `).run(sessionId, summary, fromMessageId, throughMessageId, new Date().toISOString());
   }
+
+  /** 会话观察（每个会话一条摘要），新的在前。 */
+  list(): Array<{ sessionId: string; sessionTitle: string; summary: string; updatedAt: string }> {
+    const rows = this.db.prepare(`
+      SELECT o.session_id AS sessionId, s.title AS sessionTitle, o.summary, o.updated_at AS updatedAt
+      FROM session_observations o JOIN chat_sessions s ON s.id = o.session_id
+      ORDER BY o.updated_at DESC
+    `).all() as unknown as Array<{ sessionId: string; sessionTitle: string; summary: string; updatedAt: string }>;
+    return rows.map((row) => ({ ...row }));
+  }
 }

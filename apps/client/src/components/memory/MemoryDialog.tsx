@@ -3,7 +3,7 @@
  *
  * 规范里的共享元素（layoutId + domMax）在这个阶段先降成「淡入 + 轻微上浮」：
  * 桌面居中、手机底部抽屉，都是令牌里的时长；reduced-motion / calm 下只淡入。
- * 底部按钮：secondary「回到当时的聊天」（有链接才出现）+ danger-outline「忘掉这条」，
+ * 底部按钮：secondary「回到当时的聊天」（有链接才出现）+ danger-outline「忘掉这条」（近况类不出现），
  * 两者间距 ≥16，危险按钮永远不是实心。
  */
 import { Dialog } from "radix-ui";
@@ -11,6 +11,7 @@ import { Icon } from "../ink-icons";
 import { InkFrame } from "../ink";
 import {
   bodyOf,
+  canForget,
   dayLabel,
   groupInfo,
   groupOf,
@@ -79,9 +80,11 @@ export function MemoryDialog({ entry, onClose, onForget }: Props) {
                     回到当时的聊天
                   </a>
                 )}
-                <button type="button" className="btn mdlg__forget" onClick={() => onForget(entry)}>
-                  忘掉这条
-                </button>
+                {canForget(entry) && (
+                  <button type="button" className="btn mdlg__forget" onClick={() => onForget(entry)}>
+                    忘掉这条
+                  </button>
+                )}
               </div>
             </InkFrame>
           )}
