@@ -5,15 +5,16 @@ import App from "./App";
 import { applyCharacterTheme } from "./characters";
 import { applyTheme, readTheme } from "./lib/theme";
 import { applyA11y, readA11y } from "./lib/a11y";
+import { installActivity } from "./lib/activity";
 import "./styles/base.css";
 import "./styles/characters.css";
 import "./styles/ocean.css";
 import "./styles/layout.css";
-import "./styles/kit.css";
 
 applyTheme(readTheme());
 applyA11y(readA11y());
 applyCharacterTheme();
+installActivity();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

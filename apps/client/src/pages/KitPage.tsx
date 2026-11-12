@@ -8,6 +8,7 @@ import { Icon, ICON_NAMES, type IconName } from "../icons";
 import { CharacterMark } from "../components/CharacterMark";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 import { flatPath, rng, type Pt } from "../lib/ink";
+import "../styles/kit.css"; // 只在样品页加载，不进首屏
 
 /**
  * 隐藏样品页 `/__kit`（规范 §10.4 P0-⑦）：亮/暗 × 4 角色的样品页，

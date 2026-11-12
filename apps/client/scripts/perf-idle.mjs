@@ -9,7 +9,7 @@
  * 输出（取 runs 次的中位数）：
  *   - 首屏体积（同 perf-budget.mjs）
  *   - 空闲 CPU：静置窗口里 renderer 与 GPU 进程 cpuTime 的增量 / 墙钟时间
- *   - 渲染进程内存：窗口结束时 renderer 进程 RSS（ps）与 JS 堆（Performance.getMetrics）
+ *   - 渲染进程内存：窗口结束时 renderer 进程 RSS（ps）与 GC 后的 JS 堆（Performance.getMetrics）；body 内元素数
  *   - 空闲时仍在跑的动画数、定时器触发次数（可见 / 隐藏两种状态）
  *
  * 数字只在同一台机器、同一份脚本下前后对比才有意义；Chrome 不等于 Tauri 的 WKWebView。
@@ -113,7 +113,11 @@ async function measureOnce(chromium, base) {
   for (const pid of renderers) {
     try { rssKb = Math.max(rssKb, Number(execFileSync("ps", ["-o", "rss=", "-p", String(pid)]).toString().trim()) || 0); } catch { /* 进程已退出 */ }
   }
+  // 先强制 GC 再读堆：否则读数取决于这一刻 GC 跑没跑，前后比较没有意义
+  await cdpPage.send("HeapProfiler.collectGarbage");
   const metrics = Object.fromEntries((await cdpPage.send("Performance.getMetrics")).metrics.map((m) => [m.name, m.value]));
+  // 页面 DOM：body 里的活元素数（Performance 的 Nodes 含待回收节点，随 GC 时机波动）
+  const bodyElements = await page.evaluate(() => document.body.getElementsByTagName("*").length);
 
   // 隐藏状态：切到 hidden 后再量 5 秒，动画与定时器都应该停
   await page.evaluate(() => window.__wpSetHidden(true));
@@ -129,7 +133,7 @@ async function measureOnce(chromium, base) {
     cpuPct: ((cpu(after) - cpu(before)) / wall) * 100,
     rssMb: rssKb / 1024,
     heapMb: metrics.JSHeapUsedSize / 1024 / 1024,
-    domNodes: metrics.Nodes,
+    domNodes: bodyElements,
     idleAnimations: anims,
     idleTimerFires: fired(timersBefore, timersAfter),
     hiddenAnimations: hiddenAnims,

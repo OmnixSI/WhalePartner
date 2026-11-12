@@ -99,6 +99,7 @@ export function Tide({ variant = "stage", className = "", mode = "auto", layers 
       ref={ref}
       className={`tide tide--${variant} ${className}`.trim()}
       data-mode={flow ? "flow" : "overlay"}
+      data-ambient=""
       aria-hidden="true"
       initial={calm ? false : { y: 14 }}
       animate={{ y: 0 }}

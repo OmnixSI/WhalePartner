@@ -25,6 +25,11 @@ p { margin: 0; }
 ::selection { background: var(--accent-wash); color: var(--ink); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+/* 窗口隐藏时暂停一切 CSS 动画；空闲时暂停纯装饰的环境循环（海浪、潮汐）。见 lib/activity.ts。
+   这里是暂停不是删除：回到前台从原处接着播，Radix/motion 的退出动画也会在回来后照常结束。 */
+:root[data-hidden] *, :root[data-hidden] *::before, :root[data-hidden] *::after { animation-play-state: paused !important; }
+:root[data-idle] [data-ambient], :root[data-idle] [data-ambient] * { animation-play-state: paused; }
+
 /* reduced-motion 交给 tokens 里的 --dur-*（=1ms）与各组件的 useReducedMotion；
    不再用 !important 杀掉所有动画——那会让 Radix/motion 的退出动画不触发，元素不卸载（规范 §4.9）。 */
 
