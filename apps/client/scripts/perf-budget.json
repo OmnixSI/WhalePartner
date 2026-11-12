@@ -21,7 +21,6 @@
     "react-dom",
     "react-router-dom",
     "react-virtuoso",
-    "sonner",
     "streamdown"
   ],
   "motionDebt": {
