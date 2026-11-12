@@ -711,7 +711,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 - **DropdownMenu**（Radix）：`.sheet` + `--shadow-2`，项高 48（老人 56），图标 20 + 文字 16px；危险项文字 `--alert`；支持字母跳转；打开 `scale .98→1 + opacity` 160ms。取代 `<details>` “···”（`ChatSessionControls.tsx`）。
 - **Popover**：话题列表、日历、筛选。外点/Esc 关闭，焦点陷入，打开 200ms。
 - **Tooltip**（Radix）：延迟 400ms；底 `--ink`、字 `--sheet`（10.76:1）、`--r-sm`、14px；**只给“有可见文字的元素”补充**，不承载唯一信息。
-- **Toast = 便签**（`sonner` 2.0.8，`unstyled`）：底 `--slip`、字 `--ink`（10.15:1）、`--r-xs` 的上缘 + 顶部一小条胶带；宽 `min(360px, 100vw-32px)`；位置桌面右下、手机顶部居中避开 tabbar；显示 4s（老人 8s 且带关闭按钮 ≥44px）；同时只显示 1 条（`visibleToasts={1}`）；`role="status"`，错误便签 `role="alert"`，底 `--alert-wash` + `1.5px --alert`。入场 `y 16→0, 280ms --ease-out`。带“撤回”的便签用 quiet 按钮。
+- **Toast = 便签**（Radix Toast；本条已由 DESIGN.md 取代，sonner 已移除）：底 `--slip`、字 `--ink`（10.15:1）、`--r-xs` 的上缘 + 顶部一小条胶带；宽 `min(360px, 100vw-32px)`；位置桌面右下、手机顶部居中避开 tabbar；显示 4s（老人 8s 且带关闭按钮 ≥44px）；同时只显示 1 条（`visibleToasts={1}`）；`role="status"`，错误便签 `role="alert"`，底 `--alert-wash` + `1.5px --alert`。入场 `y 16→0, 280ms --ease-out`。带“撤回”的便签用 quiet 按钮。
 
 ### 6.6 思考指示 `<Thinking/>`（取代三点 typing）
 - 组成：① 角色进入 `think` 姿态（Live2D：`ParamAngleZ` 以 3s 周期在 ±4° 摆动，`ParamEyeBallY +0.4`，不改表情；VRM：lookAt 抬高 + `relaxed` 0.2；贴纸：`mood="think"`）；② 对话框内一行 14px `--ink-mute` 小字，**每 2400ms 轮换**（淡入淡出 160ms，`aria-hidden`，对辅助技术只读一次“她在想”）；③ 小字下一条 `InkLine draw="loop"`（宽 96px）。
@@ -781,7 +781,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 |---|---|
 | `Ocean.tsx` → `Backdrop.tsx` | 纸底（§5.1）+ 非聊天页底部“潮线”（§5.5）。聊天页的浪画在舞台里（`ChatPage` 内的 `<Tide/>`），不再用 fixed 背景。 |
 | `Nav.tsx` | 加图标（§5.6）、高亮“荧光笔块”、日记新条目与见闻新内容的小红点（用 `--alert` 实心 10px，不用珊瑚）。≥960px 左侧竖排 112px，<960px 底部 tab（5 项，每项 `flex:1; min-width:64px`）。老人模式只渲染 3 项（§9）。 |
-| `App.tsx` | `<LazyMotion features={domAnimation}>` 包裹；`<Toaster/>`（sonner）；路由内容用 `AnimatePresence mode="popLayout"` 做页面切换；非聊天页挂 `<CompanionCorner/>`；`useEffect` 里首次运行检测 `wp.onboarded`，没有则渲染 `<Onboarding/>`（§7.5）。 |
+| `App.tsx` | `<LazyMotion features={domAnimation}>` 包裹；`<Toaster/>`（Radix Toast，`components/ui/Toast.tsx`；已由 DESIGN.md 取代，sonner 已移除）；路由内容用 `AnimatePresence mode="popLayout"` 做页面切换；非聊天页挂 `<CompanionCorner/>`；`useEffect` 里首次运行检测 `wp.onboarded`，没有则渲染 `<Onboarding/>`（§7.5）。 |
 | 页面切换 | 有 `document.startViewTransition` 时用它做 200ms 交叉淡入（封装在 `lib/vt.ts`：`withVT(fn)`，不支持直接 `fn()`）；**功能不得依赖它**（部分 WebView 没有此 API，此时直接切换）。无 VT 时用 `motion` 的 `opacity 0→1, y 6→0, 280ms`。 |
 
 导航项（桌面 88×76 命中区；手机每项 `flex:1; min-width:72px; min-height:64px`）：
@@ -1362,7 +1362,7 @@ export const dur = { press: .12, hover: .16, fade: .2, panel: .28, ink: .24, pag
 ### 10.2 依赖清单（pnpm；在仓库根执行，版本即下表）
 
 ```bash
-pnpm --dir apps/client add motion@^14.10.0 radix-ui@^1.8.1 sonner@^2.0.8 \
+pnpm --dir apps/client add motion@^14.10.0 radix-ui@^1.8.1 \
   react-virtuoso@^4.18.20 streamdown@^2.7.1 perfect-freehand@^1.2.3 \
   @tauri-apps/plugin-opener
 pnpm --dir apps/client add -D playwright@^1.65.0 @axe-core/playwright@^4.14.0 \
@@ -1376,7 +1376,6 @@ pnpm --dir apps/api exec playwright-core install chromium
 |---|---|---|
 | motion | ^14.10.0 | 动效，按需 `motion/react`，`LazyMotion` |
 | radix-ui（合集） | ^1.8.1 | Dialog/AlertDialog/Popover/DropdownMenu/Tooltip/Switch/Slider/Tabs/RadioGroup/ToggleGroup |
-| sonner | ^2.0.8 | 便签式 toast |
 | react-virtuoso | ^4.18.20 | 往回翻虚拟列表 |
 | streamdown | ^2.7.1 | 流式 Markdown（仅含 Markdown 的回复） |
 | perfect-freehand | ^1.2.3 | 手绘线/框/图标/浪线 |
@@ -1872,7 +1871,7 @@ CREATE INDEX IF NOT EXISTS idx_surf_items_feed ON surf_items(character, hidden, 
 |---|---|---|
 | **motion** | 弹簧、布局动画、手势拖拽、`AnimatePresence` | 依赖；`LazyMotion` 控体积，`layoutId` 需 `domMax` |
 | **Radix Primitives**（radix-ui） | 可访问行为：Dialog/AlertDialog/Popover/Menu/Switch/Slider/Tabs | 依赖；无样式，自己写皮肤（§6） |
-| **sonner** | toast 队列与手势 | 依赖；`unstyled` + 自定义 class |
+| **Radix Toast**（radix-ui） | toast 队列与手势 | 已由 DESIGN.md 取代：原定 sonner，现用 radix-ui 里的 Toast，sonner 已移除 |
 | **react-virtuoso** | 反向滚动、`followOutput`、动态高度 | 依赖 |
 | **streamdown**（Vercel） | 流式 Markdown 容错（未闭合语法） | 依赖；仅含 Markdown 的回复用，纯文本走 `InkText` |
 | **perfect-freehand** | 压感笔触 → 手绘线/框/图标 | 依赖；自己生成点，固定种子 |

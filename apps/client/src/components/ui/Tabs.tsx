@@ -5,7 +5,7 @@
  * 指示器只做 scaleX / opacity 过渡。
  */
 import { Tabs as T } from "radix-ui";
-import { Children, isValidElement, type ReactNode } from "react";
+import { Children, Fragment, isValidElement, type ReactNode } from "react";
 import { cx } from "./cx";
 import "./shared.css";
 import "./Tabs.css";
@@ -26,9 +26,7 @@ export function Tabs({ items, value, defaultValue, onValueChange, variant = "lin
 }) {
   // 只有真放了对应 TabPanel 的标签才指向面板（Radix 默认总写 aria-controls，axe 判 aria-valid-attr-value）
   const panels = new Set<string>();
-  Children.forEach(children, (child) => {
-    if (isValidElement<{ value: string }>(child) && child.type === TabPanel) panels.add(child.props.value);
-  });
+  collectPanels(children, panels);
   return (
     <T.Root value={value} defaultValue={defaultValue ?? items[0]?.value} onValueChange={onValueChange} className={cx("ui-tabs", className)}>
       <T.List aria-label={label} className={cx("ui-tabs__list", `ui-tabs__list--${variant}`)}>
@@ -43,6 +41,15 @@ export function Tabs({ items, value, defaultValue, onValueChange, variant = "lin
       {children}
     </T.Root>
   );
+}
+
+/** 收集 TabPanel 的 value；Children.forEach 已展开数组，Fragment 要自己往里走。 */
+function collectPanels(children: ReactNode, out: Set<string>) {
+  Children.forEach(children, (child) => {
+    if (!isValidElement<{ value?: string; children?: ReactNode }>(child)) return;
+    if (child.type === TabPanel && child.props.value != null) out.add(child.props.value);
+    else if (child.type === Fragment) collectPanels(child.props.children, out);
+  });
 }
 
 export function TabPanel({ value, children, className }: { value: string; children: ReactNode; className?: string }) {

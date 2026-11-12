@@ -25,8 +25,8 @@
  *  12  动画与过渡只动 transform / opacity；components/ui 必须 0 处，旧页面按文件只减不增
  *  13  filter 按文件只减不增（backdrop-filter 由第 3 项拦）
  *  14  首屏 JS / CSS gzip 不超过 0.3.4（默认构建到 node_modules/.cache/ui-check-dist，--dist=… 复用现成构建）
- *  15  静置 9 秒后没有还在跑的循环动画；页面隐藏后没有任何还在跑的动画
- *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空
+ *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
+ *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向
  *  （--shots 再加一项：截图）
  *
  * 退出码：0 全绿；1 有失败。
@@ -402,25 +402,21 @@ async function checkIdleAndHidden(browser) {
     const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true });
     await page.addInitScript(instrumentTimers);
     await visit(page, path);
-    // 每页都查；静置前就没有循环动画的页不用再等 9.5 秒。
-    // 加载转圈（ui-spin）是状态反馈，加载完就没了，不算环境动效；隐藏后照样要停（下面那段查）。
-    const loops = async () => (await page.evaluate(runningAnimations)).filter((a) => a.endsWith("∞") && !a.includes(":ui-spin"));
+    // 每页都等满再统计：页面卡在 loading 或延迟启动的循环动画，只看开头会漏掉。
+    // 加载转圈（ui-spin）只在组件预览页豁免（那里是常驻的示例）；生产页静置后还在转就算失败。
+    const loops = async () => (await page.evaluate(runningAnimations)).filter((a) => a.endsWith("∞") && !(path === "/__kit" && a.includes(":ui-spin")));
     const before = await loops();
-    if (before.length) {
-      await page.waitForTimeout(9500); // 空闲门槛 8 秒（src/lib/activity.ts）
-      const after = await loops();
-      notes.push(`${name} 静置前循环动画 ${before.length}，9.5s 后 ${after.length}`);
-      if (after.length) fails.push(`${name} 静置后仍在跑：${after.slice(0, 4).join("、")}`);
-    } else {
-      notes.push(`${name} 无循环动画`);
-    }
+    await page.waitForTimeout(9500); // 空闲门槛 8 秒（src/lib/activity.ts）
+    const after = await loops();
+    notes.push(`${name} ${before.length}→${after.length}`);
+    if (after.length) fails.push(`${name} 静置后仍在跑：${after.slice(0, 4).join("、")}`);
     await page.evaluate(() => window.__wpSetHidden(true));
     await page.waitForTimeout(300);
     const hidden = await page.evaluate(runningAnimations);
     if (hidden.length) fails.push(`${name} 隐藏后仍在跑：${hidden.slice(0, 4).join("、")}`);
     await context.close();
   }
-  return record(`静置 / 隐藏后动画停下（${PAGES.length} 页）`, fails.length === 0, fails.length ? fails.join("；") : `${notes.join("；")}；隐藏后 0`);
+  return record(`静置 / 隐藏后动画停下（${PAGES.length} 页）`, fails.length === 0, fails.length ? fails.join("；") : `静置前→9.5s 后循环动画 ${notes.join("、")}；隐藏后 0`);
 }
 
 /** 16. 懒加载页借用的组件样式还在：/surf 弹出的便签是 fixed 的小条；标签的 aria-controls 都指向真有的面板。 */
@@ -447,11 +443,18 @@ async function checkLazyStyles(browser) {
       const id = t.getAttribute("aria-controls");
       return id && !document.getElementById(id) ? (t.textContent || "").trim().slice(0, 8) : null;
     }).filter(Boolean));
+    // 反过来：渲染出来的每个面板，它的标签都要指向它（TabPanel 被 Fragment 包住时曾经丢过）
+    const orphan = await p2.evaluate(() => [...document.querySelectorAll('[role="tabpanel"]')].map((p) => {
+      // 日记页是几个标签共用一个面板（aria-label 命名，不带 aria-labelledby），所以只要有标签指向它就算数
+      const pointed = [...document.querySelectorAll('[role="tab"]')].some((t) => t.getAttribute("aria-controls") === p.id);
+      return pointed ? null : (document.getElementById(p.getAttribute("aria-labelledby") || "")?.textContent || p.id).trim().slice(0, 8);
+    }).filter(Boolean));
     tabs += await p2.evaluate(() => document.querySelectorAll('[role="tab"]').length);
     for (const d of dangling) fails.push(`${name} 标签「${d}」的 aria-controls 指向不存在的面板`);
+    for (const o of orphan) fails.push(`${name} 面板「${o}」的标签没写 aria-controls`);
   }
   await c2.close();
-  return record("懒加载页的共享样式 / 标签面板指向", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls`);
+  return record("懒加载页的共享样式 / 标签面板指向", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls，面板都有标签指向`);
 }
 
 async function shoot(browser) {

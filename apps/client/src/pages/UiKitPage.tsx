@@ -181,8 +181,11 @@ export default function UiKitPage() {
 
       <Section id="tabs" title="标签页">
         <Tabs label="日记分类" items={[{ value: "all", label: "全部" }, { value: "mine", label: "我写的" }, { value: "hers", label: "她写的" }, { value: "x", label: "已归档", disabled: true }]}>
-          <TabPanel value="all"><p className="uikit__note">下划线样式：页面级分区。</p></TabPanel>
-          <TabPanel value="mine"><p className="uikit__note">我写的日记。</p></TabPanel>
+          {/* 故意包一层 Fragment：ui-check 第 16 项靠它确认包起来的面板也有 aria-controls */}
+          <>
+            <TabPanel value="all"><p className="uikit__note">下划线样式：页面级分区。</p></TabPanel>
+            <TabPanel value="mine"><p className="uikit__note">我写的日记。</p></TabPanel>
+          </>
           <TabPanel value="hers"><p className="uikit__note">她写的日记。</p></TabPanel>
         </Tabs>
         <Tabs label="视图" variant="segmented" items={[{ value: "day", label: "按天" }, { value: "week", label: "按周" }, { value: "month", label: "按月" }]} />

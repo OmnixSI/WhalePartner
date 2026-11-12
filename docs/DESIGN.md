@@ -53,7 +53,25 @@
 - 界面 chrome：霞鹜新晰黑（`--font-ui`，本地有则用，否则退到系统黑体）。
 - 日期与编号：Fraunces（`--font-num`，latin 子集 + 等宽数字）。
 - 她说的话是文楷并带一条强调色细线，你说的话放进浅色便签（`--slip`）：一眼分得出谁在说话，不靠气泡颜色。
-- 字号档位只有 tokens 里那 10 个（13/14/16/17/18/20/24/32/44/56）。**<14px 只允许**邮戳、编号、时间，且颜色必须是 `--ink-mute` 或更深。
+- 字号有两套，都在 `styles/tokens.css`：
+  - 旧页面（调色板层）：`--fs-*` 10 档，固定值。
+  - 设计系统（语义层，`components/ui/*` 和迁移后的页面）：`--text-*` 8 档，`--text-base 1rem × --text-ratio 1.125` 的阶梯；触屏或窄屏下 `--text-sm`、`--text-control` 不低于 16px。
+  - 页面迁移时按下表换；没有对应档的保留原 token。
+
+  | 旧 `--fs-*` | 值 | 新 `--text-*` | 值 |
+  |---|---|---|---|
+  | `--fs-micro` | 13 | `--text-xs` | 13 |
+  | `--fs-small` | 14 | `--text-sm` | ≈14.2 |
+  | `--fs-body` | 16 | `--text-md`（控件字用 `--text-control`） | 16 |
+  | `--fs-chat` | 17 | 无，聊天页保留 `--fs-chat` | — |
+  | `--fs-diary` | 18 | `--text-lg` | 18 |
+  | `--fs-h3` | 20 | `--text-xl` | ≈20.3 |
+  | `--fs-h2` | 24 | `--text-2xl` | ≈25.6 |
+  | `--fs-h1` | 32 | `--text-3xl` | ≈32.4 |
+  | `--fs-display` | 44 | `--text-display` | ≈41 |
+  | `--fs-date` | 56 | 无，日记日期保留 `--fs-date` | — |
+
+- 两套都是 **<14px 只允许**邮戳、编号、时间（`--fs-micro` / `--text-xs`），且颜色必须是 `--ink-mute` 或更深。
 
 ## 纸与手（`components/ink/*`，样式在 `styles/ink.css`）
 
@@ -201,8 +219,8 @@ pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印�
 12. 触控 ≥44（老人 ≥56）
 13. 横向滚动（380px 与 `--scale=2`）
 14. axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）
-15. 静置 / 隐藏后动画停下（每页都查）
-16. 懒加载页借用的组件样式还在（`/surf` 的便签是 fixed 小条），标签的 `aria-controls` 不悬空
+15. 静置 / 隐藏后动画停下（每页都等满 9.5 秒再查；加载转圈只在 `/__kit` 豁免，生产页静置后不许还在转）
+16. 懒加载页借用的组件样式还在（`/surf` 的便签是 fixed 小条），标签的 `aria-controls` 不悬空，渲染出的面板都有标签指向
 17. 截图（只在 `--shots` 时）
 
 角色闪卡（`apps/client/src/card-preview/`）的镭射、光泽和光照是单独确认的卡面效果，不受渐变、圆角和动效时长这三条限制。
