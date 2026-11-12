@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   Button, Card, CardButton, ConfirmDialog, Dialog, Field, IconButton, Input, Select, Switch, TabPanel, Tabs, Textarea,
   ToastPreview, Toaster, Tooltip, toast,
@@ -13,7 +13,10 @@ import "./UiKitPage.css";
  * 隐藏预览页 `/__kit`（#151）：设计 token 与 components/ui 全部组件、全部状态。
  * 顶部切主题 / 角色 / 老人模式；`?open=dialog|confirm|select|tooltip` 打开对应弹层，给截图用。
  * 由 App 里 React.lazy 加载，不进首屏。旧的手绘基元样品页移到 `/__kit/ink`。
+ * App 把 `/__kit/*` 都交给这里：`/__kit/cards` 再按需加载好感度卡五档预览（#159），首屏不多一条路由。
  */
+const CardKitPage = lazy(() => import("./CardKitPage"));
+
 const CHARACTERS = [
   { id: "whale", name: "鲸汐" },
   { id: "deepseek", name: "大肥鱼" },
@@ -69,6 +72,12 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 }
 
 export default function UiKitPage() {
+  const { pathname } = useLocation();
+  if (pathname.replace(/\/+$/, "") === "/__kit/cards") return <Suspense fallback={null}><CardKitPage /></Suspense>;
+  return <UiKitBody />;
+}
+
+function UiKitBody() {
   const [params] = useSearchParams();
   const pinned = params.get("open");
   const [character, setCharacter] = useState(() => document.documentElement.getAttribute("data-character") || "whale");
@@ -101,6 +110,7 @@ export default function UiKitPage() {
         <Switch label="老人模式" checked={elder} onCheckedChange={setElder} />
         <span className="uikit__label" aria-hidden="true">老人模式</span>
       </header>
+      <p className="uikit__note">好感度卡五档与升级动画在 <Link to="/__kit/cards">/__kit/cards</Link>。</p>
 
       <Section id="buttons" title="按钮" note="四种外观 × 六种状态。悬停、按下、焦点三列是钉住的状态，便于对照；真实交互里 hover 只在精确指针下出现，按下微缩在触屏与安静模式下关闭。">
         <div className="uikit__matrix" role="table" aria-label="按钮状态">

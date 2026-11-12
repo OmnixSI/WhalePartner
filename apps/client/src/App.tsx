@@ -41,7 +41,7 @@ export default function App() {
               <Route path="/memory" element={<Suspense fallback={null}><MemoryPage /></Suspense>} />
               <Route path="/surf" element={<Suspense fallback={null}><SurfPage /></Suspense>} />
               <Route path="/settings" element={<SettingsPage />} />
-              <Route path="/__kit" element={<Suspense fallback={null}><UiKitPage /></Suspense>} />
+              <Route path="/__kit/*" element={<Suspense fallback={null}><UiKitPage /></Suspense>} />
               <Route path="/__kit/ink" element={<Suspense fallback={null}><KitPage /></Suspense>} />
             </Routes>
             {cornerHere && <CompanionCorner />}
