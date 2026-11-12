@@ -3,6 +3,9 @@
    交互叠层的做法改写自 meta/astryx（MIT，见 THIRD_PARTY_NOTICES）：hover / 按下不换底色，
    在元素里垫一层 currentColor，只改它的 opacity——不触发重绘底色，也不需要每个变体各写一套 hover 色。 */
 
+/* 焦点环圆角默认跟控件一致；各组件用 --r-focus 覆盖（:where 零优先级，组件里随便写都能盖过） */
+:where(.ui-focus) { --r-focus: var(--r-element); }
+
 .ui-press { position: relative; isolation: isolate; -webkit-tap-highlight-color: transparent; }
 .ui-press::before {
   content: "";
@@ -25,7 +28,7 @@
 /* 焦点环：双环（内圈底色、外圈强调色），任何底色上都看得见；只在键盘焦点时出现 */
 .ui-focus:focus-visible {
   outline: none;
-  border-radius: var(--ui-radius, var(--r-element));
+  border-radius: var(--r-focus);
   box-shadow: 0 0 0 2px var(--color-bg-body), 0 0 0 4px var(--ui-ring, var(--color-accent));
 }
 

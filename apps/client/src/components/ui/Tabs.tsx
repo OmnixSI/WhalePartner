@@ -28,7 +28,8 @@ export function Tabs({ items, value, defaultValue, onValueChange, variant = "lin
     <T.Root value={value} defaultValue={defaultValue ?? items[0]?.value} onValueChange={onValueChange} className={cx("ui-tabs", className)}>
       <T.List aria-label={label} className={cx("ui-tabs__list", `ui-tabs__list--${variant}`)}>
         {items.map((it) => (
-          <T.Trigger key={it.value} value={it.value} disabled={it.disabled} className="ui-tabs__tab ui-press ui-focus">
+          // 没有面板时不指向不存在的 id（Radix 默认总写 aria-controls，axe 判 aria-valid-attr-value）
+          <T.Trigger key={it.value} value={it.value} disabled={it.disabled} className="ui-tabs__tab ui-press ui-focus" {...(children ? {} : { "aria-controls": undefined })}>
             {variant === "segmented" ? <span className="ui-tabs__seg" aria-hidden="true" /> : null}
             <span className="ui-tabs__text">{it.label}</span>
             {variant === "line" ? <span className="ui-tabs__bar" aria-hidden="true" /> : null}

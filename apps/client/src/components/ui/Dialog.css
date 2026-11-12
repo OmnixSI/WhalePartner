@@ -40,7 +40,7 @@
 .ui-dialog__body { display: flex; flex-direction: column; gap: var(--sp-4); padding-top: var(--sp-1); }
 .ui-dialog__foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--sp-3); padding-top: var(--sp-3); }
 .ui-dialog__close {
-  --ui-radius: var(--r-element);
+  --r-focus: var(--r-element);
   flex: none;
   display: grid;
   place-items: center;

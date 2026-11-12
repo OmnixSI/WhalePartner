@@ -33,7 +33,7 @@
 .ui-toast__title { font-size: var(--text-md); font-weight: var(--weight-medium); line-height: 1.4; }
 .ui-toast__desc { font-size: var(--text-sm); color: var(--color-text-secondary); line-height: 1.5; }
 .ui-toast__btn {
-  --ui-radius: var(--r-element);
+  --r-focus: var(--r-element);
   flex: none;
   min-width: var(--control-h);
   min-height: var(--control-h);

@@ -1,5 +1,5 @@
 .ui-card {
-  --ui-radius: var(--r-container);
+  --r-focus: var(--r-container);
   position: relative;
   display: block;
   min-width: 0;

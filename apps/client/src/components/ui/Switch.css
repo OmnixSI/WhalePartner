@@ -4,7 +4,7 @@
   --w: 2.75rem;
   --h: 1.625rem;
   --pad: 3px;
-  --ui-radius: var(--r-full);
+  --r-focus: var(--r-full);
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);

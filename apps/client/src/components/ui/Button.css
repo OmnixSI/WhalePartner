@@ -4,7 +4,7 @@
   --btn-fg: var(--color-text-primary);
   --btn-edge: transparent;
   --ui-ring: var(--color-accent);
-  --ui-radius: var(--r-element);
+  --r-focus: var(--r-element);
   display: inline-flex;
   align-items: center;
   justify-content: center;
