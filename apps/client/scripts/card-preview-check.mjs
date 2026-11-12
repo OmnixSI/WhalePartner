@@ -179,6 +179,7 @@ try {
   assert.deepEqual(runningAnimations, [], `静置时仍有循环动画：${runningAnimations.join("；")}`);
 
   await page.getByTestId("card-characters").screenshot({ path: `${shots}/characters-light.png` });
+  assert.equal(await page.evaluate(() => localStorage.getItem("wp.character")), "claude");
   assert.deepEqual(apiRequests, []);
   assert.deepEqual(errors, []);
   await context.close();
