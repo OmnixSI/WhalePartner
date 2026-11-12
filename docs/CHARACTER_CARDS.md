@@ -52,7 +52,7 @@ pnpm --dir apps/client run card-preview:check
 | --- | --- | --- | --- | --- |
 | Lv1 相识 | 0 | 素纸：纸面、细线框、一条海平线 | 平放 | 无 |
 | Lv2 相熟 | 25 | 银衬：拉丝银框 + 内框，卡片微微立起，画面与名牌分层 | 固定斜角 | 跟指针倾斜，扫一道光 |
-| Lv3 默契 | 100 | 潮光：角色色深海底、焦散水纹、光环、气泡，Live2D 可开待机 | 同上 | 同上 |
+| Lv3 默契 | 100 | 潮光：角色色深海底、焦散水纹、光环、气泡 | 同上 | 同上 |
 | Lv4 亲近 | 250 | 金缘：金框、顶光、星芒，每位角色一套专属纹样 | 同上 | 同上，星芒上浮 |
 | Lv5 相依 | 500 | 镀闪：碎箔拼成的金底与折痕、拉丝框、暗色画框 | 同上 | 同上，镭射层随指针移动 |
 
@@ -94,7 +94,7 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
 - `size="sm"` 是静态缩略卡：忽略 `upgradeFrom`，不播动画、不出「升到 Lv.N」和「跳过」、不调 `onUpgradeEnd`。升级动画只在 `md` 主卡上播。
 - 触屏：主卡设了 `touch-action: pan-y`，横向拖动用来倾斜，竖向仍交给页面滚动；松手或手势被取消时倾斜复位。
 - 动画进行中根元素带 `data-upgrading="<目标档>"`，读屏会念「升到 Lv.N 相依」。
-- `tierFeatures(level)` 给出 `{ tilt, live2dIdle, signature, foil }`，用来决定要不要开 Live2D 待机（Lv3 起）。
+- `tierFeatures(level)` 给出 `{ tilt, signature, foil }`。Live2D 不分档：应用里大肥鱼五档都用真实立绘，各档的底色、箔面和光泽叠在立绘上下。
 - 「上次看过的等级」存在哪里由 #160 决定，组件不读写存储、不请求接口。
 
 `ui:check` 会打开 `/__kit/cards` 跑触控、横向滚动、axe、静置检查，另有五项卡面专项：1→5 按 2、3、4、5 逐档快进且 ≤3 秒，4→5 播完，跳过即停，StrictMode 下每轮结束回调正好 1 次；跳过和已到点的定时器在同一拍时卡不复活、回调不多一次；安静模式开关和系统减少动态都走淡入；缩略卡给了 `upgradeFrom` 也不播、不回调；390 宽触屏横向拖动能倾斜、松手复位。`--shots` 另拍 `cards-tiers-{light,dark}.png`、`cards-signatures.png`、`cards-up-{12,23,34,45}.png`（每段取 45% 处一帧）和 `cards-390.png` 到 `apps/client/test-results/ui-check/`。
@@ -107,7 +107,7 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
 
 | 位置 | 旧 | 新 |
 | --- | --- | --- |
-| 设置页「换一位」弹窗主卡 | `CardShowcase`（四档、只读） | `settings/AffinityShowcase`（`LazyAffinityCard` md + 右侧细节 + 大肥鱼 Lv3 起的 Live2D 立绘） |
+| 设置页「换一位」弹窗主卡 | `CardShowcase`（四档、只读） | `settings/AffinityShowcase`（`LazyAffinityCard` md + 右侧细节 + 大肥鱼五档都用 Live2D 立绘 + 切档按钮） |
 | 弹窗里的角色列表 | 贴纸缩略图 | `CharThumb`（`LazyAffinityCard` sm，右下角标当前等级） |
 | 等级数据 | `useRelationship` 只在打开时取一次 | 同一个 hook 一次管四个角色（`entries`），主卡、缩略卡、概览读同一份；进页面读当前角色；打开弹窗、切回标签页（`visibilitychange`）读四个（每个角色一个请求）；弹窗开着时换角色只读新的当前角色和还没读好的；当前角色或任一缩略卡读失败都出现「重试」，点后只重读失败的。同一角色只认最新一次请求，旧请求被中止、晚到的响应也不写回（`lib/relationship-loader.ts`，有单测） |
 
@@ -129,6 +129,15 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
 - 「已提示的等级」单独存 `wp.cardToastLevel.<角色 id>`，同一档只提示一次，再升一档可以再提示。提示不改「上次看到的等级」；没有记录时只对齐、不提示（和卡面一致）。判断在 `seen-level.ts` 的 `announceUpgrade`。
 - 吐司组件和 `Toaster` 在 `components/chat/LevelUpToast.tsx`，只在真的升档时才下载，卡面代码不进聊天页首屏。
 
+### 切档看低档卡面
+
+- 解锁高档后，可以在「换一位」弹窗里把卡面切到已解锁的任一低档看效果（`Lv.1`…真实等级可点，更高档锁住）。切档只改卡面显示，不改真实等级、好感度，也不改「上次看到的等级」，不播升级动画；卡外的标题和进度条始终是真实等级。
+- 存储：localStorage `wp.cardViewLevel.<角色 id>`，值是 1–5 的整数；选回真实等级就删掉这条，之后跟着真实等级走。只是这台设备上的显示偏好，所以不进后端、不需要接口和迁移；和 `wp.cardSeenLevel` 用同一套读写（`seen-level.ts` 的 `chooseViewLevel` / `resolveViewLevel`，有单测），存储不可用时退回内存。
+- 记录高于真实等级（比如数据被重置）时显示真实等级；真的升档时清掉记录，播完升级回到最高档。
+- Live2D 立绘槽整张卡只挂一次，切档不重建舞台。设置页没有聊天舞台，Live2D 着色器又是全局单例、不能两个 WebGL 上下文并存，所以卡面立绘实时渲染，同一时刻页面上只有一个 WebGL 上下文（`scripts/card-live2d-check.mjs` 会数）。
+
 ### 检查
 
-`ui:check` 第 11 项只打印首屏 gzip，并断言首屏文件里没有卡面代码（`acard`）；第 25–27 项为卡面三条专项。第 25 项用假接口跑：鲸汐 Lv3 首次打开不播 → 接口改成 Lv4 并触发刷新，播一次 3→4 → 再开、刷新页面都不重播 → 换到大肥鱼（2→3）只播它自己、鲸汐记录不动 → 清存储或读取失败后重试都不播。第 26 项「换一位」主卡与缩略卡共用等级：接口全 500 后点重试四张缩略卡和四个等级字样一起恢复；只有小克一个缩略卡 500 时仍有重试入口，点后只重读小克；弹窗里大肥鱼 Lv2→3 后切角色，主卡、缩略卡、字样都是 Lv3；打开弹窗请求不超过 4 次；弹窗开着连续换 3 个角色各只请求 1 次。第 27 项聊天页升档提示：Lv3 不提示，升到 Lv4 提示一次且 seen 仍是 3，再聊、刷新后都不再提示，点「去看看」到设置页卡面并播 3→4。只跑这三项：`node scripts/ui-check.mjs --only=card-live`。`--shots` 另拍 `settings-card-{light,dark}.png`、`settings-card-up.png`（升级中一帧）、`settings-card-thumbs.png`。
+`ui:check` 第 11 项只打印首屏 gzip，并断言首屏文件里没有卡面代码（`acard`）；第 25–28 项为卡面四条专项。第 25 项用假接口跑：鲸汐 Lv3 首次打开不播 → 接口改成 Lv4 并触发刷新，播一次 3→4 → 再开、刷新页面都不重播 → 换到大肥鱼（2→3）只播它自己、鲸汐记录不动 → 清存储或读取失败后重试都不播。第 26 项「换一位」主卡与缩略卡共用等级：接口全 500 后点重试四张缩略卡和四个等级字样一起恢复；只有小克一个缩略卡 500 时仍有重试入口，点后只重读小克；弹窗里大肥鱼 Lv2→3 后切角色，主卡、缩略卡、字样都是 Lv3；打开弹窗请求不超过 4 次；弹窗开着连续换 3 个角色各只请求 1 次。第 27 项聊天页升档提示：Lv3 不提示，升到 Lv4 提示一次且 seen 仍是 3，再聊、刷新后都不再提示，点「去看看」到设置页卡面并播 3→4。第 28 项切档：大肥鱼 Lv4 时 Lv5 锁住、直接派发点击也不换档；切到 Lv2 后卡面是 Lv2、卡外仍是 Lv4、seen 仍是 4、Live2D 舞台不重建、不发写请求；刷新后仍是 Lv2；选回 Lv4 删记录；看低档时后端升到 Lv5，播 4→5 后回到 Lv5。只跑这四项：`node scripts/ui-check.mjs --only=card-live`。`--shots` 另拍 `settings-card-{light,dark}.png`、`settings-card-up.png`（升级中一帧）、`settings-card-thumbs.png`。
+
+大肥鱼五档卡面截图和帧率 / CPU 粗测：`node scripts/card-live2d-check.mjs --dist=<构建目录> --out=<目录>`（有界面 Chrome，真实 GPU；分别量聊天页、卡面、从聊天点进卡面，并数同时存在的 WebGL 上下文）。

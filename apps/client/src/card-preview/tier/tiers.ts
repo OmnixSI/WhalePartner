@@ -34,14 +34,13 @@ export function tierOf(level: number): CardTier {
 }
 
 /**
- * 每档卡面带来的能力，给接入方（#160）判断要不要开 Live2D 待机、要不要接指针倾斜。
+ * 每档卡面带来的能力，给接入方判断要不要接指针倾斜等。Live2D 立绘不分档：有模型的角色每一档都用 Live2D。
  * 卡面自己按 level 决定视觉，这里只是把规则写成一处。
  */
 export function tierFeatures(level: number) {
   const l = clampLevel(level);
   return {
     tilt: l >= 2,
-    live2dIdle: l >= 3,
     signature: l >= 4,
     foil: l >= 5,
   };

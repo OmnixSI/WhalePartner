@@ -17,9 +17,9 @@ export const seenKey = (characterId: string) => `${SEEN_KEY_PREFIX}${characterId
 export const NOTIFIED_KEY_PREFIX = "wp.cardToastLevel.";
 export const notifiedKey = (characterId: string) => `${NOTIFIED_KEY_PREFIX}${characterId}`;
 
-type Store = Pick<Storage, "getItem" | "setItem">;
+export type Store = Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>;
 
-function browserStore(): Store | null {
+export function browserStore(): Store | null {
   try {
     return typeof localStorage === "undefined" ? null : localStorage;
   } catch {
@@ -36,7 +36,7 @@ function parse(raw: string | null): number | null {
  * 一组「每个角色一个等级」的本地记录。写 storage 失败时把值留在内存，并记下是哪个键失败了：
  * 读这个键就用内存里的值（storage 里可能还躺着更旧的值，不能读它）；之后写成功了再清掉标记。
  */
-function createRecord(keyOf: (characterId: string) => string) {
+export function createRecord(keyOf: (characterId: string) => string) {
   const memory = new Map<string, number>();
   const unsaved = new Set<string>();
   return {
@@ -57,6 +57,17 @@ function createRecord(keyOf: (characterId: string) => string) {
         unsaved.delete(characterId);
       } catch {
         memory.set(characterId, value);
+        unsaved.add(characterId);
+      }
+    },
+    /** 删掉这条记录（没有 removeItem 的 storage 视为删除失败，退回内存里记「没有」）。 */
+    clear(characterId: string, store: Store | null): void {
+      memory.delete(characterId);
+      try {
+        if (!store?.removeItem) throw new Error("no storage");
+        store.removeItem(keyOf(characterId));
+        unsaved.delete(characterId);
+      } catch {
         unsaved.add(characterId);
       }
     },
@@ -113,6 +124,53 @@ export function announceUpgrade(characterId: string, current: number, store: Sto
   notified.write(characterId, level, store);
   return level;
 }
+
+// ---------------------------------------------------------------------------
+
+/**
+ * 「显示档位」：解锁了高档以后，可以切回低档看看低档卡面。每个角色一条，存在客户端 localStorage，
+ * 键名 `wp.cardViewLevel.<角色 id>`，值是 1–5 的整数；没有这条记录就跟着真实等级显示最高档。
+ *
+ * - 只改显示：真实等级、好感度和「上次看到的等级」（seen-level）都不读不写。
+ * - 只能选 1…真实等级；选真实等级本身等于「跟着真实等级」，删掉记录。
+ * - 记录比真实等级高（后端数据重置、等级变低）时按真实等级显示，记录不动。
+ * - 真的升档、要播升级动画时，接入方调 clearViewLevel 回到最高档，让新卡面播出来。
+ * - 存本地而不是后端：这是单台设备上的看卡偏好，和「上次看到的等级」放在一起，不用加接口和迁移。
+ */
+export const VIEW_KEY_PREFIX = "wp.cardViewLevel.";
+export const viewKey = (characterId: string) => `${VIEW_KEY_PREFIX}${characterId}`;
+
+/** 已解锁、可以切过去看的档位：1…真实等级。 */
+export function unlockedLevels(real: number): number[] {
+  return Array.from({ length: clampLevel(real) }, (_, i) => i + 1);
+}
+
+/** 这一档能不能看：1…真实等级之间的整数。 */
+export function canView(real: number, want: number): boolean {
+  return Number.isInteger(want) && want >= 1 && want <= clampLevel(real);
+}
+
+/** 实际显示哪一档：有记录且已解锁就用记录，否则真实等级。 */
+export function resolveViewLevel(real: number, chosen: number | null): number {
+  return chosen !== null && canView(real, chosen) ? chosen : clampLevel(real);
+}
+
+const view = createRecord(viewKey);
+
+export const readViewLevel = (characterId: string, store: Store | null = browserStore()): number | null => view.read(characterId, store);
+
+/** 选一档来看。没解锁返回 false、什么都不写；选真实等级就删掉记录（之后跟着真实等级）。 */
+export function chooseViewLevel(characterId: string, real: number, want: number, store: Store | null = browserStore()): boolean {
+  if (!canView(real, want)) return false;
+  if (want === clampLevel(real)) view.clear(characterId, store);
+  else view.write(characterId, want, store);
+  return true;
+}
+
+export const clearViewLevel = (characterId: string, store: Store | null = browserStore()): void => view.clear(characterId, store);
+
+/** 测试用：清掉内存里的兜底记录（模拟重启）。 */
+export const resetViewMemory = (): void => view.reset();
 
 /** 测试用：清掉内存里的兜底记录。 */
 export function resetSeenMemory(): void {
