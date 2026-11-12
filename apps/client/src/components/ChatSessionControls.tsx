@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ChatSession } from "../lib/chat";
-import { ConfirmDialog } from "./chat/ConfirmDialog";
+import { ConfirmDialog } from "./ui/Dialog";
 
 interface Props {
   sessions: ChatSession[];
@@ -71,11 +71,11 @@ export function ChatSessionControls({ sessions, sessionId, disabled = false, onS
         open={confirming}
         onOpenChange={setConfirming}
         title="删除这段对话？"
-        body={`删除“${active?.title || "新聊天"}”后，只由它产生的记忆也会一起消失，找不回来。`}
+        description={`删除“${active?.title || "新聊天"}”后，只由它产生的记忆也会一起消失，找不回来。`}
         confirmLabel="删除"
         cancelLabel="再想想"
-        danger
-        onConfirm={() => { setConfirming(false); void onDelete(); }}
+        tone="danger"
+        onConfirm={() => { void onDelete(); }}
       />
     </div>
   );

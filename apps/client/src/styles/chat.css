@@ -1,8 +1,9 @@
 /* ============================================================================
-   聊天页（重设计规范 §6.8 / §7.1）：绘本字幕 + 手写小纸条 + 往回翻。
-   规矩：颜色 / 字号 / 间距 / 圆角 / 时长一律走 tokens.css 的 var()，不写死色值与 px 圆角；
-   不出现渐变、毛玻璃、三点 typing、骨架屏、打字机光标。
-   动效只改 transform / opacity（墨线用 clip-path）；calm 与 prefers-reduced-motion 给完成态。
+   聊天页（#153）：纸面舞台 + 一条海平线 + 平的字幕卡 + 一条回信条 + 往回翻。
+   规矩：颜色 / 字号 / 间距 / 圆角 / 时长走 tokens.css 的语义层（--color-* / --r-* / --elev-* / --text-*）；
+   一种边的写法：卡片 = --elev-raised，控件 = 1px --color-border-strong（由 components/ui 提供）。
+   不出现渐变、毛玻璃、发光、手绘边框；动效只改 transform / opacity；calm 与 prefers-reduced-motion 给完成态。
+   旧的 .btn / .field / .pop / .menu / .overlay / .sheet 仍有别的页面在用，留在文件末尾，等那些页迁完再删。
    ============================================================================ */
 
 /* ---------------------------------------------------------------- 骨架 */
@@ -14,9 +15,9 @@
   padding: var(--sp-3) var(--sp-3) var(--sp-3) 0;
   gap: var(--sp-3);
 }
-/* 舞台是一幅贴在纸上的插画：圆角裁切，浪不再在导航边和右边被生硬截断 */
-.room__main { border-radius: var(--r-lg); background: var(--paper); isolation: isolate; }
-.room__main::after { content: ""; position: absolute; inset: 0; z-index: var(--z-dialog); border-radius: var(--r-lg); box-shadow: inset 0 0 0 var(--stroke-1) var(--line); pointer-events: none; }
+/* 舞台是贴在纸上的一块：圆角裁切，一圈细线 */
+.room__main { border-radius: var(--r-container); background: var(--color-surface); isolation: isolate; }
+.room__main::after { content: ""; position: absolute; inset: 0; z-index: var(--z-dialog); border-radius: var(--r-container); box-shadow: var(--elev-flat); pointer-events: none; }
 .room[data-backlog="closed"] { gap: 0; }
 .room[data-backlog="closed"] { grid-template-columns: minmax(0, 1fr) 0; }
 .room[data-backlog="closed"] .room__aside { display: none; }
@@ -49,56 +50,27 @@
   overflow: hidden;
   pointer-events: none;
 }
-/* 背光：她身后一块平的暖光斑。不用渐变、不用发光滤镜（规范 §4.7/§9 禁止），
-   就是一块比纸亮一点、暖一点的色块——人物的轮廓因此从纸上分出来。 */
-.scene__glow {
-  position: absolute;
-  left: 50%;
-  top: 6%;
-  width: 64%;
-  aspect-ratio: 1;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: color-mix(in oklab, var(--lamp) 18%, var(--paper));
-  opacity: .5;
-  z-index: var(--z-bg);
-}
-/* 夜里别打那么大一圈：深色纸上 0.5 的暖光会变成一块灰盘子 */
-:root[data-theme="dark"] .scene__glow { opacity: .3; }
-
-/* 海：锚在可画区底（= 对话框上沿），不是舞台底。
-   far/mid 在角色后面，near 在角色前面——规范 §7.1.2 的 z 层。 */
-.scene__sea {
+/* 海平线：纸上一条细线，线下是比纸淡淡深一点的地面（只用一点点强调色）。
+   线落在她脚下（--stage-char-gap），地面一直铺到舞台底，字幕卡和回信条坐在地面上。 */
+.scene { --floor: var(--color-bg-muted); }
+.scene__horizon {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(var(--stage-sea-h) * 100%);
-  overflow: hidden;
+  height: calc(var(--stage-char-gap) * 100%);
+  border-top: 1px solid var(--color-border-strong);
+  background: var(--floor);
+  z-index: var(--z-bg);
 }
-.scene__sea--back { z-index: var(--z-bg); }
-/* 浪一直铺到舞台底：对话框和回信条后面是同一片近浪色，不再有一条生硬的横边 */
 .scene::before {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(var(--scene-safe) + 2px);
-  background: var(--sea-3);
-  z-index: 1;
-}
-.scene__sea--front { z-index: 2; }
-/* 水里的一层反光：平涂的亮带，靠在水线下面一点，给「有光」一个落点（不用渐变） */
-.scene__sheen {
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  bottom: 6%;
-  height: 10%;
-  border-radius: 50%;
-  background: var(--sheet);
-  opacity: .55;
+  height: var(--scene-safe);
+  background: var(--floor);
 }
 
 .scene__figure {
@@ -113,7 +85,6 @@
   /* 对话框会盖住下半身：把舞台内容裁在自己这一层，别让画板边缘从对话框后面漏出来 */
   overflow: hidden;
   cursor: pointer;
-  z-index: var(--z-stage);
 }
 /* 形象还没出来：只留一条呼吸的海平线和很淡的名字，不画任何图形。 */
 .scene__wait {
@@ -146,12 +117,12 @@
   max-width: calc(100% - var(--sp-6));
   padding: 0 var(--sp-2) 0 var(--sp-4);
   transform: translateX(-50%);
-  border-radius: var(--r-sm);
-  background: var(--sheet);
-  box-shadow: var(--shadow-1);
-  color: var(--ink-soft);
+  border-radius: var(--r-element);
+  background: var(--color-card);
+  box-shadow: var(--elev-raised);
+  color: var(--color-text-secondary);
   font-family: var(--font-voice);
-  font-size: var(--fs-small);
+  font-size: var(--text-sm);
   letter-spacing: var(--ls-voice);
 }
 .scene__retry {
@@ -173,32 +144,19 @@
   max-width: 220px;
   margin: 0;
   padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-element);
   background: var(--slip);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--elev-raised);
   color: var(--ink);
   font-family: var(--font-voice);
-  font-size: var(--fs-small);
+  font-size: var(--text-sm);
   line-height: var(--lh-ui);
   letter-spacing: var(--ls-voice);
-  transform: rotate(-1deg);
   pointer-events: none;
 }
 
 /* 收起往回翻后的「展开」入口留在舞台右上 */
-.scene__corner {
-  position: absolute;
-  z-index: var(--z-ui);
-  top: var(--sp-3);
-  right: var(--sp-4);
-  min-height: var(--hit);
-  padding: 0 var(--sp-4);
-  border-radius: var(--r-sm);
-  background: var(--sheet);
-  box-shadow: var(--shadow-1);
-  color: var(--accent);
-  font-size: var(--fs-small);
-}
+.scene__corner { position: absolute; z-index: var(--z-ui); top: var(--sp-3); right: var(--sp-4); }
 
 /* 舞台下部：字幕 + 芯片 + 回信条 */
 .scene__chrome {
@@ -225,10 +183,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  min-height: 88px;
   max-height: min(320px, 38dvh);
-  padding: var(--sp-5) var(--sp-6) var(--sp-5);
-  box-shadow: var(--shadow-1);
+  padding: var(--sp-4) var(--sp-5);
+  border-radius: var(--r-container);
+  background: var(--color-card);
+  box-shadow: var(--elev-raised);
 }
 .dlg__body {
   min-height: 0;
@@ -249,11 +208,6 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.dlg__stamp {
-  align-self: flex-end;
-  margin: 0 var(--sp-2) 0 0;
-  pointer-events: none;
-}
 .dlg__actions {
   display: flex;
   flex-wrap: wrap;
@@ -262,14 +216,14 @@
   padding-top: var(--sp-1);
 }
 .dlg__detail {
-  font-size: var(--fs-micro);
-  color: var(--ink-mute);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
   overflow-wrap: anywhere;
 }
 .dlg[data-state="failed"] .dlg__text,
 .dlg[data-state="offline"] .dlg__text { color: var(--ink); }
 
-/* 名字牌：平的小纸签，底边压在对话框上沿，没有手绘缺口 */
+/* 名字牌：平的小纸签，底边压在对话框上沿 */
 .nametab {
   position: relative;
   z-index: 1;
@@ -279,20 +233,18 @@
   gap: var(--sp-2);
   min-height: 36px;
   max-width: 100%;
-  margin: 0 0 -2px var(--sp-6);
+  margin: 0 0 -2px var(--sp-5);
   padding: 0 var(--sp-4);
-  background: var(--accent-wash);
-  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  background: var(--color-accent-muted);
+  border-radius: var(--r-element) var(--r-element) 0 0;
   color: var(--ink);
 }
-.nametab__ink { display: none; }
 .nametab__dot {
   flex: none;
   width: 8px;
   height: 8px;
-  border-radius: var(--r-round);
+  border-radius: var(--r-full);
   background: var(--accent);
-  transition: background-color var(--dur-fade) var(--ease-out);
 }
 /* 她这句话什么情绪，点就是什么颜色：情绪靠脸和这一点表达，不写进字幕。 */
 .nametab[data-emotion="happy"] .nametab__dot { background: var(--mood-happy); }
@@ -307,12 +259,21 @@
   letter-spacing: var(--ls-voice);
   white-space: nowrap;
 }
-.nametab__stamp { line-height: 1; }
+/* 「AI 角色」永远可见：一枚小字标，不靠颜色区分 */
+.nametab__ai {
+  padding: 1px var(--sp-2);
+  border-radius: var(--r-full);
+  box-shadow: inset 0 0 0 1px var(--color-border-strong);
+  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  white-space: nowrap;
+}
 
 /* 飞出去的那张纸条：对话框右上方 */
 .dlg__float {
   position: absolute;
-  right: var(--sp-6);
+  right: var(--sp-5);
   bottom: calc(100% + var(--sp-3));
   z-index: var(--z-ui);
   display: flex;
@@ -346,66 +307,48 @@
 .think__giveup { align-self: flex-start; }
 @keyframes chat-fade { from { opacity: 0; } to { opacity: 1; } }
 
-/* ---------------------------------------------------------------- 便签 */
+/* ---------------------------------------------------------------- 便签：你的话，一张平的小纸条 */
 .slip {
-  position: relative;
   max-width: 85%;
-  padding: 10px 14px;
-  border-radius: var(--r-md) var(--r-md) var(--r-xs) var(--r-md);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-container) var(--r-container) var(--r-inner) var(--r-container);
   background: var(--slip);
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--elev-raised);
   color: var(--ink);
-  transform: rotate(var(--slip-rot, 0deg));
-  transform-origin: 50% 0;
 }
-.slip[data-rot="a"] { --slip-rot: -0.8deg; }
-.slip[data-rot="b"] { --slip-rot: -0.4deg; }
-.slip[data-rot="c"] { --slip-rot: 0.4deg; }
-.slip[data-rot="d"] { --slip-rot: 0.8deg; }
 .slip__text {
-  font-size: var(--fs-body);
+  font-size: var(--text-md);
   line-height: var(--lh-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.slip__tape { top: -10px; left: calc(50% - 14px); }
-.slip__state {
-  display: block;
-  margin-top: var(--sp-1);
-  font-size: var(--fs-micro);
-  color: var(--ink-mute);
-}
-.slip__ink { width: 64px; color: var(--accent); }
-.slip__fail { display: block; margin-top: var(--sp-1); }
+.slip__state,
 .slip__time {
   display: block;
   margin-top: var(--sp-1);
-  font-size: var(--fs-micro);
-  color: var(--ink-mute);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
 }
 .slip__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
 .slip--float { width: max-content; max-width: 100%; }
-.slip--failed {
-  background: var(--alert-wash);
-  box-shadow: inset 0 0 0 var(--stroke-1) var(--alert), var(--shadow-1);
-}
-.slip--failed .slip__state { color: var(--alert); }
+.slip--failed { background: var(--color-error-muted); box-shadow: inset 0 0 0 1px var(--color-error); }
+.slip--failed .slip__state { color: var(--color-error); }
 
-/* ---------------------------------------------------------------- 回信条 */
+/* ---------------------------------------------------------------- 回信条：一个容器、一圈边，里面是 ui 的按钮 */
 .composer { display: flex; flex-direction: column; gap: var(--sp-1); }
 .composer__frame {
-  display: block;
-  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-1);
-  background: var(--sheet);
-  box-shadow: var(--shadow-1);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-container);
+  background: var(--color-card);
+  box-shadow: var(--elev-raised);
 }
-.composer__frame:focus-within { box-shadow: var(--focus-ring); }
+.composer__frame:focus-within { box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 5px var(--color-accent-muted); }
 .composer__bar { display: flex; align-items: center; gap: var(--sp-2); }
 /* 一行放不下时按钮组折到下一行，输入框至少保留约 12 个字宽，不会被挤成一条缝。 */
 .composer__bar:not([data-voice]) { align-items: flex-end; flex-wrap: wrap; }
 .composer__bar[data-voice] { min-height: max(var(--hit), var(--composer-input-height, var(--hit))); }
 .composer__bar:not([data-voice]) > .composer__input { order: 1; flex-basis: 12em; }
-.composer__bar:not([data-voice]) > .iconbtn[aria-label="发个视频给她"] { order: 2; }
+.composer__bar:not([data-voice]) > .ui-btn--icon { order: 2; }
 .composer__bar:not([data-voice]) > .composer__actions { order: 3; }
 .composer__actions { display: flex; align-items: center; flex: none; gap: var(--sp-2); margin-left: auto; }
 .composer__input {
@@ -413,22 +356,22 @@
   min-width: 0;
   min-height: max(var(--field-h), var(--hit));
   max-height: 160px;
-  padding: var(--sp-2);
+  padding: var(--sp-3) var(--sp-2);
   border: 0;
   background: transparent;
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: var(--fs-body);
+  font-size: var(--text-md);
   line-height: 1.6;
   resize: none;
   outline: none;
 }
-.composer__input::placeholder { color: var(--ink-mute); }
+.composer__input::placeholder { color: var(--color-text-tertiary); opacity: 1; }
 .composer__input:focus-visible { box-shadow: none; }
-.composer__send { flex: none; min-width: 88px; height: 56px; }
-.composer__voice-mode { flex: none; min-height: 56px; gap: var(--sp-1); padding: 0 var(--sp-3); }
 .composer__voice-label-short { display: none; }
-.composer__text-mode { flex: none; min-width: 64px; height: 56px; padding: 0 var(--sp-2); }
+.composer__voice-mode svg { width: 1.25em; height: 1.25em; }
+/* 「停」：一个实心方块，不是转圈 */
+.composer__stop { display: block; width: .75em; height: .75em; border-radius: var(--r-inner); background: currentColor; }
 .composer__voice-state {
   display: flex;
   align-items: center;
@@ -438,23 +381,22 @@
   gap: var(--sp-2);
   overflow: hidden;
   padding: 0 var(--sp-2);
-  border-radius: var(--r-sm);
-  color: var(--ink-soft);
-  font-size: var(--fs-small);
+  border-radius: var(--r-element);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
 }
-.composer__voice-state[data-error] { color: var(--alert); }
+.composer__voice-state[data-error] { color: var(--color-error); }
 .composer__voice-copy { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .composer__voice-dot {
   width: 8px;
   height: 8px;
   flex: 0 0 8px;
-  border-radius: 50%;
+  border-radius: var(--r-full);
   background: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-wash);
 }
-.composer__voice-state[data-error] .composer__voice-dot { background: var(--alert); box-shadow: none; }
-.composer__voice-state[data-recording] .composer__voice-dot { background: var(--alert); box-shadow: 0 0 0 3px var(--alert-wash); }
-.composer__voice-wave { display: flex; align-items: center; flex: none; height: 20px; gap: 2px; color: var(--alert); }
+.composer__voice-state[data-error] .composer__voice-dot,
+.composer__voice-state[data-recording] .composer__voice-dot { background: var(--color-error); }
+.composer__voice-wave { display: flex; align-items: center; flex: none; height: 20px; gap: 2px; color: var(--color-error); }
 .composer__voice-wave i { display: block; width: 3px; height: 7px; border-radius: var(--r-round); background: currentColor; transform-origin: center; }
 .composer__voice-wave i:nth-child(2),
 .composer__voice-wave i:nth-child(4) { height: 13px; }
@@ -462,71 +404,35 @@
 .composer__voice-state[data-recording] .composer__voice-wave i:nth-child(2) { animation-delay: calc(var(--dur-wave) * .17); }
 .composer__voice-state[data-recording] .composer__voice-wave i:nth-child(3) { animation-delay: calc(var(--dur-wave) * .34); }
 .composer__voice-state[data-recording] .composer__voice-wave i:nth-child(4) { animation-delay: calc(var(--dur-wave) * .51); }
-.composer__cancel,
-.composer__voice-action,
-.composer__voice-retry { flex: none; min-width: 72px; height: 56px; padding: 0 var(--sp-3); }
-.composer__cancel { min-width: 64px; }
-.composer__voice-retry { min-width: 72px; }
 @keyframes composer-wave { from { transform: scaleY(.55); } to { transform: scaleY(1.35); } }
-.composer__busy { width: 20px; color: var(--accent-ink); }
-/* 寄出中：不是禁用，是加载——保持主色，只把图标位换成会自己画的墨线（§6.1） */
-.btn--primary[data-loading]:disabled {
-  background: var(--accent);
-  color: var(--accent-ink);
-  border: 0;
-  box-shadow: var(--shadow-1);
-  opacity: 0.92;
-}
-.btn--primary[data-loading] .ink-line { color: var(--accent-ink); }
 .composer__offline {
   align-self: flex-start;
   padding: var(--sp-1) var(--sp-2);
-  border-radius: var(--r-sm);
-  background: var(--paper);
-  box-shadow: var(--shadow-1);
-  font-size: var(--fs-small);
-  color: var(--ink-soft);
+  border-radius: var(--r-element);
+  background: var(--color-card);
+  box-shadow: var(--elev-raised);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
 }
 .composer__count {
   align-self: flex-end;
-  font-size: var(--fs-micro);
-  color: var(--ink-mute);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
 }
-.composer__count[data-alert] { color: var(--alert); }
+.composer__count[data-alert] { color: var(--color-error); }
 .composer__hint {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
-  font-size: var(--fs-micro);
-  color: var(--ink-mute);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
 }
-.composer__keys {
-  padding: 0 var(--sp-2);
-  color: var(--ink-mute);
-  letter-spacing: 0.02em;
-}
+.composer__keys { padding: 0 var(--sp-2); letter-spacing: 0.02em; }
 
-/* 空态的三个建议：统一的纸签按钮，与对话框左缘对齐，悬停轻轻抬起 */
-.suggests { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding-left: var(--sp-1); }
-.suggest {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--hit);
-  padding: 0 14px;
-  white-space: nowrap;
-  border-radius: var(--r-sm);
-  background: var(--sheet);
-  box-shadow: var(--shadow-1), inset 0 0 0 var(--stroke-1) var(--line);
-  color: var(--ink);
-  font-family: var(--font-ui);
-  font-size: var(--fs-small);
-  line-height: 1;
-  text-decoration: none;
-  transition: transform var(--dur-hover) var(--ease-out), background var(--dur-hover) var(--ease-out);
-}
-.suggest:hover { background: var(--accent-wash); transform: translateY(-2px); }
-.suggest:active { transform: none; }
+/* 空态的三个建议：同一种次按钮，与字幕卡左缘对齐 */
+.suggests { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding-left: var(--sp-1); margin-top: var(--sp-2); }
+.suggests .ui-btn { text-decoration: none; }
 
 /* ---------------------------------------------------------------- 按钮 */
 .btn {
@@ -564,21 +470,6 @@
   cursor: not-allowed;
   transform: none;
 }
-.iconbtn {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: var(--hit);
-  height: var(--hit);
-  border-radius: var(--r-md);
-  background: transparent;
-  color: var(--ink-soft);
-  font-family: var(--font-ui);
-  font-size: var(--fs-body);
-  transition: background var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out);
-}
-.iconbtn:hover { background: var(--paper-2); color: var(--ink); }
-
 /* ---------------------------------------------------------------- 往回翻 */
 .bl {
   position: relative;
@@ -586,42 +477,38 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--sheet);
-  border: var(--stroke-1) solid var(--line);
-  border-radius: var(--r-lg);
+  background: var(--color-card);
+  box-shadow: var(--elev-flat);
+  border-radius: var(--r-container);
   overflow: hidden;
 }
-.bl--sheet { border-left: 0; height: auto; flex: 1; min-height: 0; }
+.bl--sheet { height: auto; flex: 1; min-height: 0; }
 .bl__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
-  height: 64px;
-  padding: 0 var(--sp-4);
-  border-bottom: var(--stroke-1) solid var(--line);
+  height: 60px;
+  padding: 0 var(--sp-3) 0 var(--sp-4);
+  box-shadow: 0 1px 0 var(--color-border);
 }
-.bl__title { font-family: var(--font-voice); font-size: var(--fs-diary); letter-spacing: var(--ls-voice); }
+.bl__title { font-family: var(--font-voice); font-size: var(--text-lg); letter-spacing: var(--ls-voice); }
 .bl__tools { display: flex; align-items: center; gap: var(--sp-1); }
 .bl__listWrap { flex: 1 1 auto; min-height: 0; }
 .bl__row { padding: 0 var(--sp-4); }
 /* 底部留白：给「回到最新」让位，按钮不压正文 */
 .bl__tail { height: var(--sp-16); }
+/* 日期分隔：一条细线穿过居中的日期 */
 .bl__day {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-4) 0 var(--sp-2);
-  color: var(--ink-mute);
+  color: var(--color-text-tertiary);
 }
-.bl__day .ink-line { flex: 1 1 auto; min-width: var(--sp-6); }
-.bl__dayText {
-  flex: none;
-  font-family: var(--font-num);
-  font-size: var(--fs-small);
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-}
+.bl__day::before,
+.bl__day::after { content: ""; flex: 1 1 auto; height: 1px; background: var(--color-border); }
+.bl__dayText { flex: none; font-family: var(--font-num); font-size: var(--text-sm); letter-spacing: 0.04em; white-space: nowrap; }
 .bl__cap {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
@@ -629,18 +516,11 @@
   padding-top: var(--sp-2);
 }
 /* 续行没有头像，正文仍然固定落在第二列 */
-.bl__avatar { grid-column: 1; }
-.bl__capBody { grid-column: 2; }
-.bl__cap--first { padding-top: var(--sp-4); }
-.bl__avatar { width: 32px; height: 32px; }
+.bl__avatar { grid-column: 1; width: 32px; height: 32px; }
 .bl__avatar .mark { width: 100%; height: 100%; }
-.bl__capBody { min-width: 0; }
-.bl__capName {
-  display: block;
-  margin-bottom: 2px;
-  font-size: var(--fs-small);
-  color: var(--ink-soft);
-}
+.bl__capBody { grid-column: 2; min-width: 0; }
+.bl__cap--first { padding-top: var(--sp-4); }
+.bl__capName { display: block; margin-bottom: 2px; font-size: var(--text-sm); color: var(--color-text-secondary); }
 .bl__capText {
   font-family: var(--font-voice);
   font-size: var(--fs-chat);
@@ -649,14 +529,14 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.bl__recall { margin-top: var(--sp-1); font-size: var(--fs-micro); color: var(--ink-mute); }
+.bl__recall { margin-top: var(--sp-1); font-size: var(--text-xs); color: var(--color-text-tertiary); }
 .bl__time {
   display: block;
   margin-top: var(--sp-1);
-  font-size: var(--fs-micro);
-  color: var(--ink-mute);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
   opacity: 0;
-  transition: opacity var(--dur-hover) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-standard);
 }
 .bl__cap:hover .bl__time,
 .bl__cap:focus-within .bl__time { opacity: 1; }
@@ -665,17 +545,11 @@
 .bl__empty {
   padding: var(--sp-6) var(--sp-4);
   font-family: var(--font-voice);
-  font-size: var(--fs-small);
+  font-size: var(--text-sm);
   line-height: var(--lh-body);
-  color: var(--ink-mute);
+  color: var(--color-text-tertiary);
 }
-.bl__latest {
-  position: absolute;
-  right: var(--sp-4);
-  bottom: var(--sp-4);
-  background: var(--sheet);
-  box-shadow: var(--shadow-2);
-}
+.bl__latest { position: absolute; right: var(--sp-4); bottom: var(--sp-4); box-shadow: var(--elev-floating); }
 
 /* ---------------------------------------------------------------- 弹层 */
 .overlay {
@@ -739,39 +613,6 @@
 .menu__item[data-highlighted] { background: var(--paper-2); outline: none; }
 .menu__item--danger { color: var(--alert); }
 
-.confirm {
-  position: fixed;
-  z-index: calc(var(--z-dialog) + 1);
-  left: 50%;
-  top: 50%;
-  width: min(480px, calc(100vw - 32px));
-  transform: translate(-50%, -50%);
-  outline: none;
-}
-.confirm__panel {
-  display: block;
-  padding: var(--sp-6);
-  background: var(--sheet);
-  box-shadow: var(--shadow-2);
-  animation: confirm-in var(--dur-panel) var(--ease-out) both;
-}
-@keyframes confirm-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.96); }
-}
-.confirm__title { font-family: var(--font-voice); font-size: var(--fs-h2); letter-spacing: var(--ls-voice); }
-.confirm__body {
-  margin-top: var(--sp-3);
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  color: var(--ink-soft);
-}
-.confirm__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--sp-3);
-  margin-top: var(--sp-5);
-}
-
 /* 手机：往回翻 = 底部抽屉 */
 .sheet {
   position: fixed;
@@ -812,6 +653,7 @@
   .room { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: 0; gap: 0; }
   .room__main { border-radius: 0; }
   .room__main::after { display: none; }
+  .scene::before { display: none; }
   .room__aside { display: none; }
 
   .mbar {
@@ -821,13 +663,9 @@
     gap: var(--sp-3);
     flex: none;
     height: 56px;
-    padding: 0 var(--sp-4);
+    padding: 0 var(--sp-2) 0 var(--sp-4);
   }
-  .mbar__name {
-    font-family: var(--font-voice);
-    font-size: var(--fs-diary);
-    letter-spacing: var(--ls-voice);
-  }
+  .mbar__name { font-family: var(--font-voice); font-size: var(--text-lg); letter-spacing: var(--ls-voice); }
 
   /* 舞台吃掉剩余高度：34–42dvh 之间伸缩，回信条永远在 tabbar 之上。
      手机舞台只是一条窄带，同一条构图规则把角色放到舞台的 90%（桌面 60%），
@@ -847,52 +685,35 @@
     pointer-events: auto;
   }
   .dlg { width: 100%; }
-  .dlg__sheet {
-    min-height: 88px;
-    max-height: min(260px, 34vh);
-    padding: 16px 20px 20px;
-  }
+  .dlg__sheet { max-height: min(260px, 34vh); padding: var(--sp-3) var(--sp-4); }
   .nametab { margin-left: var(--sp-2); }
   .dlg__float { right: var(--sp-2); bottom: calc(100% + var(--sp-2)); max-width: 88%; }
   .composer__hint { display: none; }
-  .composer__send { min-width: 88px; height: max(52px, var(--hit)); }
-  .composer__voice-mode,
-  .composer__text-mode,
-  .composer__cancel,
-  .composer__voice-action,
-  .composer__voice-retry { min-height: max(52px, var(--hit)); height: max(52px, var(--hit)); }
-  .composer__voice-state { height: max(52px, var(--hit)); }
-  .composer__input { min-height: max(var(--field-h), var(--hit)); }
   .suggests { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: var(--sp-1); }
   .suggests::-webkit-scrollbar { display: none; }
-  .suggest { flex: none; }
-  .bl { border: 0; border-radius: 0; }
+  .suggests .ui-btn { flex: none; }
+  .bl { box-shadow: none; border-radius: 0; }
 }
 
-/* 名字牌放不下时邮戳换到下一行 */
+/* 名字牌放不下时「AI 角色」换到下一行 */
 @media (max-width: 420px) {
   .nametab { padding: var(--sp-1) var(--sp-3); row-gap: var(--sp-1); }
-  .nametab::after { display: none; }
-  .nametab__name { font-size: var(--fs-body); }
+  .nametab__name { font-size: var(--text-md); }
 }
 
 @media (max-width: 380px) {
-  .composer__bar { gap: var(--sp-1); }
+  .composer__bar,
   .composer__actions { gap: var(--sp-1); }
-  .composer__voice-mode { padding: 0 var(--sp-2); }
   .composer__voice-label { display: none; }
   .composer__voice-label-short { display: inline; }
-  .composer__text-mode { min-width: 56px; }
-  .composer__cancel { min-width: 56px; padding: 0 var(--sp-2); }
-  .composer__send { min-width: 76px; gap: var(--sp-1); }
   .composer__voice-state { padding: 0 var(--sp-1); gap: var(--sp-1); }
 }
 
 /* ---------------------------------------------------------------- 键盘弹起 */
-html[data-kb="on"] .app { height: var(--vvh, 100dvh); transition: height var(--dur-panel) var(--ease-out); }
+html[data-kb="on"] .app { height: var(--vvh, 100dvh); }
 html[data-kb="on"] .nav { display: none; }
 html[data-kb="on"] .room { height: var(--vvh, 100dvh); }
-html[data-kb="on"] .scene { height: 56px; transition: height var(--dur-panel) var(--ease-out); }
+html[data-kb="on"] .scene { height: 56px; }
 html[data-kb="on"] .scene__figure { inset: 0; }
 html[data-kb="on"] .scene__wait,
 html[data-kb="on"] .scene__status,
@@ -903,17 +724,14 @@ html[data-kb="on"] .dlg__sheet { max-height: 40dvh; }
 html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
 
 /* ---------------------------------------------------------------- 老人模式 */
-:root[data-elder="on"] .slip { --slip-rot: 0deg; }
 :root[data-elder="on"] .bl__time { opacity: 1; }
 :root[data-elder="on"] .nametab { min-height: 44px; }
-:root[data-elder="on"] .scene__tip { transform: none; }
 
 /* ---------------------------------------------------------------- 安静 / 减少动态 */
 :root[data-motion="calm"] .ink-in,
 :root[data-motion="calm"] .think__fade,
 :root[data-motion="calm"] .pop,
 :root[data-motion="calm"] .menu,
-:root[data-motion="calm"] .confirm__panel,
 :root[data-motion="calm"] .sheet,
 :root[data-motion="calm"] .overlay {
   animation: chat-fade var(--dur-ink) var(--ease-out) both;
@@ -925,24 +743,10 @@ html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
   .think__fade,
   .pop,
   .menu,
-  .confirm__panel,
   .sheet,
   .overlay {
     animation: chat-fade var(--dur-ink) var(--ease-out) both;
   }
   .ink-in { transform: none; }
   .composer__voice-state[data-recording] .composer__voice-wave i { animation: none; }
-  html[data-kb="on"] .app,
-  html[data-kb="on"] .scene { transition: none; }
 }
-
-/* 手机顶栏的「往回翻」：44 高，不抢眼 */
-.mbar__backlog {
-  min-height: var(--hit);
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-sm);
-  color: var(--accent);
-  font-family: var(--font-ui);
-  font-size: var(--fs-small);
-}
-.mbar__backlog:hover { background: var(--paper-2); }

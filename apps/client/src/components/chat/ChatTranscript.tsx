@@ -97,7 +97,6 @@ export function ChatTranscript({
         text={text}
         chunks={chunks}
         merged={merged}
-        stamp={firstEntry}
         progress={progress}
         onRetry={onRetryHealth}
         onRetryFailed={onRetryFailed}
@@ -119,7 +118,6 @@ export function ChatTranscript({
                 id={pending.key}
                 text={pending.text}
                 float
-                tape
                 status={pending.status === "failed" ? "failed" : "sending"}
                 onRetry={onRetrySend}
                 onDiscard={onDiscardSend}

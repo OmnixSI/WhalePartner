@@ -113,8 +113,6 @@
   z-index: var(--z-bg);
 }
 .tide--stage { height: 28%; }
-/* 聊天页把浪挂在 .scene__sea 里（锚在对话框上沿），高度由那一层给 */
-.scene__sea .tide { height: 100%; }
 /* 其他页的「潮线」：只占内容的最后 72px，页面要留 padding-bottom: 96px 才不会压住字 */
 .tide--sill { height: 72px; }
 /* 调用方没有给它一个定位容器时（position: static），自动退化成文档流里的一块，

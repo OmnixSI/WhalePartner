@@ -374,7 +374,7 @@ try {
     };
     return {
       input: bounds(".composer__input"),
-      video: bounds(".iconbtn[aria-label='发个视频给她']"),
+      video: bounds("button[aria-label='发个视频给她']"),
       voice: bounds(".composer__voice-mode"),
       send: bounds(".composer__send"),
       bar: { right: element.getBoundingClientRect().right },

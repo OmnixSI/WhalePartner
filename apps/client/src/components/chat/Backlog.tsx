@@ -8,7 +8,7 @@
 import { DropdownMenu } from "radix-ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
-import { InkLine } from "../ink";
+import { Button, IconButton } from "../ui/Button";
 import { Icon } from "../../icons";
 import { CharacterMark } from "../CharacterMark";
 import { Slip } from "./Slip";
@@ -108,7 +108,6 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
     if (row.kind === "day") {
       return (
         <div className="bl__day">
-          <InkLine id={`bl-day-${row.key}`} size={2.4} />
           <span className="bl__dayText">{row.label}</span>
         </div>
       );
@@ -153,9 +152,7 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
         <div className="bl__tools">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <button type="button" className="iconbtn iconbtn--small" aria-label="更多">
-                <Icon name="more" size={20} />
-              </button>
+              <IconButton label="更多"><Icon name="more" size={20} /></IconButton>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content className="menu" side="bottom" align="end" sideOffset={6} collisionPadding={12}>
@@ -166,9 +163,7 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
           {onClose && (
-            <button type="button" className="btn btn--quiet bl__close" onClick={onClose}>
-              收起
-            </button>
+            <Button variant="ghost" onClick={onClose}>收起</Button>
           )}
         </div>
       </header>
@@ -192,13 +187,12 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
       </div>
 
       {!atBottom && rows.length > 0 && (
-        <button
-          type="button"
-          className="btn btn--quiet bl__latest"
+        <Button
+          className="bl__latest"
           onClick={() => list.current?.scrollToIndex({ index: "LAST", behavior: "smooth" })}
         >
           {unseen > 0 ? "有新消息" : "回到最新"}
-        </button>
+        </Button>
       )}
     </section>
   );
