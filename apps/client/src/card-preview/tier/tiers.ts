@@ -68,7 +68,7 @@ export function upgradeSteps(from: number, to: number, calm = false): UpgradeSte
   const total = steps.reduce((n, s) => n + s.ms, 0);
   if (total > UPGRADE_CHAIN_MAX_MS) {
     const k = UPGRADE_CHAIN_MAX_MS / total;
-    for (const s of steps) s.ms = Math.round(s.ms * k);
+    for (const s of steps) s.ms = Math.floor(s.ms * k); // 向下取整，合计不会超过上限
   }
   return steps;
 }

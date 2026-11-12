@@ -28,8 +28,15 @@
  *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
  *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
  *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
- *  17  好感度卡升级（/__kit/cards）：完整动效 4→5 按时播完、中途能跳过；减少动态时连升 1→5 只淡入并按时播完
- *  （--shots 再加一项：截图）
+ *  好感度卡（/__kit/cards）：
+ *  17  完整动效 1→5 逐档快进且 ≤3 秒、4→5 按时播完、中途能跳过；StrictMode 下每轮结束回调正好 1 次
+ *  18  跳过与到点的定时器同一拍：卡不复活、回调不多一次
+ *  19  安静模式开关与系统减少动态：只淡入、按时播完
+ *  20  缩略卡给了 upgradeFrom 也不播、不出提示和跳过、不回调
+ *  21  播放中清空 upgradeFrom / 卸载卡片：这一轮作废，到点也不回调
+ *  22  名字牌和档位点对读屏隐藏，主卡、缩略卡的 ariaSnapshot 只有卡根的 aria-label
+ *  23  触屏横向拖动倾斜，松手复位
+ *  （默认共 23 项；--shots 再加一项截图，共 24 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -632,6 +639,49 @@ async function checkCardUpgrade(browser) {
     if (n !== 0) fails.push(`缩略卡调了 ${n} 次 onUpgradeEnd`);
     await context.close();
     record("好感度卡：缩略卡不播升级", fails.length === 0, fails.length ? fails.join("；") : "无动画、无跳过、无回调");
+  }
+
+  // ⑥ 播放中打断：清空 upgradeFrom 或卸载卡片，这一轮作废，到点也不回调
+  {
+    const fails = [];
+    const notes = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: true });
+    await visit(page, "/__kit/cards");
+    const stage = page.locator(".cardkit__stage .acard");
+    for (const [label, action] of [["清空 upgradeFrom", "清空 upgradeFrom"], ["卸载", "卸载卡片"]]) {
+      const before = await ends(page);
+      await play(page, "连升 1→5");
+      await page.waitForTimeout(250);
+      if (!(await stage.getAttribute("data-upgrading"))) fails.push(`${label}前 1→5 没开始播`);
+      await page.getByRole("button", { name: action, exact: true }).click();
+      await page.waitForTimeout(50);
+      if (label !== "卸载" && (await stage.getAttribute("data-upgrading"))) fails.push(`${label}后还在播 Lv.${await stage.getAttribute("data-upgrading")}`);
+      await page.waitForTimeout(3000 + 600);
+      const n = (await ends(page)) - before;
+      if (n !== 0) fails.push(`${label}后旧一轮又回调了 ${n} 次（${await lastText(page)}）`);
+      else notes.push(`${label}：停播、0 次回调`);
+      if (label === "卸载") await page.getByRole("button", { name: "挂回卡片", exact: true }).click();
+    }
+    await context.close();
+    record("好感度卡升级：播放中清空 upgradeFrom / 卸载不回调", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+  }
+
+  // ⑦ 读屏只念卡根的 aria-label：名字牌和档位点对读屏隐藏（主卡、缩略卡都查）
+  {
+    const fails = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900, theme: "light", motion: true });
+    await visit(page, "/__kit/cards");
+    const cards = [["主卡", page.getByTestId("card-tiers").locator(".acard").nth(2)], ["缩略卡", page.getByTestId("card-thumbs").locator(".acard").nth(2)]];
+    let snap = "";
+    for (const [label, card] of cards) {
+      snap = await card.ariaSnapshot();
+      const lines = snap.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (!/^- group "鲸汐的好感度卡，Lv\.3 默契，潮光卡面"/.test(lines[0] ?? "")) fails.push(`${label}根节点是 ${lines[0]}`);
+      const extra = lines.slice(1).filter((l) => l !== "- status");
+      if (extra.length) fails.push(`${label}卡内还会念：${extra.join(" / ")}`);
+    }
+    await context.close();
+    record("好感度卡：名字牌不重复念（ariaSnapshot）", fails.length === 0, fails.length ? fails.join("；") : `主卡、缩略卡都只念卡根：${snap.split("\n")[0].trim()}`);
   }
 
   // ⑤ 触屏横向拖动能倾斜，松手复位（390 宽，真实触摸序列）

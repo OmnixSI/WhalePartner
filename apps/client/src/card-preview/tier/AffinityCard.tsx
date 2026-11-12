@@ -142,6 +142,13 @@ export function AffinityCard({ character, level, upgradeFrom, onUpgradeEnd, art,
     clearTimer();
     runRef.current = next;
     setRun(next);
+    // 播放中 upgradeFrom / level 变了（清空、改成 ≥ level 或换一轮）或卸载：这一轮作废，不回调
+    return () => {
+      if (runRef.current?.steps !== steps) return;
+      runRef.current = null;
+      clearTimer();
+      setRun(null);
+    };
   }, [animated, upgradeFrom, target]);
 
   useEffect(() => {
@@ -214,7 +221,7 @@ export function AffinityCard({ character, level, upgradeFrom, onUpgradeEnd, art,
         <div className="acard__pips" aria-hidden="true">
           {Array.from({ length: 5 }, (_, i) => <span key={i} data-on={i < tier.level ? "true" : "false"} />)}
         </div>
-        <div className="acard__plate">
+        <div className="acard__plate" aria-hidden="true">
           <span className="acard__name">{displayName}</span>
           <span className="acard__tier">Lv.{tier.level} {tier.label}</span>
         </div>

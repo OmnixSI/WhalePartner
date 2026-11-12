@@ -43,6 +43,7 @@ export default function CardKitPage() {
   const [stage, setStage] = useState<{ level: CardLevel; from?: CardLevel }>({ level: 2 });
   const [last, setLast] = useState("还没播过");
   const [ends, setEnds] = useState(0);
+  const [mounted, setMounted] = useState(true);
   const [thumbFrom, setThumbFrom] = useState<CardLevel | undefined>();
   const [thumbEnds, setThumbEnds] = useState(0);
 
@@ -86,9 +87,9 @@ export default function CardKitPage() {
         </div>
       </Section>
 
-      <Section id="upgrade" title="升级动画" note="每一步都有自己的动画，点卡面或「跳过」立即落到新卡面。连升时逐档快进，整段不超过 3 秒。安静模式下只淡入新卡面，并显示「升到 Lv.N」。">
+      <Section id="upgrade" title="升级动画" note="每一步都有自己的动画，点卡面或「跳过」立即落到新卡面。连升时逐档快进，整段不超过 3 秒。安静模式下只淡入新卡面，并显示「升到 Lv.N」。播放中清空 upgradeFrom 或卸载卡片，这一轮作废，不调结束回调。">
         <div className="cardkit__stage">
-          <AffinityCard character={character} level={stage.level} upgradeFrom={stage.from} onUpgradeEnd={ended} />
+          {mounted && <AffinityCard character={character} level={stage.level} upgradeFrom={stage.from} onUpgradeEnd={ended} />}
           <div className="cardkit__controls">
             <div className="uikit__group" role="group" aria-label="播放升级动画">
               {UPGRADES.map(([from, to]) => (
@@ -96,6 +97,12 @@ export default function CardKitPage() {
                   {to - from > 1 ? `连升 ${from}→${to}` : `${from}→${to}`}
                 </Button>
               ))}
+            </div>
+            <div className="uikit__group" role="group" aria-label="播放中打断">
+              <Button variant="ghost" onClick={() => setStage((s) => ({ level: s.level }))}>清空 upgradeFrom</Button>
+              <Button variant="ghost" onClick={() => { setMounted((m) => !m); setStage((s) => ({ level: s.level })); }}>
+                {mounted ? "卸载卡片" : "挂回卡片"}
+              </Button>
             </div>
             <p className="uikit__note" id="cardkit-last" data-ends={ends}>上一次：{last} · 结束回调共 {ends} 次</p>
           </div>

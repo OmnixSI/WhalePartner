@@ -60,3 +60,16 @@ test("card tiers match the backend relationship stages end to end", async () => 
   );
   assert.deepEqual(RELATIONSHIP_STAGES.at(-1), { level: 5, threshold: 500, label: "相依", effect: "镀闪卡面" });
 });
+
+test("every from<to chain stays within the chain budget, full and calm", () => {
+  for (const calm of [false, true]) {
+    for (let from = 1; from <= 5; from += 1) {
+      for (let to = from + 1; to <= 5; to += 1) {
+        const steps = upgradeSteps(from, to, calm);
+        assert.equal(steps.length, to - from, `${from}→${to}`);
+        const total = steps.reduce((n, s) => n + s.ms, 0);
+        assert.ok(total <= UPGRADE_CHAIN_MAX_MS, `${from}→${to}${calm ? " calm" : ""} total ${total}`);
+      }
+    }
+  }
+});
