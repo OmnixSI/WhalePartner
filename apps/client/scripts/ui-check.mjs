@@ -37,6 +37,10 @@
  *  22  名字牌和档位点对读屏隐藏，主卡、缩略卡的 ariaSnapshot 只有卡根的 aria-label
  *  23  触屏横向拖动倾斜，松手复位
  *  24  设置页：存了 Codex 模型后顶部概览同步；点目录后亮的就是刚点的那项（桌面、手机 380 × 字号 2 倍）
+ *  好感度卡接真实等级（#160）：
+ *  25  卡面代码不进首屏（首屏 JS / CSS 里没有 acard），首屏 gzip 在 #160 的上限内
+ *  26  用假接口把好感度从 Lv3 改成 Lv4 并刷新：卡面正好播一次 3→4，播完记成 4；再开、刷新页面都不重播；
+ *      换角色互不影响（各记各的，一位升档不动另一位的记录）；首次、清掉存储不播；读取失败有重试，重试后不播
  *  （--shots 再加一项：截图）
  *
  * 退出码：0 全绿；1 有失败。
@@ -47,7 +51,7 @@ import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { launchChrome } from "./browser.mjs";
-import { stubApi } from "./ui-fixtures.mjs";
+import { DEFAULT_LEVELS, stubApi } from "./ui-fixtures.mjs";
 import { firstScreen, kb, readBudget } from "./perf-budget.mjs";
 import { instrumentTimers, runningAnimations } from "./perf-idle.mjs";
 import { contrastRows, isCardStyleException, scanBannedUsage, stripComments } from "./contrast-check.mjs";
@@ -61,6 +65,7 @@ const SHOTS = join(CLIENT, "test-results", "ui-check");
 const argv = process.argv.slice(2);
 const STATIC_ONLY = argv.includes("--static");
 const WITH_SHOTS = argv.includes("--shots");
+const ONLY = argv.find((a) => a.startsWith("--only="))?.slice(7);
 const BASE = (argv.find((a) => a.startsWith("--base="))?.slice(7) || process.env.WP_BASE || "http://127.0.0.1:1420").replace(/\/$/, "");
 const PORT = new URL(BASE).port || "1420";
 const DIST_ARG = argv.find((a) => a.startsWith("--dist="))?.slice(7);
@@ -254,6 +259,9 @@ function buildDist() {
   });
 }
 
+/** #160 的首屏上限（gzip 字节）：卡面接入前后首屏都不许超过它。 */
+const CARD_LIVE_CAP = { js: 284_826, css: 45_363 };
+
 async function checkFirstScreen() {
   try {
     const dist = await buildDist();
@@ -263,8 +271,17 @@ async function checkFirstScreen() {
     if (r.js.gzip > cap.js) over.push(`JS ${kb(r.js.gzip)} > ${kb(cap.js)}`);
     if (r.css.gzip > cap.css) over.push(`CSS ${kb(r.css.gzip)} > ${kb(cap.css)}`);
     const pct = (a, b) => `${a <= b ? "−" : "+"}${Math.abs((1 - a / b) * 100).toFixed(1)}%`;
-    return record(`首屏 gzip ≤ ${BUDGET.baseline}`, over.length === 0,
+    const first = record(`首屏 gzip ≤ ${BUDGET.baseline}`, over.length === 0,
       over.length ? over.join("；") : `JS ${kb(r.js.gzip)}（${pct(r.js.gzip, cap.js)}）  CSS ${kb(r.css.gzip)}（${pct(r.css.gzip, cap.css)}）`);
+    // #160：卡面（LazyAffinityCard）按需加载，首屏的 JS / CSS 里不能出现它的类名；体积也不能越过接入前的上限
+    const leaked = [...r.js.files, ...r.css.files].filter((f) => /acard/.test(readFileSync(join(dist, f.url), "utf8"))).map((f) => f.url);
+    const live = [];
+    if (r.js.gzip > CARD_LIVE_CAP.js) live.push(`JS ${r.js.gzip} B > ${CARD_LIVE_CAP.js} B`);
+    if (r.css.gzip > CARD_LIVE_CAP.css) live.push(`CSS ${r.css.gzip} B > ${CARD_LIVE_CAP.css} B`);
+    if (leaked.length) live.push(`首屏文件里有卡面代码：${leaked.join("、")}`);
+    record("好感度卡不进首屏 / 首屏 gzip 在 #160 上限内", live.length === 0,
+      live.length ? live.join("；") : `首屏文件无 acard；JS ${r.js.gzip} B ≤ ${CARD_LIVE_CAP.js}，CSS ${r.css.gzip} B ≤ ${CARD_LIVE_CAP.css}`);
+    return first;
   } catch (error) {
     return record(`首屏 gzip ≤ ${BUDGET.baseline}`, false, String(error?.message ?? error));
   }
@@ -312,10 +329,10 @@ async function loadPlaywright() {
   return { chromium, AxeBuilder };
 }
 
-async function openPage(browser, { width, height, elder = false, theme = null, character = null, motion = false, touch = false }) {
+async function openPage(browser, { width, height, elder = false, theme = null, character = null, motion = false, touch = false, levels = DEFAULT_LEVELS }) {
   const context = await browser.newContext({ viewport: { width, height }, reducedMotion: motion ? "no-preference" : "reduce", deviceScaleFactor: 1, ...(touch ? { hasTouch: true, isMobile: true } : {}) });
   const page = await context.newPage();
-  await stubApi(page);
+  await stubApi(page, levels);
   // 引导是一次性全屏：截图与测量都要先标记「看过」，否则四页拍到的都是引导页
   await page.addInitScript(({ elder, theme, character }) => {
     localStorage.setItem("wp.onboarded", "1");
@@ -782,6 +799,150 @@ async function checkSettingsInteractions(browser) {
 }
 
 
+/** 25. 好感度卡接真实等级（#160）：假接口把 Lv3 改成 Lv4 并刷新，卡面播一次 3→4；再开、刷新页面都不重播；换角色互不影响。 */
+async function checkCardLive(browser) {
+  const fails = [];
+  const notes = [];
+  const levels = { ...DEFAULT_LEVELS, whale: 3, deepseek: 2, claude: 1, chatgpt: 5 };
+  const errors = [];
+  const { context, page } = await openPage(browser, { width: 1440, height: 900, motion: true, levels, character: "whale" });
+  page.on("pageerror", (e) => errors.push(String(e.message ?? e)));
+  // 记下主卡每次「开始升级」（data-upgrading 从无到有）和升到的档位，刷新页面后重新计数
+  await page.addInitScript(() => {
+    window.__ups = [];
+    new MutationObserver((records) => {
+      for (const r of records) {
+        const el = r.target;
+        if (el.matches?.('.set-card .acard[data-size="md"]') && el.hasAttribute("data-upgrading") && r.oldValue === null) {
+          window.__ups.push({ to: el.getAttribute("data-upgrading"), ghost: el.querySelector(".acard__skin--ghost")?.getAttribute("data-level") ?? null });
+        }
+      }
+    }).observe(document, { subtree: true, attributes: true, attributeFilter: ["data-upgrading"], attributeOldValue: true });
+  });
+
+  const seen = (id) => page.evaluate((k) => localStorage.getItem(`wp.cardSeenLevel.${k}`), id);
+  const ups = () => page.evaluate(() => window.__ups);
+  const card = '.set-card .acard[data-size="md"]';
+  const openDialog = async () => {
+    await page.locator(".set-her__swap").click();
+    await page.locator(card).waitFor({ timeout: 8000 });
+  };
+  const closeDialog = async () => {
+    await page.keyboard.press("Escape");
+    await page.locator(".set-dialog--chars").waitFor({ state: "detached", timeout: 4000 });
+  };
+  const idle = async () => {
+    for (let i = 0; i < 40; i += 1) {
+      if (!(await page.locator(`${card}[data-upgrading]`).count())) return true;
+      await page.waitForTimeout(150);
+    }
+    return false;
+  };
+  const shownLevel = () => page.locator(card).getAttribute("data-level");
+
+  await visit(page, "/settings");
+
+  // 1) 首次（没有记录）：显示当前等级，不播，直接记成 3；缩略卡各显示自己的等级
+  await openDialog();
+  await page.waitForTimeout(700);
+  if ((await shownLevel()) !== "3") fails.push(`首次打开应显示 Lv3，实际 ${await shownLevel()}`);
+  if ((await ups()).length) fails.push(`首次安装不该播，却播了 ${JSON.stringify(await ups())}`);
+  if ((await seen("whale")) !== "3") fails.push(`首次应记下 whale=3，实际 ${await seen("whale")}`);
+  const thumbs = await page.locator('.set-char__thumb .acard[data-size="sm"]').evaluateAll((els) => els.map((e) => `${e.getAttribute("data-character")}:${e.getAttribute("data-level")}`));
+  const want = ["deepseek:2", "claude:1", "chatgpt:5", "whale:3"]; // 列表顺序就是 CHARACTERS 的顺序
+  if (thumbs.join() !== want.join()) fails.push(`缩略卡等级 ${thumbs.join(" ")}，应为 ${want.join(" ")}`);
+  if (await page.locator('.set-char__thumb .acard__skip, .set-char__thumb [data-upgrading]').count()) fails.push("缩略卡出现了跳过按钮或升级状态");
+  notes.push(`首次 Lv3 不播、记 3；缩略卡 ${thumbs.join(" ")}`);
+
+  // 2) 后端升到 Lv4，关掉再打开（打开时刷新）：正好播一次 3→4，播完记成 4
+  await closeDialog();
+  levels.whale = 4;
+  await openDialog();
+  await page.locator(`${card}[data-upgrading="4"]`).waitFor({ timeout: 4000 }).catch(() => { fails.push("升到 Lv4 后卡面没有开始 3→4 的升级动画"); });
+  const during = await page.locator(card).evaluate((el) => ({ ghost: el.querySelector(".acard__skin--ghost")?.getAttribute("data-level") ?? null })).catch(() => ({ ghost: null }));
+  if (during.ghost !== "3") fails.push(`升级动画的旧卡面应是 Lv3，实际 ${during.ghost}`);
+  if (!(await idle())) fails.push("升级动画 6 秒没播完");
+  await page.waitForTimeout(300);
+  let log = await ups();
+  if (log.length !== 1 || log[0].to !== "4") fails.push(`3→4 应正好播一次，实际 ${JSON.stringify(log)}`);
+  if ((await shownLevel()) !== "4") fails.push(`播完应落在 Lv4，实际 ${await shownLevel()}`);
+  if ((await seen("whale")) !== "4") fails.push(`播完应记下 whale=4，实际 ${await seen("whale")}`);
+  notes.push("3→4 播 1 次，记 4");
+
+  // 3) 同一次升档不重播：再关再开；刷新页面后再开
+  await closeDialog();
+  await openDialog();
+  await page.waitForTimeout(900);
+  log = await ups();
+  if (log.length !== 1) fails.push(`关掉再开不该重播，累计 ${log.length} 次`);
+  await closeDialog();
+  await page.reload({ waitUntil: "networkidle" });
+  await openDialog();
+  await page.waitForTimeout(900);
+  log = await ups();
+  if (log.length !== 0) fails.push(`刷新页面后不该重播，却播了 ${JSON.stringify(log)}`);
+  if ((await shownLevel()) !== "4") fails.push(`刷新后应显示 Lv4，实际 ${await shownLevel()}`);
+  notes.push("再开 / 刷新页面都不重播");
+
+  // 4) 换角色互不影响：大肥鱼第一次看（Lv2）不播，不动鲸汐的记录；它升到 Lv3 只播它自己，鲸汐的记录还是 4
+  await page.locator(".set-char", { hasText: "大肥鱼" }).click();
+  await page.waitForTimeout(900);
+  if ((await page.locator(card).getAttribute("data-character")) !== "deepseek") fails.push("点大肥鱼后主卡没有换成大肥鱼");
+  if ((await ups()).length) fails.push(`换到大肥鱼首次看到不该播，却播了 ${JSON.stringify(await ups())}`);
+  if ((await seen("deepseek")) !== "2") fails.push(`大肥鱼首次应记 2，实际 ${await seen("deepseek")}`);
+  if ((await seen("whale")) !== "4") fails.push(`鲸汐的记录被动了：${await seen("whale")}`);
+  await closeDialog();
+  levels.deepseek = 3;
+  await openDialog();
+  await page.locator(`${card}[data-upgrading="3"]`).waitFor({ timeout: 4000 }).catch(() => { fails.push("大肥鱼升到 Lv3 后没有播 2→3"); });
+  await idle();
+  await page.waitForTimeout(300);
+  log = await ups();
+  if (log.length !== 1 || log[0].to !== "3" || log[0].ghost !== "2") fails.push(`大肥鱼 2→3 应正好播一次，实际 ${JSON.stringify(log)}`);
+  if ((await seen("deepseek")) !== "3") fails.push(`大肥鱼播完应记 3，实际 ${await seen("deepseek")}`);
+  if ((await seen("whale")) !== "4") fails.push(`大肥鱼升档动了鲸汐的记录：${await seen("whale")}`);
+  await page.locator(".set-char", { hasText: "鲸汐" }).click();
+  await page.waitForTimeout(900);
+  log = await ups();
+  if (log.length !== 1) fails.push(`换回鲸汐不该再播，累计 ${log.length} 次`);
+  if ((await shownLevel()) !== "4") fails.push(`换回鲸汐应显示 Lv4，实际 ${await shownLevel()}`);
+  notes.push("换角色各记各的：大肥鱼 2→3 只播它自己，鲸汐仍是 4");
+
+  // 5) 清掉存储：当作首次，不播、记当前；读取失败：有重试，重试读到后不播
+  await closeDialog();
+  await page.evaluate(() => localStorage.removeItem("wp.cardSeenLevel.whale"));
+  await openDialog();
+  await page.waitForTimeout(700);
+  if ((await ups()).length !== 1) fails.push("清掉记录后打开不该播");
+  if ((await seen("whale")) !== "4") fails.push(`清掉记录后应重新记当前 4，实际 ${await seen("whale")}`);
+  await closeDialog();
+  await context.close();
+
+  const broken = await openPage(browser, { width: 1440, height: 900, motion: true, levels: { ...levels }, character: "whale" });
+  const bp = broken.page;
+  let down = true;
+  await bp.route(/\/api\/relationship/, async (route) => {
+    if (down) return route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+    return route.fallback();
+  });
+  bp.on("pageerror", (e) => errors.push(String(e.message ?? e)));
+  await visit(bp, "/settings");
+  await bp.locator(".set-her__swap").click();
+  const retry = bp.getByRole("button", { name: "重试读取好感度" });
+  await retry.waitFor({ timeout: 6000 }).catch(() => fails.push("好感度读取失败时没有重试入口"));
+  if (await bp.locator('.set-card .acard[data-size="md"]').count()) fails.push("读取失败时不该画出带等级的卡");
+  down = false;
+  await retry.click().catch(() => {});
+  await bp.locator('.set-card .acard[data-size="md"]').waitFor({ timeout: 6000 }).catch(() => fails.push("点重试后卡面没有出来"));
+  await bp.waitForTimeout(600);
+  if (await bp.locator('.set-card .acard[data-upgrading]').count()) fails.push("重试读到后不该播（首次）");
+  notes.push("清存储 / 读取失败 → 重试都不播、不报错");
+  await broken.context.close();
+
+  if (errors.length) fails.push(`页面报错：${errors.slice(0, 3).join(" | ")}`);
+  return record("好感度卡接真实等级：Lv3→4 播一次 / 刷新不重播 / 换角色互不影响", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
 async function shoot(browser) {
   mkdirSync(SHOTS, { recursive: true });
   const written = [];
@@ -841,6 +1002,43 @@ async function shoot(browser) {
     }
     await context.close();
   }
+  // 设置页「换一位」弹窗：亮 / 暗各一张终态，亮色再拍一张升级中的一帧和缩略卡列表
+  for (const theme of ["light", "dark"]) {
+    const levels = { ...DEFAULT_LEVELS, whale: 4, deepseek: 3, claude: 2, chatgpt: 5 };
+    const { context, page } = await openPage(browser, { width: 1280, height: 900, theme, motion: true, levels, character: "whale" });
+    await page.addInitScript(() => { if (!sessionStorage.__shot) { sessionStorage.__shot = "1"; localStorage.setItem("wp.cardSeenLevel.whale", "4"); } });
+    await visit(page, "/settings");
+    await page.locator(".set-her__swap").click();
+    const card = page.locator('.set-card .acard[data-size="md"]');
+    await card.waitFor({ timeout: 8000 });
+    await page.waitForTimeout(900);
+    const dialog = page.locator(".set-dialog--chars");
+    const file = join(SHOTS, `settings-card-${theme}.png`);
+    await dialog.screenshot({ path: file });
+    written.push(rel(file));
+    if (theme === "light") {
+      const thumbs = join(SHOTS, "settings-card-thumbs.png");
+      await page.locator(".set-char").first().locator("xpath=..").screenshot({ path: thumbs });
+      written.push(rel(thumbs));
+      await page.keyboard.press("Escape");
+      await page.locator(".set-dialog--chars").waitFor({ state: "detached", timeout: 4000 });
+      await page.evaluate(() => localStorage.setItem("wp.cardSeenLevel.whale", "3"));
+      await page.locator(".set-her__swap").click();
+      await card.waitFor({ timeout: 8000 });
+      await page.locator('.set-card .acard[data-upgrading]').waitFor({ timeout: 4000 });
+      await card.evaluate((el) => {
+        for (const a of el.getAnimations({ subtree: true })) {
+          const t = a.effect?.getComputedTiming();
+          a.pause();
+          if (t && Number.isFinite(t.duration)) a.currentTime = (t.delay || 0) + t.duration * 0.45;
+        }
+      });
+      const up = join(SHOTS, "settings-card-up.png");
+      await dialog.screenshot({ path: up });
+      written.push(rel(up));
+    }
+    await context.close();
+  }
   {
     const { context, page } = await openPage(browser, { width: 390, height: 844, theme: "light" });
     await visit(page, "/__kit/cards");
@@ -879,14 +1077,19 @@ if (STATIC_ONLY) {
     server = loaded.child;
     const { chromium, AxeBuilder } = await loadPlaywright();
     const browser = await launchChrome(chromium);
-    await checkTouch(browser);
-    await checkHorizontalScroll(browser);
-    await checkAxe(browser, AxeBuilder);
-    await checkIdleAndHidden(browser);
-    await checkLazyStyles(browser);
-    await checkCardUpgrade(browser);
-    await checkSettingsInteractions(browser);
-    if (WITH_SHOTS) {
+    if (ONLY === "card-live") {
+      await checkCardLive(browser);
+    } else {
+      await checkTouch(browser);
+      await checkHorizontalScroll(browser);
+      await checkAxe(browser, AxeBuilder);
+      await checkIdleAndHidden(browser);
+      await checkLazyStyles(browser);
+      await checkCardUpgrade(browser);
+      await checkSettingsInteractions(browser);
+      await checkCardLive(browser);
+    }
+    if (WITH_SHOTS && ONLY !== "card-live") {
       const written = await shoot(browser);
       record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层，好感度卡五档 / 角色 / 升级帧）`, true, `${rel(SHOTS)}/`);
     }

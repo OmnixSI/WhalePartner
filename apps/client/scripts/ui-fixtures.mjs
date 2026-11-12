@@ -46,7 +46,17 @@ export const FIXTURES = {
   },
 };
 
-export async function stubApi(page) {
+/** 好感度五档（跟后端 RELATIONSHIP_STAGES 一致）：等级 → 起点分数 / 档位名。 */
+const STAGES = [[0, "相识"], [25, "相熟"], [100, "默契"], [250, "亲近"], [500, "相依"]];
+export const DEFAULT_LEVELS = { whale: 3, deepseek: 2, claude: 1, chatgpt: 5 };
+/** GET /api/relationship?character=… 的返回体；levels 是 角色 → 等级 的表，页面里改了表就等于后端升档了。 */
+export function relationshipBody(level) {
+  const [points, label] = STAGES[level - 1];
+  const next = STAGES[level]?.[0] ?? null;
+  return { points, level, label, effect: label, nextThreshold: next, progress: next === null ? 100 : 0 };
+}
+
+export async function stubApi(page, levels = DEFAULT_LEVELS) {
   await page.route("**/api/**", async (route) => {
     const url = route.request().url();
     const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
@@ -55,6 +65,7 @@ export async function stubApi(page) {
     if (url.includes("/api/diary")) return json(FIXTURES.diary);
     if (url.includes("/api/memories")) return json(FIXTURES.memories);
     if (url.includes("/api/note")) return json({ note: { text: "今天在窗台上发现一只小螃蟹。", updatedAt: NOW } });
+    if (url.includes("/api/relationship")) return json(relationshipBody(levels[new URL(url).searchParams.get("character")] ?? 1));
     if (url.includes("/api/quota")) return json(FIXTURES.quota);
     if (url.includes("/api/profile")) return json({ nickname: "阿明" });
     // 设置页读这两项设置，缺了会整页白屏（0.3.4 起 ui-check 拍到的设置页一直是空白）

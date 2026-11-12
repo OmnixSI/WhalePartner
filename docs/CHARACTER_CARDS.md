@@ -110,3 +110,30 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
 - 「上次看过的等级」存在哪里由 #160 决定，组件不读写存储、不请求接口。
 
 `ui:check` 会打开 `/__kit/cards` 跑触控、横向滚动、axe、静置检查，另有五项卡面专项：1→5 按 2、3、4、5 逐档快进且 ≤3 秒，4→5 播完，跳过即停，StrictMode 下每轮结束回调正好 1 次；跳过和已到点的定时器在同一拍时卡不复活、回调不多一次；安静模式开关和系统减少动态都走淡入；缩略卡给了 `upgradeFrom` 也不播、不回调；390 宽触屏横向拖动能倾斜、松手复位。`--shots` 另拍 `cards-tiers-{light,dark}.png`、`cards-signatures.png`、`cards-up-{12,23,34,45}.png`（每段取 45% 处一帧）和 `cards-390.png` 到 `apps/client/test-results/ui-check/`。
+
+## 接入真实好感度（#160）
+
+设置页「换一位」弹窗里的卡面接上了真实等级（`useRelationship` / `/api/relationship`）：主卡显示当前等级，等级升高时自动播一次升级动画；备选角色用 `sm` 缩略卡，各显示自己的等级。
+
+### 位置（旧 → 新）
+
+| 位置 | 旧 | 新 |
+| --- | --- | --- |
+| 设置页「换一位」弹窗主卡 | `CardShowcase`（四档、只读） | `settings/AffinityShowcase`（`LazyAffinityCard` md + 右侧细节 + 大肥鱼 Lv3 起的 Live2D 立绘） |
+| 弹窗里的角色列表 | 贴纸缩略图 | `CharThumb`（`LazyAffinityCard` sm，右下角标当前等级） |
+| 等级数据 | `useRelationship` 只在打开时取一次 | 同一个 hook，加静默 `refresh()`，回到标签页（`visibilitychange`）和打开弹窗时各刷新一次 |
+
+`CardShowcase`、`character-cards.html`、`card-preview-check` 没动（旧预览页仍用 `CardShowcase`）。`HerOverview` 没动。
+
+### 「上次看到的等级」
+
+- 存储：localStorage，每个角色一条，键 `wp.cardSeenLevel.<角色 id>`，值是 1–5 的整数。读写和判断都在 `card-preview/tier/seen-level.ts`（纯函数，有单测）；组件本身仍不读写存储。
+- 没有记录（首次、清过存储、值不合法）：记下当前等级，不播。
+- 记录 < 当前：播 记录→当前，播完或点「跳过」后记成当前。动画播到一半关掉弹窗，下次打开会重播。
+- 记录 ≥ 当前（后端数据重置、等级变低）：只把记录对齐到当前，不播。
+- localStorage 不可用（隐私模式等）：退到内存里记，同一次打开页面内不会重播。
+- `upgradeFrom` 在渲染时就算出来，升级那一帧卡面直接从旧档开始，不会先闪一下新卡面。
+
+### 检查
+
+`ui:check` 第 25 项确认卡面不进首屏（首屏文件里没有 `acard`，gzip 在 #160 上限内：JS ≤ 284,826 B，CSS ≤ 45,363 B）；第 26 项用假接口跑：鲸汐 Lv3 首次打开不播 → 接口改成 Lv4 并触发刷新，播一次 3→4 → 再开、刷新页面都不重播 → 换到大肥鱼（2→3）只播它自己、鲸汐记录不动 → 清存储或读取失败后重试都不播。只跑这一项：`node scripts/ui-check.mjs --only=card-live`。`--shots` 另拍 `settings-card-{light,dark}.png`、`settings-card-up.png`（升级中一帧）、`settings-card-thumbs.png`。
