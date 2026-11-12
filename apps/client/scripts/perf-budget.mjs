@@ -5,8 +5,7 @@
  *
  *   node scripts/perf-budget.mjs [dist 目录]      打印首屏清单与合计（raw / gzip）
  *
- * ui-check 用 firstScreen() 和 perf-budget.json 里的 0.3.4 基线比较：任何一项（JS 或 CSS 的 gzip）
- * 超过基线就失败。基线数字来自 0.3.4 的构建（main@47518a3），见 docs/perf/ui-design-system.md。
+ * ui-check 用 firstScreen() 打印首屏 JS / CSS 的 gzip 体积，只做记录，不设上限。
  */
 import { readFileSync, existsSync } from "node:fs";
 import { gzipSync } from "node:zlib";

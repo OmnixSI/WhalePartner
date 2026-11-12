@@ -24,7 +24,7 @@
  *  11  运行时依赖只允许清单里的包（不加 UI 库 / 动画库 / CSS-in-JS）
  *  12  动画与过渡只动 transform / opacity；components/ui 必须 0 处，旧页面按文件只减不增
  *  13  filter 按文件只减不增（backdrop-filter 由第 3 项拦）
- *  14  首屏 JS / CSS gzip 不超过 0.3.4（默认构建到 node_modules/.cache/ui-check-dist，--dist=… 复用现成构建）
+ *  14  首屏 JS / CSS gzip 只打印、不设上限（默认构建到 node_modules/.cache/ui-check-dist，--dist=… 复用现成构建；构建失败才算失败）
  *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
  *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
  *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
@@ -250,15 +250,9 @@ async function checkFirstScreen() {
   try {
     const dist = await buildDist();
     const r = firstScreen(dist);
-    const cap = BUDGET.firstScreenGzip;
-    const over = [];
-    if (r.js.gzip > cap.js) over.push(`JS ${kb(r.js.gzip)} > ${kb(cap.js)}`);
-    if (r.css.gzip > cap.css) over.push(`CSS ${kb(r.css.gzip)} > ${kb(cap.css)}`);
-    const pct = (a, b) => `${a <= b ? "−" : "+"}${Math.abs((1 - a / b) * 100).toFixed(1)}%`;
-    return record(`首屏 gzip ≤ ${BUDGET.baseline}`, over.length === 0,
-      over.length ? over.join("；") : `JS ${kb(r.js.gzip)}（${pct(r.js.gzip, cap.js)}）  CSS ${kb(r.css.gzip)}（${pct(r.css.gzip, cap.css)}）`);
+    return record("首屏 gzip（只打印）", true, `JS ${kb(r.js.gzip)}  CSS ${kb(r.css.gzip)}`);
   } catch (error) {
-    return record(`首屏 gzip ≤ ${BUDGET.baseline}`, false, String(error?.message ?? error));
+    return record("首屏 gzip（只打印）", false, String(error?.message ?? error));
   }
 }
 

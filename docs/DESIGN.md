@@ -215,7 +215,7 @@ pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印�
 8. 运行时依赖在清单内
 9. 动画/过渡只动 transform·opacity（`components/ui` 0 处，旧页面只减不增）
 10. filter 只减不增
-11. 首屏 gzip ≤ 0.3.4
+11. 首屏 gzip（只打印，不设上限）
 12. 触控 ≥44（老人 ≥56）
 13. 横向滚动（380px 与 `--scale=2`）
 14. axe（wcag2a/2aa/21aa/22aa，critical+serious = 0）
@@ -227,12 +227,10 @@ pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印�
 
 ## 性能预算
 
-基线是 0.3.4（main@47518a3）。机器能判的写进 `scripts/perf-budget.json` 并由 ui:check 拦：
+基线是 0.3.4（main@47518a3）。机器能判的写进 `scripts/perf-budget.json` 并由 ui:check 拦。首屏 JS / CSS 体积不设上限，ui:check 第 11 项只打印 gzip 大小（`vite build` 后按 `index.html` 的入口与 modulepreload 计）：
 
 | 预算 | 上限 | 在哪拦 |
 |---|---|---|
-| 首屏 JS gzip | ≤ 444 000 B（0.3.4） | ui:check 第 11 项（`vite build` 后按 `index.html` 的入口与 modulepreload 计） |
-| 首屏 CSS gzip | ≤ 50 100 B（0.3.4） | 同上 |
 | 运行时依赖 | 只能是清单里的 17 个；加依赖要改清单并在 #151 说明 | 第 8 项 |
 | 非合成层动效 / filter | `components/ui` 为 0；旧文件按 `motionDebt` / `filterDebt` 存量只减不增 | 第 9、10 项 |
 | 常驻动画 | 静置 10 秒内、页面隐藏后，循环动画数为 0 | 第 15 项 |
