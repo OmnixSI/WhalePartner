@@ -6,7 +6,8 @@ export { Switch } from "./Switch";
 export { Tabs, TabPanel, type TabItem } from "./Tabs";
 export { Card, CardButton } from "./Card";
 export { Dialog, ConfirmDialog } from "./Dialog";
-export { Toaster, toast, ToastPreview, type ToastInput } from "./Toast";
+// 吐司：toast 在 ./toast-store（轻量队列），Toaster 只由 ToastHost 懒加载；这里不再 re-export 运行时代码，免得页面顺手把 Radix Toast 拉进首屏。
+export type { ToastInput } from "./toast-store";
 export { Tooltip, TooltipProvider } from "./Tooltip";
 export { ChevronDown, Check, Close, Spinner } from "./glyphs";
 export { cx } from "./cx";

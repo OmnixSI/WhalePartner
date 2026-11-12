@@ -4,7 +4,8 @@ import { CompanionCorner, setCompanionMood } from "../components/CompanionCorner
 import { PageHeader } from "../components/shell/PageHeader";
 import { useMediaQuery } from "../components/chat/useViewport";
 import { StatePanel } from "../components/pages/StatePanel";
-import { Button, Card, ConfirmDialog, toast } from "../components/ui";
+import { Button, Card, ConfirmDialog } from "../components/ui";
+import { toast } from "../components/ui/toast-store";
 import { FilterBar } from "../components/memory/FilterBar";
 import { MemoryRow } from "../components/memory/MemoryRow";
 import { MemoryDialog } from "../components/memory/MemoryDialog";
@@ -145,6 +146,10 @@ export function MemoryPage() {
       });
     } catch {
       // 失败：卡片弹回原位 + 错误便签（规范 §7.3.5 第 4 步）。
+      // 折叠定时器可能还没到点（便签在折叠动画里就被关掉）：先取消，免得它随后又把条目藏起来。
+      const folding = foldTimers.current.get(id);
+      if (folding) window.clearTimeout(folding);
+      foldTimers.current.delete(id);
       setGone((prev) => {
         const next = new Set(prev);
         next.delete(id);

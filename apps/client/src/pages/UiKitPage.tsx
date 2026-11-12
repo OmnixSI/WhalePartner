@@ -2,8 +2,10 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   Button, Card, CardButton, ConfirmDialog, Dialog, Field, IconButton, Input, Select, Switch, TabPanel, Tabs, Textarea,
-  ToastPreview, Tooltip, toast,
+  Tooltip,
 } from "../components/ui";
+import { ToastPreview } from "../components/ui/Toast";
+import { toast } from "../components/ui/toast-store";
 import { Icon } from "../icons";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
 import { applyA11y, readA11y } from "../lib/a11y";

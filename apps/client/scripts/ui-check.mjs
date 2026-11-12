@@ -625,6 +625,37 @@ async function checkMemoryRework(browser) {
     if (deletes.length) fails.push(`撤回后仍发了 DELETE：${deletes.join(",")}`);
     notes.push(`撤回后行回来、DELETE ${deletes.length}`);
 
+    // 1e. 折叠动画（240ms）没走完就关吐司，DELETE 立刻 500：错误提示出来，条目必须还在，不能被没取消的折叠定时器又藏起来
+    {
+      const fail500 = (route) => (route.request().method() === "DELETE" ? route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"boom"}' }) : route.fallback());
+      await page.route("**/api/memories/**", fail500);
+      deletes.length = 0;
+      const key = "你下班回家";
+      await openDetail(page, key);
+      await page.locator(".ui-dialog").getByRole("button", { name: "忘掉这条" }).click();
+      const closedAt = await page.evaluate(async () => {
+        const t0 = performance.now();
+        document.querySelector('[role="alertdialog"] button.ui-btn--danger')?.click();
+        let close = null;
+        while (!close && performance.now() - t0 < 1000) {
+          close = [...document.querySelectorAll(".ui-toast button")].find((b) => b.textContent.trim() === "关掉");
+          if (!close) await new Promise((r) => requestAnimationFrame(r));
+        }
+        close?.click();
+        return close ? Math.round(performance.now() - t0) : -1;
+      });
+      if (closedAt < 0) fails.push("1e 没找到吐司的「关掉」");
+      else if (closedAt >= 200) fails.push(`1e 关吐司用了 ${closedAt}ms，没赶在折叠结束前`);
+      await page.getByText("没能忘掉").first().waitFor({ timeout: 3000 }).catch(() => fails.push("1e 没出现「没能忘掉」"));
+      await sleep(page, 600);
+      const kept = await page.locator("[data-memory-card]", { hasText: key }).count();
+      if (!kept) fails.push("DELETE 失败后条目仍被藏着");
+      if (deletes.length !== 1) fails.push(`1e DELETE ${deletes.length} 次（应为 1）`);
+      notes.push(`折叠中关吐司 ${closedAt}ms、DELETE 失败后条目${kept ? "还在" : "不见了"}`);
+      await page.unroute("**/api/memories/**", fail500);
+      deletes.length = 0;
+    }
+
     // 1d. 切页：吐司随页面走，删除在切页时结算，不留着一个失效的「撤回」
     await forgetFromDetail(page, "你不太喜欢在晚上做决定");
     await page.locator('a[href="/surf"]').first().click();
