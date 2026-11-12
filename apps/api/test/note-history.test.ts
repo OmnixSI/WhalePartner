@@ -42,6 +42,36 @@ test("upgrading imports the existing note as the first history version, once", (
   }
 });
 
+test("a failed backfill rolls the history table back so the next open migrates again", () => {
+  const directory = mkdtempSync(join(tmpdir(), "whalepartner-note-"));
+  const path = join(directory, "chat.db");
+  // 旧表的 text 允许空值，导入时撞上历史表的 NOT NULL，模拟回填中途失败。
+  const oldDb = new DatabaseSync(path);
+  oldDb.exec(`
+    CREATE TABLE character_notes (
+      character TEXT PRIMARY KEY, text TEXT,
+      assistant_count INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL
+    );
+    INSERT INTO character_notes VALUES ('deepseek', '旧人格的小记', 12, '2026-11-06T13:43:43.966Z');
+    INSERT INTO character_notes VALUES ('shared', NULL, 123, '2026-11-12T02:14:12.821Z');
+  `);
+  oldDb.close();
+  try {
+    assert.throws(() => new ChatStore(path), /NOT NULL/);
+    const check = new DatabaseSync(path);
+    const table = check.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'character_note_history'").get();
+    assert.equal(table, undefined, "回填失败时历史表应一起回滚");
+    check.exec("UPDATE character_notes SET text = '升级前的当前小记' WHERE character = 'shared'");
+    check.close();
+
+    const store = new ChatStore(path);
+    assert.deepEqual(store.listNoteHistory().map((note) => note.text), ["升级前的当前小记", "旧人格的小记"]);
+    store.close();
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("setNote keeps one current note and appends every version to history", () => {
   const store = new ChatStore(":memory:");
   store.setNote("whale", "第一版近况", 12);

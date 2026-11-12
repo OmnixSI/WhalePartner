@@ -267,21 +267,30 @@ function migrateMessages(db: DatabaseSync) {
 /**
  * 近况小记的历史版本：character_notes 仍只存当前一版（提示词和顶部便签读它），
  * 每次写入另在这里追加一行。第一次建表时把已有的小记当作最早的历史导入，升级后分区里马上能看到。
+ * 判断、建表和导入在同一个事务里：导入失败就整体回滚，下次打开会重新迁移，不会留下一张空表。
  */
 function migrateNoteHistory(db: DatabaseSync) {
-  const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'character_note_history'").get();
-  if (exists) return;
-  db.exec(`
-    CREATE TABLE character_note_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      text TEXT NOT NULL,
-      assistant_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-    );
-    INSERT INTO character_note_history (text, assistant_count, created_at)
-    SELECT text, assistant_count, updated_at FROM character_notes
-    ORDER BY CASE WHEN character = 'shared' THEN 1 ELSE 0 END, updated_at, character;
-  `);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'character_note_history'").get();
+    if (!exists) {
+      db.exec(`
+        CREATE TABLE character_note_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          text TEXT NOT NULL,
+          assistant_count INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+        );
+        INSERT INTO character_note_history (text, assistant_count, created_at)
+        SELECT text, assistant_count, updated_at FROM character_notes
+        ORDER BY CASE WHEN character = 'shared' THEN 1 ELSE 0 END, updated_at, character;
+      `);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function migrateSessions(db: DatabaseSync) {

@@ -167,3 +167,28 @@ test("delete-all removes every kind of user data but keeps settings", async () =
     close();
   }
 });
+
+test("export includes the current note, every note version and session observations", async () => {
+  const { base, close, store } = await serve();
+  try {
+    const session = store.getOrCreateSession("whale");
+    const first = store.add("user", "周末想去海边", null, "whale", session.id);
+    const last = store.add("assistant", "好呀，带上那块海玻璃", null, "whale", session.id);
+    store.setNote("whale", "导出里应有的第一版近况", 12);
+    store.setNote("whale", "导出里应有的第二版近况", 24);
+    store.saveObservation(session.id, "导出里应有的聊天观察", first.id, last.id);
+
+    const files = unzip(await exportZip(base));
+    const read = (name: string) => {
+      assert.ok(files.has(name), `导出里应有 ${name}`);
+      return files.get(name)!.toString("utf8");
+    };
+    assert.match(read("memories/note.json"), /导出里应有的第二版近况/);
+    const history = read("memories/note-history.json");
+    assert.match(history, /导出里应有的第一版近况/);
+    assert.match(history, /导出里应有的第二版近况/);
+    assert.match(read("memories/session-observations.json"), /导出里应有的聊天观察/);
+  } finally {
+    close();
+  }
+});
