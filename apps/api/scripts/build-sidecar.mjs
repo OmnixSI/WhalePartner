@@ -235,7 +235,9 @@ for (const name of ["@huggingface/transformers", "mem0ai", "playwright-core", "w
   deps[name] = v;
 }
 const apiOut = join(sidecarDir, "api");
-writeFileSync(join(apiOut, "package.json"), JSON.stringify({ name: "whale-api-runtime", private: true, type: "module", dependencies: deps }, null, 2));
+// 这里的 npm install 不读 pnpm 的 overrides；mem0ai 自带的 zod ^3 / openai ^4 要在这里同样钉到 pnpm-workspace.yaml 里的版本。
+const overrides = { zod: "^4.6.6", openai: "^7.55.0" };
+writeFileSync(join(apiOut, "package.json"), JSON.stringify({ name: "whale-api-runtime", private: true, type: "module", dependencies: deps, overrides }, null, 2));
 log("npm install（外置依赖）…");
 // --ignore-scripts：只在拿不到 onnxruntime-node 原生库下载源的受限网络里用，包里不会有可用的向量模型运行时。
 const npmArgs = ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"];
