@@ -1,6 +1,6 @@
 # 角色闪卡
 
-**现行规范是下文「五档好感度卡与升级动画（#159）」**：五档、名字牌规则、升级动画和接口都以那一节为准。独立预览页 `character-cards.html` 已换成同一套五档卡面；设置页「换一位」里的 `CardShowcase` 仍是旧的 legacy 四档卡，等 #160 接入新卡面后替换。
+**现行规范是下文「五档好感度卡与升级动画（#159）」**：五档、名字牌规则、升级动画和接口都以那一节为准。独立预览页 `character-cards.html` 和设置页「换一位」都已换成同一套五档卡面（#160）。
 
 ## 独立预览（character-cards.html）
 
@@ -42,7 +42,7 @@ pnpm --dir apps/client run card-preview:check
 
 实现参考了开源 [3D TCG Card Renderer](https://github.com/BrannySG/card-renderer) 的倾角色散与动态光照，以及 [cards-css](https://github.com/kongyo2/cards-css) 的指针响应卡面效果；独立预览使用内联 SVG 角色徽记，应用设置页仍用现有 Live2D 角色，不引入这些项目作为运行依赖。
 
-应用设置页“换一位”仍使用 legacy 的 `CardShowcase`，会读取当前人格的真实好感度，并在卡外显示关系阶段、进度和下一档解锁点；它将在 #160 接入新五档卡面。独立预览使用固定演示数据，不连接账号或业务数据。
+应用设置页“换一位”已改用 `AffinityShowcase` / `AffinityCard`（#160），会读取当前人格的真实好感度，并在卡外显示关系阶段、进度和下一档解锁点；`CardShowcase` 与 `card-showcase.css` 仅保留文件，已无引用。独立预览使用固定演示数据，不连接账号或业务数据。
 
 ## 五档好感度卡与升级动画（#159）
 
@@ -111,7 +111,7 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
 | 弹窗里的角色列表 | 贴纸缩略图 | `CharThumb`（`LazyAffinityCard` sm，右下角标当前等级） |
 | 等级数据 | `useRelationship` 只在打开时取一次 | 同一个 hook 一次管四个角色（`entries`），主卡、缩略卡、概览读同一份；进页面读当前角色；打开弹窗、切回标签页（`visibilitychange`）读四个（每个角色一个请求）；弹窗开着时换角色只读新的当前角色和还没读好的；当前角色或任一缩略卡读失败都出现「重试」，点后只重读失败的。同一角色只认最新一次请求，旧请求被中止、晚到的响应也不写回（`lib/relationship-loader.ts`，有单测） |
 
-`CardShowcase`、`character-cards.html`、`card-preview-check` 没动（旧预览页仍用 `CardShowcase`）。`HerOverview` 没动。
+`CardShowcase` 已无引用（`CardShowcase.tsx` / `card-showcase.css` 仍保留，未删）；`character-cards.html` 已改用 `AffinityCard`；`card-preview-check` 已按新预览页重写。`HerOverview` 没动。
 
 ### 「上次看到的等级」
 
@@ -131,4 +131,4 @@ import { LazyAffinityCard, tierFeatures, type UpgradeEnd } from "../card-preview
 
 ### 检查
 
-`ui:check` 第 25 项确认卡面不进首屏（首屏文件里没有 `acard`，gzip 在 #160 上限内：JS ≤ 284,826 B，CSS ≤ 45,363 B）；第 26 项用假接口跑：鲸汐 Lv3 首次打开不播 → 接口改成 Lv4 并触发刷新，播一次 3→4 → 再开、刷新页面都不重播 → 换到大肥鱼（2→3）只播它自己、鲸汐记录不动 → 清存储或读取失败后重试都不播。另有两项：「换一位」主卡与缩略卡共用等级（接口全 500 后点重试四张缩略卡和四个等级字样一起恢复；只有小克一个缩略卡 500 时仍有重试入口，点后只重读小克；弹窗里大肥鱼 Lv2→3 后切角色，主卡、缩略卡、字样都是 Lv3；打开弹窗请求不超过 4 次；弹窗开着连续换 3 个角色各只请求 1 次），以及聊天页升档提示（Lv3 不提示，升到 Lv4 提示一次且 seen 仍是 3，再聊、刷新后都不再提示，点「去看看」到设置页卡面并播 3→4）。只跑这些：`node scripts/ui-check.mjs --only=card-live`。`--shots` 另拍 `settings-card-{light,dark}.png`、`settings-card-up.png`（升级中一帧）、`settings-card-thumbs.png`。
+`ui:check` 第 11 项只打印首屏 gzip，并断言首屏文件里没有卡面代码（`acard`）；第 25–27 项为卡面三条专项。第 25 项用假接口跑：鲸汐 Lv3 首次打开不播 → 接口改成 Lv4 并触发刷新，播一次 3→4 → 再开、刷新页面都不重播 → 换到大肥鱼（2→3）只播它自己、鲸汐记录不动 → 清存储或读取失败后重试都不播。第 26 项「换一位」主卡与缩略卡共用等级：接口全 500 后点重试四张缩略卡和四个等级字样一起恢复；只有小克一个缩略卡 500 时仍有重试入口，点后只重读小克；弹窗里大肥鱼 Lv2→3 后切角色，主卡、缩略卡、字样都是 Lv3；打开弹窗请求不超过 4 次；弹窗开着连续换 3 个角色各只请求 1 次。第 27 项聊天页升档提示：Lv3 不提示，升到 Lv4 提示一次且 seen 仍是 3，再聊、刷新后都不再提示，点「去看看」到设置页卡面并播 3→4。只跑这三项：`node scripts/ui-check.mjs --only=card-live`。`--shots` 另拍 `settings-card-{light,dark}.png`、`settings-card-up.png`（升级中一帧）、`settings-card-thumbs.png`。
