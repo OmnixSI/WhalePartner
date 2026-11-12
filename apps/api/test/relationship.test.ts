@@ -138,7 +138,7 @@ test("every stage threshold is an exact boundary for level, label, nextThreshold
     [100, 3, "默契", 250, 0],
     [249, 3, "默契", 250, 99],
     [250, 4, "亲近", 500, 0],
-    [499, 4, "亲近", 500, 100],
+    [499, 4, "亲近", 500, 99],
     [500, 5, "相依", null, 100],
     [5000, 5, "相依", null, 100],
   ];
