@@ -440,11 +440,11 @@ async function checkLazyStyles(browser) {
   await visit(page, "/surf");
   // 假后端对 /api/surf/run 回 200（不是 202），页面会弹「现在叫不动她」的便签
   await page.getByRole("button", { name: "让她现在去逛逛" }).first().click();
-  const toast = await page.waitForSelector(".toast", { timeout: 3000 }).catch(() => null);
+  const toast = await page.waitForSelector(".ui-toast", { timeout: 3000 }).catch(() => null);
   let toastNote = "没弹出";
   if (!toast) fails.push("surf 点「让她现在去逛逛」后没有便签");
   else {
-    const box = await toast.evaluate((el) => ({ position: getComputedStyle(el).position, width: Math.round(el.getBoundingClientRect().width) }));
+    const box = await toast.evaluate((el) => ({ position: getComputedStyle(el.closest(".ui-toast__viewport") ?? el).position, width: Math.round(el.getBoundingClientRect().width) }));
     toastNote = `${box.position} ${box.width}px`;
     if (box.position !== "fixed" || box.width > 420) fails.push(`surf 便签样式丢了：${toastNote}`);
   }
@@ -481,6 +481,44 @@ async function checkLazyStyles(browser) {
   if (own?.control !== "kit-own-id") fails.push(`kit 自带 id 的字段标签指向 ${own?.control ?? "无"}`);
   await c2.close();
   return record("懒加载页共享样式 / 标签面板指向 / 不可用按钮 / 字段标签", fails.length === 0, fails.length ? fails.join("；") : `surf 便签 ${toastNote}；${tabs} 个标签无悬空 aria-controls，面板都有标签指向；不可用按钮 3 个点击 + 回车：${count}；${labels.length} 个字段标签都连到控件`);
+}
+
+/** 17. 记忆页 / 见闻页按 astryx 模式重做：用的是 components/ui（Tabs / Card / Dialog / ConfirmDialog），没有旧的手账卡；点条目开详情，忘掉要二次确认。 */
+async function checkMemorySurfPages(browser) {
+  const fails = [];
+  const notes = [];
+  for (const [label, path, opener, tabsMin] of [["记忆页", "/memory", "[data-memory-card]", 1], ["见闻页", "/surf", "[data-surf-open]", 1]]) {
+    for (const width of [1440, 900]) {
+      const { context, page } = await openPage(browser, { width, height: 900 });
+      await visit(page, path);
+      const tag = `${label}@${width}`;
+      const have = await page.evaluate((opener) => ({
+        tabs: document.querySelectorAll(".ui-tabs").length,
+        cards: document.querySelectorAll(".ui-card").length,
+        items: document.querySelectorAll(opener).length,
+        old: document.querySelectorAll(".mcard, .postcard, .postcard-card, .tape").length,
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }), opener);
+      if (have.tabs < tabsMin) fails.push(`${tag} 没有 ui Tabs`);
+      if (have.cards < 1) fails.push(`${tag} 没有 ui Card`);
+      if (have.items < 1) fails.push(`${tag} 没有可点的条目`);
+      if (have.old) fails.push(`${tag} 还有 ${have.old} 个旧手账卡元素`);
+      if (have.overflow > 0) fails.push(`${tag} 横向溢出 ${have.overflow}px`);
+      if (width === 1440) {
+        await page.locator(opener).first().click();
+        const dialog = await page.waitForSelector(".ui-dialog", { timeout: 3000 }).catch(() => null);
+        if (!dialog) fails.push(`${tag} 点条目没有打开 ui Dialog`);
+        else {
+          await page.getByRole("button", { name: /^忘掉/ }).first().click().catch(() => {});
+          const confirm = await page.getByRole("alertdialog").count();
+          if (!confirm) fails.push(`${tag} 点「忘掉」后没有二次确认`);
+        }
+      }
+      notes.push(`${tag} 条目 ${have.items}`);
+      await context.close();
+    }
+  }
+  return record("记忆页 / 见闻页用 ui 组件（Tabs / Card / Dialog / 确认框），无旧手账卡", fails.length === 0, fails.length ? fails.join("；") : notes.join("、"));
 }
 
 // 好感度卡（#159）：升级动画能播完、能跳过；减少动态时只淡入，连升也按时落到新卡面
@@ -1267,6 +1305,7 @@ if (STATIC_ONLY) {
       await checkAxe(browser, AxeBuilder);
       await checkIdleAndHidden(browser);
       await checkLazyStyles(browser);
+      await checkMemorySurfPages(browser);
       await checkCardUpgrade(browser);
       await checkSettingsInteractions(browser);
       await checkCardLive(browser);

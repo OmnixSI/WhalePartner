@@ -25,8 +25,8 @@
     "src/styles/diary.css": 6,
     "src/styles/ink.css": 2,
     "src/styles/layout.css": 5,
-    "src/styles/memory.css": 3,
-    "src/styles/surf.css": 1
+    "src/styles/memory.css": 0,
+    "src/styles/surf.css": 0
   },
   "filterDebt": {
     "src/card-preview/card-showcase.css": 4

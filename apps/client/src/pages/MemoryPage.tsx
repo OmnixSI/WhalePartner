@@ -2,13 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CompanionCorner, setCompanionMood } from "../components/CompanionCorner";
 import { PageHeader } from "../components/shell/PageHeader";
-import { ConfirmDialog } from "../components/chat/ConfirmDialog";
 import { useMediaQuery } from "../components/chat/useViewport";
-import { Tape } from "../components/ink";
-import { StateBlock } from "../components/diary/StateBlock";
-import { Toast } from "../components/diary/Toast";
+import { StatePanel } from "../components/pages/StatePanel";
+import { Button, Card, ConfirmDialog, Toaster, toast } from "../components/ui";
 import { FilterBar } from "../components/memory/FilterBar";
-import { MemoryCard } from "../components/memory/MemoryCard";
+import { MemoryRow } from "../components/memory/MemoryRow";
 import { MemoryDialog } from "../components/memory/MemoryDialog";
 import { useCharacter } from "../characters";
 import { useHubRefresh } from "../lib/useHubRefresh";
@@ -24,12 +22,12 @@ import {
 } from "../components/memory/types";
 import "../styles/memory.css";
 
-/** 一屏最多几张卡：桌面 3 列 × 3 行，手机 1 列 × 6。 */
-const PAGE_WIDE = 9;
+/** 一页最多几行：桌面 10 行，手机 6 行。 */
+const PAGE_WIDE = 10;
 const PAGE_NARROW = 6;
 /** 撤回窗口（规范 §7.3.5）：5 秒内不删，超时才真删。 */
 const UNDO_MS = 5000;
-const FOLD_MS = 480;
+const FOLD_MS = 240;
 
 export function MemoryPage() {
   const character = useCharacter();
@@ -51,7 +49,6 @@ export function MemoryPage() {
   const [filters, setFilters] = useState<OwnFilters>(EMPTY_FILTERS);
   const [page, setPage] = useState(0);
 
-  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
   const deleteTimers = useRef(new Map<string, number>());
   const foldTimers = useRef(new Map<string, number>());
 
@@ -157,7 +154,7 @@ export function MemoryPage() {
         next.delete(id);
         return next;
       });
-      setToast({ text: "没能忘掉，再试一次？" });
+      toast({ title: "没能忘掉", description: "再试一次？", tone: "error" });
     }
   }, []);
 
@@ -181,26 +178,30 @@ export function MemoryPage() {
     const timer = window.setTimeout(() => void commit(entry.id), UNDO_MS);
     deleteTimers.current.set(entry.id, timer);
 
-    setToast({
-      text: "已经忘掉了。",
-      undo: () => {
-        const pending = deleteTimers.current.get(entry.id);
-        if (pending) window.clearTimeout(pending);
-        deleteTimers.current.delete(entry.id);
-        const folding = foldTimers.current.get(entry.id);
-        if (folding) window.clearTimeout(folding);
-        foldTimers.current.delete(entry.id);
-        setForgetting((prev) => {
-          const next = new Set(prev);
-          next.delete(entry.id);
-          return next;
-        });
-        setGone((prev) => {
-          const next = new Set(prev);
-          next.delete(entry.id);
-          return next;
-        });
-        setToast(null);
+    toast({
+      title: "已经忘掉了",
+      description: "5 秒内可以撤回。",
+      duration: UNDO_MS,
+      action: {
+        label: "撤回",
+        onClick: () => {
+          const pending = deleteTimers.current.get(entry.id);
+          if (pending) window.clearTimeout(pending);
+          deleteTimers.current.delete(entry.id);
+          const folding = foldTimers.current.get(entry.id);
+          if (folding) window.clearTimeout(folding);
+          foldTimers.current.delete(entry.id);
+          setForgetting((prev) => {
+            const next = new Set(prev);
+            next.delete(entry.id);
+            return next;
+          });
+          setGone((prev) => {
+            const next = new Set(prev);
+            next.delete(entry.id);
+            return next;
+          });
+        },
       },
     });
   };
@@ -222,19 +223,18 @@ export function MemoryPage() {
         <PageHeader
           eyebrow="手帐 · 记忆"
           title="她记得的事"
-          actions={entries !== null ? <span className="page-head__meta">已收好 {total} 件</span> : undefined}
+          lead={entries !== null ? `已收好 ${total} 条，点开一条看详情，也可以让她忘掉。` : undefined}
+          actions={entries !== null ? <span className="page-head__meta">{total} 条</span> : undefined}
         />
 
-        <div className={`memory-page__top${note ? "" : " memory-page__top--bare"}`}>
-          {note && (
-            <figure className="nslip">
-              <Tape color="c" w={56} h={18} angle={-4} className="nslip__tape" />
-              <figcaption className="nslip__label">{character.name}的近况</figcaption>
-              <blockquote className="nslip__text">{note.text}</blockquote>
-            </figure>
-          )}
+        {note && (
+          <Card className="mnote" padding="md">
+            <p className="mnote__label">{character.name}的近况</p>
+            <p className="mnote__text">{note.text}</p>
+          </Card>
+        )}
 
-          {(entries !== null || !error) && (
+        {(entries !== null || !error) && (
           <FilterBar
             query={query}
             onQuery={setQuery}
@@ -254,67 +254,56 @@ export function MemoryPage() {
             resultCount={searching ? filtered.length : null}
             counts={counts}
           />
-          )}
-        </div>
+        )}
 
-        {entries === null && !error && <StateBlock kind="loading" title="她在翻小本子…" body="马上就好。" />}
+        {entries === null && !error && <StatePanel kind="loading" title="她在翻小本子…" body="马上就好。" />}
 
         {error && entries === null && (
-          <StateBlock
-            kind="error"
-            title="翻不开了"
-            body="网络好像不太好。"
-            detail={error}
-            action={{ label: "再试一次", onClick: () => load() }}
-          />
+          <StatePanel kind="error" title="翻不开了" body="网络好像不太好。" detail={error}>
+            <Button variant="primary" onClick={() => load()}>再试一次</Button>
+          </StatePanel>
         )}
 
         {entries !== null && total === 0 && (
-          <StateBlock
-            kind="empty"
-            title="她还在认识你"
-            body="多聊几句，她记住的事就会放在这儿。"
-            mood="hold"
-          >
-            <Link className="btn btn--secondary memory-page__gochat" to="/">
-              去和她聊聊
-            </Link>
-          </StateBlock>
+          <StatePanel kind="empty" title="她还在认识你" body="多聊几句，她记住的事就会放在这儿。">
+            <Link className="ui-btn ui-press ui-focus ui-btn--primary" to="/">去和她聊聊</Link>
+          </StatePanel>
         )}
 
         {emptySearch && total > 0 && (
-          <StateBlock
+          <StatePanel
             kind="empty"
-            title={applied.trim() ? `没找到带「${applied.trim()}」的纸条` : "这几种筛选下，暂时没有纸条"}
+            icon="bottle"
+            title={applied.trim() ? `没找到带「${applied.trim()}」的记忆` : "这几种筛选下，暂时没有记忆"}
             body="换个词试试，或者把筛选清掉。"
-            action={{ label: "清掉筛选", onClick: clearAll }}
-          />
+          >
+            <Button variant="secondary" onClick={clearAll}>清掉筛选</Button>
+          </StatePanel>
         )}
 
         {visible.length > 0 && (
           <>
-            <ul className="mgrid">
-              {visible.map((entry) => (
-                <MemoryCard key={entry.id} entry={entry} onOpen={setDetail} forgetting={forgetting.has(entry.id)} />
-              ))}
-            </ul>
+            <Card className="mlist" padding="none">
+              <div className="mlist__head" aria-hidden>
+                <span>记忆</span>
+                <span>分类</span>
+                <span>来源</span>
+                <span>时间</span>
+              </div>
+              <ul className="mlist__rows">
+                {visible.map((entry) => (
+                  <MemoryRow key={entry.id} entry={entry} onOpen={setDetail} forgetting={forgetting.has(entry.id)} />
+                ))}
+              </ul>
+            </Card>
 
-            <div className="mpager">
-              <button type="button" className="mpager__step" disabled={current === 0} onClick={() => setPage(current - 1)}>
-                <span aria-hidden>‹</span> 上一页
-              </button>
+            <nav className="mpager" aria-label="翻页">
+              <Button variant="secondary" disabled={current === 0} onClick={() => setPage(current - 1)}>上一页</Button>
               <span className="mpager__no" aria-live="polite">
                 第 {current + 1} / {pageCount} 页
               </span>
-              <button
-                type="button"
-                className="mpager__step"
-                disabled={current >= pageCount - 1}
-                onClick={() => setPage(current + 1)}
-              >
-                下一页 <span aria-hidden>›</span>
-              </button>
-            </div>
+              <Button variant="secondary" disabled={current >= pageCount - 1} onClick={() => setPage(current + 1)}>下一页</Button>
+            </nav>
           </>
         )}
 
@@ -333,24 +322,16 @@ export function MemoryPage() {
         open={Boolean(confirming)}
         onOpenChange={(open) => !open && setConfirming(null)}
         title="要忘掉这条吗？"
-        body="忘掉以后，她就不会再提这件事了——这条记忆会从她的小本子里消失，日记和聊天记录不受影响。"
+        description="忘掉以后，她就不会再提这件事了——这条记忆会从她的小本子里消失，日记和聊天记录不受影响。"
         cancelLabel="先留着"
         confirmLabel="忘掉这条"
-        danger
+        tone="danger"
         onConfirm={() => {
           if (confirming) forget(confirming);
         }}
       />
 
-      <Toast
-        open={Boolean(toast)}
-        text={toast?.text ?? ""}
-        actionLabel={toast?.undo ? "撤回" : undefined}
-        onAction={toast?.undo}
-        onClose={() => setToast(null)}
-        duration={toast?.undo ? UNDO_MS : 3600}
-        tone={toast?.undo ? "plain" : "alert"}
-      />
+      <Toaster />
     </div>
   );
 }
