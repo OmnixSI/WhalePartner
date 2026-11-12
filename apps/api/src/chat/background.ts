@@ -68,18 +68,21 @@ export const REFLECT_INTERVAL_MS = 3 * 86_400_000;
 export const FIRST_NOTE_AFTER_REPLIES = 12;
 /** 每多这么多条回复，从用户最近的说法里学一次。 */
 export const LEARN_EVERY_REPLIES = 12;
-/** 一次生成失败（模型出错或小记被过滤）后，至少隔这么久再试，免得每条回复都重试。 */
+/** 一次生成失败（模型出错或小记被过滤）后，至少隔这么久再试，免得每条回复都重试。成功生成不留冷却。 */
 const REFLECT_RETRY_MS = 6 * 3_600_000;
 let reflectionQueued = false;
-let lastReflectionAttempt = 0;
+let lastReflectionFailure = 0;
 let learningQueued = false;
 
-/** 测试用：清掉进程内的排队和重试记录。 */
-export function resetReflectionScheduleForTests() {
+/** 清除聊天或全部数据后调用（调用方已暂停后台任务）：清掉失败冷却和排队标记，新一轮聊天按新用户重新计。 */
+export function resetReflectionSchedule() {
   reflectionQueued = false;
-  lastReflectionAttempt = 0;
+  lastReflectionFailure = 0;
   learningQueued = false;
 }
+
+/** 测试用：清掉进程内的排队和重试记录。 */
+export const resetReflectionScheduleForTests = resetReflectionSchedule;
 
 /**
  * 已有近况：距上一版满 3 天、且这期间有新聊天才到期。
@@ -95,7 +98,7 @@ export function reflectionDue(state: { lastAt: string | null; hasNewChat: boolea
  * 不用常驻定时器，因为 App 不会一直开着。
  */
 export function queueReflectionIfDue(deps: ChatDeps, character: CharacterId) {
-  if (reflectionQueued || Date.now() - lastReflectionAttempt < REFLECT_RETRY_MS) return;
+  if (reflectionQueued || Date.now() - lastReflectionFailure < REFLECT_RETRY_MS) return;
   if (!reflectionDue(deps.store.reflectionState())) return;
   queueReflection(deps, character, false);
 }
@@ -111,7 +114,6 @@ export function queueReflection(deps: ChatDeps, character: CharacterId, force: b
       // 行数上限只是防止一周聊得特别多时一次读太多行；真正的长度由字数上限控制。
       const weekMessages = store.messagesSince(since, Math.ceil(REFLECT_CHAT_BUDGET / 4));
       if (weekMessages.length === 0) return;
-      if (!force) lastReflectionAttempt = Date.now();
       const { chat, kept: sourceMessages, truncated } = buildWeekChat(weekMessages);
       const count = store.countAssistant();
       const previous = store.getNote(character);
@@ -119,8 +121,16 @@ export function queueReflection(deps: ChatDeps, character: CharacterId, force: b
       if (learned.length === 0 && memory) {
         learned = (await memory.recentLearnings(4).catch(() => [])).map((entry) => entry.text);
       }
-      const note = await reflect(provider, { name: CHARACTERS[character].name, previous: previous?.text, learned, chat, truncated }, signal);
+      let note: string | undefined;
+      try {
+        note = await reflect(provider, { name: CHARACTERS[character].name, previous: previous?.text, learned, chat, truncated }, signal);
+      } catch (error) {
+        // 被前台打断会重新排队，不算失败。
+        if (!force && !signal.aborted) lastReflectionFailure = Date.now();
+        throw error;
+      }
       signal.throwIfAborted();
+      if (!note && !force) lastReflectionFailure = Date.now();
       // assistant_count 只作记录（写这一版时一共有多少条回复），不决定何时重写。
       if (note && sourceMessages.every((message) => store.message(message.id))) store.setNote(character, note, count);
     } finally {

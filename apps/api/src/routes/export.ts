@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
-import { pauseBackgroundJobs } from "../chat/background.ts";
+import { pauseBackgroundJobs, resetReflectionSchedule } from "../chat/background.ts";
 import { clearMem0History } from "../memory/history.ts";
 import { waitForMemoryJobs } from "../memory/jobs.ts";
 import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
@@ -115,6 +115,7 @@ async function deleteAllData(deps: ServerDeps, sessionRequests: ChatSessionReque
     if (deps.journal) unlockJournals = await deps.journal.lockForSessionDeletion();
     await waitForMemoryJobs(deps.store);
     deps.store.clearAll();
+    resetReflectionSchedule();
     const memoriesCleared = await clearAllMemories(deps);
     await rm(join(deps.config.surfDir, "thumbs"), { recursive: true, force: true });
     try {
