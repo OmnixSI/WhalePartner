@@ -711,7 +711,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 - **DropdownMenu**（Radix）：`.sheet` + `--shadow-2`，项高 48（老人 56），图标 20 + 文字 16px；危险项文字 `--alert`；支持字母跳转；打开 `scale .98→1 + opacity` 160ms。取代 `<details>` “···”（`ChatSessionControls.tsx`）。
 - **Popover**：话题列表、日历、筛选。外点/Esc 关闭，焦点陷入，打开 200ms。
 - **Tooltip**（Radix）：延迟 400ms；底 `--ink`、字 `--sheet`（10.76:1）、`--r-sm`、14px；**只给“有可见文字的元素”补充**，不承载唯一信息。
-- **Toast**（现状：`components/ui/Toast.tsx`，Radix Toast，队列在 `ui/toast-store.ts`，只在 App 根部由 `ToastHost` 挂一次，切页清空；记忆、见闻、设置、聊天升档提示都用它，日记页暂时还是 `diary/Toast` 的便签）。下面是最初的便签规格（已由 DESIGN.md 取代，sonner 已移除）：底 `--slip`、字 `--ink`（10.15:1）、`--r-xs` 的上缘 + 顶部一小条胶带；宽 `min(360px, 100vw-32px)`；位置桌面右下、手机顶部居中避开 tabbar；显示 4s（老人 8s 且带关闭按钮 ≥44px）；同时只显示 1 条（`visibleToasts={1}`）；`role="status"`，错误便签 `role="alert"`，底 `--alert-wash` + `1.5px --alert`。入场 `y 16→0, 280ms --ease-out`。带“撤回”的便签用 quiet 按钮。
+- **Toast**（`components/ui/Toast.tsx`，Radix Toast；队列在 `ui/toast-store.ts`，不带 Radix，谁都能 import；`ui/ToastHost.tsx` 只在 App 根部挂一次，第一次有吐司时才懒加载 `Toaster`，路径一变就 `toast.clear()`）。记忆、见闻、设置、聊天升档提示都走它；日记页暂时还是 `diary/Toast` 的便签（样式 `styles/toast-note.css`）。行为：`toast({ title, description?, tone?, duration?, action?, onDismiss? })`；默认显示 8s（Radix 在窗口失焦、悬停时暂停计时），常显「关掉」按钮；最多同时 3 条，超出时最老的先走；底色按 `tone`（neutral / success / warning / error），宽度、位置见 `Toast.css`；带 `action` 的吐司用 quiet 按钮（如「撤回」）。**`onDismiss` 恰好调用一次**：计时到点、点「关掉」、点操作按钮、被新吐司挤掉、切页被清空都算“离开”。带撤回的操作把真正的提交（如 DELETE）放在 `onDismiss` 里——吐司还在，撤回就还作数，吐司一走才提交；已提交后不再显示撤回。
 
 ### 6.6 思考指示 `<Thinking/>`（取代三点 typing）
 - 组成：① 角色进入 `think` 姿态（Live2D：`ParamAngleZ` 以 3s 周期在 ±4° 摆动，`ParamEyeBallY +0.4`，不改表情；VRM：lookAt 抬高 + `relaxed` 0.2；贴纸：`mood="think"`）；② 对话框内一行 14px `--ink-mute` 小字，**每 2400ms 轮换**（淡入淡出 160ms，`aria-hidden`，对辅助技术只读一次“她在想”）；③ 小字下一条 `InkLine draw="loop"`（宽 96px）。
@@ -767,7 +767,7 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 - **DateStamp**：左 `Fraunces 56px` 日（"07"，`lining-nums`），右上 13px 大写感的“NOV · 周六”（`--ink-mute`，`letter-spacing:.06em`），下方一条 `InkLine`；整体可作为 `<time dateTime>`。
 - **Tabs（周/月/年）**：使用 `components/ui/Tabs` 的 segmented 变体，始终水平放在日记正文上方，切换时保留当前所选日期；支持左右方向键、Home 和 End。
 - **MiniCalendar**：紧凑日期选择器，供记忆筛选使用。日记主视图使用独立的 `DiaryCalendar`，在七列月历格中展示真实主题和记录状态（见 §7.2）。
-- **MemoryRow**（原 `MemoryCard`，已删除）：见 §7.3.3。
+- **MemoryRow**：记忆页的列表行，见 §7.3.3。
 - **QuotaMeter**：10 枚小贝壳排成一行，已用的变空壳（轮廓），剩余的实心；下方文字“本月还剩 7 / 10”；`role="meter"`，`aria-valuenow` 等。
 - **StateBlock**（空/加载/错误/离线通用）：贴纸 120px + 标题 20px 文楷 + 正文 16px + 至多 1 个 primary 按钮 + 可选 quiet“详情”（展开技术细节）；居中，最大宽 360px。`loading` 用 `role="status"`，`error` 用 `role="alert"`。
 
@@ -1010,11 +1010,9 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 ```
 手机 390：搜索全宽 → 分类芯片横向滚动（每个 ≥44 高）→ 卡片单列（宽 `100% - 32px`）→ 底部分页；“更多筛选”为 Sheet。
 
-#### 7.3.3 卡片 `MemoryCard`
-> **现状（feat/pages-memory-surf）**：手账便签卡已换成 `components/memory/MemoryRow` 的列表行（一张 `ui/Card` 里的表格式列表：图标 / 标题与摘要 / 分类徽标 / 来源 / 编号与日期），筛选是 `ui/Tabs` + `ui/Select` + 日期范围 `ui/Dialog`，详情是 `ui/Dialog`（`MemoryDialog`），确认是 `ui/ConfirmDialog`，撤回是 `ui/toast`。下面的卡片规格（胶带、锯齿、旋转）不再适用；编号、历史记忆、来源缺失的规则不变。
-- 结构：`<li><button class="memory-card">`（整张可点，打开详情 Dialog）。顶：胶带（颜色按分类固定 a/b/c/d）、`No.0042`（`--font-num` 13px `--ink-mute`）、分类图标 24px；中：标题 `--font-voice 18px/1.5`（2 行省略）；正文 `--font-ui 16px/1.7`（3 行省略，`--ink-soft`）；底：日期 13px + 来源类型小字（“聊天/视频/网页/日记”）。
-- 外形：`.sheet`；上缘用 `clip-path` 做 8 个锯齿（深 4px）；旋转 `hash(id)%5 - 2` × 0.5°（老人 0°）；`--shadow-1`；圆角 `--r-md`。
-- 状态：悬停=上浮 2px + `--shadow-2`（160ms）；按下=`scale .98`；聚焦=`--focus-ring`；历史记忆（`status==="superseded"`）=整体底色 `--paper-2` 且标题前加 13px“以前的记忆”标签（**不靠降低不透明度**）；来源缺失（`sourceMissing`）=底部“原话已不在了”。
+#### 7.3.3 列表行 `MemoryRow`
+- 结构：`components/memory/MemoryRow` 是一张 `ui/Card` 里的表格式列表行（整行可点，打开 `MemoryDialog`）：分类图标 / 标题与摘要 / 分类徽标 / 来源（`sourceLabel`）/ 编号与日期。筛选是 `ui/Tabs` + `ui/Select` + 日期范围 `ui/Dialog`，详情是 `ui/Dialog`（`MemoryDialog`），确认是 `ui/ConfirmDialog`，撤回是 `ui/toast`；空 / 加载 / 错误态用 `components/pages/StatePanel`。
+- 状态：悬停、按下、聚焦环沿用 `ui` 组件的统一样式；历史记忆（`status==='superseded'`）显示“以前的”徽标；来源缺失（`sourceMissing`）显示“原话已不在”。
 - 图鉴编号：数值 = 后端提供的稳定序号 `seq`（B4：按该角色的创建顺序递增、删除后不回填），**始终显示**（含搜索与筛选结果里），格式 `No.` + 4 位补零；`seq` 为 `null`（仅聊天消息类）时不显示编号。
 
 #### 7.3.4 详情 Dialog（纸条展开）
@@ -1208,14 +1206,11 @@ settings: 由函数生成：8 齿，外半径 9、内半径 7、齿宽 22°；�
 - 筛选：`ToggleGroup` 芯片（全部 / 视频 / 网页）+ 搜索框（占位“找找她逛到的东西…”，走 `q` 参数）。
 - 分页：每页 20 张；底部 quiet 按钮“再往前翻翻”加载下一页（`page+1`），没有更多时变成文字“翻到头了。”。
 
-**`PostcardCard`（剪报 / 明信片卡片，`components/PostcardCard.tsx`）**
-> **现状（feat/pages-memory-surf）**：`PostcardCard`、`PostcardDetail`、`SurfEmpty` 已删除，换成 `components/surf/SurfCard`（`ui/Card` 封面网格卡）、`SurfDetail`（`ui/Dialog` lg）和通用的 `components/pages/StatePanel`；筛选是 `ui/Tabs`（segmented）+ `ui/Select`。下面的剪报规格（胶带、锯齿、旋转、邮戳）不再适用。
-- 外形：`.sheet` + 上缘锯齿（同 `MemoryCard`）+ 左上 `Tape`；旋转 `hash(id)%5 - 2` × 0.5°（老人 0°）；`--shadow-1`；圆角 `--r-md`；内边距 16。
-- 缩略图：16:9，宽 100% 内缩 12px，**照片白边** 6px `--sheet` + 轻微旋转 ±0.6°；图片来自 `GET /api/surf/thumb/:id`；无缩略图时显示纸色占位：网站首字大号 Fraunces/文楷（如“哔”“J”）+ 手绘小框；右下压一枚 `Stamp`（圆形 72，行1=站点简称“B站”或域名主体，行2=`MM.DD`）。
-- 文字：标题 `--font-voice 18px/1.5`（2 行省略）；“她说：”前缀 14px `--ink-mute`，感想 `--font-voice 17px/1.8`，左侧 2px `--accent` 竖线；标签芯片（≤3，14px，`--paper-2` 底）。
-- 底行：类型图标（`video`/`newspaper`）+ 时间 13px `--ink-mute`；按钮“打开原链接”（secondary，外部浏览器打开：Tauri 里用 `@tauri-apps/plugin-opener` 的 `openUrl`，浏览器开发用 `window.open(url, "_blank", "noopener")`）、“忘掉”（quiet，`--alert` 字，打开 `ConfirmDialog`）。
-- 点击卡片主体（缩略图/标题）→ Dialog `PostcardDetail`：大图、完整摘要（`--font-voice 17px/1.9`）、她的感想、来源链接文本、按钮“跟她聊聊这个”（primary：写入 `localStorage["wp.pendingDraft"]=“我看到你逛到了《{title}》，”` 并 `navigate("/")`，聊天页挂载时读出填进回信条后删除）、“打开原链接”、“忘掉”。
-- 状态：悬停上浮 2px；按下 `scale .98`；聚焦环；新内容（`createdAt` 在 24h 内且本机未看过）右上角 `Stamp label “新”`（`localStorage["wp.surf.seen"]` 记最大已看 id）。
+**`SurfCard` / `SurfDetail`（见闻卡片与详情，`components/surf/`）**
+- 卡片：`SurfCard` 是 `ui/Card` 的封面网格卡。封面 16:9，图片来自 `GET /api/surf/thumb/:id`，无缩略图或加载失败时显示纸色占位和原因；标题是撑满整张卡的按钮（打开详情）；底部“打开原链接”（外部浏览器打开：Tauri 里用 `@tauri-apps/plugin-opener` 的 `openUrl`，浏览器开发用 `window.open(url, "_blank", "noopener")`）、“忘掉”（ghost，打开 `ConfirmDialog`）叠在它上面，各自可点。
+- 新内容：`createdAt` 在 24h 内且本机未看过的卡片带“新”徽标（`localStorage["wp.surf.seen"]` 记最大已看 id）。
+- 详情：`SurfDetail` 是 `ui/Dialog`（lg）：大图、完整摘要、她的感想、来源链接文本；底部“和她聊聊这个”（primary，跳聊天页并用 `?quote=` 预填，不自动发送）、“打开原链接”（secondary）、“忘掉”（ghost）。
+- 筛选：`SurfFilters` = `ui/Tabs`（segmented：全部 / 视频 / 网页）+ `ui/Select` + 搜索框；空 / 加载 / 错误态用 `components/pages/StatePanel`。
 
 **见闻页的空 / 加载 / 错误**
 
@@ -1410,7 +1405,7 @@ API 侧其余能力全部用 Node 内置（`node:zlib` 的 `deflateRawSync` 与 
 | `src/styles/components.css`、`src/styles/paper.css`（纸纹/胶带/邮戳） | 新样式 |
 | `src/components/ink/{InkLine,InkFrame,Stamp,Tape}.tsx`、`Tide.tsx`、`Backdrop.tsx` | §5 |
 | `src/components/{Icon,Icons.baked,WhaleSticker,CompanionCorner,StateBlock,Onboarding,ConfirmDialog,Thinking,InkText,DialogBox,NameTab,ComposerBar,Backlog,Slip,CaptionBlock,MiniCalendar,QuotaMeter,DateStamp}.tsx` | §6 |
-| `src/components/{SurfStatus,PostcardMini,TagInput}.tsx`、`src/components/surf/{SurfCard,SurfDetail,SurfFilters}.tsx`（原 `PostcardCard`/`PostcardDetail`）、`src/pages/SurfPage.tsx` | §7.7 |
+| `src/components/{SurfStatus,PostcardMini,TagInput}.tsx`、`src/components/surf/{SurfCard,SurfDetail,SurfFilters}.tsx`、`src/pages/SurfPage.tsx` | §7.7 |
 | `src/components/ui/{Button,Field,Switch,Slider,ChoiceCard,Dialog,Sheet,Menu,Popover,Tooltip,Toaster}.tsx` | Radix 皮肤 |
 | `tests/ui/{screens.spec.ts,a11y.spec.ts,grep-rules.spec.ts,surf.spec.ts}`、`playwright.config.ts` | §12 |
 
@@ -1480,7 +1475,7 @@ API 侧其余能力全部用 Node 内置（`node:zlib` 的 `deflateRawSync` 与 
 | **P0 tokens / 字体 / 纹理**（≈2 天） | 依赖；`tokens.css`/`characters.css`/`base.css` 新版；`theme.ts`+`a11y.ts`+`theme-boot.js`；字体子集化与加载；纸纹；`ink.ts`+`InkLine`/`InkFrame`/`Tape`/`Stamp`；`Backdrop`+`Tide`；`WhaleSticker`；`check-contrast.mjs` | ① 现有 4 个页面在新 tokens 下无破版（旧 class 仍工作）；② `pnpm --dir apps/client typecheck` 与 `build` 通过；③ 对比度脚本全绿；④ 首屏字体 ≤220KB；⑤ `grep gradient` 为 0；⑥ 纸纹验收（§5.1）；⑦ 亮/暗 × 4 角色的“样品页”（隐藏路由 `/__kit`）截图入 PR |
 | **P-B 后端补齐**（≈4 天） | §10.5 的 B1–B6：额度、导出/删除全部、日记 mood/weather、记忆编号、昵称注入、健康检查 `schedule` | ① `pnpm --dir apps/api typecheck` 与 `pnpm --dir apps/api test` 全绿，新增测试见 §12.8；② 每个接口按 §10.5 的请求/响应 schema 返回（测试逐字段断言）；③ 旧库打开后自动迁移，旧数据可读、旧测试不改动即通过；④ 客户端 `lib/quota.ts`、`data.ts`、`profile.ts` 与类型扩展就绪（`typecheck` 通过）；⑤ 手动 curl 记录（每个接口一条）贴进 PR |
 | **P1 聊天**（≈4 天） | `Nav` 图标；`ChatPage` 重组；`DialogBox`/`NameTab`/`Thinking`/`InkText`/`Slip`/`Backlog`/`ComposerBar`；离线/失败/空态；`ConfirmDialog`（会话删除）；键盘 inset；`CompanionCorner` 框架；昵称问候 | §7.1 的 8 个状态截图齐全；无 `chat__status`、无三点、无模型名；流式有 ink-in；手机键盘弹起截图（模拟 `visualViewport`）；axe 0 严重 |
-| **P2 日记 + 记忆**（≈4 天） | `DateStamp`/`Tabs`/`MiniCalendar`/翻页；真实心情天气涂鸦；视频区降级；`MemoryCard`（真实 `No.`）+详情+忘掉流程（延迟删除、撤回）；筛选 Popover；空/加载/错误 | §7.2、§7.3 状态截图齐全；无 `window.confirm`；编号来自 `seq`；“忘掉”动画与撤回可用（Playwright 断言 5s 内撤回不发 DELETE） |
+| **P2 日记 + 记忆**（≈4 天） | `DateStamp`/`Tabs`/`MiniCalendar`/翻页；真实心情天气涂鸦；视频区降级；`MemoryRow`（真实 `No.`）+详情+忘掉流程（延迟删除、撤回）；筛选 Popover；空/加载/错误 | §7.2、§7.3 状态截图齐全；无 `window.confirm`；编号来自 `seq`；“忘掉”动画与撤回可用（Playwright 断言 5s 内撤回不发 DELETE） |
 | **P3 设置 / 引导 / 老人模式**（≈4 天） | 设置页重做；`ChoiceCard`/`Switch`/`Slider`；额度真实表；导出/删除全部/昵称接线；`Onboarding` 3 步；老人模式全站；`CompanionCorner` 全页接入 | 老人模式截图矩阵（§12.1）全齐；所有触控 ≥56；3 项导航；引导 3 步可完成/可跳过；导出得到有效 zip、删除全部后各页回到空态（e2e 对真实 API 的冒烟用例） |
 | **P4 打磨**（≈3 天） | 清理 `layout.css`；动效调参；插画/贴纸终稿；`docs/DESIGN.md` 终稿；完整验收与迭代循环 | §12.1–12.7 全部通过，或把差距报告写进 PR 后结束本阶段 |
 | **P5 自主冲浪**（≈7 天） | §10.6 的后端（设置、调度、B 站选片、网页冲浪、总结、分享、SSE）+ §7.7 的全部界面（舞台状态、`/surf` 见闻页、聊天里的明信片、设置两组、记忆第 5 类） | ① 后端：`surf-*` 测试全绿；② 一次手动触发（`POST /api/surf/run`）在本机真实跑完：至少产出 1 条 `surf_items`、对应 `experiences`（`sourceId` 以 `surf:` 开头）、`usage_ledger` 记账、SSE 事件顺序正确；③ 前端：§7.7 全部状态截图（含 `d`/`m`/亮/暗/老人）；④ `surf.spec.ts` 通过；⑤ 全量回归（P0–P4 的截图矩阵、a11y、grep 规则）仍然通过；⑥ 关闭开关后调度器不再触发（测试断言） |
@@ -1626,7 +1621,7 @@ CREATE TABLE IF NOT EXISTS memory_seq_counter (
 ```
 **迁移与分配**（`src/store/memory-seq.ts`）：`ensureSeq(db, character)` 在 `listMemoryExplorer`（`store/explorer.ts`）开头调用：找出该角色下尚无 `memory_seq` 行的 fact/experience/reflection，按 `created_at, id` 升序依次分配 `last+1…`，同一事务内更新 `memory_seq_counter`。这就是迁移——旧库第一次打开记忆页时**惰性回填**，编号按历史创建顺序。同时删除指向已不存在记录的 `memory_seq` 行（**计数器不回退**）。新记录在下一次列表请求时拿到编号（写入路径不改，避免触碰记忆写入的并发）。
 **接口变化**：`GET /api/memories` 的每个 item 增加 `seq: number | null`（消息类为 `null`）；`GET /api/memories/:id` 同。
-**客户端消费**：`MemoryCard` 与详情标题右侧 `No.{seq 补零到 4 位}`（Fraunces）；`seq===null`（仅消息）不显示编号；§7.3.3 的编号规则按此执行，**始终显示**。
+**客户端消费**：`MemoryRow` 与详情标题右侧 `No.{seq 补零到 4 位}`（Fraunces）；`seq===null`（仅消息）不显示编号；§7.3.3 的编号规则按此执行，**始终显示**。
 **测试**（`memory-seq.test.ts`）：① 旧库（无 `memory_seq`）插入 5 条后首次列表 → 编号 1…5 按创建顺序；② 再新增 2 条 → 6、7；③ 删除第 3 条 → 其余不变，再新增得到 8（不复用）；④ 不同角色各自从 1 开始；⑤ 同一次并发列表请求不产生重复（`UNIQUE` 保证 + 事务）；⑥ 清空全部数据后计数器重置。
 
 #### B5 昵称注入人格提示
@@ -2145,7 +2140,7 @@ const PAIRS = [
 目标：日记像手帐，记忆像海边拾到的贝壳与瓶中纸条。
 要做：
 1. 日记：DateStamp、Tabs、横线本（36px 行距）、真实 mood/weather 涂鸦与小标题（B3 字段，为 null 时不画）、邮戳“写好啦”、翻页动效、MiniCalendar 取代原生 date input、来源/历史版本文案按 §7.2.4；视频区降级为页面底部“给她看的视频”，轮询仅在可见且有排队时进行；页顶“看她的见闻”大按钮（P5 前链接到占位路由）。
-2. 记忆：分类（含第 5 类“她拾到的”，P5 前为空）、MemoryCard（胶带、锯齿、真实 No.{seq}）、详情 Dialog（layoutId）、忘掉流程（ConfirmDialog → 折进瓶子 → 便签撤回，5s 后真正 DELETE，pagehide 立即提交）、更多筛选 Popover、搜索与分页。
+2. 记忆：分类（含第 5 类“她拾到的”，P5 前为空）、MemoryRow（真实 No.{seq}）、详情 Dialog（layoutId）、忘掉流程（ConfirmDialog → 折进瓶子 → 便签撤回，便签离开时才真正 DELETE，pagehide 立即提交）、更多筛选 Popover、搜索与分页。
 3. 所有空/加载/错误用 StateBlock + 贴纸 + §7.2.5/§7.3.7 文案；日记空态里的写日记时间来自 /api/health 的 schedule。
 4. CompanionCorner 在日记/记忆页接入 mood 映射（§5.7 表）。
 完成定义：§10.4 的 P2；无 window.confirm；§12.1 日记与记忆全部状态截图；撤回用例通过（5s 内撤回不发 DELETE）。
@@ -2186,7 +2181,7 @@ const PAIRS = [
 前端要做（apps/client，按 §7.7）：
 1. lib/surf.ts、useSurfEvents（fetch 流 + 退避重连）。
 2. SurfStatus 便签 + avatar activity=browsing（Live2D/VRM 低头看手机）+ WhaleSticker 的 phone / paper 心情。
-3. /surf 见闻页：PostcardCard、PostcardDetail、筛选、搜索、分页、手动触发、所有空/加载/错误态；导航第 3 项与红点；老人模式入口在日记页顶部。
+3. /surf 见闻页：SurfCard、SurfDetail、筛选、搜索、分页、手动触发、所有空/加载/错误态；导航第 3 项与红点；老人模式入口在日记页顶部。
 4. 聊天里的 PostcardMini 与 Backlog 渲染；“跟她聊聊这个”预填草稿。
 5. 设置「让她自己逛」「她逛什么」两组；记忆页第 5 类「她拾到的」。
 6. tauri.conf.json CSP img-src 与 opener 插件；tests/ui/surf.spec.ts；§12.1 的新增截图。
