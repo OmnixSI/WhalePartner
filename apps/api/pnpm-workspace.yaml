@@ -6,3 +6,6 @@ allowBuilds:
   protobufjs: true
 minimumReleaseAgeExclude:
   - playwright-core@1.65.0
+overrides:
+  zod: ^4.6.6
+  openai: ^7.55.0
