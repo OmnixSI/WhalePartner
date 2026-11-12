@@ -227,7 +227,7 @@ pnpm --dir apps/client run contrast:check      # 只跑对比度，逐对打印�
 
 ## 性能预算
 
-基线是 0.3.4（main@47518a3）。机器能判的写进 `scripts/perf-budget.json` 并由 ui:check 拦。首屏 JS / CSS 体积不设上限，ui:check 第 11 项只打印 gzip 大小（`vite build` 后按 `index.html` 的入口与 modulepreload 计）：
+基线是 0.3.4（main@47518a3）。机器能判的写进 `scripts/perf-budget.json` 并由 ui:check 拦。2026-11-12 产品决定取消首屏体积上限，ui:check 只报数字：首屏 JS / CSS 体积不设上限，ui:check 第 11 项只打印 gzip 大小（`vite build` 后按 `index.html` 的入口与 modulepreload 计）：
 
 | 预算 | 上限 | 在哪拦 |
 |---|---|---|

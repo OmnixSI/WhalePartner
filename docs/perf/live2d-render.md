@@ -49,3 +49,31 @@ GPU 那一侧，大头是把一张每帧都变的画布合成进窗口：保留 
 - 只在顶点变化时上传、只在蒙版变化时重画蒙版：实测 91% 的可见部件和 8 个蒙版每帧都在变。
 - 裁小画布：合成成本不随面积变化。
 - 降低模拟频率再插值：等于变相降帧，不做。
+
+## 发布前必跑：逐像素对照
+
+`gl-renderer.ts` 替换了 `pixi-live2d-display` 内部类的方法，没有接进 CI。改动 `gl-renderer.ts`、升级 `pixi-live2d-display` / `pixi.js` / Cubism Core、或换模型之后，发布前在三种 GL 环境下各跑一遍，三次都要输出「一致」、退出码 0：
+
+- WebGL2：走新路径（输出里 `fastPath: true`）；
+- WebGL1 带 `OES_vertex_array_object`：走原版；
+- WebGL1 无 VAO 扩展：走原版。这一项防的是 pixi 把 `gl.createVertexArray` 补成返回 null 的桩、立绘整块空白的问题。
+
+```sh
+cd apps/client
+# 0. 模型素材软链到 public/live2d（做完删掉，不提交）
+# 1. 两份构建：基线（改动前的提交）和待发布版本
+vite build --outDir /tmp/dist-base   # 在基线提交上
+vite build --outDir /tmp/dist-new    # 在待发布提交上
+# 2. 在基线上录一组姿态（只需录一次）
+node scripts/live2d-pixel-diff.mjs /tmp/dist-base /tmp/snaps.json record
+# 3. 三种 GL 环境各比一次
+for g in webgl2 webgl1 webgl1-novao; do
+  node scripts/live2d-pixel-diff.mjs /tmp/dist-base /tmp/snaps.json a --gl=$g
+  A=/tmp/snaps.a.px.json; [ $g = webgl2 ] || A=/tmp/snaps.a.$g.px.json
+  node scripts/live2d-pixel-diff.mjs /tmp/dist-new /tmp/snaps.json b $A --gl=$g || echo "失败：$g"
+done
+```
+
+任一帧有像素差异、帧数不一致、或画面全透明时脚本退出码为 1。端口固定 14251，需要有界面的 Chrome。
+
+2026-11-12 的结果：三种环境 12 帧都与基线逐字节相同；修复前的 4d499bf 在无 VAO 扩展时 12 帧全透明（基线每帧约 14 万个非透明像素），脚本退出码 1。

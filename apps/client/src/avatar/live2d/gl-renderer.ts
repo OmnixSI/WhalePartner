@@ -9,6 +9,7 @@
  *   - 每个部件一个 VAO，uv 和索引只在第一次上传（STATIC_DRAW），顶点每帧最多 bufferSubData 一次
  *     （同一帧里既当蒙版又正常绘制的部件不再传两遍）；
  *   - 程序、纹理、剔除、混合、uniform 只在值变了的时候才设；MVP / 裁剪矩阵每个程序每帧最多设一次。
+ * 只在 WebGL2 上启用；WebGL1（含带 VAO 扩展的）一律走原版。
  * 画出来的像素与原版一致：着色器、混合方程、绘制顺序、蒙版内容都没变，只是少了重复的状态设置。
  */
 
@@ -135,11 +136,13 @@ export function installFastCubismRenderer(lib: Lib) {
     if (st && st.gl === gl && st.sets === sets) return st;
     if (st === null && r.__fast !== undefined && (r as { __fastGl?: GL }).__fastGl === gl) return null;
     if (st && st.gl === gl) dropDrawables(st);
-    // 所有程序的属性位置一致才能共用一个 VAO；不一致（或没有 VAO）就整体退回原版
+    // 只在 WebGL2 上走快路径：WebGL1 下 pixi 会把 gl.createVertexArray 补成扩展包装，缺 OES_vertex_array_object
+    // 时是返回 null 的桩，不能靠 typeof 判断。所有程序的属性位置一致才能共用一个 VAO，否则也整体退回原版。
     const posLoc = sets[0]?.attributePositionLocation;
     const uvLoc = sets[0]?.attributeTexCoordLocation;
     const uniform = sets.length > 0 && sets.every((s) => s.attributePositionLocation === posLoc && s.attributeTexCoordLocation === uvLoc);
-    if (!uniform || typeof gl.createVertexArray !== "function" || posLoc < 0 || uvLoc < 0) {
+    const webgl2 = typeof WebGL2RenderingContext !== "undefined" && gl instanceof WebGL2RenderingContext;
+    if (!uniform || !webgl2 || posLoc < 0 || uvLoc < 0) {
       r.__fast = null;
       (r as { __fastGl?: GL }).__fastGl = gl;
       return null;
