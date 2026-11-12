@@ -750,3 +750,25 @@ html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
   .ink-in { transform: none; }
   .composer__voice-state[data-recording] .composer__voice-wave i { animation: none; }
 }
+
+/* ---------------------------------------------------------------- 近期对话（上一轮之前） */
+.chat-thread {
+  width: min(var(--dialog-w), 100%);
+  margin: 0 auto;
+  background: color-mix(in oklab, var(--color-card) 74%, transparent);
+  box-shadow: var(--elev-flat);
+}
+.chat-thread__list { display: flex; flex-direction: column; gap: var(--sp-2); max-height: 260px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--color-border-strong) transparent; }
+.chat-thread__list::-webkit-scrollbar { width: 6px; }
+.chat-thread__list::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: var(--r-full); }
+.chat-thread__item { display: flex; flex-direction: column; gap: var(--sp-2); }
+.chat-thread__day { display: flex; align-items: center; gap: var(--sp-2); color: var(--color-text-tertiary); font-size: var(--text-xs); }
+.chat-thread__day::before, .chat-thread__day::after { content: ""; flex: 1; height: 1px; background: var(--color-border); }
+.chat-thread__msg { display: flex; align-items: flex-end; gap: var(--sp-2); max-width: 100%; }
+.chat-thread__msg[data-role="me"] { flex-direction: row-reverse; align-self: flex-end; }
+.chat-thread__avatar { flex: none; width: 24px; height: 24px; }
+.chat-thread__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; max-width: min(78%, 42rem); }
+.chat-thread__msg[data-role="me"] .chat-thread__body { align-items: flex-end; }
+.chat-thread__meta { display: flex; align-items: baseline; gap: var(--sp-2); padding: 0 var(--sp-1); font-size: var(--text-xs); color: var(--color-text-tertiary); }
+.chat-thread__bubble { margin: 0; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-element); background: var(--color-bg-muted); color: var(--color-text-primary); font-size: var(--text-sm); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-thread__msg[data-role="me"] .chat-thread__bubble { background: var(--color-accent-muted); }

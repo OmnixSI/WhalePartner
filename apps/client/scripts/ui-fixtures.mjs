@@ -13,6 +13,33 @@ export const FIXTURES = {
       { id: 6, role: "user", content: "晚点我去看看。", emotion: null, createdAt: NOW },
     ],
   },
+  journals: {
+    items: [
+      {
+        id: "j-2026-11-10", character: "deepseek", localDate: "2026-11-10", revision: 1,
+        text: "今天你把那支旧歌放给我听。前奏一响，你就不说话了，我也没问。\n\n后来你说是高中放学路上听的。我把这句话记在手帐的边角，连同那天的海风。",
+        sources: [
+          { id: "s1", type: "chat", title: "说起高中放学的那条路", text: "你说那时候每天骑车经过一段海堤，耳机里循环这首歌。", createdAt: "2026-11-10T18:20:00+11:00" },
+          { id: "s2", type: "video", title: "海边录音的一天", text: "一个录海浪声的短片，录音师等了整晚，只留下 40 秒。", createdAt: "2026-11-10T20:05:00+11:00" },
+        ],
+        modelId: "stub", createdAt: "2026-11-10T22:10:00+11:00",
+      },
+      {
+        id: "j-2026-11-08", character: "deepseek", localDate: "2026-11-08", revision: 1,
+        text: "你说明天要早起，今晚就不多聊了。我把灯调暗了一点，留了一行字给你：醒了先喝水。",
+        sources: [
+          { id: "s3", type: "chat", title: "明天要早起", text: "你说七点要出门，怕起不来。", createdAt: "2026-11-08T22:40:00+11:00" },
+        ],
+        modelId: "stub", createdAt: "2026-11-08T23:00:00+11:00",
+      },
+    ],
+    total: 2,
+  },
+  chatSessions: {
+    sessions: [
+      { id: "session-stub", character: "deepseek", title: "今晚聊什么", createdAt: NOW, updatedAt: NOW, messageCount: 6 },
+    ],
+  },
   diary: {
     items: [
       { id: 1, inputUrl: "https://www.bilibili.com/video/BV1xx411c7mD", bvid: "BV1xx411c7mD", title: "海边捡到的第一块玻璃", sourceUrl: null, summary: "一个把碎玻璃磨成小石头的短片。", diaryText: "今天看到一个把碎玻璃磨成小石头的短片。\n\n海浪一次次推上来，又退回去，玻璃就慢慢圆了。我想起你上次说的那句「有些事只是需要时间」。", status: "done", errorStage: null, error: null, memoryStatus: "saved", memoryError: null, createdAt: "2026-11-05T10:00:00+11:00", processedAt: "2026-11-05T10:02:00+11:00", duplicateOf: null },
@@ -61,7 +88,9 @@ export async function stubApi(page, levels = DEFAULT_LEVELS) {
     const url = route.request().url();
     const json = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     if (url.includes("/api/health")) return json({ ok: true, provider: "stub", model: "stub" });
+    if (url.includes("/api/chat/sessions")) return json(FIXTURES.chatSessions);
     if (url.includes("/api/chat/history")) return json(FIXTURES.history);
+    if (url.includes("/api/journals")) return json(FIXTURES.journals);
     if (url.includes("/api/diary")) return json(FIXTURES.diary);
     if (url.includes("/api/memories")) return json(FIXTURES.memories);
     if (url.includes("/api/note")) return json({ note: { text: "今天在窗台上发现一只小螃蟹。", updatedAt: NOW } });

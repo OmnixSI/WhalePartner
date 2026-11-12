@@ -135,34 +135,10 @@
 .dts__rule { color: color-mix(in oklab, var(--ink) 30%, transparent); }
 
 /* ---------------------------------------------------------------- 一页纸 */
-.leaf.ink-frame {
+.leaf.ui-card {
   display: block;
-  padding: var(--sp-6) var(--sp-6) var(--sp-5) calc(var(--sp-6) + 24px);
-  background: var(--sheet);
-  box-shadow: var(--shadow-1);
+  padding: var(--sp-5) var(--sp-6);
   min-width: 0;
-}
-
-.leaf__binding {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 24px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-evenly;
-  padding: var(--sp-8) 0;
-}
-
-.leaf__hole {
-  width: 14px;
-  height: 14px;
-  border-radius: var(--r-round);
-  background: var(--paper-2);
-  box-shadow: inset 0 0 0 var(--stroke-1) var(--line-strong);
-  flex: none;
 }
 
 .leaf__body { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
@@ -527,7 +503,7 @@
 
   .diary-page__panel { width: 100%; }
 
-  .leaf.ink-frame { padding: var(--sp-5) var(--sp-4) var(--sp-4) calc(var(--sp-4) + 20px); }
+  .leaf.ui-card { padding: var(--sp-4); }
 
   .leaf__head { gap: var(--sp-2); }
   .leaf__stamp { display: inline-flex; }
@@ -574,3 +550,8 @@
 :root[data-motion="calm"] .pagebar__step,
 :root[data-motion="calm"] .diary-calendar__day,
 :root[data-motion="calm"] .mini__cell { transition: none; }
+
+/* #155：日记范围用 components/ui Tabs，日期导航可快速跳月/年 */
+.diary-page__controls .ui-tabs { min-width: 0; }
+.pagebar { flex-wrap: wrap; }
+.pagebar__jump { width: 7.5rem; min-height: var(--hit); }

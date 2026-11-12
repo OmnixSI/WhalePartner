@@ -8,10 +8,10 @@ import { spring } from "../motion/tokens";
 import { DailyJournalLeaf } from "../components/diary/DailyJournalLeaf";
 import { DiaryLeaf } from "../components/diary/DiaryLeaf";
 import { DiaryCalendar, DiaryYearOverview } from "../components/diary/DiaryCalendar";
-import { IndexTabs } from "../components/diary/IndexTabs";
 import { PageBar } from "../components/diary/PageBar";
 import { StateBlock } from "../components/diary/StateBlock";
 import { Toast } from "../components/diary/Toast";
+import { Tabs } from "../components/ui/Tabs";
 import { VideoDesk } from "../components/diary/VideoDesk";
 import { useInkEnv } from "../components/ink/useCalm";
 import { useCharacter } from "../characters";
@@ -232,7 +232,14 @@ export function DiaryPage() {
         />
 
         <div className="diary-page__controls">
-          <IndexTabs value={mode} onChange={changeMode} panelId="diary-panel" />
+          <Tabs
+            items={[{ value: "week", label: "周" }, { value: "month", label: "月" }, { value: "year", label: "年" }]}
+            value={mode}
+            onValueChange={(value) => changeMode(value as RangeMode)}
+            variant="segmented"
+            label="日记范围"
+            panelId="diary-panel"
+          />
           <PageBar mode={mode} cursor={cursor} onCursor={changeCursor} onToday={() => changeCursor(startOfDay(new Date()))} />
         </div>
 

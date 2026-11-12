@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, 
 import { isSendKey, PREFS_EVENT, readSendKey, type SendKey } from "../../lib/chat-prefs";
 import { Icon } from "../../icons";
 import { Button, IconButton } from "../ui/Button";
+import { Tooltip } from "../ui/Tooltip";
 import { Input } from "../ui/Field";
 import type { VoicePhase } from "./useVoiceMode";
 
@@ -169,9 +170,11 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
           ) : (
             <>
           <Popover.Root open={shareOpen} onOpenChange={setShareOpen}>
-            <Popover.Trigger asChild>
-              <IconButton label="发个视频给她"><Icon name="video" size={22} /></IconButton>
-            </Popover.Trigger>
+            <Tooltip content="发个视频给她">
+              <Popover.Trigger asChild>
+                <IconButton label="发个视频给她"><Icon name="video" size={22} /></IconButton>
+              </Popover.Trigger>
+            </Tooltip>
             <Popover.Portal>
               <Popover.Content className="pop" side="top" align="start" sideOffset={8} collisionPadding={16}>
                 <h3 className="pop__title">给她看个视频</h3>

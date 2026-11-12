@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import type { DailyJournal } from "../../lib/diary";
-import { InkFrame } from "../ink";
+import { Card } from "../ui/Card";
 import { DateStamp } from "./DateStamp";
 import { RuledPaper } from "./RuledPaper";
 import { journalDate } from "./types";
@@ -26,12 +26,7 @@ export function DailyJournalLeaf({ journal, collapsed, fresh = false }: Props) {
   const expanded = !collapsed || open;
 
   return (
-    <InkFrame as="article" radius={20} stroke={2} tone="ink" fill="sheet" openCorner className="leaf" id={`leaf-${journal.id}`}>
-      <div className="leaf__binding" aria-hidden>
-        <span className="leaf__hole" />
-        <span className="leaf__hole" />
-      </div>
-
+    <Card role="article" variant="flat" padding="lg" className="leaf" id={`leaf-${journal.id}`}>
       <div className="leaf__body">
         <header className="leaf__head">
           {at ? <DateStamp at={at} id={`${stampId}-journal`} /> : <span className="leaf__nodate">日期暂不可用</span>}
@@ -76,6 +71,6 @@ export function DailyJournalLeaf({ journal, collapsed, fresh = false }: Props) {
           {expanded && <span>第 {journal.revision} 版</span>}
         </footer>
       </div>
-    </InkFrame>
+    </Card>
   );
 }

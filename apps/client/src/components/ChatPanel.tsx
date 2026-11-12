@@ -296,6 +296,8 @@ export function ChatPanel({ character }: Props) {
             firstEntry={firstEntry}
             progress={progress}
             pending={pending}
+            turns={turns}
+            currentKey={lastHer?.key}
             showFloat={showFloat}
             calm={calm}
             draft={draft}
