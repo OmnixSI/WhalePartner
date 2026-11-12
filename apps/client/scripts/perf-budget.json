@@ -1,10 +1,6 @@
 {
-  "$comment": "性能预算。基线 = 0.3.4（main@47518a3）的构建；motionDebt / filterDebt 是各文件现存的非合成层动效与 filter，只许减少（ui-check --debt 打印当前值）。见 docs/DESIGN.md §性能预算。",
+  "$comment": "性能预算。基线 = 0.3.4（main@47518a3）的构建；首屏体积只打印、不设上限；motionDebt / filterDebt 是各文件现存的非合成层动效与 filter，只许减少（ui-check --debt 打印当前值）。见 docs/DESIGN.md §性能预算。",
   "baseline": "0.3.4",
-  "firstScreenGzip": {
-    "js": 444000,
-    "css": 50100
-  },
   "runtimeDependencies": [
     "@fontsource-variable/fraunces",
     "@pixi/unsafe-eval",

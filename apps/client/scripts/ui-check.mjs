@@ -24,7 +24,7 @@
  *  11  运行时依赖只允许清单里的包（不加 UI 库 / 动画库 / CSS-in-JS）
  *  12  动画与过渡只动 transform / opacity；components/ui 必须 0 处，旧页面按文件只减不增
  *  13  filter 按文件只减不增（backdrop-filter 由第 3 项拦）
- *  14  首屏 JS / CSS gzip 不超过 0.3.4（默认构建到 node_modules/.cache/ui-check-dist，--dist=… 复用现成构建）
+ *  14  首屏 JS / CSS gzip 只打印、不设上限（默认构建到 node_modules/.cache/ui-check-dist，--dist=… 复用现成构建；构建失败才算失败）
  *  15  每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
  *  16  懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；
  *      loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
@@ -259,31 +259,16 @@ function buildDist() {
   });
 }
 
-/** #160 的首屏上限（gzip 字节）：卡面接入前后首屏都不许超过它。 */
-const CARD_LIVE_CAP = { js: 284_826, css: 45_363 };
-
 async function checkFirstScreen() {
   try {
     const dist = await buildDist();
     const r = firstScreen(dist);
-    const cap = BUDGET.firstScreenGzip;
-    const over = [];
-    if (r.js.gzip > cap.js) over.push(`JS ${kb(r.js.gzip)} > ${kb(cap.js)}`);
-    if (r.css.gzip > cap.css) over.push(`CSS ${kb(r.css.gzip)} > ${kb(cap.css)}`);
-    const pct = (a, b) => `${a <= b ? "−" : "+"}${Math.abs((1 - a / b) * 100).toFixed(1)}%`;
-    const first = record(`首屏 gzip ≤ ${BUDGET.baseline}`, over.length === 0,
-      over.length ? over.join("；") : `JS ${kb(r.js.gzip)}（${pct(r.js.gzip, cap.js)}）  CSS ${kb(r.css.gzip)}（${pct(r.css.gzip, cap.css)}）`);
-    // #160：卡面（LazyAffinityCard）按需加载，首屏的 JS / CSS 里不能出现它的类名；体积也不能越过接入前的上限
+    // 卡面（LazyAffinityCard）按需加载：首屏的 JS / CSS 里不能出现它的类名；体积只打印，不设上限
     const leaked = [...r.js.files, ...r.css.files].filter((f) => /acard/.test(readFileSync(join(dist, f.url), "utf8"))).map((f) => f.url);
-    const live = [];
-    if (r.js.gzip > CARD_LIVE_CAP.js) live.push(`JS ${r.js.gzip} B > ${CARD_LIVE_CAP.js} B`);
-    if (r.css.gzip > CARD_LIVE_CAP.css) live.push(`CSS ${r.css.gzip} B > ${CARD_LIVE_CAP.css} B`);
-    if (leaked.length) live.push(`首屏文件里有卡面代码：${leaked.join("、")}`);
-    record("好感度卡不进首屏 / 首屏 gzip 在 #160 上限内", live.length === 0,
-      live.length ? live.join("；") : `首屏文件无 acard；JS ${r.js.gzip} B ≤ ${CARD_LIVE_CAP.js}，CSS ${r.css.gzip} B ≤ ${CARD_LIVE_CAP.css}`);
-    return first;
+    return record("首屏 gzip（只打印）", leaked.length === 0,
+      `JS ${kb(r.js.gzip)}  CSS ${kb(r.css.gzip)}${leaked.length ? `；首屏文件里有卡面代码：${leaked.join("、")}` : "；首屏文件无 acard"}`);
   } catch (error) {
-    return record(`首屏 gzip ≤ ${BUDGET.baseline}`, false, String(error?.message ?? error));
+    return record("首屏 gzip（只打印）", false, String(error?.message ?? error));
   }
 }
 

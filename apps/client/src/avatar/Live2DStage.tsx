@@ -5,10 +5,11 @@ import type { Live2DModel } from "pixi-live2d-display/cubism4";
 import { claimAvatar, setAvatarStatus } from "./avatar-state";
 import type { AvatarEmotion } from "./model.config";
 import { chooseTapAction, EMOTION_EXPRESSIONS, loadTapActions, type TapAction } from "./live2d/actions";
-import { createFrameGovernor } from "./live2d/frame-governor";
 import { placeModel } from "./live2d/geometry";
 import { classifyTap } from "./live2d/hit";
 import { cubismVersionOf, loadCubismCore } from "./live2d/runtime";
+import { installFastCubismRenderer } from "./live2d/gl-renderer";
+import { syncTickerToVisibility } from "./live2d/visibility";
 import {
   FALLBACK_MS,
   initialTapState,
@@ -69,8 +70,6 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
   const audioDrivenRef = useRef(audioDriven);
   const audioLevelRef = useRef(audioLevel);
   const reactRef = useRef<((value: AvatarEmotion) => void) | null>(null);
-  /** 把 Live2D 从静置档叫醒（说话、换表情等从 props 来的变化用）。 */
-  const wakeRef = useRef<(() => void) | null>(null);
   const callbacks = useRef({ onReady, onError, onTap });
   const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState<StagePhase>("loading");
@@ -82,18 +81,15 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
   useEffect(() => {
     emotionRef.current = emotion;
     reactRef.current?.(emotion);
-    wakeRef.current?.();
   }, [emotion]);
 
   useEffect(() => {
     speakingRef.current = speaking;
-    wakeRef.current?.();
   }, [speaking]);
 
   useEffect(() => {
     audioDrivenRef.current = audioDriven;
     audioLevelRef.current = audioLevel;
-    wakeRef.current?.();
   }, [audioDriven, audioLevel]);
 
   const retry = useCallback(() => {
@@ -117,7 +113,6 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
     let expressionTimer: number | undefined;
     let watchdogTimer: number | undefined;
     let layoutFrame: number | undefined;
-    let governor: ReturnType<typeof createFrameGovernor> | undefined;
     let mouthId: string | undefined;
     let wasSpeaking = false;
     let tapActions: TapAction[] = [];
@@ -161,6 +156,8 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
         if (disposed) return;
 
         (window as Live2DWindow).PIXI = PIXI;
+        // cubism4 入口在运行时导出了渲染器类，但类型里没有，这里按结构传进去
+        if (version !== 2) installFastCubismRenderer(lib as unknown as Parameters<typeof installFastCubismRenderer>[0]);
         lib.Live2DModel.registerTicker(PIXI.Ticker);
 
         // 先加载模型（含全部纹理），再建 Application：加载期间不占 GL 上下文，
@@ -220,7 +217,6 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
             placeModel(host, renderer, model);
             bounce.baseY = model.y;
             bounce.baseScale = model.scale.x;
-            governor?.wake();
           });
         };
 
@@ -259,7 +255,6 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
         const react = (value: AvatarEmotion) => {
           if (tapState.phase === "acting") return;
           express(EMOTION_EXPRESSIONS[value]);
-          governor?.wake();
         };
         reactRef.current = react;
 
@@ -319,8 +314,6 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
             choose: chooseTapAction,
           });
           tapState = result.state;
-          // 待机动作每播完一段也会发 motionFinish，不能算「有人在玩」；只有点击才唤醒（动作期间由 isBusy 撑住）
-          if (event.type === "tap") governor?.wake();
           result.effects.forEach(runEffect);
           armWatchdog();
         };
@@ -367,7 +360,6 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
         let gazeFrame: number | undefined;
         const onPointerMove = (event: PointerEvent) => {
           gaze = { x: event.clientX, y: event.clientY };
-          governor?.wake();
           if (gazeFrame !== undefined) return;
           gazeFrame = window.requestAnimationFrame(() => {
             gazeFrame = undefined;
@@ -386,21 +378,13 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
           if (gazeFrame !== undefined) window.cancelAnimationFrame(gazeFrame);
         });
 
-        // 帧率调度：有动静按刷新率画；静置 2.5 秒后降到 ~10fps（定时器手动推帧，rAF 为 0）；
-        // 窗口隐藏 / 舞台离开视口时全停。说话、点击动作、弹跳期间不降档。
+        // 看得见就按刷新率画；窗口隐藏 / 舞台离开视口时停掉 ticker，回来再启动。
         let visible = true;
-        const gov = createFrameGovernor({
-          ticker: app.ticker,
-          isHidden: () => document.hidden || !visible,
-          isBusy: () => speakingRef.current || wasSpeaking || tapState.phase === "acting" || bounce.amp > 0,
-        });
-        governor = gov;
-        wakeRef.current = gov.wake;
-        const sync = () => gov.sync();
+        const sync = () => syncTickerToVisibility(ticker, document.hidden || !visible);
         const io = new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; sync(); });
         io.observe(host);
         document.addEventListener("visibilitychange", sync);
-        cleanups.push(() => { gov.dispose(); wakeRef.current = null; io.disconnect(); document.removeEventListener("visibilitychange", sync); });
+        cleanups.push(() => { io.disconnect(); document.removeEventListener("visibilitychange", sync); });
 
         playIdle();
         react(emotionRef.current);
