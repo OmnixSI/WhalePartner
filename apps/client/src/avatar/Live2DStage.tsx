@@ -8,6 +8,7 @@ import { chooseTapAction, EMOTION_EXPRESSIONS, loadTapActions, type TapAction } 
 import { placeModel } from "./live2d/geometry";
 import { classifyTap } from "./live2d/hit";
 import { cubismVersionOf, loadCubismCore } from "./live2d/runtime";
+import { installFastCubismRenderer } from "./live2d/gl-renderer";
 import { syncTickerToVisibility } from "./live2d/visibility";
 import {
   FALLBACK_MS,
@@ -155,6 +156,8 @@ export function Live2DStage({ modelUrl, emotion, speaking, failureMessage, audio
         if (disposed) return;
 
         (window as Live2DWindow).PIXI = PIXI;
+        // cubism4 入口在运行时导出了渲染器类，但类型里没有，这里按结构传进去
+        if (version !== 2) installFastCubismRenderer(lib as unknown as Parameters<typeof installFastCubismRenderer>[0]);
         lib.Live2DModel.registerTicker(PIXI.Ticker);
 
         // 先加载模型（含全部纹理），再建 Application：加载期间不占 GL 上下文，
