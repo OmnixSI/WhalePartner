@@ -8,6 +8,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { InkLine } from "../ink";
+import "../../styles/diary.css"; // 记忆页也用这个组件；日记页懒加载后，样式得跟着组件走
 import { CharacterMark, type CharacterMood } from "../CharacterMark";
 import { Horizon } from "../Horizon";
 import { useInkEnv } from "../ink/useCalm";

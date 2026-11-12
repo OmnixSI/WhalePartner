@@ -25,61 +25,6 @@
   color: var(--ink-mute);
 }
 
-/* 「她在逛」小便签（§7.7.3） */
-.surf-slip {
-  --surf-blink: 1200ms; /* 看视频：三道线依次点亮 */
-  --surf-scan: 1600ms;  /* 翻网页：笔尖往返 */
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: var(--hit);
-  padding: var(--sp-2) var(--sp-4);
-  border: 0;
-  border-radius: var(--r-md);
-  background: var(--slip);
-  color: var(--ink);
-  box-shadow: var(--shadow-1);
-  font-family: var(--font-ui);
-  font-size: var(--fs-small);
-  transform: rotate(-1deg);
-  cursor: pointer;
-}
-.surf-slip:hover { box-shadow: var(--shadow-2); }
-.surf-slip:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.surf-slip__tape { position: absolute; top: -6px; left: 50%; translate: -50% 0; }
-.surf-slip__icon { display: inline-flex; color: var(--accent); }
-.surf-slip__body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; line-height: 1.35; }
-.surf-slip__text { white-space: nowrap; }
-.surf-slip__detail {
-  max-width: 280px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  font-size: var(--fs-micro);
-  color: var(--ink-mute);
-}
-/* 找 → 看 → 翻 → 记：走到哪一步亮到哪一步 */
-.surf-slip__dots { display: inline-flex; align-items: center; gap: 5px; margin-left: var(--sp-1); }
-.surf-slip__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
-.surf-slip__dot[data-state="done"] { background: var(--ink-soft); }
-.surf-slip__dot[data-state="now"] { background: var(--accent); animation: surf-now var(--surf-blink) var(--ease-inout) infinite alternate; }
-@keyframes surf-now { from { opacity: .35; } to { opacity: 1; } }
-.surf-slip[data-calm="on"] .surf-slip__dot[data-state="now"] { animation: none; }
-:root[data-elder="on"] .surf-slip__dot[data-state="now"] { animation: none; }
-.surf-slip[data-calm="on"] { transform: none; }
-/* 看视频：三道横线依次点亮；翻网页：小笔尖左右走。calm / 老人模式不动。 */
-.surf-slip__icon[data-stage="watching"] svg { animation: surf-blink var(--surf-blink) steps(1, end) infinite; }
-.surf-slip__icon[data-stage="reading"] svg { animation: surf-scan var(--surf-scan) var(--ease-inout) infinite alternate; }
-@keyframes surf-blink {
-  0%, 33% { opacity: .35; }
-  34%, 66% { opacity: .7; }
-  67%, 100% { opacity: 1; }
-}
-@keyframes surf-scan { from { transform: translateX(0); } to { transform: translateX(3px); } }
-:root[data-elder="on"] .surf-slip { transform: none; font-size: calc(var(--fs-small) * 1.25); }
-:root[data-elder="on"] .surf-slip__icon svg { animation: none !important; }
-
 /* ---------------------------------------------------------------- 工具条 */
 .surf-bar {
   display: flex;
@@ -378,7 +323,6 @@
   /* 竖排时 flex-basis 会变高度，这里必须收回，否则搜索框会被撑成一大块 */
   .surf-search { flex: none; }
   .surf-run { margin-left: 0; width: 100%; }
-  .surf-slip__text { white-space: normal; }
   .pdlg { top: auto; bottom: 0; left: 0; translate: none; width: 100%; border-radius: var(--r-lg) var(--r-lg) 0 0; max-height: 88dvh; }
 }
 
