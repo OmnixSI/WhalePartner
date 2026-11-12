@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { Memory } from "mem0ai/oss";
+import type { Memory } from "mem0ai/oss";
 import type { ChatProvider } from "../llm/types.ts";
 import type { ChatStore } from "../store/index.ts";
 import { startLlmBridge } from "./llm-bridge.ts";
@@ -15,6 +15,16 @@ export interface MemoryOptions {
 }
 
 /** 懒加载本地向量模型和 Mem0；初始化失败后，下次调用会重试。 */
+/**
+ * mem0 默认开着用量遥测：search / getAll / add 都要先等一次遥测 id 的读写，抽中时还要等一次
+ * 发往 PostHog 的请求（悉尼实测 1–1.4 秒），聊天首字被它拖住。这个开关在模块加载时读一次，
+ * 所以只能在第一次加载 mem0ai/oss 之前设好；用动态 import 保证打包后的顺序也对。
+ */
+function loadMem0() {
+  process.env.MEM0_TELEMETRY = "false";
+  return import("mem0ai/oss").then((module) => module.Memory);
+}
+
 export class LazyMemoryStore implements MemoryStore {
   readonly #options: MemoryOptions;
   #store?: Promise<MemoryStore>;
@@ -59,7 +69,7 @@ export class LazyMemoryStore implements MemoryStore {
     const embedder = new LocalEmbedder(join(dataDir, "models"));
     await embedder.warm();
     const bridge = await startLlmBridge(provider);
-    const memory = new Memory({
+    const memory = new (await loadMem0())({
       version: "v1.1",
       embedder: { provider: "langchain", config: { model: embedder } },
       vectorStore: { provider: "memory", config: { collectionName: "whalepartner", dimension: EMBEDDING_DIMENSION, dbPath: join(dataDir, "vectors.db") } },

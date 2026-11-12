@@ -50,7 +50,7 @@ import { prewarmVoice } from "./voice/prewarm.ts";
 import { attachVoiceWebSocket, handleVoiceRoute } from "./routes/voice.ts";
 import { handleRelationshipRoute } from "./routes/relationship.ts";
 import { dataDir } from "./server/data-dir.ts";
-import { closeCodexAppServer } from "./codex/app-server.ts";
+import { closeCodexAppServer, warmCodexAppServer } from "./codex/app-server.ts";
 export type { ServerDeps } from "./server/types.ts";
 
 export interface ApiServer extends Server {
@@ -346,6 +346,10 @@ if (import.meta.main) {
 
   server.listen(config.port, host, () => {
     void prewarmVoice(asr, tts);
+    if (provider.providers.some((item) => item.id === "codex")) {
+      void warmCodexAppServer().catch((error: unknown) =>
+        console.warn("Codex 启动预热失败：", error instanceof Error ? error.message : error));
+    }
     if (memory) void memory.warm().catch((error: unknown) => console.warn("本地记忆向量启动预热失败：", error instanceof Error ? error.message : error));
     if (config.surfEnabled) stopSurfScheduler = surf.start();
     void surf.repairMissingThumbnails().catch((error: unknown) => console.warn("见闻封面修复失败：", error instanceof Error ? error.message : error));

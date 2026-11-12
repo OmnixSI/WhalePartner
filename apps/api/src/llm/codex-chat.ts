@@ -42,9 +42,11 @@ export class CodexChatProvider implements ChatProvider {
 
   async *stream(messages: ChatMessage[], options: StreamOptions = {}): AsyncGenerator<LlmDelta> {
     options.signal?.throwIfAborted();
+    const started = performance.now();
     const models = await listCodexModels(options.signal);
     const settings = resolveCodexSettings(readStoredCodexSettings(), models);
     this.#resolved = settings.model;
+    console.info(`[codex-perf] ${JSON.stringify({ stage: "models", ms: Math.round(performance.now() - started), model: settings.model, effort: settings.effort })}`);
     for await (const text of streamWithCodexAppServer(buildCodexChatPrompt(messages), settings, options.signal)) {
       yield { text };
     }

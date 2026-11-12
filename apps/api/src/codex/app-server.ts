@@ -7,6 +7,23 @@ import type { StoredCodexSettings } from "./settings.ts";
 const REQUEST_TIMEOUT_MS = 30000;
 const TURN_TIMEOUT_MS = 240000;
 
+/**
+ * 这里的 Codex 只用来生成聊天文字，不需要它的编码工具。默认每轮要带约 2 万 token 的工具定义，
+ * 关掉后约 6.5k：首字更快，也少耗一大截额度。只作用于这个子进程，不改用户的 ~/.codex/config.toml；
+ * 旧版 Codex 不认识的 feature 名会被忽略。
+ */
+const CHAT_ONLY_FEATURES = [
+  "apps", "browser_use", "browser_use_external", "computer_use", "plugins", "multi_agent", "shell_tool",
+  "unified_exec", "view_image", "image_generation", "goals", "skill_search", "tool_suggest", "sleep_tool",
+  "hooks", "in_app_browser", "code_mode_host",
+];
+export const CODEX_APP_SERVER_ARGS: readonly string[] = [
+  "app-server", "--stdio",
+  "-c", "mcp_servers={}",
+  "-c", 'web_search="disabled"',
+  ...CHAT_ONLY_FEATURES.flatMap((feature) => ["-c", `features.${feature}=false`]),
+];
+
 export interface CodexEffortOption {
   reasoningEffort: string;
   description: string;
@@ -135,6 +152,7 @@ class CodexAppServer {
 
   async *stream(prompt: string, settings: StoredCodexSettings, signal?: AbortSignal): AsyncGenerator<string> {
     throwIfAborted(signal);
+    const perf = { started: performance.now(), coldStart: !this.#ready, threadStartMs: 0, turnStartMs: 0, firstDeltaMs: -1, inputTokens: -1, cachedInputTokens: -1 };
     const thread = await this.request("thread/start", {
       model: settings.model,
       cwd: tmpdir(),
@@ -146,6 +164,7 @@ class CodexAppServer {
     throwIfAborted(signal);
     const threadId = thread.thread?.id;
     if (!threadId) throw new Error("Codex 没有建立对话线程。");
+    perf.threadStartMs = Math.round(performance.now() - perf.started);
 
     const queue: NotificationQueue = { values: [], waiters: [] };
     const unsubscribe = this.onNotification((message) => {
@@ -172,6 +191,7 @@ class CodexAppServer {
         input: [{ type: "text", text: prompt }],
       }, signal) as { turn?: { id?: string } };
       turnId = started.turn?.id ?? "";
+      perf.turnStartMs = Math.round(performance.now() - perf.started);
       if (!turnId) throw new Error("Codex 没有开始这一轮对话。");
       throwIfAborted(signal);
 
@@ -186,7 +206,13 @@ class CodexAppServer {
           const eventTurnId = typeof message.params?.turnId === "string" ? message.params.turnId : completedTurn?.id;
           if (eventTurnId !== turnId) continue;
 
+          if (message.method === "thread/tokenUsage/updated") {
+            const usage = (message.params?.tokenUsage as { last?: { inputTokens?: number; cachedInputTokens?: number } } | undefined)?.last;
+            perf.inputTokens = usage?.inputTokens ?? -1;
+            perf.cachedInputTokens = usage?.cachedInputTokens ?? -1;
+          }
           if (message.method === "item/agentMessage/delta" && typeof message.params?.delta === "string") {
+            if (!hasText) perf.firstDeltaMs = Math.round(performance.now() - perf.started);
             hasText = true;
             yield message.params.delta;
           }
@@ -198,6 +224,7 @@ class CodexAppServer {
               throw new Error(detail);
             }
             completed = true;
+            console.info(`[codex-perf] ${JSON.stringify({ ...perf, started: undefined, totalMs: Math.round(performance.now() - perf.started), promptChars: prompt.length })}`);
             break;
           }
         }
@@ -225,7 +252,7 @@ class CodexAppServer {
   async #ensureReady() {
     if (this.#ready) return this.#ready;
     // 按解析出的真实路径拉起，绕过会改写参数的包装脚本；找不到就直接抛错。
-    const child = spawn(resolveCodexBinary(), ["app-server", "--stdio", "-c", "mcp_servers={}"], { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(resolveCodexBinary(), [...CODEX_APP_SERVER_ARGS], { cwd: tmpdir(), stdio: ["pipe", "pipe", "pipe"] });
     this.#child = child;
     this.#reader = createInterface({ input: child.stdout });
     this.#reader.on("line", (line) => this.#readLine(line));
@@ -371,6 +398,11 @@ function getAppServer() {
 
 export function listCodexModels(signal?: AbortSignal) {
   return getAppServer().listModels(signal);
+}
+
+/** 后端启动时先把 Codex 服务拉起来并取一次模型列表（不发模型请求、不耗额度），第一句话不再等进程启动。 */
+export async function warmCodexAppServer() {
+  await getAppServer().listModels();
 }
 
 export function streamWithCodexAppServer(prompt: string, settings: StoredCodexSettings, signal?: AbortSignal) {

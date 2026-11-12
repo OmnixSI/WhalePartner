@@ -12,6 +12,7 @@ import {
   supportedEffortsOf,
   GENERIC_REASONING_EFFORTS,
   streamWithCodexAppServer,
+  warmCodexAppServer,
   type CodexModelOption,
 } from "../src/codex/app-server.ts";
 import { buildVideoSummaryPrompt } from "../src/video/prompt.ts";
@@ -221,6 +222,49 @@ if (spawnIndex === 2) {
 
     assert.deepEqual((await listCodexModels()).map((model) => model.model), ["fixture-model"]);
     assert.equal((await spawned()).length, 3);
+  } finally {
+    await closeCodexAppServer();
+    process.env.PATH = previousPath;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("warming the Codex app-server starts it without tools and only lists models (no model turn)", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "whalepartner-codex-warm-"));
+  const executable = join(directory, "codex");
+  const log = join(directory, "calls.log");
+  const previousPath = process.env.PATH;
+  await writeFile(executable, `#!${process.execPath}
+const fs = require("node:fs");
+fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv: process.argv.slice(2) }) + "\\n");
+const parent = process.ppid;
+setInterval(() => { if (process.ppid !== parent) process.exit(0); }, 200);
+const reply = (id, body) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, ...body }) + "\\n");
+require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
+  const message = JSON.parse(line);
+  fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ method: message.method }) + "\\n");
+  if (message.id === undefined) return;
+  if (message.method === "initialize") return reply(message.id, { result: {} });
+  reply(message.id, { result: { data: [{ model: "fixture-model", defaultReasoningEffort: "low", supportedReasoningEfforts: [] }], nextCursor: null } });
+});
+`);
+  await chmod(executable, 0o755);
+  process.env.PATH = `${directory}:${previousPath ?? ""}`;
+
+  try {
+    await closeCodexAppServer();
+    await warmCodexAppServer();
+    await listCodexModels();
+    const calls = (await readFile(log, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+    const spawns = calls.filter((call) => call.argv);
+    assert.equal(spawns.length, 1, "预热后的第一次使用复用同一个进程");
+    const argv: string[] = spawns[0].argv;
+    assert.deepEqual(argv.slice(0, 2), ["app-server", "--stdio"]);
+    for (const override of ["mcp_servers={}", 'web_search="disabled"', "features.shell_tool=false", "features.unified_exec=false", "features.apps=false"]) {
+      assert.equal(argv.includes(override), true, `缺少 -c ${override}`);
+    }
+    const methods = calls.filter((call) => call.method).map((call) => call.method);
+    assert.deepEqual(methods, ["initialize", "initialized", "model/list", "model/list"]);
   } finally {
     await closeCodexAppServer();
     process.env.PATH = previousPath;

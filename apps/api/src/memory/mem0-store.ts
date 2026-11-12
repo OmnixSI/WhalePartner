@@ -1,4 +1,4 @@
-import { Memory, type MemoryItem } from "mem0ai/oss";
+import type { Memory, MemoryItem } from "mem0ai/oss";
 import type { ChatStore } from "../store/index.ts";
 import type { ConversationTurn, ExperienceInput, MemoryEntry, MemoryStore } from "./types.ts";
 
