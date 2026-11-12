@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
-import { planUpgrade, readSeenLevel, resetSeenMemory, seenKey, writeSeenLevel } from "../src/card-preview/tier/seen-level.ts";
+import { notifiedKey, planUpgrade, readNotifiedLevel, readSeenLevel, resetSeenMemory, seenKey, shouldAnnounceUpgrade, writeNotifiedLevel, writeSeenLevel } from "../src/card-preview/tier/seen-level.ts";
 
 function fakeStore(initial: Record<string, string> = {}) {
   const data = { ...initial };
@@ -61,4 +61,49 @@ test("memory fallback does not shadow a working store", () => {
   writeSeenLevel("whale", 2, brokenStore);
   writeSeenLevel("whale", 3, store);
   assert.equal(readSeenLevel("whale", store), 3);
+});
+
+/** getItem 正常、setItem 抛错（配额满、隐私模式只读）：storage 里还躺着旧值。 */
+function readOnlyStore(initial: Record<string, string>) {
+  return {
+    getItem: (k: string) => initial[k] ?? null,
+    setItem: () => { throw new Error("QuotaExceededError"); },
+  };
+}
+
+test("setItem throws while getItem works: the same level is not replayed on every open (3→4 played once)", () => {
+  const store = readOnlyStore({ [seenKey("whale")]: "3" });
+  assert.deepEqual(planUpgrade(readSeenLevel("whale", store), 4), { from: 3, record: null }); // 第一次：播 3→4
+  writeSeenLevel("whale", 4, store); // 播完记 4，但写不进去
+  assert.equal(readSeenLevel("whale", store), 4); // 不能读回 storage 里的旧值 3
+  assert.deepEqual(planUpgrade(readSeenLevel("whale", store), 4), { from: undefined, record: null }); // 再开不重播
+});
+
+test("only the key that failed to save reads from memory; a later successful write clears the mark", () => {
+  const store = fakeStore({ [seenKey("whale")]: "3", [seenKey("claude")]: "2" });
+  const failing = { getItem: store.getItem, setItem: () => { throw new Error("denied"); } };
+  writeSeenLevel("whale", 4, failing);
+  assert.equal(readSeenLevel("whale", store), 4); // 失败过的键读内存
+  assert.equal(readSeenLevel("claude", store), 2); // 其余键照常读 storage
+  writeSeenLevel("whale", 5, store); // 这次写成功
+  assert.equal(store.data[seenKey("whale")], "5");
+  store.data[seenKey("whale")] = "1"; // 标记已清：之后以 storage 为准
+  assert.equal(readSeenLevel("whale", store), 1);
+});
+
+test("notified level is a separate record with the same failure fallback", () => {
+  assert.notEqual(notifiedKey("whale"), seenKey("whale"));
+  const store = readOnlyStore({});
+  writeNotifiedLevel("whale", 4, store);
+  assert.equal(readNotifiedLevel("whale", store), 4);
+  assert.equal(readSeenLevel("whale", store), null); // 提示不碰「上次看到的等级」
+});
+
+test("announce: only for an unseen upgrade whose level was not announced yet", () => {
+  assert.equal(shouldAnnounceUpgrade(3, null, 4), true);
+  assert.equal(shouldAnnounceUpgrade(3, 4, 4), false); // 同一档只提示一次
+  assert.equal(shouldAnnounceUpgrade(3, 4, 5), true); // 再升一档可以再提示
+  assert.equal(shouldAnnounceUpgrade(4, null, 4), false); // 没升
+  assert.equal(shouldAnnounceUpgrade(null, null, 4), false); // 没有记录：只对齐，不提示
+  assert.equal(shouldAnnounceUpgrade(5, null, 2), false); // 等级变低
 });
