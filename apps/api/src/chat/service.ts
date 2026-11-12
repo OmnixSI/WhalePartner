@@ -80,6 +80,9 @@ export function validateUserMessage(value: unknown): string {
  */
 export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
   const { provider, store, memory } = deps;
+  const perfStart = performance.now();
+  const since = () => Math.round(performance.now() - perfStart);
+  const perf: Record<string, number | string> = {};
   const bus = deps.bus ?? hubEvents;
   const character = deps.character ?? DEFAULT_CHARACTER;
   const session = store.getOrCreateSession(character, deps.sessionId);
@@ -122,6 +125,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
     }
     const recalled = await recalling;
     signal?.throwIfAborted();
+    perf.recallMs = since();
 
     const messages = buildChatContext({
       persona: withUserName(buildPersonaCore(character), deps.nickname),
@@ -137,6 +141,8 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
       history: recalled.history,
       inputBudget: deps.inputBudget ?? 24_000,
     });
+    perf.contextMs = since();
+    perf.contextChars = messages.reduce((sum, message) => sum + message.content.length, 0);
 
     const emit = function* (text: string, emotions: Emotion[]): Generator<ChatEvent> {
       for (const emotion of emotions) {
@@ -157,6 +163,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
         if (delta.provider) usedProvider = delta.provider;
         if (delta.usage) usage = delta.usage;
         if (delta.text) {
+          perf.firstDeltaMs ??= since();
           clearTimeout(timer);
           const { text, emotions } = filter.feed(delta.text);
           yield* emit(text, emotions);
@@ -170,6 +177,8 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
       throw error;
     }
 
+    perf.replyMs = since();
+    console.info(`[chat-perf] ${JSON.stringify({ ...perf, provider: usedProvider ?? provider.id })}`);
     signal?.throwIfAborted();
     const emotion = first ?? "neutral";
     if (!reply.trim()) throw new ChatFailure("empty", "模型没有返回内容。");

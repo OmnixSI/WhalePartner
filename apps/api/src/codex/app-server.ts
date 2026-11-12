@@ -135,6 +135,7 @@ class CodexAppServer {
 
   async *stream(prompt: string, settings: StoredCodexSettings, signal?: AbortSignal): AsyncGenerator<string> {
     throwIfAborted(signal);
+    const perf = { started: performance.now(), coldStart: !this.#ready, threadStartMs: 0, turnStartMs: 0, firstDeltaMs: -1, inputTokens: -1, cachedInputTokens: -1 };
     const thread = await this.request("thread/start", {
       model: settings.model,
       cwd: tmpdir(),
@@ -146,6 +147,7 @@ class CodexAppServer {
     throwIfAborted(signal);
     const threadId = thread.thread?.id;
     if (!threadId) throw new Error("Codex 没有建立对话线程。");
+    perf.threadStartMs = Math.round(performance.now() - perf.started);
 
     const queue: NotificationQueue = { values: [], waiters: [] };
     const unsubscribe = this.onNotification((message) => {
@@ -172,6 +174,7 @@ class CodexAppServer {
         input: [{ type: "text", text: prompt }],
       }, signal) as { turn?: { id?: string } };
       turnId = started.turn?.id ?? "";
+      perf.turnStartMs = Math.round(performance.now() - perf.started);
       if (!turnId) throw new Error("Codex 没有开始这一轮对话。");
       throwIfAborted(signal);
 
@@ -186,7 +189,13 @@ class CodexAppServer {
           const eventTurnId = typeof message.params?.turnId === "string" ? message.params.turnId : completedTurn?.id;
           if (eventTurnId !== turnId) continue;
 
+          if (message.method === "thread/tokenUsage/updated") {
+            const usage = (message.params?.tokenUsage as { last?: { inputTokens?: number; cachedInputTokens?: number } } | undefined)?.last;
+            perf.inputTokens = usage?.inputTokens ?? -1;
+            perf.cachedInputTokens = usage?.cachedInputTokens ?? -1;
+          }
           if (message.method === "item/agentMessage/delta" && typeof message.params?.delta === "string") {
+            if (!hasText) perf.firstDeltaMs = Math.round(performance.now() - perf.started);
             hasText = true;
             yield message.params.delta;
           }
@@ -198,6 +207,7 @@ class CodexAppServer {
               throw new Error(detail);
             }
             completed = true;
+            console.info(`[codex-perf] ${JSON.stringify({ ...perf, started: undefined, totalMs: Math.round(performance.now() - perf.started), promptChars: prompt.length })}`);
             break;
           }
         }
