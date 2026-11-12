@@ -30,7 +30,7 @@
 
 客户端断开连接会中止上游请求；被中止的半句回复不入库。
 
-`GET /api/relationship?character=deepseek` 返回共享关系进度与所选人格当前短期情绪：`{ points, level, label, effect, nextThreshold, progress, mood: { emotion, intensity, updatedAt } }`。好感度只由成功完成的大肥鱼对话增加，每轮 +1 点、本地日最多 10 点；重复事件不会重复计分。阶段阈值为 0、25、100、250，对应四档角色卡效果。情绪按人格分别保存并在 100 分钟内恢复到中性。详情见 [`RELATIONSHIP.md`](RELATIONSHIP.md)。
+`GET /api/relationship?character=deepseek` 返回共享关系进度与所选人格当前短期情绪：`{ points, level, label, effect, nextThreshold, progress, mood: { emotion, intensity, updatedAt } }`。好感度只由成功完成的大肥鱼对话增加，每轮 +1 点、本地日最多 10 点；重复事件不会重复计分。阶段阈值为 0、25、100、250、500，对应五档角色卡效果（Lv5 相依，镀闪卡面）。字段含义：`level` 为当前档位 1–5；`label` / `effect` 为该档名称与卡面效果；`nextThreshold` 为下一档所需的总点数，已在 Lv5 时为 `null`；`progress` 为 0–100 的整数，表示在当前档内走向下一档的进度，Lv5 恒为 100。情绪按人格分别保存并在 100 分钟内恢复到中性。详情见 [`RELATIONSHIP.md`](RELATIONSHIP.md)。
 
 `GET /api/chat/sessions?character=deepseek` 返回全部共享会话，`character` 保留为兼容参数；条目含 `titleManual`。`POST /api/chat/sessions` 请求体 `{ "character": "deepseek" }` 新建共享会话并记录创建时的人格。`PATCH /api/chat/sessions/:id` 请求体 `{ "character": "deepseek", "title": "周末计划" }` 重命名并固定标题，后续消息不会覆盖手动标题。`DELETE /api/chat/sessions/:id?character=deepseek` 删除该共享会话，停止正在进行的回复并清理该会话独有的来源记忆；多会话共同来源的事实或经历保留。单条已发送消息没有编辑或删除接口。
 

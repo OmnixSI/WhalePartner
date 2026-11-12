@@ -9,6 +9,7 @@ export const RELATIONSHIP_STAGES = [
   { level: 2, threshold: 25, label: "相熟", effect: "立体效果" },
   { level: 3, threshold: 100, label: "默契", effect: "动态画面" },
   { level: 4, threshold: 250, label: "亲近", effect: "专属特效" },
+  { level: 5, threshold: 500, label: "相依", effect: "镀闪卡面" },
 ] as const;
 type RelationshipStage = (typeof RELATIONSHIP_STAGES)[number];
 
