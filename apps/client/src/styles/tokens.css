@@ -82,7 +82,7 @@
   --field-h: 52px;           /* 输入框/选择器的常规高度；不得低于 --hit */
   /* 流式：1180 宽时落在规范的 112 / 360 / 760 / 960，更大的窗口按比例长大，不再留白 */
   --nav-w: clamp(128px, 7vw, 168px);
-  --backlog-w: clamp(340px, 28vw, 520px);
+  --backlog-w: clamp(300px, 22vw, 360px); /* 往回翻：读字条的窄栏，1180 宽 300，封顶 360，舞台留给她 */
   --tabbar-h: 64px; --scene-min: 480px;
   --page-max: clamp(760px, 62vw, 1100px);
   --memory-max: clamp(960px, 72vw, 1360px);

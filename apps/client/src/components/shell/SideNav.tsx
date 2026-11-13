@@ -8,7 +8,7 @@ import { TailMark } from "../Icons";
 type NavItem = { to: string; label: string; icon: IconName; end?: boolean };
 type NavGroup = { id: string; label: string; items: NavItem[] };
 
-/** 参照 astryx SideNav 的分组结构：品牌头 + 可滚动分组 + 页脚，展开 232px / 收起 72px。 */
+/** 参照 astryx SideNav 的分组结构：品牌头 + 可滚动分组 + 页脚，展开 200px / 收起 72px。 */
 const GROUPS: NavGroup[] = [
   {
     id: "daily",

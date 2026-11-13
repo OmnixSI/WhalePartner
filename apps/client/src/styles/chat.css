@@ -648,6 +648,20 @@
   align-self: flex-start;
 }
 
+/* 窄窗（720–959，有左侧图标栏）：往回翻从右边滑出，和桌面右栏同宽，不再横贯整个窗口 */
+@media (min-width: 720px) and (max-width: 959px) {
+  .sheet {
+    top: 0;
+    left: auto;
+    width: min(var(--backlog-w), calc(100vw - var(--shell-nav-rail)));
+    height: auto;
+    border-radius: var(--r-lg) 0 0 var(--r-lg);
+    animation-name: sheet-in-side;
+  }
+  .sheet__grip { display: none; }
+}
+@keyframes sheet-in-side { from { transform: translateX(100%); } }
+
 /* 手机顶部：名字 + 往回翻 */
 .mbar { display: none; }
 
