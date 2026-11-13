@@ -1,6 +1,6 @@
 # WhalePartner · 鲸汐
 
-住在电脑里的鲸系 AI 角色：记得你说过的话，替你看 B 站视频、读网页，并把日常记成一本日记。当前版本 **v0.3.5**，更新记录见 [CHANGELOG.md](CHANGELOG.md)。
+住在电脑里的鲸系 AI 角色：记得你说过的话，替你看 B 站视频、读网页，并把日常记成一本日记。当前版本 **v0.3.6**，更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 <p align="center">
   <img src="docs/images/chat.png" width="860" alt="聊天页：舞台上的大肥鱼 + 对话框">
