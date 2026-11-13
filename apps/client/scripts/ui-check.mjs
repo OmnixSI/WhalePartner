@@ -57,7 +57,8 @@
  *  46 设置页滚动（400 / 1100 / 2000）：吸顶目录条横向盖住卡片列和描边，卡片滑过时点在条上的都是条，页面无横向溢出（1440 / 1180 / 900 / 390）
  *  47 侧栏与往回翻宽度：展开侧栏 200（老人模式随字号 ×1.25 = 250），品牌字 / 导航项 / 分组名 / 她的卡片不截断不换行（1440 / 1180 / 1180 老人）；往回翻右栏 ≤360 且 ≤ 内容区 31%（1920 / 1440 / 1180，无对话点开与有对话常驻），900 抽屉从右侧滑出 ≤360、390 仍是底部抽屉；右栏打开时人物仍占可画区 ≥85%（1440 / 1180）
  *  48 输入条与收起按钮：视频 / 语音 / 发送三个按钮中心和单行输入框中心竖直差 ≤1px，多行时贴最后一行 ≤1px；语音紧挨发送、在输入框右边，视频在左边（1440 / 1180 / 1180 老人 / 900 / 390）；收起按钮和品牌标记同一行、收起前后不动，她的卡片下面不再空出一行（1440 / 1180 / 1180 老人）
- * （默认共 48 项；--shots 再加一项截图，共 49 项）
+ *  49 弹层关上后焦点回到打开它的按钮：往回翻抽屉 900 / 390 × Escape / 「关上」，设置页「换一位」Escape / ✕
+ * （默认共 49 项；--shots 再加一项截图，共 50 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -458,7 +459,7 @@ async function checkShellNav(browser) {
   return record("外壳：1440 收起导航列宽 72、main 从 72 起；900 图标栏链接可访问", fails.length === 0, detail);
 }
 
-/** 38–47. 界面打磨（fix/ui-polish）：设置页「关于」不带走外壳 / 见闻工具条一行 / 无对话时聊天铺满 / 收起展开按钮原位 / 页头 / 人物撑满 / 主区平铺 / 见闻状态行 / 设置目录条不重叠 / 侧栏与往回翻宽度。 */
+/** 38–49. 界面打磨（fix/ui-polish）：设置页「关于」不带走外壳 / 见闻工具条一行 / 无对话时聊天铺满 / 收起展开按钮原位 / 页头 / 人物撑满 / 主区平铺 / 见闻状态行 / 设置目录条不重叠 / 侧栏与往回翻宽度。 */
 async function checkUiPolish(browser) {
   const box = (sel) => (el => el ? (({ x, y, width, height }) => ({ x: Math.round(x), y: Math.round(y), w: Math.round(width), h: Math.round(height) }))(el.getBoundingClientRect()) : null)(document.querySelector(sel));
   const BOX = `(${box.toString()})`;
@@ -845,6 +846,55 @@ async function checkUiPolish(browser) {
       await context.close();
     }
     record("输入条按钮上下居中、语音挨着发送；收起按钮在品牌行、收起前后不动", fails.length === 0, fails.join("；") || notes.join("；"));
+  }
+
+  // 49 弹层关上后焦点回到打开它的按钮：往回翻抽屉（900 / 390 × Escape / 「关上」）、设置页「换一位」（Escape / ✕）
+  {
+    const fails = [];
+    const notes = [];
+    const focused = () => {
+      const el = document.activeElement;
+      return el && el !== document.body ? `${el.tagName}「${(el.getAttribute("aria-label") || el.textContent || "").trim().slice(0, 8)}」` : "BODY";
+    };
+    // 用键盘打开：先把焦点放到按钮上再回车，跟读屏 / 键盘用户的路径一致
+    const openBy = async (page, trigger) => {
+      await trigger.focus();
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(350);
+    };
+    for (const [width, height, touch] of [[900, 760, false], [390, 844, true]]) {
+      for (const how of ["Escape", "关上"]) {
+        const { context, page } = await openPage(browser, { width, height, touch });
+        await visit(page, "/");
+        const trigger = page.locator(".mbar").getByRole("button", { name: "往回翻" });
+        await openBy(page, trigger);
+        const sheet = page.locator(".sheet");
+        if (!(await sheet.isVisible())) { fails.push(`${width}：往回翻没打开`); await context.close(); continue; }
+        if (how === "Escape") await page.keyboard.press("Escape");
+        else await sheet.getByRole("button", { name: "关上" }).click();
+        await page.waitForTimeout(350);
+        const back = await trigger.evaluate((el) => el === document.activeElement);
+        if (!back) fails.push(`${width} 往回翻 ${how} 关上后焦点在 ${await page.evaluate(focused)}`);
+        else notes.push(`${width} 往回翻 ${how} 回焦`);
+        await context.close();
+      }
+    }
+    for (const how of ["Escape", "关闭"]) {
+      const { context, page } = await openPage(browser, { width: 1180, height: 820 });
+      await visit(page, "/settings");
+      const trigger = page.getByRole("button", { name: "换一位" });
+      await openBy(page, trigger);
+      const dialog = page.getByRole("dialog");
+      if (!(await dialog.isVisible())) { fails.push("换一位没打开"); await context.close(); continue; }
+      if (how === "Escape") await page.keyboard.press("Escape");
+      else await dialog.getByRole("button", { name: "关闭" }).first().click();
+      await page.waitForTimeout(350);
+      const back = await trigger.evaluate((el) => el === document.activeElement);
+      if (!back) fails.push(`换一位 ${how} 关上后焦点在 ${await page.evaluate(focused)}`);
+      else notes.push(`换一位 ${how} 回焦`);
+      await context.close();
+    }
+    record("弹层关上后焦点回到触发按钮（往回翻 900 / 390 × Escape / 关上；换一位 Escape / ✕）", fails.length === 0, fails.join("；") || notes.join("；"));
   }
 }
 

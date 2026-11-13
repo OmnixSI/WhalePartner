@@ -136,6 +136,8 @@ export function ChatPanel({ character }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quote, historyLoaded]);
   const [backlogOpen, setBacklogOpen] = useState(false);
+  // 往回翻的触发按钮在 Dialog.Root 外面（宽屏时 Root 不挂载），受控打开时 Radix 不知道关上后焦点还给谁，所以自己还。
+  const sheetTrigger = useRef<HTMLButtonElement>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [levelUp, setLevelUp] = useState<{ level: number; n: number } | null>(null);
@@ -271,7 +273,7 @@ export function ChatPanel({ character }: Props) {
         <div className="room__main">
           <header className="mbar">
             <span className="mbar__name">{character.name}</span>
-            <Button variant="ghost" onClick={() => setSheetOpen(true)}>往回翻</Button>
+            <Button ref={sheetTrigger} variant="ghost" onClick={() => setSheetOpen(true)}>往回翻</Button>
           </header>
 
           <ChatScene
@@ -363,7 +365,14 @@ export function ChatPanel({ character }: Props) {
         <Dialog.Root open={sheetOpen} onOpenChange={setSheetOpen}>
           <Dialog.Portal>
             <Dialog.Overlay className="overlay" />
-            <Dialog.Content className="sheet" aria-describedby={undefined}>
+            <Dialog.Content
+              className="sheet"
+              aria-describedby={undefined}
+              onCloseAutoFocus={(e) => {
+                const el = sheetTrigger.current;
+                if (el?.isConnected) { e.preventDefault(); el.focus(); }
+              }}
+            >
               <Dialog.Title className="sr-only">往回翻</Dialog.Title>
               <div className="sheet__grip" aria-hidden />
               {backlog}
