@@ -128,6 +128,7 @@
   color: var(--color-text-secondary);
   cursor: pointer;
 }
+.shell-nav__toggle-icon { display: block; }
 .shell-nav__toggle:hover { color: var(--color-text-primary); background: var(--color-bg-muted); }
 .shell-nav__toggle:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 

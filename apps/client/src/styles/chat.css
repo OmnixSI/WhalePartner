@@ -18,8 +18,7 @@
 /* 舞台直接铺在内容区上：不画外框、圆角和底色；右栏只用一条竖线隔开 */
 .room__main { isolation: isolate; }
 .room__aside { min-width: 0; min-height: 0; box-shadow: inset 1px 0 0 var(--color-border); }
-.room__aside > .bl,
-.room__aside > .chat-thread { border-radius: 0; box-shadow: none; background: transparent; }
+.room__aside > .bl { border-radius: 0; box-shadow: none; background: transparent; }
 .room[data-backlog="closed"] { gap: 0; }
 .room[data-backlog="closed"] { grid-template-columns: minmax(0, 1fr) 0; }
 .room[data-backlog="closed"] .room__aside { display: none; }
@@ -55,7 +54,7 @@
 /* 海平线：纸上一条细线，线下是比纸淡淡深一点的地面（只用一点点强调色）。
    线落在她脚下（--stage-char-gap），地面一直铺到舞台底，字幕卡和回信条坐在地面上。 */
 /* 聊天舞台按模型看得见的部分构图（模型画布四周的透明边不算），人物才能真正撑满可画区 */
-.scene { --floor: var(--color-bg-muted); --stage-char-fit: visible; --stage-char-w: .86; }
+.scene { --floor: var(--color-bg-muted); --stage-char-fit: visible; --stage-char-w: .731; }
 .scene__horizon {
   position: absolute;
   left: 0;
@@ -496,6 +495,7 @@
   padding: 0 var(--sp-3) 0 var(--sp-4);
   box-shadow: 0 1px 0 var(--color-border);
 }
+.bl__title:focus { outline: none; }
 .bl__title { font-family: var(--font-voice); font-size: var(--text-lg); letter-spacing: var(--ls-voice); }
 .bl__tools { display: flex; align-items: center; gap: var(--sp-1); }
 .bl__listWrap { flex: 1 1 auto; min-height: 0; }
@@ -686,7 +686,7 @@
   /* 舞台吃掉剩余高度：34–42dvh 之间伸缩，回信条永远在 tabbar 之上。
      手机舞台只是一条窄带，同一条构图规则把角色放到舞台的 90%（桌面 60%），
      否则 390×844 上只剩两百来像素，脸就看不清了。 */
-  .scene { flex: 1 1 auto; min-height: 34dvh; max-height: none; --stage-char-h: .9; --stage-sea-h: .26; }
+  .scene { flex: 1 1 auto; min-height: 34dvh; max-height: none; --stage-char-h: .765; --stage-sea-h: .26; }
   .scene__safe { bottom: 0; }
   .scene__figure { inset: 0; }
   .scene__wait { align-self: end; margin-bottom: var(--sp-4); }
@@ -772,7 +772,6 @@ html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
 
 /* ---------------------------------------------------------------- 近期对话（上一轮之前） */
 .chat-thread { display: flex; flex-direction: column; min-height: 0; margin: 0; background: var(--color-card); box-shadow: var(--elev-flat); }
-.chat-thread--aside { width: 100%; height: 100%; }
 .chat-thread--compact {
   position: absolute;
   z-index: var(--z-ui);

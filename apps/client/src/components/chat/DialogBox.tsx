@@ -31,6 +31,8 @@ type Props = {
   onRetryFailed?: () => void;
   /** 按句分条出现时，下一条还在「打字」。 */
   typing?: boolean;
+  /** 读屏播报的完整原文：按句分条时字幕会逐句变长，播报只在全部亮出后给这一份全文，不随字幕逐句更新。 */
+  announce?: string;
   onGiveUp?: () => void;
   children?: ReactNode;
 };
@@ -47,6 +49,7 @@ export function DialogBox({
   onRetry,
   onRetryFailed,
   typing = false,
+  announce,
   onGiveUp,
   children,
 }: Props) {
@@ -90,9 +93,9 @@ export function DialogBox({
         )}
         {state === "failed" && showDetail && <p className="dlg__detail">{detail ?? "这句话没有发出去。"}</p>}
       </div>
-      {state === "done" && (
+      {state === "done" && !typing && (
         <span className="sr-only" role="status" aria-live="polite">
-          {text || chunks.join("")}
+          {announce ?? (text || chunks.join(""))}
         </span>
       )}
       {children}

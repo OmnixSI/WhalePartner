@@ -62,7 +62,10 @@ export function SideNav({ collapsed, onToggle }: Props) {
         aria-expanded={!collapsed}
         onClick={onToggle}
       >
-        <span aria-hidden="true">{collapsed ? "›" : "‹"}</span>
+        {/* 三角用 SVG 画：16×16 画布里笔画外框约 6×10 居中，两个朝向各自对称，不依赖字体基线 */}
+        <svg className="shell-nav__toggle-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+          <path d={collapsed ? "M5.85 3.85 L10.15 8 L5.85 12.15" : "M10.15 3.85 L5.85 8 L10.15 12.15"} fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
       </button>
       <div className="shell-nav__head">
         <span className="shell-nav__mark" aria-hidden="true"><TailMark /></span>

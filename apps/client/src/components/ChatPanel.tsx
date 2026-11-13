@@ -20,7 +20,6 @@ import { useModel } from "../characters";
 import { ChatScene } from "./chat/ChatScene";
 import { ChatTranscript } from "./chat/ChatTranscript";
 import { ChatThread } from "./chat/ChatThread";
-import { visibleTurns } from "./chat/chatThreadUtils";
 import { useInkEnv } from "./ink/useCalm";
 import { useSpeechAnimation } from "../avatar/live2d/useSpeechAnimation";
 import { useTapHint } from "./chat/useTapHint";
@@ -252,10 +251,17 @@ export function ChatPanel({ character }: Props) {
               ? "wave"
               : "idle";
 
-  // 宽屏右栏是「最近的对话」：还没有可看的对话时整栏不留，舞台和对话区铺满内容区（不留一块空白）。
-  const threadExclude = phase === "streaming" ? lastHer?.key : undefined;
-  const hasThread = visibleTurns(turns, threadExclude, 1).length > 0;
-  const asideOpen = threadWide ? backlogOpen || hasThread : wide && backlogOpen;
+  // 右栏只在用户点「往回翻」后才出现；回复生成中、生成完成都不自动展开，消息留在主区底部。
+  const asideOpen = wide && backlogOpen;
+  // 键盘焦点跟着右栏走：打开后落在标题上，收起后回到「往回翻」（跟窄屏抽屉的 onCloseAutoFocus 一致）。
+  const asideRef = useRef<HTMLElement>(null);
+  const cornerRef = useRef<HTMLButtonElement>(null);
+  const asideWasOpen = useRef(false);
+  useEffect(() => {
+    if (asideOpen) asideRef.current?.querySelector<HTMLElement>(".bl__title")?.focus();
+    else if (asideWasOpen.current) cornerRef.current?.focus();
+    asideWasOpen.current = asideOpen;
+  }, [asideOpen]);
 
   const backlog = (
     <Backlog
@@ -290,16 +296,14 @@ export function ChatPanel({ character }: Props) {
             backlogOpen={backlogOpen}
             onPoke={pokeHer}
             onOpenBacklog={() => setBacklogOpen(true)}
+            cornerRef={cornerRef}
           />
 
           {!threadWide && (
             <ChatThread
               name={character.name}
               turns={turns}
-              variant="compact"
-              excludeKey={phase === "streaming" ? lastHer?.key : undefined}
-              announce={state === "done"}
-              announceText={lastHer?.text}
+              excludeKey={phase === "streaming" || state === "done" ? lastHer?.key : undefined}
             />
           )}
 
@@ -311,6 +315,7 @@ export function ChatPanel({ character }: Props) {
             chunks={chunks}
             merged={lastHer?.status === "done" && !paced.typing}
             typing={paced.typing}
+            announce={stripEmotionTags(lastHer?.text ?? "")}
             detail={failure?.message}
             onRetryFailed={retrySend}
             onStop={stopChat}
@@ -343,22 +348,7 @@ export function ChatPanel({ character }: Props) {
           />
         </div>
 
-        {threadWide && asideOpen && (
-          <aside className="room__aside">
-            {backlogOpen ? backlog : (
-              <ChatThread
-                name={character.name}
-                turns={turns}
-                variant="aside"
-                excludeKey={phase === "streaming" ? lastHer?.key : undefined}
-                announce={state === "done"}
-                announceText={lastHer?.text}
-                onOpenBacklog={() => setBacklogOpen(true)}
-              />
-            )}
-          </aside>
-        )}
-        {!threadWide && wide && backlogOpen && <aside className="room__aside">{backlog}</aside>}
+        {asideOpen && <aside ref={asideRef} className="room__aside">{backlog}</aside>}
       </div>
 
       {!wide && (

@@ -148,7 +148,7 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
   return (
     <section className={`bl bl--${variant}`} aria-label="往回翻">
       <header className="bl__head">
-        <h2 className="bl__title">往回翻</h2>
+        <h2 className="bl__title" tabIndex={-1}>往回翻</h2>
         <div className="bl__tools">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>

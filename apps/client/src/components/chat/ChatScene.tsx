@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type Ref } from "react";
 import type { AvatarStatus } from "../../avatar/avatar-state";
 import type { AvatarEmotion, AvatarModel } from "../../avatar/model.config";
 import type { Character } from "../../characters";
@@ -24,6 +24,8 @@ interface Props {
   backlogOpen: boolean;
   onPoke: () => void;
   onOpenBacklog: () => void;
+  /** 右栏收起后焦点回到这颗「往回翻」。 */
+  cornerRef?: Ref<HTMLButtonElement>;
 }
 
 export function ChatScene({
@@ -40,6 +42,7 @@ export function ChatScene({
   backlogOpen,
   onPoke,
   onOpenBacklog,
+  cornerRef,
 }: Props) {
   const sceneRef = useRef<HTMLElement>(null);
   // 舞台自己也量一次对话框高度写进 --scene-safe：形象没出来（加载 / 失败）时，海平线和提示也不会被对话框压住。
@@ -106,7 +109,7 @@ export function ChatScene({
 
       {(model ? avatar === "ready" : true) && !hintSeen && <p className="scene__tip">点一点她，她会看你哦。</p>}
       {wide && !backlogOpen && (
-        <Button className="scene__corner" onClick={onOpenBacklog}>往回翻</Button>
+        <Button ref={cornerRef} className="scene__corner" onClick={onOpenBacklog}>往回翻</Button>
       )}
     </section>
   );
