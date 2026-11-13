@@ -1,6 +1,6 @@
 /**
  * 记忆页的筛选区（参照 astryx 的 Tabs + SearchField + Selector）：
- * 分类用 ui/Tabs（line，带数量），搜索用 ui/Input + ui/Button，「还作数吗」用 ui/Select，
+ * 分类用 ui/Tabs（segmented，和见闻页的类型切换同一个组件，带数量），搜索用 ui/Input + ui/Button，「还作数吗」用 ui/Select，
  * 日期范围用 ui/Dialog 里放月历。
  */
 import { useState } from "react";
@@ -110,7 +110,7 @@ export function FilterBar({
   return (
     <div className="mfilters">
       <Tabs
-        variant="line"
+        variant="segmented"
         label="按分类看"
         value={group}
         onValueChange={(value) => onGroup(value as GroupKey)}
