@@ -54,7 +54,7 @@
 /* 海平线：纸上一条细线，线下是比纸淡淡深一点的地面（只用一点点强调色）。
    线落在她脚下（--stage-char-gap），地面一直铺到舞台底，字幕卡和回信条坐在地面上。 */
 /* 聊天舞台按模型看得见的部分构图（模型画布四周的透明边不算），人物才能真正撑满可画区 */
-.scene { --floor: var(--color-bg-muted); --stage-char-fit: visible; --stage-char-w: .86; }
+.scene { --floor: var(--color-bg-muted); --stage-char-fit: visible; --stage-char-w: .731; }
 .scene__horizon {
   position: absolute;
   left: 0;
@@ -686,7 +686,7 @@
   /* 舞台吃掉剩余高度：34–42dvh 之间伸缩，回信条永远在 tabbar 之上。
      手机舞台只是一条窄带，同一条构图规则把角色放到舞台的 90%（桌面 60%），
      否则 390×844 上只剩两百来像素，脸就看不清了。 */
-  .scene { flex: 1 1 auto; min-height: 34dvh; max-height: none; --stage-char-h: .9; --stage-sea-h: .26; }
+  .scene { flex: 1 1 auto; min-height: 34dvh; max-height: none; --stage-char-h: .765; --stage-sea-h: .26; }
   .scene__safe { bottom: 0; }
   .scene__figure { inset: 0; }
   .scene__wait { align-self: end; margin-bottom: var(--sp-4); }

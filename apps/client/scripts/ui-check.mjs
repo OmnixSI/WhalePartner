@@ -51,11 +51,11 @@
  *  40 聊天页没有对话时不留空右栏，舞台和画布铺满内容宽（1440 / 1180）；有对话时默认也没有右栏，点「往回翻」才展开
  *  41 收起 / 展开导航按钮两态同一位置，原地再点即展开
  *  42 页头：聊天页没有页头；另外四页标题行位置、宽度、字号、到正文间距一致（1440 / 1180 / 900 / 390）；五页都没有面包屑（日常 · / 手帐 · / 系统 ·）和日记、记忆那两句说明
- *  43 聊天舞台人物撑满：只留画布量看得见的像素，构图方向占可画区 ≥85%，待机摆动不碰舞台两侧（1440 / 1180 无对话 / 1180 / 900 / 390）
+ *  43 聊天舞台人物撑满：只留画布量看得见的像素，构图方向占可画区 ≥72%（用户要求缩小 15%：0.85 × 原 85%），待机摆动不碰舞台两侧（1440 / 1180 无对话 / 1180 / 900 / 390）
  *  44 聊天主区平铺：.room__main 无圆角、边框、底色、描边阴影，舞台贴着内容区左上角并铺到右栏或内容区右边（1440 / 1180 无对话 / 900）
  *  45 见闻页「她今天逛了…」在标题右侧同一行，颜色是次要文字色、和标题不同色（1440 / 1180 / 900）
  *  46 设置页滚动（400 / 1100 / 2000）：吸顶目录条横向盖住卡片列和描边，卡片滑过时点在条上的都是条，页面无横向溢出（1440 / 1180 / 900 / 390）
- *  47 侧栏与往回翻宽度：展开侧栏 200（老人模式随字号 ×1.25 = 250），品牌字 / 导航项 / 分组名 / 她的卡片不截断不换行（1440 / 1180 / 1180 老人）；往回翻右栏 ≤360 且 ≤ 内容区 31%（1920 / 1440 / 1180，无对话与有对话都是点开才有），900 抽屉从右侧滑出 ≤360、390 仍是底部抽屉；右栏打开时人物仍占可画区 ≥85%（1440 / 1180）
+ *  47 侧栏与往回翻宽度：展开侧栏 200（老人模式随字号 ×1.25 = 250），品牌字 / 导航项 / 分组名 / 她的卡片不截断不换行（1440 / 1180 / 1180 老人）；往回翻右栏 ≤360 且 ≤ 内容区 31%（1920 / 1440 / 1180，无对话与有对话都是点开才有），900 抽屉从右侧滑出 ≤360、390 仍是底部抽屉；右栏打开时人物仍占可画区 ≥72%（1440 / 1180）
  *  48 输入条与收起按钮：视频 / 语音 / 发送三个按钮中心和单行输入框中心竖直差 ≤1px，多行时贴最后一行 ≤1px；语音紧挨发送、在输入框右边，视频在左边（1440 / 1180 / 1180 老人 / 900 / 390）；收起按钮和品牌标记同一行、收起前后不动，她的卡片下面不再空出一行（1440 / 1180 / 1180 老人）
  *  49 弹层关上后焦点回到打开它的按钮：往回翻抽屉 900 / 390 × Escape / 「关上」，宽屏右栏 1440 / 1180（打开落在标题、「收起」后回「往回翻」），设置页「换一位」Escape / ✕
  *  50 往回翻右栏默认收起、回复生成完不自动展开（1440 / 1180 / 900 / 390）：消息留在主区底部；点「往回翻」才展开并能看到刚生成的那条，再点收起；900 / 390 的「最近的 N 条」不重复底部那条
@@ -541,19 +541,32 @@ async function checkUiPolish(browser) {
     const { context, page } = await openPage(browser, { width: 1440, height: 900 });
     await visit(page, "/");
     const toggle = page.locator(".shell-nav__toggle");
+    // 三角图标（SVG）在圆钮里上下左右居中，两种朝向都量一遍；画布 ≥16px、没退回字体字符
+    const iconOff = async (tag) => {
+      const m = await page.evaluate(() => {
+        const btn = document.querySelector(".shell-nav__toggle"), icon = btn.querySelector("svg.shell-nav__toggle-icon");
+        if (!icon) return null;
+        const r = btn.getBoundingClientRect(), i = icon.getBoundingClientRect();
+        return { dx: i.x + i.width / 2 - (r.x + r.width / 2), dy: i.y + i.height / 2 - (r.y + r.height / 2), w: i.width };
+      });
+      if (!m) fails.push(`${tag}：收起按钮里没有 SVG 三角`);
+      else if (Math.abs(m.dx) > 0.5 || Math.abs(m.dy) > 0.5 || m.w < 16) fails.push(`${tag}：三角偏离圆钮中心 (${m.dx.toFixed(2)},${m.dy.toFixed(2)})，宽 ${m.w}`);
+    };
     const a = await toggle.boundingBox();
+    await iconOff("展开时（‹）");
     await page.mouse.click(a.x + a.width / 2, a.y + a.height / 2);
     await page.waitForTimeout(300);
     const b = await toggle.boundingBox();
     const navCollapsed = await page.evaluate(() => Math.round(document.querySelector(".shell-nav").getBoundingClientRect().width));
     if (navCollapsed !== 72) fails.push(`点了没收起（nav ${navCollapsed}）`);
     if (Math.abs(a.x - b.x) > 0.5 || Math.abs(a.y - b.y) > 0.5) fails.push(`按钮从 (${Math.round(a.x)},${Math.round(a.y)}) 挪到 (${Math.round(b.x)},${Math.round(b.y)})`);
+    await iconOff("收起后（›）");
     await page.mouse.click(a.x + a.width / 2, a.y + a.height / 2);
     await page.waitForTimeout(300);
     const navOpen = await page.evaluate(() => Math.round(document.querySelector(".shell-nav").getBoundingClientRect().width));
     if (navOpen !== NAV_W) fails.push(`原地再点没展开（nav ${navOpen}）`);
     await context.close();
-    record("收起 / 展开导航：按钮位置不变，原地再点即展开", fails.length === 0, fails.join("；") || `按钮 (${Math.round(a.x)},${Math.round(a.y)}) 两态一致；72 → ${NAV_W}`);
+    record("收起 / 展开导航：按钮位置不变，三角在圆钮里居中（两种朝向），原地再点即展开", fails.length === 0, fails.join("；") || `按钮 (${Math.round(a.x)},${Math.round(a.y)}) 两态一致；72 → ${NAV_W}`);
   }
 
   // 42 页头：聊天页不要页头；另外四页标题行位置、宽、字号、到正文间距一致（1440 / 1180 / 900 / 390）；五页都没有面包屑和那几句说明
@@ -595,7 +608,7 @@ async function checkUiPolish(browser) {
     record("页头：聊天页无页头；四页标题行一致（1440 / 1180 / 900 / 390）；五页无面包屑和说明句", fails.length === 0, fails.join("；") || notes.join("；"));
   }
 
-  // 43 聊天舞台的人物撑满：只留画布、量看得见的像素，构图方向（高或宽）至少占可画区 85%，动作摆到最开也不碰两侧
+  // 43 聊天舞台的人物撑满：只留画布、量看得见的像素，构图方向（高或宽）至少占可画区 72%（原 85%，用户要求人物缩小 15%），动作摆到最开也不碰两侧
   {
     const fails = [];
     let detail = "";
@@ -610,12 +623,12 @@ async function checkUiPolish(browser) {
       if (!art || art.r < 0) { fails.push(`${tag}：画布上没量到人物`); await context.close(); continue; }
       const drawable = scene.h - scene.safe;
       const fill = Math.max((art.b - art.t) / drawable, (art.r - art.l) / art.w);
-      if (fill < 0.85) fails.push(`${tag}：人物只占 ${(fill * 100).toFixed(0)}%（高 ${art.b - art.t}/${Math.round(drawable)}，宽 ${art.r - art.l}/${art.w}）`);
+      if (fill < 0.72) fails.push(`${tag}：人物只占 ${(fill * 100).toFixed(0)}%（高 ${art.b - art.t}/${Math.round(drawable)}，宽 ${art.r - art.l}/${art.w}）`);
       if (art.l < 3 || art.r > art.w - 4) fails.push(`${tag}：人物碰到舞台边（${art.l}–${art.r} / ${art.w}）`);
       detail += `${tag} ${(fill * 100).toFixed(0)}%；`;
       await context.close();
     }
-    record("聊天舞台人物撑满可画区 ≥85%，摆动不出边（1440 / 1180 / 900 / 390）", fails.length === 0, fails.join("；") || detail);
+    record("聊天舞台人物撑满可画区 ≥72%，摆动不出边（1440 / 1180 / 900 / 390）", fails.length === 0, fails.join("；") || detail);
   }
 
   // 44 聊天主区平铺：没有圆角卡（边框、圆角、底色、阴影），舞台贴着内容区左上角，铺到右栏或内容区右边
@@ -758,7 +771,7 @@ async function checkUiPolish(browser) {
         const scene = await page.evaluate(() => { const s = document.querySelector(".scene"); return { h: s.getBoundingClientRect().height, safe: Number.parseFloat(getComputedStyle(s).getPropertyValue("--scene-safe")) || 0 }; });
         const art = await artExtent(page);
         const fill = art.r < 0 ? 0 : Math.max((art.b - art.t) / (scene.h - scene.safe), (art.r - art.l) / art.w);
-        if (fill < 0.85) fails.push(`${tag}：右栏打开后人物只占 ${(fill * 100).toFixed(0)}%`);
+        if (fill < 0.72) fails.push(`${tag}：右栏打开后人物只占 ${(fill * 100).toFixed(0)}%`);
         notes.push(`${tag} 右栏 ${m.aside.w}/${m.area.w}，人物 ${(fill * 100).toFixed(0)}%`);
       } else notes.push(`${tag} 右栏 ${m.aside.w}/${m.area.w}`);
       await context.close();
@@ -777,7 +790,7 @@ async function checkUiPolish(browser) {
       notes.push(`${width} 抽屉 ${s.w}×${s.h}@${s.x},${s.y}`);
       await context.close();
     }
-    record("侧栏 200 不截断；往回翻 ≤360 且 ≤31%，900 右侧抽屉，打开时人物 ≥85%", fails.length === 0, fails.join("；") || notes.join("；"));
+    record("侧栏 200 不截断；往回翻 ≤360 且 ≤31%，900 右侧抽屉，打开时人物 ≥72%", fails.length === 0, fails.join("；") || notes.join("；"));
   }
 
   // 48 输入条按钮上下居中、语音挨着发送；侧栏收起按钮不单独占一行、收起前后不动

@@ -95,7 +95,7 @@
      舞台上还有一大片空纸。分母换成可画区之后，同样的 token 才画出构图。
      角色高度 = 可画区 × --stage-char-h；底边停在可画区底往上 --stage-char-gap 处；
      空间不够时按 --stage-char-max 等比缩小，不换构图。 */
-  --stage-char-h: .9;
+  --stage-char-h: .765;
   --stage-char-gap: .05;
   --stage-char-max: .96;
   /* 头顶最少留白 / 可画区高 */
