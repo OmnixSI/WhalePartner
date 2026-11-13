@@ -7,7 +7,7 @@
  * - 颜色全部走 token（--accent / --ink / --sheet / --coral），换主题、换角色自动跟着变。
  * - `mood` 只是为了兼容旧调用：sleep 类把徽记放低一点（像沉进水里），其余一律不变。
  */
-import type { CSSProperties } from "react";
+import { useId, type CSSProperties } from "react";
 import { useCharacter, type CharacterId } from "../characters";
 import "../styles/mark.css";
 
@@ -78,6 +78,9 @@ function Emblem({ id }: { id: CharacterId }) {
 export function CharacterMark({ character, mood = "idle", className = "", label }: Props) {
   const current = useCharacter();
   const id = character ?? current.id;
+  // 每枚徽记一个独立的 clipPath id：同一角色常有好几枚（侧栏、小角、设置页），
+  // id 重复时浏览器只认第一枚，那枚在 display:none 的侧栏里（手机宽）就整个不裁切，下半片海变成方块。
+  const clipId = `mark-clip-${useId().replace(/:/g, "")}`;
   const style: CSSProperties | undefined = SLEEPY.has(mood) ? { ["--mark-dip" as string]: "2px" } : undefined;
   return (
     <svg
@@ -91,12 +94,12 @@ export function CharacterMark({ character, mood = "idle", className = "", label 
       data-character={id}
     >
       <defs>
-        <clipPath id={`mark-clip-${id}`}>
+        <clipPath id={clipId}>
           <circle cx="48" cy="48" r="44" />
         </clipPath>
       </defs>
       <circle className="mark__disc" cx="48" cy="48" r="44" />
-      <g clipPath={`url(#mark-clip-${id})`}>
+      <g clipPath={`url(#${clipId})`}>
         <rect className="mark__sea" x="0" y="66" width="96" height="30" />
         <g className="mark__figure">
           <Emblem id={id} />
