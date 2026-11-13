@@ -253,6 +253,15 @@ export function ChatPanel({ character }: Props) {
 
   // 右栏只在用户点「往回翻」后才出现；回复生成中、生成完成都不自动展开，消息留在主区底部。
   const asideOpen = wide && backlogOpen;
+  // 键盘焦点跟着右栏走：打开后落在标题上，收起后回到「往回翻」（跟窄屏抽屉的 onCloseAutoFocus 一致）。
+  const asideRef = useRef<HTMLElement>(null);
+  const cornerRef = useRef<HTMLButtonElement>(null);
+  const asideWasOpen = useRef(false);
+  useEffect(() => {
+    if (asideOpen) asideRef.current?.querySelector<HTMLElement>(".bl__title")?.focus();
+    else if (asideWasOpen.current) cornerRef.current?.focus();
+    asideWasOpen.current = asideOpen;
+  }, [asideOpen]);
 
   const backlog = (
     <Backlog
@@ -287,13 +296,14 @@ export function ChatPanel({ character }: Props) {
             backlogOpen={backlogOpen}
             onPoke={pokeHer}
             onOpenBacklog={() => setBacklogOpen(true)}
+            cornerRef={cornerRef}
           />
 
           {!threadWide && (
             <ChatThread
               name={character.name}
               turns={turns}
-              excludeKey={phase === "streaming" ? lastHer?.key : undefined}
+              excludeKey={phase === "streaming" || state === "done" ? lastHer?.key : undefined}
             />
           )}
 
@@ -305,6 +315,7 @@ export function ChatPanel({ character }: Props) {
             chunks={chunks}
             merged={lastHer?.status === "done" && !paced.typing}
             typing={paced.typing}
+            announce={stripEmotionTags(lastHer?.text ?? "")}
             detail={failure?.message}
             onRetryFailed={retrySend}
             onStop={stopChat}
@@ -337,7 +348,7 @@ export function ChatPanel({ character }: Props) {
           />
         </div>
 
-        {asideOpen && <aside className="room__aside">{backlog}</aside>}
+        {asideOpen && <aside ref={asideRef} className="room__aside">{backlog}</aside>}
       </div>
 
       {!wide && (

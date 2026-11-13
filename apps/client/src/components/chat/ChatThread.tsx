@@ -9,7 +9,7 @@ import type { Turn } from "./types";
 type Props = {
   name: string;
   turns: Turn[];
-  /** 只在 streaming 时排除正在舞台字幕里显示的那一条。 */
+  /** 排除底部回复框正在显示的那一条（生成中、生成完成），免得同一句出现两次。 */
   excludeKey?: string;
 };
 

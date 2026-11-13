@@ -495,6 +495,7 @@
   padding: 0 var(--sp-3) 0 var(--sp-4);
   box-shadow: 0 1px 0 var(--color-border);
 }
+.bl__title:focus { outline: none; }
 .bl__title { font-family: var(--font-voice); font-size: var(--text-lg); letter-spacing: var(--ls-voice); }
 .bl__tools { display: flex; align-items: center; gap: var(--sp-1); }
 .bl__listWrap { flex: 1 1 auto; min-height: 0; }

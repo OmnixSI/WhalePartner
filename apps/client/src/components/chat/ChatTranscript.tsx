@@ -34,6 +34,8 @@ interface Props {
   onRetryFailed?: () => void;
   /** 她「正在打字」（按句分条出现的间隙）。 */
   typing?: boolean;
+  /** 读屏播报的完整原文（不随按句分条逐句变长）。 */
+  announce?: string;
   onRetrySend: () => void;
   onDiscardSend: () => void;
   onToday: () => void;
@@ -73,6 +75,7 @@ export function ChatTranscript({
   detail,
   onRetryFailed,
   typing,
+  announce,
   onRetrySend,
   onDiscardSend,
   onToday,
@@ -102,6 +105,7 @@ export function ChatTranscript({
         onRetryFailed={onRetryFailed}
         detail={detail}
         typing={typing}
+        announce={announce}
         onGiveUp={onGiveUp}
       >
         <AnimatePresence>

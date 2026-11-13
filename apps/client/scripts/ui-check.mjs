@@ -25,7 +25,7 @@
  *  14 外壳：1440 点「收起导航」后 nav 72px、main 从 x=72 起；再展开回 200；900 图标栏链接有可访问名称
  *  15 键盘弹起（390/720/900，可视高 480）：外壳收到 480，720/900 主栏占满宽度，输入框和发送键都在可视区内
  *  16 聊天几何：3 档宽度 × done/thinking/failed 可画区不低于 225e9e3；390 输入条不压底栏（thinking/failed 点发送键进入，断言 /api/chat 发出 1 次、状态已出现）
- *  17 聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦；done sr-only 全文常驻
+ *  17 聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦；done sr-only 全文常驻；新生成 3 句回复读屏只播报一次全文
  *  18 日记月/年导航：900 与 390 老人模式跳转/今日可见、无横向溢出
  *  19 手机底栏：719px 及以下文字标签可见（390 / 719 / 390 老人）
  *  20 老人模式图标栏：900 / 720 / 1440 收起后链接都不小于 56×56
@@ -48,17 +48,17 @@
  *  37 切档看低档卡面：只能切已解锁的档；只改卡面，卡外真实等级、「上次看到的等级」不动，不发写请求；Live2D 舞台切档不重建；刷新后保留；真升档时播动画并回到最高档
  *  38 设置页点目录「关于」：只滚页面，html 不滚、侧栏 y=0 满高（1440 / 900）
  *  39 见闻工具条：1440 / 1180 筛选、搜索、「让她现在去逛逛」同一行；900 / 390 换行不溢出
- *  40 聊天页没有对话时不留空右栏，舞台和画布铺满内容宽（1440 / 1180）；有对话时右栏照常
+ *  40 聊天页没有对话时不留空右栏，舞台和画布铺满内容宽（1440 / 1180）；有对话时默认也没有右栏，点「往回翻」才展开
  *  41 收起 / 展开导航按钮两态同一位置，原地再点即展开
  *  42 页头：聊天页没有页头；另外四页标题行位置、宽度、字号、到正文间距一致（1440 / 1180 / 900 / 390）；五页都没有面包屑（日常 · / 手帐 · / 系统 ·）和日记、记忆那两句说明
  *  43 聊天舞台人物撑满：只留画布量看得见的像素，构图方向占可画区 ≥85%，待机摆动不碰舞台两侧（1440 / 1180 无对话 / 1180 / 900 / 390）
  *  44 聊天主区平铺：.room__main 无圆角、边框、底色、描边阴影，舞台贴着内容区左上角并铺到右栏或内容区右边（1440 / 1180 无对话 / 900）
  *  45 见闻页「她今天逛了…」在标题右侧同一行，颜色是次要文字色、和标题不同色（1440 / 1180 / 900）
  *  46 设置页滚动（400 / 1100 / 2000）：吸顶目录条横向盖住卡片列和描边，卡片滑过时点在条上的都是条，页面无横向溢出（1440 / 1180 / 900 / 390）
- *  47 侧栏与往回翻宽度：展开侧栏 200（老人模式随字号 ×1.25 = 250），品牌字 / 导航项 / 分组名 / 她的卡片不截断不换行（1440 / 1180 / 1180 老人）；往回翻右栏 ≤360 且 ≤ 内容区 31%（1920 / 1440 / 1180，无对话点开与有对话常驻），900 抽屉从右侧滑出 ≤360、390 仍是底部抽屉；右栏打开时人物仍占可画区 ≥85%（1440 / 1180）
+ *  47 侧栏与往回翻宽度：展开侧栏 200（老人模式随字号 ×1.25 = 250），品牌字 / 导航项 / 分组名 / 她的卡片不截断不换行（1440 / 1180 / 1180 老人）；往回翻右栏 ≤360 且 ≤ 内容区 31%（1920 / 1440 / 1180，无对话与有对话都是点开才有），900 抽屉从右侧滑出 ≤360、390 仍是底部抽屉；右栏打开时人物仍占可画区 ≥85%（1440 / 1180）
  *  48 输入条与收起按钮：视频 / 语音 / 发送三个按钮中心和单行输入框中心竖直差 ≤1px，多行时贴最后一行 ≤1px；语音紧挨发送、在输入框右边，视频在左边（1440 / 1180 / 1180 老人 / 900 / 390）；收起按钮和品牌标记同一行、收起前后不动，她的卡片下面不再空出一行（1440 / 1180 / 1180 老人）
- *  49 弹层关上后焦点回到打开它的按钮：往回翻抽屉 900 / 390 × Escape / 「关上」，设置页「换一位」Escape / ✕
- *  50 往回翻右栏默认收起、回复生成完不自动展开（1440 / 1180 / 900 / 390）：消息留在主区底部；点「往回翻」才展开并能看到刚生成的那条，再点收起
+ *  49 弹层关上后焦点回到打开它的按钮：往回翻抽屉 900 / 390 × Escape / 「关上」，宽屏右栏 1440 / 1180（打开落在标题、「收起」后回「往回翻」），设置页「换一位」Escape / ✕
+ *  50 往回翻右栏默认收起、回复生成完不自动展开（1440 / 1180 / 900 / 390）：消息留在主区底部；点「往回翻」才展开并能看到刚生成的那条，再点收起；900 / 390 的「最近的 N 条」不重复底部那条
  * （默认共 50 项；--shots 再加一项截图，共 51 项）
  *
  * 退出码：0 全绿；1 有失败。
@@ -880,6 +880,25 @@ async function checkUiPolish(browser) {
         await context.close();
       }
     }
+    // 宽屏右栏：键盘打开后焦点落在右栏标题，「收起」后回到「往回翻」
+    for (const [width, height] of [[1440, 900], [1180, 820]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      await visit(page, "/");
+      const corner = page.locator(".scene__corner");
+      await openBy(page, corner);
+      if (!(await page.locator(".room__aside").isVisible())) { fails.push(`${width}：宽屏右栏没打开`); await context.close(); continue; }
+      const inTitle = await page.evaluate(() => document.activeElement?.classList.contains("bl__title") ?? false);
+      if (!inTitle) fails.push(`${width} 右栏打开后焦点在 ${await page.evaluate(focused)}，应在标题`);
+      const close = page.locator(".room__aside").getByRole("button", { name: "收起", exact: true });
+      await close.focus();
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(350);
+      if (await page.locator(".room__aside").isVisible()) { fails.push(`${width}：右栏没收起`); await context.close(); continue; }
+      const back = await page.locator(".scene__corner").evaluate((el) => el === document.activeElement);
+      if (!back) fails.push(`${width} 右栏收起后焦点在 ${await page.evaluate(focused)}，应回到「往回翻」`);
+      else notes.push(`${width} 右栏打开落标题 / 收起回焦`);
+      await context.close();
+    }
     for (const how of ["Escape", "关闭"]) {
       const { context, page } = await openPage(browser, { width: 1180, height: 820 });
       await visit(page, "/settings");
@@ -895,7 +914,7 @@ async function checkUiPolish(browser) {
       else notes.push(`换一位 ${how} 回焦`);
       await context.close();
     }
-    record("弹层关上后焦点回到触发按钮（往回翻 900 / 390 × Escape / 关上；换一位 Escape / ✕）", fails.length === 0, fails.join("；") || notes.join("；"));
+    record("弹层关上后焦点回到触发按钮（往回翻 900 / 390 × Escape / 关上；宽屏右栏 1440 / 1180；换一位 Escape / ✕）", fails.length === 0, fails.join("；") || notes.join("；"));
   }
 }
 
@@ -1039,6 +1058,19 @@ async function checkChatGeometry(browser) {
 }
 
 /** 33. 聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦，done 时 sr-only 全文常驻。 */
+/** /api/chat 的假 SSE：一次吐完 reply 并 done。 */
+async function stubChatReply(page, reply) {
+  await page.route(/\/api\/chat$/, (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const ev = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+    return route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body: ev("ack", { sessionId: "s1" }) + ev("emotion", { emotion: "happy" }) + ev("delta", { text: reply }) + ev("done", { messageId: 99, sessionId: "s1", emotion: "happy" }),
+    });
+  });
+}
+
 async function checkChatThreadFocus(browser) {
   const fails = [];
   const notes = [];
@@ -1069,7 +1101,33 @@ async function checkChatThreadFocus(browser) {
     notes.push(`${width} 焦点进入/Escape 关闭/回焦；播报 ${status.length} 字`);
     await context.close();
   }
-  return record("聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦；done sr-only 全文常驻", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+  // 新生成的 3 句回复按句分条亮出，读屏只在全部亮出后收到一次全文，不随字幕逐句更新
+  {
+    const reply = "今天的风很轻，我在窗边坐了好一会儿。后来想起你说过要早点睡，就把灯调暗了一些。要是你还没睡，就陪我聊几句吧。";
+    const { context, page } = await openPage(browser, { width: 900, height: 900 });
+    await stubChatReply(page, reply);
+    await visit(page, "/");
+    await page.evaluate((want) => {
+      const seen = [];
+      window.__announced = seen;
+      // 只记这条新回复的播报（全文或它的前缀）；历史那条和「她在想」的状态不算
+      const read = () => {
+        const text = [...document.querySelectorAll('.dlg .sr-only[role="status"]')].map((n) => n.textContent ?? "").join("").trim();
+        if (text && want.startsWith(text) && seen[seen.length - 1] !== text) seen.push(text);
+      };
+      new MutationObserver(read).observe(document.body, { subtree: true, childList: true, characterData: true });
+    }, reply);
+    await page.locator("#chat-input").fill("测试消息");
+    await page.locator(".composer__send").click();
+    const full = await page.waitForFunction((want) => window.__announced.includes(want), reply, { timeout: 8000 }).then(() => true, () => false);
+    await page.waitForTimeout(1500);
+    const seen = await page.evaluate(() => window.__announced);
+    if (!full) fails.push(`新回复读屏没有收到全文（收到 ${seen.length} 次：${JSON.stringify(seen)}）`);
+    else if (seen.length !== 1) fails.push(`新回复读屏被播报 ${seen.length} 次，应只有 1 次全文（${JSON.stringify(seen)}）`);
+    else notes.push("新生成 3 句回复读屏只播报 1 次全文");
+    await context.close();
+  }
+  return record("聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦；done sr-only 全文常驻；新生成 3 句回复只播报一次全文", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
 }
 
 /** 50. 往回翻右栏默认收起，回复生成完也不自动展开；消息留在主区底部，手动打开能看到刚生成的那条。 */
@@ -1079,15 +1137,7 @@ async function checkBacklogStaysClosed(browser) {
   const reply = "收到啦，这条是刚生成的回复。";
   for (const [width, height] of [[1440, 900], [1180, 800], [900, 800], [390, 844]]) {
     const { context, page } = await openPage(browser, { width, height, touch: width === 390 });
-    await page.route(/\/api\/chat$/, (route) => {
-      if (route.request().method() !== "POST") return route.fallback();
-      const ev = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
-      return route.fulfill({
-        status: 200,
-        headers: { "content-type": "text/event-stream" },
-        body: ev("ack", { sessionId: "s1" }) + ev("emotion", { emotion: "happy" }) + ev("delta", { text: reply }) + ev("done", { messageId: 99, sessionId: "s1", emotion: "happy" }),
-      });
-    });
+    await stubChatReply(page, reply);
     await visit(page, "/");
     const tag = String(width);
     const panel = () => page.evaluate(() => {
@@ -1113,6 +1163,19 @@ async function checkBacklogStaysClosed(browser) {
     else {
       if (!dock.text.includes(reply)) fails.push(`${tag} 回复没有留在底部展示区`);
       if (dock.top < dock.sceneMid || dock.bottom > dock.vh) fails.push(`${tag} 展示区不在主区下半部（${dock.top}-${dock.bottom}，视口 ${dock.vh}）`);
+    }
+    if (width < 1180) {
+      const peek = page.getByRole("button", { name: /最近的 \d+ 条/ });
+      if ((await peek.count()) === 0) fails.push(`${tag} 找不到「最近的 N 条」`);
+      else {
+        await peek.click();
+        await page.waitForTimeout(200);
+        const peekText = (await page.locator(".chat-thread--compact").textContent()) ?? "";
+        if (peekText.includes(reply)) fails.push(`${tag}「最近的 N 条」又列了一遍底部那条回复`);
+        if (!peekText.includes("测试消息")) fails.push(`${tag}「最近的 N 条」少了你刚发的那条`);
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(150);
+      }
     }
     await page.getByRole("button", { name: "往回翻" }).first().click();
     await page.waitForTimeout(500);
@@ -2385,6 +2448,7 @@ if (STATIC_ONLY) {
     const { chromium, AxeBuilder } = await loadPlaywright();
     const browser = await launchChrome(chromium);
     if (ONLY === "drawer") {
+      await checkChatThreadFocus(browser);
       await checkBacklogStaysClosed(browser);
     } else if (ONLY === "polish") {
       await checkUiPolish(browser);
