@@ -56,7 +56,8 @@
  *  45 见闻页「她今天逛了…」在标题右侧同一行，颜色是次要文字色、和标题不同色（1440 / 1180 / 900）
  *  46 设置页滚动（400 / 1100 / 2000）：吸顶目录条横向盖住卡片列和描边，卡片滑过时点在条上的都是条，页面无横向溢出（1440 / 1180 / 900 / 390）
  *  47 侧栏与往回翻宽度：展开侧栏 200（老人模式随字号 ×1.25 = 250），品牌字 / 导航项 / 分组名 / 她的卡片不截断不换行（1440 / 1180 / 1180 老人）；往回翻右栏 ≤360 且 ≤ 内容区 31%（1920 / 1440 / 1180，无对话点开与有对话常驻），900 抽屉从右侧滑出 ≤360、390 仍是底部抽屉；右栏打开时人物仍占可画区 ≥85%（1440 / 1180）
- * （默认共 47 项；--shots 再加一项截图，共 48 项）
+ *  48 输入条与收起按钮：视频 / 语音 / 发送三个按钮中心和单行输入框中心竖直差 ≤1px，多行时贴最后一行 ≤1px；语音紧挨发送、在输入框右边，视频在左边（1440 / 1180 / 1180 老人 / 900 / 390）；收起按钮和品牌标记同一行、收起前后不动，她的卡片下面不再空出一行（1440 / 1180 / 1180 老人）
+ * （默认共 48 项；--shots 再加一项截图，共 49 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -775,6 +776,75 @@ async function checkUiPolish(browser) {
       await context.close();
     }
     record("侧栏 200 不截断；往回翻 ≤360 且 ≤31%，900 右侧抽屉，打开时人物 ≥85%", fails.length === 0, fails.join("；") || notes.join("；"));
+  }
+
+  // 48 输入条按钮上下居中、语音挨着发送；侧栏收起按钮不单独占一行、收起前后不动
+  {
+    const fails = [];
+    const notes = [];
+    const COMPOSER = () => {
+      const input = document.querySelector("#chat-input");
+      const ir = input.getBoundingClientRect();
+      const cs = getComputedStyle(input);
+      const line = Number.parseFloat(cs.lineHeight);
+      const lastLine = ir.bottom - Number.parseFloat(cs.paddingBottom) - line / 2;
+      const btns = [...document.querySelectorAll(".composer__bar button")].filter((b) => b.getBoundingClientRect().width > 0);
+      return {
+        input: { l: ir.left, r: ir.right, c: ir.top + ir.height / 2, lastLine },
+        btns: btns.map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute("aria-label") || b.textContent.trim(), l: r.left, r: r.right, c: r.top + r.height / 2 }; }),
+      };
+    };
+    for (const [width, elder] of [[1440, false], [1180, false], [1180, true], [900, false], [390, false]]) {
+      const { context, page } = await openPage(browser, { width, height: width === 390 ? 844 : 800, elder, touch: width === 390 });
+      await visit(page, "/");
+      const tag = `${width}${elder ? " 老人" : ""}`;
+      const one = await page.evaluate(COMPOSER);
+      const find = (m, n) => m.btns.find((b) => b.name === n);
+      const video = find(one, "发个视频给她"), voice = find(one, "语音聊天"), send = find(one, "发送");
+      if (!video || !voice || !send) { fails.push(`${tag}：找不到视频 / 语音 / 发送按钮（${one.btns.map((b) => b.name).join("、")}）`); await context.close(); continue; }
+      for (const b of [video, voice, send]) {
+        const d = b.c - one.input.c;
+        if (Math.abs(d) > 1) fails.push(`${tag} 单行：「${b.name}」中心比输入框中心${d > 0 ? "低" : "高"} ${Math.abs(d).toFixed(1)}px`);
+      }
+      if (!(video.r <= one.input.l + 1)) fails.push(`${tag}：视频按钮不在输入框左边`);
+      if (!(voice.l >= one.input.r - 1)) fails.push(`${tag}：语音按钮不在输入框右边`);
+      const between = one.btns.filter((b) => b.l > voice.r - 1 && b.r < send.l + 1);
+      if (send.l < voice.r || send.l - voice.r > 12 || between.length) fails.push(`${tag}：语音和发送不相邻（语音右 ${Math.round(voice.r)}，发送左 ${Math.round(send.l)}）`);
+      await page.locator("#chat-input").fill("第一行\n第二行\n第三行");
+      await page.waitForTimeout(300);
+      const multi = await page.evaluate(COMPOSER);
+      for (const b of multi.btns) {
+        const d = b.c - multi.input.lastLine;
+        if (Math.abs(d) > 1) fails.push(`${tag} 三行：「${b.name}」中心离最后一行 ${d.toFixed(1)}px`);
+      }
+      notes.push(`${tag} 单行差 ≤${Math.max(...[video, voice, send].map((b) => Math.abs(b.c - one.input.c))).toFixed(1)}px`);
+      await context.close();
+    }
+    for (const [width, elder] of [[1440, false], [1180, false], [1180, true]]) {
+      const { context, page } = await openPage(browser, { width, height: 800, elder });
+      await visit(page, "/");
+      const tag = `${width}${elder ? " 老人" : ""}`;
+      const nav = () => page.evaluate(() => {
+        const r = (s) => { const e = document.querySelector(s); const b = e?.getBoundingClientRect(); return b && b.width ? { l: b.left, r: b.right, t: b.top, b: b.bottom, c: b.top + b.height / 2 } : null; };
+        return { toggle: r(".shell-nav__toggle"), mark: r(".shell-nav__mark"), her: r(".shell-nav__her"), nav: r(".shell-nav"), w: Math.round(document.querySelector(".shell-nav").getBoundingClientRect().width) };
+      });
+      const a = await nav();
+      if (!a.toggle || !a.mark) { fails.push(`${tag}：找不到收起按钮或品牌标记`); await context.close(); continue; }
+      if (Math.abs(a.toggle.c - a.mark.c) > 1 || a.mark.l < a.toggle.r) fails.push(`${tag}：收起按钮没和品牌标记并排（按钮中心 ${Math.round(a.toggle.c)}，标记中心 ${Math.round(a.mark.c)}）`);
+      if (a.nav.b - a.her.b > 24) fails.push(`${tag}：她的卡片下面还空着 ${Math.round(a.nav.b - a.her.b)}px（收起按钮原来那一行）`);
+      await page.mouse.click((a.toggle.l + a.toggle.r) / 2, a.toggle.c);
+      await page.waitForTimeout(300);
+      const b = await nav();
+      if (b.w !== 72) fails.push(`${tag}：点了没收起（${b.w}）`);
+      if (!b.toggle || Math.abs(a.toggle.l - b.toggle.l) > 0.5 || Math.abs(a.toggle.t - b.toggle.t) > 0.5) fails.push(`${tag}：收起后按钮从 (${Math.round(a.toggle.l)},${Math.round(a.toggle.t)}) 挪到 (${Math.round(b.toggle?.l)},${Math.round(b.toggle?.t)})`);
+      else if (b.toggle.r > 72) fails.push(`${tag}：收起按钮超出 72 窄栏`);
+      await page.mouse.click((a.toggle.l + a.toggle.r) / 2, a.toggle.c);
+      await page.waitForTimeout(300);
+      if ((await nav()).w !== a.w) fails.push(`${tag}：原地再点没展开`);
+      notes.push(`${tag} 收起按钮 (${Math.round(a.toggle.l)},${Math.round(a.toggle.t)}) 两态一致`);
+      await context.close();
+    }
+    record("输入条按钮上下居中、语音挨着发送；收起按钮在品牌行、收起前后不动", fails.length === 0, fails.join("；") || notes.join("；"));
   }
 }
 
