@@ -7,10 +7,28 @@
 .page--surf .page__inner { display: flex; flex-direction: column; gap: var(--sp-5); }
 
 /* ---------------------------------------------------------------- 工具条 */
-.surf-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
-.surf-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
-.surf-search { flex: 1 1 240px; max-width: 420px; }
-.surf-run { margin-inline-start: auto; }
+/* 宽时一行放下：筛选 · 搜索（吃剩下的宽度）· 「让她现在去逛逛」。按内容列宽（@container page）降级，不看视口；
+   手机宽度下搜索、按钮各占满一行。 */
+.surf-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--sp-2); }
+.surf-filters { display: flex; flex: none; flex-wrap: nowrap; align-items: center; gap: var(--sp-2); }
+/* 两个下拉按内容收窄（默认 150 太宽，1180 的窗口一行放不下）；展开的菜单仍按选项宽度来 */
+.surf-filters .ui-select { min-width: 112px; width: auto; }
+.surf-search { flex: 1 1 180px; min-width: 180px; max-width: 420px; }
+.surf-run { flex: none; margin-inline-start: auto; }
+/* 列宽放不下一行时（约 840px 以下；选了「某一天」多一个日期框、或老人模式控件更大时约 1000px 以下）：筛选单独一行，搜索和按钮一行 */
+@container page (max-width: 840px) {
+  .surf-bar { flex-wrap: wrap; }
+  .surf-filters { flex: 1 1 100%; flex-wrap: wrap; }
+  .surf-search { max-width: none; }
+}
+@container page (max-width: 1000px) {
+  .surf-bar:has(.surf-filters__day), [data-elder="on"] .surf-bar { flex-wrap: wrap; }
+  .surf-bar:has(.surf-filters__day) .surf-filters, [data-elder="on"] .surf-filters { flex: 1 1 100%; flex-wrap: wrap; }
+  .surf-bar:has(.surf-filters__day) .surf-search, [data-elder="on"] .surf-search { max-width: none; }
+}
+@container page (max-width: 520px) {
+  .surf-search, .surf-run { flex: 1 1 100%; min-width: 0; }
+}
 
 /* ---------------------------------------------------------------- 按天分组 + 卡片网格 */
 .surf-day { display: flex; flex-direction: column; gap: var(--sp-3); }

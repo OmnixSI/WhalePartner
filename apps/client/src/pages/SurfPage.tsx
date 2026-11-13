@@ -291,7 +291,7 @@ export function SurfPage() {
               <Input
                 type="search"
                 value={query}
-                placeholder="找找她逛到的东西…"
+                placeholder="找她逛到的"
                 aria-label="搜她的见闻"
                 onChange={(event) => setQuery(event.target.value)}
               />
