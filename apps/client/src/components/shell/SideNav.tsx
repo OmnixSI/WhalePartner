@@ -54,11 +54,20 @@ export function SideNav({ collapsed, onToggle }: Props) {
 
   return (
     <aside className={`shell-nav${collapsed ? " is-collapsed" : ""}`} aria-label="主导航">
+      {/* 收起按钮在品牌行左端（macOS 侧栏开关的位置）；两态都钉在窄栏正中同一点，鼠标不动再点一下就能展开 */}
+      <button
+        type="button"
+        className="shell-nav__toggle"
+        aria-label={collapsed ? "展开导航" : "收起导航"}
+        aria-expanded={!collapsed}
+        onClick={onToggle}
+      >
+        <span aria-hidden="true">{collapsed ? "›" : "‹"}</span>
+      </button>
       <div className="shell-nav__head">
         <span className="shell-nav__mark" aria-hidden="true"><TailMark /></span>
         <span className="shell-nav__brand">
           <strong>鲸汐</strong>
-          <small>WhalePartner</small>
         </span>
       </div>
 
@@ -88,15 +97,6 @@ export function SideNav({ collapsed, onToggle }: Props) {
             <small>{character.tagline}</small>
           </span>
         </div>
-        <button
-          type="button"
-          className="shell-nav__toggle"
-          aria-label={collapsed ? "展开导航" : "收起导航"}
-          aria-expanded={!collapsed}
-          onClick={onToggle}
-        >
-          <span aria-hidden="true">{collapsed ? "›" : "‹"}</span>
-        </button>
       </div>
     </aside>
   );
