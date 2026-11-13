@@ -19,5 +19,5 @@
 .card-view__btn:disabled { cursor: not-allowed; opacity: .5; }
 
 /* 卡面立绘槽里的 Live2D 构图：Live2DStage 从宿主读这几个比例（geometry.ts placeModel）。
-   默认值按聊天舞台定，放进竖长卡面会偏小，这里放大到几乎贴宽，脚底留一点给各档的地台。 */
-.acard__art .live2d { --stage-char-w: 1.12; --stage-char-h: 0.92; --stage-char-max: 0.98; --stage-char-gap: 0.04; }
+   默认值按聊天舞台定，放进竖长卡面会偏小：这里按整扇画窗定宽（0.92：尾巴摆起来会伸出模型边界，再大就被画布边裁掉），脚底留一点给各档的地台。 */
+.acard__art .live2d { --stage-char-w: 0.92; --stage-char-h: 0.96; --stage-char-max: 0.98; --stage-char-gap: 0.03; }
