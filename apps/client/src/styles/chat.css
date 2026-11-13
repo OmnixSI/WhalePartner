@@ -13,7 +13,7 @@
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
-  padding: var(--sp-3) var(--sp-3) var(--sp-3) 0;
+  padding: var(--sp-3) 0; /* 左右不留：舞台 / 右栏和页头分割线两端对齐 */
   gap: var(--sp-3);
 }
 /* 舞台是贴在纸上的一块：圆角裁切，一圈细线 */

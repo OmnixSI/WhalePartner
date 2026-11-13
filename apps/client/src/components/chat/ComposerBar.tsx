@@ -211,19 +211,6 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
               </svg>
             </IconButton>
           </Tooltip>
-          <Popover.Root>
-            <Popover.Trigger asChild>
-              <IconButton label="输入小提示">?</IconButton>
-            </Popover.Trigger>
-            <Popover.Portal>
-              <Popover.Content className="pop pop--small" side="top" align="end" sideOffset={8} collisionPadding={16}>
-                <p className="pop__lead">
-                  按 macOS 的听写快捷键就能用说的，文字会先放在输入框里，你检查后再发送。没反应的话，到「系统设置 › 键盘 ›
-                  听写」打开。
-                </p>
-              </Popover.Content>
-            </Popover.Portal>
-          </Popover.Root>
           </div>
 
           <label className="sr-only" htmlFor="chat-input">

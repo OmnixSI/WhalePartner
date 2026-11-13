@@ -20,6 +20,7 @@ import { useModel } from "../characters";
 import { ChatScene } from "./chat/ChatScene";
 import { ChatTranscript } from "./chat/ChatTranscript";
 import { ChatThread } from "./chat/ChatThread";
+import { visibleTurns } from "./chat/chatThreadUtils";
 import { useInkEnv } from "./ink/useCalm";
 import { useSpeechAnimation } from "../avatar/live2d/useSpeechAnimation";
 import { useTapHint } from "./chat/useTapHint";
@@ -249,6 +250,11 @@ export function ChatPanel({ character }: Props) {
               ? "wave"
               : "idle";
 
+  // 宽屏右栏是「最近的对话」：还没有可看的对话时整栏不留，舞台和对话区铺满内容区（不留一块空白）。
+  const threadExclude = phase === "streaming" ? lastHer?.key : undefined;
+  const hasThread = visibleTurns(turns, threadExclude, 1).length > 0;
+  const asideOpen = threadWide ? backlogOpen || hasThread : wide && backlogOpen;
+
   const backlog = (
     <Backlog
       name={character.name}
@@ -261,7 +267,7 @@ export function ChatPanel({ character }: Props) {
 
   return (
     <>
-      <div className="room" data-backlog={threadWide || (wide && backlogOpen) ? "open" : "closed"}>
+      <div className="room" data-backlog={asideOpen ? "open" : "closed"}>
         <div className="room__main">
           <header className="mbar">
             <span className="mbar__name">{character.name}</span>
@@ -335,7 +341,7 @@ export function ChatPanel({ character }: Props) {
           />
         </div>
 
-        {threadWide && (
+        {threadWide && asideOpen && (
           <aside className="room__aside">
             {backlogOpen ? backlog : (
               <ChatThread
