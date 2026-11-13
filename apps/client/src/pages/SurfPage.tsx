@@ -239,9 +239,8 @@ export function SurfPage() {
     <div className="page page--surf" data-elder={env.elder ? "on" : "off"}>
       <div className="page__inner">
         <PageHeader
-          eyebrow="手帐 · 见闻"
           title={`${character.name}的见闻`}
-          lead={
+          meta={
             status
               ? disabled
                 ? "她现在不去逛了"

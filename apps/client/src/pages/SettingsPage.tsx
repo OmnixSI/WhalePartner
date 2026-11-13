@@ -275,11 +275,7 @@ export function SettingsPage() {
   return (
     <div className="page page--settings" ref={pageRef}>
       <div className="page__inner">
-        <PageHeader
-          eyebrow="系统 · 设置"
-          title="设置"
-          lead="大多数设置改完就生效；字号调整后点“确认”应用。"
-        />
+        <PageHeader title="设置" />
 
         {offline && (
           <div className="set-banner" role="status">

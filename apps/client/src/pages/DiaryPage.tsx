@@ -248,9 +248,7 @@ export function DiaryPage() {
     <div className="page diary-page">
       <div className="diary-page__inner">
         <PageHeader
-          eyebrow="手帐 · 日记"
           title={`${character.name}的日记`}
-          lead="她每天写一页，按周、月、年翻着看。"
           actions={
             <Button variant="primary" className="diary-page__write" onClick={() => void write()} disabled={writing}>
               {writing ? "她在写…" : "请她写今天的"}

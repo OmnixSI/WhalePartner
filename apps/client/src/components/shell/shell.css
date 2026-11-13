@@ -193,45 +193,39 @@
   padding-bottom: var(--sp-4);
   border-bottom: 1px solid var(--color-border);
 }
-.page-head__eyebrow { margin: 0 0 var(--sp-1); font-family: var(--font-ui); font-size: var(--text-xs); font-weight: var(--weight-medium); letter-spacing: .16em; text-transform: uppercase; color: var(--color-text-tertiary); }
 .page-head__title { margin: 0; font-family: var(--font-voice); font-size: clamp(1.8rem, 2.4vw, 2.6rem); font-weight: var(--weight-strong); line-height: 1.15; letter-spacing: .03em; color: var(--color-text-primary); }
-.page-head__lead { margin-top: var(--sp-2); max-width: 68ch; font-size: var(--text-md); line-height: 1.6; color: var(--color-text-secondary); }
 .page-head__actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
-.page-head__meta { font-size: var(--text-sm); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+/* 标题和它的小字在同一行，小字按基线对齐，用次级文字色（比标题浅一档） */
+.page-head__text { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: var(--sp-4); row-gap: var(--sp-1); min-width: 0; }
+.page-head__meta { margin: 0; font-size: var(--text-md); line-height: 1.5; color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 
 /* 五个主页面共用一套页面模板：顶部留白、内容宽度、页头到正文的间距都一样，
-   页头（眉题 / 标题 / 说明 / 分割线）统一由 PageHeader 出。
+   页头（标题 / 小字 / 分割线）统一由 PageHeader 出；聊天页不放页头，整块高度给舞台。
    前面加 .app-shell__main 是为了压过各页自己的样式表（它们懒加载，排在这份后面）。 */
-:root { --page-top: var(--sp-8); --page-gap: var(--sp-5); --page-w: 1200px; }
-@media (max-width: 959px) { :root { --page-top: var(--sp-6); --page-gap: var(--sp-4); } }
+:root { --page-top: var(--sp-8); --page-gap: var(--sp-5); --page-w: 1200px; --page-x: var(--gutter); }
+@media (max-width: 959px) { :root { --page-top: var(--sp-6); --page-gap: var(--sp-4); --page-x: var(--sp-4); } }
 @media (max-width: 719px) { :root { --page-top: var(--sp-4); } }
-.app-shell__main .chat-page,
 .app-shell__main .diary-page,
 .app-shell__main .memory-page,
 .app-shell__main .page--surf,
 .app-shell__main .page--settings .page__inner { padding-top: var(--page-top); }
-.app-shell__main .chat-page__inner,
+/* 左右留白也统一：各页样式表各自在 959 / 719 收窄，档位不一样，900 宽时标题会差 7px */
+.app-shell__main .diary-page,
+.app-shell__main .memory-page,
+.app-shell__main .page--surf,
+.app-shell__main .page--settings { padding-inline: var(--page-x); }
 .app-shell__main .diary-page__inner,
 .app-shell__main .memory-page__inner,
 .app-shell__main .page--surf .page__inner,
 .app-shell__main .page--settings .page__inner { gap: var(--page-gap); width: 100%; }
-/* 聊天页舞台要宽，单独放宽到 1480；其余四页同宽 */
+/* 四个内容页同宽；聊天页不套内容列，舞台铺满 */
 .app-shell__main .diary-page__inner,
 .app-shell__main .memory-page__inner,
 .app-shell__main .page--surf .page__inner,
 .app-shell__main .page--settings .page__inner { max-width: min(var(--page-w), 100%); }
 
-/* 聊天页：页头 + 原有房间，房间自己负责内部布局 */
-.chat-page { height: 100%; min-height: 0; padding: var(--sp-6) var(--gutter) var(--sp-4); }
-.chat-page__inner { display: flex; flex-direction: column; gap: var(--sp-4); height: 100%; min-height: 0; max-width: min(1480px, 100%); margin-inline: auto; }
-.chat-page__body { flex: 1; min-height: 0; }
-
-@media (max-width: 959px) {
-  .chat-page { padding: var(--sp-4) var(--sp-4) 0; }
-}
-@media (max-width: 719px) {
-  .chat-page { padding: var(--sp-4) var(--sp-4) var(--sp-2); }
-}
+/* 聊天页：没有页头、没有外框，房间直接铺满内容区（四边不留白），房间自己负责内部布局 */
+.chat-page { height: 100%; min-height: 0; }
 
 /* 手机键盘弹起：外壳跟可视高度缩；房间只占扣掉页头后的剩余空间
    导航隐藏后必须同时收成单列，否则 720–1179px 的平板仍保留 72px 导航列，main 会被挤进那一列 */
