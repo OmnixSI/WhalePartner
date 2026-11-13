@@ -46,7 +46,12 @@
  *  35 换一位：主卡与缩略卡共用等级；单卡失败可重试，重试一起恢复，切角色不多发请求
  *  36 聊天页跨档提示一次、同一档不重复；点「去看看」打开设置页卡面并播升级
  *  37 切档看低档卡面：只能切已解锁的档；只改卡面，卡外真实等级、「上次看到的等级」不动，不发写请求；Live2D 舞台切档不重建；刷新后保留；真升档时播动画并回到最高档
- * （默认共 37 项；--shots 再加一项截图，共 38 项）
+ *  38 设置页点目录「关于」：只滚页面，html 不滚、侧栏 y=0 满高（1440 / 900）
+ *  39 见闻工具条：1440 / 1180 筛选、搜索、「让她现在去逛逛」同一行；900 / 390 换行不溢出
+ *  40 聊天页没有对话时不留空右栏，舞台和画布铺满内容宽（1440 / 1180）；有对话时右栏照常
+ *  41 收起 / 展开导航按钮两态同一位置，原地再点即展开
+ *  42 五个主页面页头一致：位置、宽度、说明行、页头到正文的间距
+ * （默认共 42 项；--shots 再加一项截图，共 43 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -443,6 +448,122 @@ async function checkShellNav(browser) {
 
   const detail = fails.length ? fails.join("；") : `展开 ${before.nav}/${before.mainX} → 收起 ${after.nav}/${after.mainX} → 再展开 ${reopened.nav}/${reopened.mainX}；900 链接名称 5/5`;
   return record("外壳：1440 收起导航列宽 72、main 从 72 起；900 图标栏链接可访问", fails.length === 0, detail);
+}
+
+/** 38–42. 界面打磨（fix/ui-polish）：设置页「关于」不带走外壳 / 见闻工具条一行 / 无对话时聊天铺满 / 收起展开按钮原位 / 五页页头一致。 */
+async function checkUiPolish(browser) {
+  const box = (sel) => (el => el ? (({ x, y, width, height }) => ({ x: Math.round(x), y: Math.round(y), w: Math.round(width), h: Math.round(height) }))(el.getBoundingClientRect()) : null)(document.querySelector(sel));
+  const BOX = `(${box.toString()})`;
+
+  // 38 设置页点目录里的「关于」：只滚页面，外壳（侧栏）不跟着往上走
+  {
+    const fails = [];
+    let detail = "";
+    for (const [width, height] of [[1440, 900], [900, 800]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      await visit(page, "/settings");
+      await page.locator(".set-nav__item", { hasText: "关于" }).click();
+      await page.waitForTimeout(900);
+      const m = await page.evaluate((B) => {
+        const box = eval(B);
+        return { html: document.documentElement.scrollTop, body: document.body.scrollTop, nav: box(".shell-nav"), page: document.querySelector(".page--settings")?.scrollTop ?? -1 };
+      }, BOX);
+      if (m.html !== 0 || m.body !== 0) fails.push(`${width}：html/body 被滚了 ${m.html}/${m.body}px`);
+      if (!m.nav || m.nav.y !== 0 || m.nav.h !== height) fails.push(`${width}：侧栏 y=${m.nav?.y} 高 ${m.nav?.h}，应为 0 / ${height}`);
+      if (m.page <= 0) fails.push(`${width}：设置页没有滚到「关于」（scrollTop ${m.page}）`);
+      detail += `${width}: html ${m.html} 侧栏 y${m.nav?.y} h${m.nav?.h} 页滚 ${m.page}；`;
+      await context.close();
+    }
+    record("设置页点「关于」：只滚页面，侧栏不动、满高（1440 / 900）", fails.length === 0, fails.join("；") || detail);
+  }
+
+  // 39 见闻工具条：宽时筛选、搜索、「让她现在去逛逛」一行；窄时降级换行但不溢出
+  {
+    const fails = [];
+    let detail = "";
+    for (const [width, height, oneRow] of [[1440, 900, true], [1180, 800, true], [900, 800, false], [390, 844, false]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      await visit(page, "/surf");
+      const m = await page.evaluate((B) => {
+        const box = eval(B);
+        const bar = document.querySelector(".surf-bar");
+        return { bar: box(".surf-bar"), filters: box(".surf-filters"), search: box(".surf-search"), run: box(".surf-run"), over: bar ? bar.scrollWidth - bar.clientWidth : -1 };
+      }, BOX);
+      if (!m.run || !m.search || !m.filters) { fails.push(`${width}：工具条缺元素`); await context.close(); continue; }
+      const mid = (b) => b.y + b.h / 2;
+      const same = Math.abs(mid(m.run) - mid(m.filters)) <= 2 && Math.abs(mid(m.search) - mid(m.filters)) <= 2;
+      if (oneRow && !same) fails.push(`${width}：按钮不在同一行（筛选中线 ${mid(m.filters)} / 搜索 ${mid(m.search)} / 逛逛 ${mid(m.run)}）`);
+      if (m.over > 0) fails.push(`${width}：工具条横向溢出 ${m.over}px`);
+      if (m.run.x + m.run.w > m.bar.x + m.bar.w + 1) fails.push(`${width}：「让她现在去逛逛」伸出工具条`);
+      detail += `${width}: ${same ? "一行" : "换行"}；`;
+      await context.close();
+    }
+    record("见闻工具条：1440 / 1180 一行放下，900 / 390 换行不溢出", fails.length === 0, fails.join("；") || detail);
+  }
+
+  // 40 聊天页还没有对话时：右栏不留空，舞台和对话区铺满内容宽度
+  {
+    const fails = [];
+    let detail = "";
+    for (const [width, height, empty] of [[1440, 900, true], [1180, 800, true], [1440, 900, false]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      if (empty) await page.route("**/api/chat/history**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ messages: [] }) }));
+      await visit(page, "/");
+      await page.waitForTimeout(600);
+      const m = await page.evaluate((B) => {
+        const box = eval(B);
+        return { inner: box(".chat-page__inner"), main: box(".room__main"), aside: box(".room__aside"), canvas: box(".scene canvas, .live2d canvas") };
+      }, BOX);
+      if (empty) {
+        if (m.aside) fails.push(`${width} 无对话：右栏还在（${m.aside.w}px）`);
+        if (!m.main || Math.abs(m.main.w - m.inner.w) > 1) fails.push(`${width} 无对话：舞台宽 ${m.main?.w}，内容区 ${m.inner?.w}`);
+        if (m.canvas && Math.abs(m.canvas.w - m.main.w) > 1) fails.push(`${width} 无对话：画布宽 ${m.canvas.w}，舞台 ${m.main.w}`);
+      } else if (!m.aside) fails.push(`${width} 有对话：右栏「最近的对话」不见了`);
+      detail += `${width}${empty ? " 无对话" : " 有对话"}: 舞台 ${m.main?.w}/${m.inner?.w}${m.aside ? ` 右栏 ${m.aside.w}` : ""}；`;
+      await context.close();
+    }
+    record("聊天页无对话时舞台铺满内容宽（1440 / 1180），有对话时右栏照常", fails.length === 0, fails.join("；") || detail);
+  }
+
+  // 41 收起 / 展开导航：按钮前后同一个位置，鼠标不动再点一下就展开回来
+  {
+    const fails = [];
+    const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+    await visit(page, "/");
+    const toggle = page.locator(".shell-nav__toggle");
+    const a = await toggle.boundingBox();
+    await page.mouse.click(a.x + a.width / 2, a.y + a.height / 2);
+    await page.waitForTimeout(300);
+    const b = await toggle.boundingBox();
+    const navCollapsed = await page.evaluate(() => Math.round(document.querySelector(".shell-nav").getBoundingClientRect().width));
+    if (navCollapsed !== 72) fails.push(`点了没收起（nav ${navCollapsed}）`);
+    if (Math.abs(a.x - b.x) > 0.5 || Math.abs(a.y - b.y) > 0.5) fails.push(`按钮从 (${Math.round(a.x)},${Math.round(a.y)}) 挪到 (${Math.round(b.x)},${Math.round(b.y)})`);
+    await page.mouse.click(a.x + a.width / 2, a.y + a.height / 2);
+    await page.waitForTimeout(300);
+    const navOpen = await page.evaluate(() => Math.round(document.querySelector(".shell-nav").getBoundingClientRect().width));
+    if (navOpen !== 232) fails.push(`原地再点没展开（nav ${navOpen}）`);
+    await context.close();
+    record("收起 / 展开导航：按钮位置不变，原地再点即展开", fails.length === 0, fails.join("；") || `按钮 (${Math.round(a.x)},${Math.round(a.y)}) 两态一致；72 → 232`);
+  }
+
+  // 42 五个主页面的页头：位置、宽度、到正文的间距一致（1440）
+  {
+    const { context, page } = await openPage(browser, { width: 1440, height: 900 });
+    const rows = [];
+    for (const path of ["/", "/diary", "/memory", "/surf", "/settings"]) {
+      await visit(page, path);
+      rows.push(await page.evaluate(() => {
+        const h = document.querySelector(".page-head");
+        if (!h) return null;
+        const r = h.getBoundingClientRect();
+        const n = h.nextElementSibling?.getBoundingClientRect();
+        return { y: Math.round(r.y), x: Math.round(r.x), w: Math.round(r.width), gap: n ? Math.round(n.y - r.bottom) : -1, lead: Boolean(h.querySelector(".page-head__lead")) };
+      }));
+    }
+    const ok = rows.every((r) => r && r.y === rows[0].y && r.x === rows[0].x && r.w === rows[0].w && r.gap === rows[0].gap && r.lead);
+    await context.close();
+    record("五页页头一致：位置 / 宽 / 说明行 / 到正文间距（1440）", ok, rows.map((r) => r ? `y${r.y} x${r.x} w${r.w} 距${r.gap}${r.lead ? "" : " 缺说明"}` : "无页头").join(" | "));
+  }
 }
 
 /** 29. 键盘弹起：390/720/900 三种宽度，模拟可视高度 480px；外壳收到 480，720/900 主栏占满宽度，输入框和发送键都在可视区内。 */
@@ -1834,7 +1955,9 @@ if (STATIC_ONLY) {
     server = loaded.child;
     const { chromium, AxeBuilder } = await loadPlaywright();
     const browser = await launchChrome(chromium);
-    if (ONLY === "memory") {
+    if (ONLY === "polish") {
+      await checkUiPolish(browser);
+    } else if (ONLY === "memory") {
       await checkMemorySurfPages(browser);
       await checkMemoryRework(browser);
     } else if (ONLY === "card-live") {
@@ -1863,8 +1986,9 @@ if (STATIC_ONLY) {
       await checkCardShared(browser);
       await checkChatLevelUp(browser);
       await checkCardView(browser);
+      await checkUiPolish(browser);
     }
-    if (WITH_SHOTS && ONLY !== "card-live" && ONLY !== "memory") {
+    if (WITH_SHOTS && !ONLY) {
       const written = await shoot(browser);
       record(`截图 ${written.length} 张（${PAGES.length} 页 × 亮/暗，预览页 × 角色 / 手机 / 老人 / 弹层，好感度卡五档 / 角色 / 升级帧）`, true, `${rel(SHOTS)}/`);
     }
