@@ -18,8 +18,7 @@
 /* 舞台直接铺在内容区上：不画外框、圆角和底色；右栏只用一条竖线隔开 */
 .room__main { isolation: isolate; }
 .room__aside { min-width: 0; min-height: 0; box-shadow: inset 1px 0 0 var(--color-border); }
-.room__aside > .bl,
-.room__aside > .chat-thread { border-radius: 0; box-shadow: none; background: transparent; }
+.room__aside > .bl { border-radius: 0; box-shadow: none; background: transparent; }
 .room[data-backlog="closed"] { gap: 0; }
 .room[data-backlog="closed"] { grid-template-columns: minmax(0, 1fr) 0; }
 .room[data-backlog="closed"] .room__aside { display: none; }
@@ -772,7 +771,6 @@ html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
 
 /* ---------------------------------------------------------------- 近期对话（上一轮之前） */
 .chat-thread { display: flex; flex-direction: column; min-height: 0; margin: 0; background: var(--color-card); box-shadow: var(--elev-flat); }
-.chat-thread--aside { width: 100%; height: 100%; }
 .chat-thread--compact {
   position: absolute;
   z-index: var(--z-ui);

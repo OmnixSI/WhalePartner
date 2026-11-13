@@ -58,7 +58,8 @@
  *  47 侧栏与往回翻宽度：展开侧栏 200（老人模式随字号 ×1.25 = 250），品牌字 / 导航项 / 分组名 / 她的卡片不截断不换行（1440 / 1180 / 1180 老人）；往回翻右栏 ≤360 且 ≤ 内容区 31%（1920 / 1440 / 1180，无对话点开与有对话常驻），900 抽屉从右侧滑出 ≤360、390 仍是底部抽屉；右栏打开时人物仍占可画区 ≥85%（1440 / 1180）
  *  48 输入条与收起按钮：视频 / 语音 / 发送三个按钮中心和单行输入框中心竖直差 ≤1px，多行时贴最后一行 ≤1px；语音紧挨发送、在输入框右边，视频在左边（1440 / 1180 / 1180 老人 / 900 / 390）；收起按钮和品牌标记同一行、收起前后不动，她的卡片下面不再空出一行（1440 / 1180 / 1180 老人）
  *  49 弹层关上后焦点回到打开它的按钮：往回翻抽屉 900 / 390 × Escape / 「关上」，设置页「换一位」Escape / ✕
- * （默认共 49 项；--shots 再加一项截图，共 50 项）
+ *  50 往回翻右栏默认收起、回复生成完不自动展开（1440 / 1180 / 900 / 390）：消息留在主区底部；点「往回翻」才展开并能看到刚生成的那条，再点收起
+ * （默认共 50 项；--shots 再加一项截图，共 51 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -527,11 +528,11 @@ async function checkUiPolish(browser) {
         if (m.aside) fails.push(`${width} 无对话：右栏还在（${m.aside.w}px）`);
         if (!m.main || Math.abs(m.main.w - m.inner.w) > 1) fails.push(`${width} 无对话：舞台宽 ${m.main?.w}，内容区 ${m.inner?.w}`);
         if (m.canvas && Math.abs(m.canvas.w - m.main.w) > 1) fails.push(`${width} 无对话：画布宽 ${m.canvas.w}，舞台 ${m.main.w}`);
-      } else if (!m.aside) fails.push(`${width} 有对话：右栏「最近的对话」不见了`);
+      } else if (m.aside) fails.push(`${width} 有对话：右栏默认不该展开（${m.aside.w}px）`);
       detail += `${width}${empty ? " 无对话" : " 有对话"}: 舞台 ${m.main?.w}/${m.inner?.w}${m.aside ? ` 右栏 ${m.aside.w}` : ""}；`;
       await context.close();
     }
-    record("聊天页无对话时舞台铺满内容宽（1440 / 1180），有对话时右栏照常", fails.length === 0, fails.join("；") || detail);
+    record("聊天页舞台铺满内容宽（1440 / 1180）：无对话、有对话默认都不留右栏", fails.length === 0, fails.join("；") || detail);
   }
 
   // 41 收起 / 展开导航：按钮前后同一个位置，鼠标不动再点一下就展开回来
@@ -1051,7 +1052,7 @@ async function checkChatThreadFocus(browser) {
       await context.close();
       continue;
     }
-    const status = (await page.locator("[data-chat-announce]").textContent())?.trim() ?? "";
+    const status = (await page.locator('.dlg[data-state="done"] [role="status"]').textContent())?.trim() ?? "";
     if (!status.includes("我把昨天看到的那个视频写成了日记")) fails.push(`${width} done 收起时没有 sr-only 全文播报（「${status}」）`);
     await peek.click();
     await page.waitForTimeout(150);
@@ -1069,6 +1070,68 @@ async function checkChatThreadFocus(browser) {
     await context.close();
   }
   return record("聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦；done sr-only 全文常驻", fails.length === 0, fails.length ? fails.join("；") : notes.join("；"));
+}
+
+/** 50. 往回翻右栏默认收起，回复生成完也不自动展开；消息留在主区底部，手动打开能看到刚生成的那条。 */
+async function checkBacklogStaysClosed(browser) {
+  const fails = [];
+  const notes = [];
+  const reply = "收到啦，这条是刚生成的回复。";
+  for (const [width, height] of [[1440, 900], [1180, 800], [900, 800], [390, 844]]) {
+    const { context, page } = await openPage(browser, { width, height, touch: width === 390 });
+    await page.route(/\/api\/chat$/, (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      const ev = (name, data) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+      return route.fulfill({
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+        body: ev("ack", { sessionId: "s1" }) + ev("emotion", { emotion: "happy" }) + ev("delta", { text: reply }) + ev("done", { messageId: 99, sessionId: "s1", emotion: "happy" }),
+      });
+    });
+    await visit(page, "/");
+    const tag = String(width);
+    const panel = () => page.evaluate(() => {
+      const visible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).display !== "none"; };
+      return { aside: visible(document.querySelector(".room__aside")), sheet: visible(document.querySelector(".sheet")), state: document.querySelector(".room")?.getAttribute("data-backlog") };
+    });
+    const before = await panel();
+    if (before.aside || before.sheet || before.state !== "closed") fails.push(`${tag} 进页面右栏就在（aside ${before.aside} / sheet ${before.sheet} / ${before.state}）`);
+    await page.locator("#chat-input").fill("测试消息");
+    await page.locator(".composer__send").click();
+    const done = await page.locator('.dlg[data-state="done"]').waitFor({ timeout: 5000 }).then(() => true, () => false);
+    if (!done) fails.push(`${tag} 回复没走到 done`);
+    await page.waitForTimeout(1500);
+    const after = await panel();
+    if (after.aside || after.sheet || after.state !== "closed") fails.push(`${tag} 回复生成完右栏自动展开了（aside ${after.aside} / sheet ${after.sheet} / ${after.state}）`);
+    const dock = await page.evaluate(() => {
+      const dlg = document.querySelector(".dlg"); const scene = document.querySelector(".scene"); const composer = document.querySelector(".composer");
+      if (!dlg || !scene || !composer) return null;
+      const d = dlg.getBoundingClientRect(); const c = composer.getBoundingClientRect(); const s = scene.getBoundingClientRect();
+      return { text: dlg.textContent ?? "", top: Math.round(d.top), bottom: Math.round(d.bottom), composerTop: Math.round(c.top), sceneMid: Math.round(s.top + s.height / 2), vh: innerHeight };
+    });
+    if (!dock) fails.push(`${tag} 找不到底部展示区`);
+    else {
+      if (!dock.text.includes(reply)) fails.push(`${tag} 回复没有留在底部展示区`);
+      if (dock.top < dock.sceneMid || dock.bottom > dock.vh) fails.push(`${tag} 展示区不在主区下半部（${dock.top}-${dock.bottom}，视口 ${dock.vh}）`);
+    }
+    await page.getByRole("button", { name: "往回翻" }).first().click();
+    await page.waitForTimeout(500);
+    const panelSel = width >= 960 ? ".room__aside" : ".sheet";
+    const opened = await panel();
+    if (!(width >= 960 ? opened.aside : opened.sheet)) fails.push(`${tag} 点「往回翻」后没有展开`);
+    else {
+      const text = (await page.locator(panelSel).textContent()) ?? "";
+      if (!text.includes(reply)) fails.push(`${tag} 展开后看不到刚生成的那条`);
+      if (!text.includes("刚下班，有点累")) fails.push(`${tag} 展开后看不到更早的历史`);
+      await page.getByRole("button", { name: width >= 960 ? "收起" : "关上", exact: true }).first().click();
+      await page.waitForTimeout(500);
+      const closed = await panel();
+      if (closed.aside || closed.sheet) fails.push(`${tag} 点「${width >= 960 ? "收起" : "关上"}」后没有收起`);
+    }
+    notes.push(`${tag} 默认收起 → 回复完仍收起 → 点开有刚生成的那条 → 收起`);
+    await context.close();
+  }
+  return record("往回翻右栏默认收起，回复生成完不自动展开；点开看得到刚生成的那条，能收起（1440 / 1180 / 900 / 390）", fails.length === 0, fails.join("；") || notes.join("；"));
 }
 
 /** 33. 日记月/年导航：900 与 390 老人模式都不把「回到今天」孤立或挤掉年份。 */
@@ -2321,7 +2384,9 @@ if (STATIC_ONLY) {
     server = loaded.child;
     const { chromium, AxeBuilder } = await loadPlaywright();
     const browser = await launchChrome(chromium);
-    if (ONLY === "polish") {
+    if (ONLY === "drawer") {
+      await checkBacklogStaysClosed(browser);
+    } else if (ONLY === "polish") {
       await checkUiPolish(browser);
     } else if (ONLY === "memory") {
       await checkMemorySurfPages(browser);
@@ -2338,6 +2403,7 @@ if (STATIC_ONLY) {
       await checkMobileKeyboard(browser);
       await checkChatGeometry(browser);
       await checkChatThreadFocus(browser);
+      await checkBacklogStaysClosed(browser);
       await checkDiaryNav(browser);
       await checkMobileTabLabels(browser);
       await checkElderRailTargets(browser);

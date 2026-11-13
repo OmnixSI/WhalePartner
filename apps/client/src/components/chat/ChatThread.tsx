@@ -11,23 +11,17 @@ type Props = {
   turns: Turn[];
   /** 只在 streaming 时排除正在舞台字幕里显示的那一条。 */
   excludeKey?: string;
-  variant?: "aside" | "compact";
-  onOpenBacklog?: () => void;
-  /** done 状态给读屏播一次全文。 */
-  announce?: boolean;
-  announceText?: string;
 };
 
-/** astryx ChatLayout 风格的消息列表：宽屏右侧整栏，窄屏只留最近两条。 */
-export function ChatThread({ name, turns, excludeKey, variant = "aside", onOpenBacklog, announce = false, announceText = "" }: Props) {
+/** 窄屏（<1180）聊天页的「最近的 N 条」：默认收起成一个按钮，点开才看到最近两条；完整历史走「往回翻」。 */
+export function ChatThread({ name, turns, excludeKey }: Props) {
   const [open, setOpen] = useState(false);
   const peek = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const atBottom = useRef(true);
-  const limit = variant === "aside" ? 40 : 2;
-  const visible = visibleTurns(turns, excludeKey, limit);
+  const visible = visibleTurns(turns, excludeKey, 2);
   const last = visible[visible.length - 1];
   const signature = last ? `${last.key}\u0000${last.text}` : "";
 
@@ -38,24 +32,17 @@ export function ChatThread({ name, turns, excludeKey, variant = "aside", onOpenB
   }, [signature]);
 
   useEffect(() => {
-    if (variant !== "compact") return;
     if (open) panel.current?.focus();
     else if (wasOpen.current) peek.current?.focus();
     wasOpen.current = open;
-  }, [open, variant]);
+  }, [open]);
 
   if (visible.length === 0) return null;
-  const status = announce && announceText.trim() ? (
-    <span className="sr-only" role="status" aria-live="polite" data-chat-announce>{stripEmotionTags(announceText)}</span>
-  ) : null;
-  if (variant === "compact" && !open) {
+  if (!open) {
     return (
-      <>
-        <Button ref={peek} variant="secondary" className="chat-thread__peek" aria-expanded={false} aria-controls="chat-thread-compact" onClick={() => setOpen(true)}>
-          最近的 {visible.length} 条
-        </Button>
-        {status}
-      </>
+      <Button ref={peek} variant="secondary" className="chat-thread__peek" aria-expanded={false} aria-controls="chat-thread-compact" onClick={() => setOpen(true)}>
+        最近的 {visible.length} 条
+      </Button>
     );
   }
 
@@ -65,25 +52,18 @@ export function ChatThread({ name, turns, excludeKey, variant = "aside", onOpenB
       ref={panel}
       variant="flat"
       padding="md"
-      className={`chat-thread chat-thread--${variant}`}
-      id={variant === "compact" ? "chat-thread-compact" : undefined}
-      role={variant === "compact" ? "dialog" : undefined}
-      aria-label={variant === "compact" ? "最近的对话" : undefined}
-      aria-modal={variant === "compact" ? false : undefined}
-      tabIndex={variant === "compact" ? -1 : undefined}
-      onKeyDown={variant === "compact" ? (event) => { if (event.key === "Escape") setOpen(false); } : undefined}
+      className="chat-thread chat-thread--compact"
+      id="chat-thread-compact"
+      role="dialog"
+      aria-label="最近的对话"
+      aria-modal={false}
+      tabIndex={-1}
+      onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
     >
-      {variant === "aside" ? (
-        <header className="chat-thread__head">
-          <h2 className="chat-thread__title">最近的对话</h2>
-          {onOpenBacklog && <Button variant="ghost" onClick={onOpenBacklog}>全部记录</Button>}
-        </header>
-      ) : (
-        <header className="chat-thread__head">
-          <h2 className="chat-thread__title">最近的对话</h2>
-          <Button variant="ghost" aria-expanded onClick={() => setOpen(false)}>收起</Button>
-        </header>
-      )}
+      <header className="chat-thread__head">
+        <h2 className="chat-thread__title">最近的对话</h2>
+        <Button variant="ghost" aria-expanded onClick={() => setOpen(false)}>收起</Button>
+      </header>
       <div
         className="chat-thread__list"
         ref={list}
@@ -121,7 +101,6 @@ export function ChatThread({ name, turns, excludeKey, variant = "aside", onOpenB
           );
         })}
       </div>
-      {status}
     </Card>
   );
 }
