@@ -351,8 +351,9 @@
 .composer__bar:not([data-voice]) { align-items: flex-end; flex-wrap: wrap; }
 .composer__bar[data-voice] { min-height: max(var(--hit), var(--composer-input-height, var(--hit))); }
 .composer__bar:not([data-voice]) > .composer__input { order: 1; flex-basis: 12em; }
-.composer__bar:not([data-voice]) > .ui-btn--icon { order: 2; }
-.composer__bar:not([data-voice]) > .composer__actions { order: 3; }
+.composer__bar:not([data-voice]) > .composer__actions { order: 2; }
+/* 两侧按钮组和一行字的输入框一样高、按钮在里面上下居中；多行时整组贴底，按钮对齐最后一行 */
+.composer__bar:not([data-voice]) > :is(.composer__toolbar, .composer__actions) { align-self: flex-end; height: var(--composer-row, auto); }
 .composer__actions { display: flex; align-items: center; flex: none; gap: var(--sp-2); margin-left: auto; }
 .composer__input {
   flex: 1 1 auto;
@@ -827,11 +828,11 @@ html[data-kb="on"] .scene__chrome { padding-top: var(--sp-1); }
 .composer__bar:not([data-voice]) > .composer__input.ui-input { width: 0; flex: 1 1 0; }
 .chat-thread__peek { position: absolute; z-index: var(--z-ui); top: calc(var(--sp-3) + 44px + var(--sp-2)); right: var(--sp-3); box-shadow: var(--elev-raised); }
 
-/* 390：工具条单独一行，避免输入框被三个图标和发送键挤成细条 */
+/* 手机：视频 | 输入框 | 语音 发送 仍在一行；发送只留图标（读屏名仍是「发送」），给输入框腾出约 12 个字宽 */
 @media (max-width: 600px) {
-  .composer__bar:not([data-voice]) { flex-wrap: wrap; }
-  .composer__toolbar { flex-basis: 100%; order: 0; }
-  .composer__input.ui-input { order: 1; }
-  .composer__actions { order: 2; }
+  .composer__bar:not([data-voice]) { flex-wrap: nowrap; gap: var(--sp-1); }
+  .composer__actions { gap: var(--sp-1); }
+  .composer__bar:not([data-voice]) .composer__send { width: var(--hit); padding-inline: 0; }
+  .composer__bar:not([data-voice]) .composer__send-label { display: none; }
 }
 .chat-thread__peek { top: calc(56px + 56px + var(--sp-2)); }

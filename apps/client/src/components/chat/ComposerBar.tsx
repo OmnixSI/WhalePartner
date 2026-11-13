@@ -51,6 +51,8 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
   const [shareOpen, setShareOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [inputHeight, setInputHeight] = useState(56);
+  // 输入框一行字时的高度：两侧按钮组用它做高度、在里面上下居中；多行时按钮组贴底，正好对齐最后一行
+  const [rowHeight, setRowHeight] = useState(52);
   const sendKey: SendKey = useSyncExternalStore(subscribePrefs, readSendKey, () => "enter" as SendKey);
   const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
   const hasText = value.trim().length > 0;
@@ -69,7 +71,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
       : voicePhase === "recognizing"
         ? "识别中"
         : voiceMessage || "可以开始说话";
-  const composerStyle = { "--composer-input-height": String(inputHeight) + "px" } as CSSProperties;
+  const composerStyle = { "--composer-input-height": String(inputHeight) + "px", "--composer-row": String(rowHeight) + "px" } as CSSProperties;
 
   // 52 → 160 自动增高（沿用原来的手写逻辑，不引第三方）。
   useEffect(() => {
@@ -79,6 +81,11 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
     const height = Math.min(160, Math.max(52, el.scrollHeight));
     el.style.height = String(height) + "px";
     setInputHeight(height);
+    const cs = getComputedStyle(el);
+    const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const line = parseFloat(cs.lineHeight);
+    // 只有一行时就取实际高度（和输入框严丝合缝）；多行时按「上下内边距 + 一行」算
+    setRowHeight(el.scrollHeight - pad < line * 1.5 ? el.offsetHeight : Math.round(pad + line));
   }, [value]);
 
   useEffect(() => {
@@ -203,14 +210,6 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             </Popover.Portal>
           </Popover.Root>
 
-          <Tooltip content="语音聊天">
-            <IconButton label="语音聊天" onClick={onStartVoice}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
-                <rect x="9" y="3" width="6" height="11" rx="3" />
-                <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" />
-              </svg>
-            </IconButton>
-          </Tooltip>
           </div>
 
           <label className="sr-only" htmlFor="chat-input">
@@ -229,16 +228,25 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
           />
 
           <div className="composer__actions">
+          {/* 语音紧挨发送：打字和说话来回切，鼠标不用横跨整条输入框 */}
+          <Tooltip content="语音聊天">
+            <IconButton label="语音聊天" onClick={onStartVoice}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" />
+              </svg>
+            </IconButton>
+          </Tooltip>
           <Button
             variant="primary"
             className="composer__send"
             icon={stopMode ? <span className="composer__stop" aria-hidden /> : <Icon name="send" size={20} />}
             onClick={submit}
             disabled={stopMode ? false : !canSend}
-            aria-label={stopMode ? "停下她" : busy ? "停下她，并发送这句" : undefined}
+            aria-label={stopMode ? "停下她" : busy ? "停下她，并发送这句" : "发送"}
             data-stop={stopMode || undefined}
           >
-            {stopMode ? "停" : "发送"}
+            <span className="composer__send-label">{stopMode ? "停" : "发送"}</span>
           </Button>
           </div>
             </>
