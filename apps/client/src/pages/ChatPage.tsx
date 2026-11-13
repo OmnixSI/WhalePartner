@@ -1,19 +1,17 @@
 import { ChatPanel } from "../components/ChatPanel";
-import { PageHeader } from "../components/shell/PageHeader";
 import { useCharacter } from "../characters";
 
 /**
  * 聊天页（`/`，规范 §7.1）。
- * 外壳和页头由 AppShell / PageHeader 提供；房间本身仍在 ChatPanel 里。
+ * 不放页头：舞台、对话和输入条直接铺满内容区，整块高度都给舞台。
+ * 读屏用的页面标题放在一个 sr-only 的 h1 里。
  */
 export function ChatPage() {
   const character = useCharacter();
   return (
     <div className="chat-page">
-      <div className="chat-page__inner">
-        <PageHeader eyebrow="日常 · 聊天" title={`和${character.name}在一起`} lead={character.tagline} />
-        <div className="chat-page__body"><ChatPanel character={character} /></div>
-      </div>
+      <h1 className="sr-only">和{character.name}聊天</h1>
+      <ChatPanel character={character} />
     </div>
   );
 }

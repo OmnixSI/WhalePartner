@@ -13,12 +13,13 @@
   grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
-  padding: var(--sp-3) 0; /* 左右不留：舞台 / 右栏和页头分割线两端对齐 */
-  gap: var(--sp-3);
+  gap: 0;
 }
-/* 舞台是贴在纸上的一块：圆角裁切，一圈细线 */
-.room__main { border-radius: var(--r-container); background: var(--color-surface); isolation: isolate; }
-.room__main::after { content: ""; position: absolute; inset: 0; z-index: var(--z-dialog); border-radius: var(--r-container); box-shadow: var(--elev-flat); pointer-events: none; }
+/* 舞台直接铺在内容区上：不画外框、圆角和底色；右栏只用一条竖线隔开 */
+.room__main { isolation: isolate; }
+.room__aside { min-width: 0; min-height: 0; box-shadow: inset 1px 0 0 var(--color-border); }
+.room__aside > .bl,
+.room__aside > .chat-thread { border-radius: 0; box-shadow: none; background: transparent; }
 .room[data-backlog="closed"] { gap: 0; }
 .room[data-backlog="closed"] { grid-template-columns: minmax(0, 1fr) 0; }
 .room[data-backlog="closed"] .room__aside { display: none; }
@@ -53,7 +54,8 @@
 }
 /* 海平线：纸上一条细线，线下是比纸淡淡深一点的地面（只用一点点强调色）。
    线落在她脚下（--stage-char-gap），地面一直铺到舞台底，字幕卡和回信条坐在地面上。 */
-.scene { --floor: var(--color-bg-muted); }
+/* 聊天舞台按模型看得见的部分构图（模型画布四周的透明边不算），人物才能真正撑满可画区 */
+.scene { --floor: var(--color-bg-muted); --stage-char-fit: visible; --stage-char-w: .86; }
 .scene__horizon {
   position: absolute;
   left: 0;
@@ -651,9 +653,7 @@
 
 /* ---------------------------------------------------------------- 手机 / 窄屏 */
 @media (max-width: 959px) {
-  .room { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); padding: 0; gap: 0; }
-  .room__main { border-radius: 0; }
-  .room__main::after { display: none; }
+  .room { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .scene::before { display: none; }
   .room__aside { display: none; }
 
