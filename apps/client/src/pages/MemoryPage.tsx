@@ -233,7 +233,13 @@ export function MemoryPage() {
         <PageHeader
           eyebrow="手帐 · 记忆"
           title="她记得的事"
-          lead={entries !== null && total > 0 ? `已收好 ${total} 条，点开一条看详情，也可以让她忘掉。` : undefined}
+          lead={
+            entries === null
+              ? "正在翻她的本子…"
+              : total > 0
+                ? `已收好 ${total} 条，点开一条看详情，也可以让她忘掉。`
+                : "还没有记下的事。聊得多了，她会自己记。"
+          }
         />
 
         {note && (

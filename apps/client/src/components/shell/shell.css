@@ -16,6 +16,11 @@
   grid-template-columns: var(--shell-nav-w) minmax(0, 1fr);
   height: 100dvh;
   background: var(--color-bg-body);
+  /* 外壳就是窗口：不让任何子元素把它撑出可滚动区域。
+     overflow: clip 不产生滚动容器，scrollIntoView 也滚不动它（hidden 会被程序滚动）。
+     之前设置页里 position:absolute 的 .sr-only 标题以外壳为包含块，把外壳撑到 5700px，
+     点「关于」时 scrollIntoView 连 html 一起滚，侧栏被带走一截。 */
+  overflow: clip;
 }
 
 /* 桌面手动收起：父级列宽跟着 232px → 72px，主内容不留在右侧 160px 空白 */
@@ -24,6 +29,8 @@
 }
 
 .app-shell__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* 页面滚动容器做包含块：页里绝对定位的东西（读屏标题、角标）跟着页面滚，不再挂到外壳上 */
+.app-shell__main > :is(.page, .chat-page) { position: relative; }
 .app-shell__skip {
   position: absolute;
   top: var(--sp-2);
@@ -43,6 +50,7 @@
 
 /* ---------------------------------------------------------------- 侧栏 */
 .shell-nav {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
@@ -93,14 +101,17 @@
 .shell-nav__icon { flex: none; opacity: .9; }
 .shell-nav__label { overflow: hidden; text-overflow: ellipsis; }
 
-.shell-nav__foot { display: flex; flex-direction: column; gap: var(--sp-2); padding-top: var(--sp-3); border-top: 1px solid var(--color-border); }
+.shell-nav__foot { display: flex; flex-direction: column; gap: var(--sp-2); padding-top: var(--sp-3); padding-bottom: calc(var(--hit) + var(--sp-2)); border-top: 1px solid var(--color-border); }
 .shell-nav__her { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; padding: var(--sp-2); border-radius: var(--r-element); background: var(--color-bg-muted); }
 .shell-nav__her-mark { flex: none; width: 30px; height: 30px; }
 .shell-nav__her-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
 .shell-nav__her-text strong { font-family: var(--font-voice); font-size: var(--text-sm); color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell-nav__her-text small { margin-top: 1px; font-size: var(--text-xs); color: var(--color-text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell-nav__toggle {
-  align-self: flex-end;
+  /* 收起 / 展开前后钉在同一个屏幕位置（窄栏的正中、侧栏底部）：鼠标不动再点一下就能展开回来 */
+  position: absolute;
+  left: calc((var(--shell-nav-rail) - var(--hit)) / 2);
+  bottom: var(--sp-3);
   display: grid;
   place-items: center;
   width: var(--hit);
@@ -127,7 +138,6 @@
   .shell-nav.is-collapsed .shell-nav__item { justify-content: center; padding-inline: 0; }
   .shell-nav.is-collapsed .shell-nav__item[aria-current="page"]::before { display: none; }
   .shell-nav.is-collapsed .shell-nav__her { justify-content: center; padding: var(--sp-1); }
-  .shell-nav.is-collapsed .shell-nav__toggle { align-self: center; }
 }
 
 /* 窄窗自动收起（不依赖 JS，900px 也走这一档） */
@@ -141,6 +151,7 @@
   .shell-nav__label,
   .shell-nav__her-text,
   .shell-nav__toggle { display: none; }
+  .shell-nav__foot { padding-bottom: 0; }
   .shell-nav__item { justify-content: center; padding-inline: 0; }
   .shell-nav__item[aria-current="page"]::before { display: none; }
   .shell-nav__her { justify-content: center; padding: var(--sp-1); }
@@ -188,11 +199,27 @@
 .page-head__actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .page-head__meta { font-size: var(--text-sm); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 
-/* 五个主页面共用的内容宽度；窄窗自动 100% */
-.page--settings .page__inner,
-.page--surf .page__inner,
-.diary-page__inner,
-.memory-page__inner { max-width: min(1200px, 100%); }
+/* 五个主页面共用一套页面模板：顶部留白、内容宽度、页头到正文的间距都一样，
+   页头（眉题 / 标题 / 说明 / 分割线）统一由 PageHeader 出。
+   前面加 .app-shell__main 是为了压过各页自己的样式表（它们懒加载，排在这份后面）。 */
+:root { --page-top: var(--sp-8); --page-gap: var(--sp-5); --page-w: 1200px; }
+@media (max-width: 959px) { :root { --page-top: var(--sp-6); --page-gap: var(--sp-4); } }
+@media (max-width: 719px) { :root { --page-top: var(--sp-4); } }
+.app-shell__main .chat-page,
+.app-shell__main .diary-page,
+.app-shell__main .memory-page,
+.app-shell__main .page--surf,
+.app-shell__main .page--settings .page__inner { padding-top: var(--page-top); }
+.app-shell__main .chat-page__inner,
+.app-shell__main .diary-page__inner,
+.app-shell__main .memory-page__inner,
+.app-shell__main .page--surf .page__inner,
+.app-shell__main .page--settings .page__inner { gap: var(--page-gap); width: 100%; }
+/* 聊天页舞台要宽，单独放宽到 1480；其余四页同宽 */
+.app-shell__main .diary-page__inner,
+.app-shell__main .memory-page__inner,
+.app-shell__main .page--surf .page__inner,
+.app-shell__main .page--settings .page__inner { max-width: min(var(--page-w), 100%); }
 
 /* 聊天页：页头 + 原有房间，房间自己负责内部布局 */
 .chat-page { height: 100%; min-height: 0; padding: var(--sp-6) var(--gutter) var(--sp-4); }

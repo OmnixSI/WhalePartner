@@ -22,7 +22,7 @@
 .page__inner { width: 100%; max-width: var(--page-max); margin-inline: auto; display: flex; flex-direction: column; gap: var(--sp-2); container: page / inline-size; }
 .page__title { font-size: clamp(var(--fs-h1), 2.6vw, var(--fs-display)); line-height: 1.15; letter-spacing: .04em; }
 .page__lead { margin-top: 10px; max-width: 46ch; color: var(--ink-soft); }
-.page__inner > header { margin-bottom: 20px; }
+/* 页头和正文之间的距离统一由各页 __inner 的 gap（--page-gap）给，这里不再额外加外边距 */
 
 .card { padding: 26px 0 10px; border-top: 1px solid var(--line); }
 .card h3 { margin-bottom: 14px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; letter-spacing: .12em; color: var(--ink-mute); }
