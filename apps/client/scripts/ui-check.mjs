@@ -22,7 +22,7 @@
  *  11 首屏 JS / CSS gzip 只打印、不设上限；首屏文件里不能出现卡面代码（acard）；构建失败才算失败
  *  12 触控目标 ≥44px（老人模式 ≥56px）
  *  13 横向滚动 ≤ 视口（380px 与 --scale=2）
- *  14 外壳：1440 点「收起导航」后 nav 72px、main 从 x=72 起；再展开回 232；900 图标栏链接有可访问名称
+ *  14 外壳：1440 点「收起导航」后 nav 72px、main 从 x=72 起；再展开回 200；900 图标栏链接有可访问名称
  *  15 键盘弹起（390/720/900，可视高 480）：外壳收到 480，720/900 主栏占满宽度，输入框和发送键都在可视区内
  *  16 聊天几何：3 档宽度 × done/thinking/failed 可画区不低于 225e9e3；390 输入条不压底栏（thinking/failed 点发送键进入，断言 /api/chat 发出 1 次、状态已出现）
  *  17 聊天紧凑浮层：焦点进入、Escape 关闭、关闭回焦；done sr-only 全文常驻
@@ -55,7 +55,8 @@
  *  44 聊天主区平铺：.room__main 无圆角、边框、底色、描边阴影，舞台贴着内容区左上角并铺到右栏或内容区右边（1440 / 1180 无对话 / 900）
  *  45 见闻页「她今天逛了…」在标题右侧同一行，颜色是次要文字色、和标题不同色（1440 / 1180 / 900）
  *  46 设置页滚动（400 / 1100 / 2000）：吸顶目录条横向盖住卡片列和描边，卡片滑过时点在条上的都是条，页面无横向溢出（1440 / 1180 / 900 / 390）
- * （默认共 46 项；--shots 再加一项截图，共 47 项）
+ *  47 侧栏与往回翻宽度：展开侧栏 200（老人模式随字号 ×1.25 = 250），品牌字 / 导航项 / 分组名 / 她的卡片不截断不换行（1440 / 1180 / 1180 老人）；往回翻右栏 ≤360 且 ≤ 内容区 31%（1920 / 1440 / 1180，无对话点开与有对话常驻），900 抽屉从右侧滑出 ≤360、390 仍是底部抽屉；右栏打开时人物仍占可画区 ≥85%（1440 / 1180）
+ * （默认共 47 项；--shots 再加一项截图，共 48 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -75,6 +76,8 @@ const CLIENT = join(HERE, "..");
 const ROOT = join(CLIENT, "..", "..");
 const SRC = join(CLIENT, "src");
 const SHOTS = join(CLIENT, "test-results", "ui-check");
+/** 展开侧栏宽度（shell.css --shell-nav-w）。 */
+const NAV_W = 200;
 
 const argv = process.argv.slice(2);
 const STATIC_ONLY = argv.includes("--static");
@@ -427,7 +430,7 @@ async function checkShellNav(browser) {
   });
 
   const before = await measure();
-  if (before.nav !== 232 || before.mainX !== 232) fails.push(`展开时 nav ${before.nav} / main x ${before.mainX}，应为 232 / 232`);
+  if (before.nav !== NAV_W || before.mainX !== NAV_W) fails.push(`展开时 nav ${before.nav} / main x ${before.mainX}，应为 ${NAV_W} / ${NAV_W}`);
   await page.getByRole("button", { name: "收起导航" }).click();
   await page.waitForTimeout(200);
   const after = await measure();
@@ -438,7 +441,7 @@ async function checkShellNav(browser) {
   await page.getByRole("button", { name: "展开导航" }).click();
   await page.waitForTimeout(200);
   const reopened = await measure();
-  if (reopened.nav !== 232 || reopened.mainX !== 232) fails.push(`再展开后 nav ${reopened.nav} / main x ${reopened.mainX}，应为 232 / 232`);
+  if (reopened.nav !== NAV_W || reopened.mainX !== NAV_W) fails.push(`再展开后 nav ${reopened.nav} / main x ${reopened.mainX}，应为 ${NAV_W} / ${NAV_W}`);
   await context.close();
 
   const narrow = await openPage(browser, { width: 900, height: 900 });
@@ -454,7 +457,7 @@ async function checkShellNav(browser) {
   return record("外壳：1440 收起导航列宽 72、main 从 72 起；900 图标栏链接可访问", fails.length === 0, detail);
 }
 
-/** 38–46. 界面打磨（fix/ui-polish）：设置页「关于」不带走外壳 / 见闻工具条一行 / 无对话时聊天铺满 / 收起展开按钮原位 / 页头 / 人物撑满 / 主区平铺 / 见闻状态行 / 设置目录条不重叠。 */
+/** 38–47. 界面打磨（fix/ui-polish）：设置页「关于」不带走外壳 / 见闻工具条一行 / 无对话时聊天铺满 / 收起展开按钮原位 / 页头 / 人物撑满 / 主区平铺 / 见闻状态行 / 设置目录条不重叠 / 侧栏与往回翻宽度。 */
 async function checkUiPolish(browser) {
   const box = (sel) => (el => el ? (({ x, y, width, height }) => ({ x: Math.round(x), y: Math.round(y), w: Math.round(width), h: Math.round(height) }))(el.getBoundingClientRect()) : null)(document.querySelector(sel));
   const BOX = `(${box.toString()})`;
@@ -545,9 +548,9 @@ async function checkUiPolish(browser) {
     await page.mouse.click(a.x + a.width / 2, a.y + a.height / 2);
     await page.waitForTimeout(300);
     const navOpen = await page.evaluate(() => Math.round(document.querySelector(".shell-nav").getBoundingClientRect().width));
-    if (navOpen !== 232) fails.push(`原地再点没展开（nav ${navOpen}）`);
+    if (navOpen !== NAV_W) fails.push(`原地再点没展开（nav ${navOpen}）`);
     await context.close();
-    record("收起 / 展开导航：按钮位置不变，原地再点即展开", fails.length === 0, fails.join("；") || `按钮 (${Math.round(a.x)},${Math.round(a.y)}) 两态一致；72 → 232`);
+    record("收起 / 展开导航：按钮位置不变，原地再点即展开", fails.length === 0, fails.join("；") || `按钮 (${Math.round(a.x)},${Math.round(a.y)}) 两态一致；72 → ${NAV_W}`);
   }
 
   // 42 页头：聊天页不要页头；另外四页标题行位置、宽、字号、到正文间距一致（1440 / 1180 / 900 / 390）；五页都没有面包屑和那几句说明
@@ -709,6 +712,69 @@ async function checkUiPolish(browser) {
       await context.close();
     }
     record("设置页滚动时目录条盖住卡片列、不重叠、不横向溢出（1440 / 1180 / 900 / 390）", fails.length === 0, fails.join("；") || detail);
+  }
+
+  // 47 侧栏与往回翻的宽度：侧栏展开 200、里面的字都不截断；往回翻是窄栏（≤360、≤ 内容区 31%），窄窗抽屉从右侧出，打开时人物不被挤小
+  {
+    const fails = [];
+    const notes = [];
+    for (const [width, elder] of [[1440, false], [1180, false], [1180, true]]) {
+      const { context, page } = await openPage(browser, { width, height: 800, elder });
+      await visit(page, "/");
+      const m = await page.evaluate(() => {
+        const nav = document.querySelector(".shell-nav");
+        const nr = nav.getBoundingClientRect();
+        const bad = [];
+        for (const e of nav.querySelectorAll(".shell-nav__brand strong, .shell-nav__brand small, .shell-nav__group-label, .shell-nav__label, .shell-nav__her-text strong, .shell-nav__her-text small, .shell-nav__toggle")) {
+          const r = e.getBoundingClientRect();
+          if (e.scrollWidth > e.clientWidth + 1 || r.right > nr.right - 1 || e.getClientRects().length > 1) bad.push(e.textContent.trim() || e.className);
+        }
+        return { w: Math.round(nr.width), bad };
+      });
+      const tag = `${width}${elder ? " 老人" : ""}`;
+      const want = elder ? NAV_W * 1.25 : NAV_W; // 侧栏跟着字号放大，老人模式字号 1.25 倍
+      if (m.w !== want) fails.push(`${tag}：侧栏 ${m.w}px，应为 ${want}`);
+      if (m.bad.length) fails.push(`${tag}：侧栏里被截断或换行：${m.bad.join("、")}`);
+      notes.push(`侧栏 ${tag} ${m.w}`);
+      await context.close();
+    }
+    for (const [width, height, empty] of [[1920, 1000, true], [1440, 900, true], [1440, 900, false], [1180, 780, true], [1180, 780, false]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      if (empty) await page.route("**/api/chat/history**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ messages: [] }) }));
+      await visit(page, "/");
+      const open = page.getByRole("button", { name: "往回翻" });
+      if (await open.count()) { await open.first().click(); await page.waitForTimeout(400); }
+      const m = await page.evaluate((B) => { const box = eval(B); return { aside: box(".room__aside"), area: box("#main") }; }, BOX);
+      const tag = `${width}${empty ? " 点开" : " 有对话"}`;
+      if (!m.aside) { fails.push(`${tag}：往回翻右栏没打开`); await context.close(); continue; }
+      const share = m.aside.w / m.area.w;
+      if (m.aside.w > 360) fails.push(`${tag}：往回翻 ${m.aside.w}px，超过 360`);
+      if (share > 0.31) fails.push(`${tag}：往回翻占内容区 ${(share * 100).toFixed(0)}%（${m.aside.w}/${m.area.w}），超过 31%`);
+      if (empty && width <= 1440) {
+        await page.waitForTimeout(800);
+        const scene = await page.evaluate(() => { const s = document.querySelector(".scene"); return { h: s.getBoundingClientRect().height, safe: Number.parseFloat(getComputedStyle(s).getPropertyValue("--scene-safe")) || 0 }; });
+        const art = await artExtent(page);
+        const fill = art.r < 0 ? 0 : Math.max((art.b - art.t) / (scene.h - scene.safe), (art.r - art.l) / art.w);
+        if (fill < 0.85) fails.push(`${tag}：右栏打开后人物只占 ${(fill * 100).toFixed(0)}%`);
+        notes.push(`${tag} 右栏 ${m.aside.w}/${m.area.w}，人物 ${(fill * 100).toFixed(0)}%`);
+      } else notes.push(`${tag} 右栏 ${m.aside.w}/${m.area.w}`);
+      await context.close();
+    }
+    for (const [width, height] of [[900, 800], [390, 844]]) {
+      const { context, page } = await openPage(browser, { width, height, touch: width === 390 });
+      await visit(page, "/");
+      await page.getByRole("button", { name: "往回翻" }).first().click();
+      await page.waitForTimeout(500);
+      const s = await page.evaluate((B) => eval(B)(".sheet"), BOX);
+      if (!s) { fails.push(`${width}：往回翻抽屉没打开`); await context.close(); continue; }
+      if (width === 900) {
+        if (s.w > 360) fails.push(`900：抽屉 ${s.w}px，超过 360`);
+        if (s.x + s.w !== width || s.y !== 0 || s.h !== height) fails.push(`900：抽屉应贴右侧满高，实际 ${s.w}×${s.h}@${s.x},${s.y}`);
+      } else if (s.x !== 0 || s.w !== width) fails.push(`390：手机抽屉应横向铺满，实际 ${s.w}@${s.x}`);
+      notes.push(`${width} 抽屉 ${s.w}×${s.h}@${s.x},${s.y}`);
+      await context.close();
+    }
+    record("侧栏 200 不截断；往回翻 ≤360 且 ≤31%，900 右侧抽屉，打开时人物 ≥85%", fails.length === 0, fails.join("；") || notes.join("；"));
   }
 }
 
