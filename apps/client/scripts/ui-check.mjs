@@ -33,7 +33,7 @@
  *  22 每页静置 9.5 秒后没有还在跑的循环动画（加载转圈只在 /__kit 豁免）；页面隐藏后没有任何还在跑的动画
  *  23 懒加载页借用的组件样式还在（/surf 的便签是 fixed 小条），标签的 aria-controls 不悬空、渲染的面板都有标签指向；loading / aria-disabled 按钮不提交不回调；字段标签都连到控件（控件自带 id 时连到它）
  *  24 记忆页 / 见闻页用 ui 组件（Tabs / Card / Dialog / 确认框），无旧手账卡
- *  25 记忆页返工（初审 8 条）：撤回跟删除同生共死（悬停超过 5 秒撤回仍在、DELETE 未发）/ 撤回不发 DELETE / 切页结算无残留 / 空分类有空态 / 清空 ✕ ≥44 / 弹层关闭焦点回到触发处 / 老人模式 390 日期格不叠 / 危险入口描边靠左 / 头部条数一处
+ *  25 记忆页返工（初审 8 条）：撤回跟删除同生共死（悬停超过 5 秒撤回仍在、DELETE 未发）/ 撤回不发 DELETE / 切页结算无残留 / 空分类有空态 / 清空 ✕ ≥44 / 弹层关闭焦点回到触发处 / 老人模式 390 日期格不叠 / 危险入口描边靠左 / 条数只在「全部」标签一处
  *  26 好感度卡（/__kit/cards）完整动效 1→5 逐档快进且 ≤3 秒、4→5 按时播完、中途能跳过；StrictMode 下每轮结束回调正好 1 次
  *  27 跳过与到点的定时器同一拍：卡不复活、回调不多一次
  *  28 安静模式开关与系统减少动态：只淡入、按时播完
@@ -50,8 +50,12 @@
  *  39 见闻工具条：1440 / 1180 筛选、搜索、「让她现在去逛逛」同一行；900 / 390 换行不溢出
  *  40 聊天页没有对话时不留空右栏，舞台和画布铺满内容宽（1440 / 1180）；有对话时右栏照常
  *  41 收起 / 展开导航按钮两态同一位置，原地再点即展开
- *  42 五个主页面页头一致：位置、宽度、说明行、页头到正文的间距
- * （默认共 42 项；--shots 再加一项截图，共 43 项）
+ *  42 页头：聊天页没有页头；另外四页标题行位置、宽度、字号、到正文间距一致（1440 / 1180 / 900 / 390）；五页都没有面包屑（日常 · / 手帐 · / 系统 ·）和日记、记忆那两句说明
+ *  43 聊天舞台人物撑满：只留画布量看得见的像素，构图方向占可画区 ≥85%，待机摆动不碰舞台两侧（1440 / 1180 无对话 / 1180 / 900 / 390）
+ *  44 聊天主区平铺：.room__main 无圆角、边框、底色、描边阴影，舞台贴着内容区左上角并铺到右栏或内容区右边（1440 / 1180 无对话 / 900）
+ *  45 见闻页「她今天逛了…」在标题右侧同一行，颜色是次要文字色、和标题不同色（1440 / 1180 / 900）
+ *  46 设置页滚动（400 / 1100 / 2000）：吸顶目录条横向盖住卡片列和描边，卡片滑过时点在条上的都是条，页面无横向溢出（1440 / 1180 / 900 / 390）
+ * （默认共 46 项；--shots 再加一项截图，共 47 项）
  *
  * 退出码：0 全绿；1 有失败。
  */
@@ -450,7 +454,7 @@ async function checkShellNav(browser) {
   return record("外壳：1440 收起导航列宽 72、main 从 72 起；900 图标栏链接可访问", fails.length === 0, detail);
 }
 
-/** 38–42. 界面打磨（fix/ui-polish）：设置页「关于」不带走外壳 / 见闻工具条一行 / 无对话时聊天铺满 / 收起展开按钮原位 / 五页页头一致。 */
+/** 38–46. 界面打磨（fix/ui-polish）：设置页「关于」不带走外壳 / 见闻工具条一行 / 无对话时聊天铺满 / 收起展开按钮原位 / 页头 / 人物撑满 / 主区平铺 / 见闻状态行 / 设置目录条不重叠。 */
 async function checkUiPolish(browser) {
   const box = (sel) => (el => el ? (({ x, y, width, height }) => ({ x: Math.round(x), y: Math.round(y), w: Math.round(width), h: Math.round(height) }))(el.getBoundingClientRect()) : null)(document.querySelector(sel));
   const BOX = `(${box.toString()})`;
@@ -512,7 +516,7 @@ async function checkUiPolish(browser) {
       await page.waitForTimeout(600);
       const m = await page.evaluate((B) => {
         const box = eval(B);
-        return { inner: box(".chat-page__inner"), main: box(".room__main"), aside: box(".room__aside"), canvas: box(".scene canvas, .live2d canvas") };
+        return { inner: box(".chat-page"), main: box(".room__main"), aside: box(".room__aside"), canvas: box(".scene canvas, .live2d canvas") };
       }, BOX);
       if (empty) {
         if (m.aside) fails.push(`${width} 无对话：右栏还在（${m.aside.w}px）`);
@@ -546,27 +550,198 @@ async function checkUiPolish(browser) {
     record("收起 / 展开导航：按钮位置不变，原地再点即展开", fails.length === 0, fails.join("；") || `按钮 (${Math.round(a.x)},${Math.round(a.y)}) 两态一致；72 → 232`);
   }
 
-  // 42 五个主页面的页头：位置、宽度、到正文的间距一致（1440）
+  // 42 页头：聊天页不要页头；另外四页标题行位置、宽、字号、到正文间距一致（1440 / 1180 / 900 / 390）；五页都没有面包屑和那几句说明
   {
-    const { context, page } = await openPage(browser, { width: 1440, height: 900 });
-    const rows = [];
-    for (const path of ["/", "/diary", "/memory", "/surf", "/settings"]) {
-      await visit(page, path);
-      rows.push(await page.evaluate(() => {
-        const h = document.querySelector(".page-head");
-        if (!h) return null;
-        const r = h.getBoundingClientRect();
-        const n = h.nextElementSibling?.getBoundingClientRect();
-        return { y: Math.round(r.y), x: Math.round(r.x), w: Math.round(r.width), gap: n ? Math.round(n.y - r.bottom) : -1, lead: Boolean(h.querySelector(".page-head__lead")) };
-      }));
+    const fails = [];
+    const notes = [];
+    const banned = ["日常 · 聊天", "手帐 · ", "系统 · 设置", "和大肥鱼在一起", "她每天写一页", "按周、月、年翻着看", "还没有记下的事", "聊得多了，她会自己记"];
+    for (const [width, height] of [[1440, 900], [1180, 780], [900, 800], [390, 844]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      const rows = [];
+      for (const path of ["/", "/diary", "/memory", "/surf", "/settings"]) {
+        await visit(page, path);
+        const m = await page.evaluate(() => {
+          const main = document.querySelector("#main");
+          const h = main?.querySelector(".page-head");
+          const text = main?.innerText ?? "";
+          const eyebrow = document.querySelectorAll(".page-head__eyebrow, .page-head__lead").length;
+          if (!h) return { head: null, text, eyebrow };
+          const r = h.getBoundingClientRect();
+          const t = h.querySelector(".page-head__title");
+          const n = h.nextElementSibling?.getBoundingClientRect();
+          return { head: { y: Math.round(r.y), x: Math.round(r.x), w: Math.round(r.width), size: t ? getComputedStyle(t).fontSize : "", gap: n ? Math.round(n.y - r.bottom) : -1 }, text, eyebrow };
+        });
+        for (const word of banned) if (m.text.includes(word)) fails.push(`${width} ${path} 还有「${word}」`);
+        if (m.eyebrow) fails.push(`${width} ${path} 还有面包屑 / 说明行`);
+        if (path === "/") {
+          if (m.head) fails.push(`${width} 聊天页还有页头`);
+          if (m.text.includes("DeepSeek 鲸鱼娘")) fails.push(`${width} 聊天页正文里还有「DeepSeek 鲸鱼娘」`);
+        } else if (!m.head) fails.push(`${width} ${path} 没有标题行`);
+        else rows.push([path, m.head]);
+      }
+      const first = rows[0]?.[1];
+      for (const [path, r] of rows) {
+        if (r.y !== first.y || r.x !== first.x || r.w !== first.w || r.size !== first.size || r.gap !== first.gap) fails.push(`${width} ${path} 标题行 y${r.y} x${r.x} w${r.w} ${r.size} 距${r.gap}，和 ${rows[0][0]}（y${first.y} x${first.x} w${first.w} ${first.size} 距${first.gap}）不一致`);
+      }
+      if (first) notes.push(`${width}: x${first.x} y${first.y} w${first.w} ${first.size} 距${first.gap}`);
+      await context.close();
     }
-    const ok = rows.every((r) => r && r.y === rows[0].y && r.x === rows[0].x && r.w === rows[0].w && r.gap === rows[0].gap && r.lead);
-    await context.close();
-    record("五页页头一致：位置 / 宽 / 说明行 / 到正文间距（1440）", ok, rows.map((r) => r ? `y${r.y} x${r.x} w${r.w} 距${r.gap}${r.lead ? "" : " 缺说明"}` : "无页头").join(" | "));
+    record("页头：聊天页无页头；四页标题行一致（1440 / 1180 / 900 / 390）；五页无面包屑和说明句", fails.length === 0, fails.join("；") || notes.join("；"));
+  }
+
+  // 43 聊天舞台的人物撑满：只留画布、量看得见的像素，构图方向（高或宽）至少占可画区 85%，动作摆到最开也不碰两侧
+  {
+    const fails = [];
+    let detail = "";
+    for (const [width, height, empty] of [[1440, 900, false], [1180, 780, true], [1180, 780, false], [900, 800, false], [390, 844, false]]) {
+      const { context, page } = await openPage(browser, { width, height, touch: width === 390 });
+      if (empty) await page.route("**/api/chat/history**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ messages: [] }) }));
+      await visit(page, "/");
+      await page.waitForTimeout(1500);
+      const scene = await page.evaluate(() => { const s = document.querySelector(".scene"); return s ? { h: s.getBoundingClientRect().height, safe: Number.parseFloat(getComputedStyle(s).getPropertyValue("--scene-safe")) || 0 } : null; });
+      const art = scene ? await artExtent(page) : null;
+      const tag = `${width}${empty ? " 无对话" : ""}`;
+      if (!art || art.r < 0) { fails.push(`${tag}：画布上没量到人物`); await context.close(); continue; }
+      const drawable = scene.h - scene.safe;
+      const fill = Math.max((art.b - art.t) / drawable, (art.r - art.l) / art.w);
+      if (fill < 0.85) fails.push(`${tag}：人物只占 ${(fill * 100).toFixed(0)}%（高 ${art.b - art.t}/${Math.round(drawable)}，宽 ${art.r - art.l}/${art.w}）`);
+      if (art.l < 3 || art.r > art.w - 4) fails.push(`${tag}：人物碰到舞台边（${art.l}–${art.r} / ${art.w}）`);
+      detail += `${tag} ${(fill * 100).toFixed(0)}%；`;
+      await context.close();
+    }
+    record("聊天舞台人物撑满可画区 ≥85%，摆动不出边（1440 / 1180 / 900 / 390）", fails.length === 0, fails.join("；") || detail);
+  }
+
+  // 44 聊天主区平铺：没有圆角卡（边框、圆角、底色、阴影），舞台贴着内容区左上角，铺到右栏或内容区右边
+  {
+    const fails = [];
+    let detail = "";
+    for (const [width, height, empty] of [[1440, 900, false], [1180, 780, true], [900, 800, false]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      if (empty) await page.route("**/api/chat/history**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ messages: [] }) }));
+      await visit(page, "/");
+      await page.waitForTimeout(400);
+      const m = await page.evaluate((B) => {
+        const box = eval(B);
+        const el = document.querySelector(".room__main");
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        const after = getComputedStyle(el, "::after");
+        return {
+          radius: cs.borderTopLeftRadius, border: cs.borderTopWidth, bg: cs.backgroundColor, shadow: cs.boxShadow,
+          afterShadow: after.content !== "none" ? after.boxShadow : "none",
+          main: box(".room__main"), area: box("#main"), aside: box(".room__aside"),
+        };
+      }, BOX);
+      const tag = `${width}${empty ? " 无对话" : ""}`;
+      if (!m) { fails.push(`${tag}：没有 .room__main`); await context.close(); continue; }
+      if (m.radius !== "0px") fails.push(`${tag}：主区还有圆角 ${m.radius}`);
+      if (m.border !== "0px") fails.push(`${tag}：主区还有边框 ${m.border}`);
+      if (!/rgba\(0, 0, 0, 0\)|transparent/.test(m.bg)) fails.push(`${tag}：主区还有底色 ${m.bg}`);
+      if (m.shadow !== "none" || m.afterShadow !== "none") fails.push(`${tag}：主区还有描边阴影`);
+      if (m.main.x !== m.area.x || m.main.y !== m.area.y) fails.push(`${tag}：舞台从 (${m.main.x},${m.main.y}) 起，内容区 (${m.area.x},${m.area.y})`);
+      const right = m.aside && m.aside.x > m.main.x ? m.aside.x : m.area.x + m.area.w;
+      if (Math.abs(m.main.x + m.main.w - right) > 1) fails.push(`${tag}：舞台右边 ${m.main.x + m.main.w}，应到 ${right}`);
+      detail += `${tag} 舞台 ${m.main.w}×${m.main.h}@${m.main.x},${m.main.y}；`;
+      await context.close();
+    }
+    record("聊天主区平铺：无圆角 / 边框 / 底色，舞台贴满内容区（1440 / 1180 / 900）", fails.length === 0, fails.join("；") || detail);
+  }
+
+  // 45 见闻页：「她今天逛了…」跟在标题「…的见闻」右边同一行，字色是次要文字色，比标题浅
+  {
+    const fails = [];
+    let detail = "";
+    for (const [width, height] of [[1440, 900], [1180, 800], [900, 800]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      await visit(page, "/surf");
+      const m = await page.evaluate((B) => {
+        const box = eval(B);
+        const title = document.querySelector(".page--surf .page-head__title, #main .page-head__title");
+        const meta = document.querySelector("#main .page-head__meta");
+        if (!title || !meta) return null;
+        const probe = document.createElement("span");
+        probe.style.color = "var(--color-text-secondary)";
+        document.body.append(probe);
+        const secondary = getComputedStyle(probe).color;
+        probe.remove();
+        return { title: box("#main .page-head__title"), meta: box("#main .page-head__meta"), text: meta.textContent, metaColor: getComputedStyle(meta).color, titleColor: getComputedStyle(title).color, secondary };
+      }, BOX);
+      if (!m) { fails.push(`${width}：标题或状态行不见了`); await context.close(); continue; }
+      if (!/逛了/.test(m.text)) fails.push(`${width}：状态行文字是「${m.text}」`);
+      const mid = m.meta.y + m.meta.h / 2;
+      if (!(mid > m.title.y && mid < m.title.y + m.title.h)) fails.push(`${width}：状态行不在标题那一行（标题 y${m.title.y}–${m.title.y + m.title.h}，状态行中线 ${mid}）`);
+      if (m.meta.x < m.title.x + m.title.w) fails.push(`${width}：状态行没在标题右边（x${m.meta.x} < ${m.title.x + m.title.w}）`);
+      if (m.metaColor !== m.secondary) fails.push(`${width}：状态行颜色 ${m.metaColor}，应为次要文字色 ${m.secondary}`);
+      if (m.metaColor === m.titleColor) fails.push(`${width}：状态行和标题同色`);
+      detail += `${width} 标题右侧 +${m.meta.x - m.title.x - m.title.w}px；`;
+      await context.close();
+    }
+    record("见闻页状态行在标题右侧同一行，用次要文字色（1440 / 1180 / 900）", fails.length === 0, fails.join("；") || detail);
+  }
+
+  // 46 设置页滚动：吸顶目录条横向盖住卡片列（含卡片 1px 描边和圆角）并伸进页面留白，不造成横向滚动；卡片滑过时被目录条盖住
+  {
+    const fails = [];
+    let detail = "";
+    for (const [width, height] of [[1440, 900], [1180, 780], [900, 800], [390, 844]]) {
+      const { context, page } = await openPage(browser, { width, height });
+      await visit(page, "/settings");
+      const rows = [];
+      for (const top of [400, 1100, 2000]) {
+        rows.push(await page.evaluate((top) => {
+          const s = document.querySelector(".page--settings");
+          s.scrollTop = top;
+          const nav = document.querySelector(".set-nav").getBoundingClientRect();
+          const cards = [...document.querySelectorAll(".set-group")].map((g) => g.getBoundingClientRect());
+          const card = cards[0];
+          const under = cards.find((r) => r.top < nav.bottom && r.bottom > nav.bottom);
+          const hits = [card.left + 1, card.left + card.width / 2, card.right - 1].map((x) => document.elementFromPoint(x, nav.top + nav.height / 2)?.closest(".set-nav") != null);
+          return { st: s.scrollTop, over: s.scrollWidth - s.clientWidth, nav: [nav.left, nav.right, nav.top], card: [card.left, card.right], under: Boolean(under), hits };
+        }, top));
+      }
+      for (const r of rows) {
+        if (r.over > 0) fails.push(`${width} 滚到 ${r.st}：横向溢出 ${r.over}px`);
+        if (!(r.nav[0] <= r.card[0] - 1 && r.nav[1] >= r.card[1] + 1)) fails.push(`${width} 滚到 ${r.st}：目录条 ${Math.round(r.nav[0])}–${Math.round(r.nav[1])} 没盖住卡片列 ${Math.round(r.card[0])}–${Math.round(r.card[1])} 的描边`);
+        if (r.st > 0 && r.under && !r.hits.every(Boolean)) fails.push(`${width} 滚到 ${r.st}：卡片压在目录条上`);
+      }
+      detail += `${width} 条 ${Math.round(rows[1].nav[0])}–${Math.round(rows[1].nav[1])} / 卡 ${Math.round(rows[1].card[0])}–${Math.round(rows[1].card[1])}；`;
+      await context.close();
+    }
+    record("设置页滚动时目录条盖住卡片列、不重叠、不横向溢出（1440 / 1180 / 900 / 390）", fails.length === 0, fails.join("；") || detail);
   }
 }
 
-/** 29. 键盘弹起：390/720/900 三种宽度，模拟可视高度 480px；外壳收到 480，720/900 主栏占满宽度，输入框和发送键都在可视区内。 */
+/** 只留 Live2D 画布在白底上截几帧，量出看得见的像素外框（取并集，覆盖待机动作摆到最开）。 */
+async function artExtent(page) {
+  const css = await page.addStyleTag({ content: "body *{visibility:hidden!important}.scene canvas{visibility:visible!important}html,body{background:#fff!important}" });
+  const out = { l: Infinity, r: -1, t: Infinity, b: -1, w: 0, h: 0 };
+  for (let i = 0; i < 6; i++) {
+    const png = (await page.locator(".scene canvas").first().screenshot()).toString("base64");
+    const b = await page.evaluate(async (src) => {
+      const img = new Image();
+      img.src = `data:image/png;base64,${src}`;
+      await img.decode();
+      const c = document.createElement("canvas");
+      c.width = img.width;
+      c.height = img.height;
+      const g = c.getContext("2d");
+      g.drawImage(img, 0, 0);
+      const d = g.getImageData(0, 0, c.width, c.height).data;
+      let l = Infinity, r = -1, t = Infinity, bottom = -1;
+      for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
+        const k = (y * c.width + x) * 4;
+        if (765 - d[k] - d[k + 1] - d[k + 2] > 60) { if (x < l) l = x; if (x > r) r = x; if (y < t) t = y; if (y > bottom) bottom = y; }
+      }
+      return { l, r, t, b: bottom, w: c.width, h: c.height };
+    }, png);
+    out.l = Math.min(out.l, b.l); out.r = Math.max(out.r, b.r); out.t = Math.min(out.t, b.t); out.b = Math.max(out.b, b.b); out.w = b.w; out.h = b.h;
+    await page.waitForTimeout(350);
+  }
+  await css.evaluate((el) => el.remove());
+  return out;
+}
+
 async function checkMobileKeyboard(browser) {
   const fails = [];
   const details = [];
@@ -949,10 +1124,15 @@ async function checkMemoryRework(browser) {
     page.on("request", (r) => { if (r.method() === "DELETE" && r.url().includes("/api/memories/")) deletes.push(decodeURIComponent(r.url().split("/").pop())); });
     await visit(page, "/memory");
 
-    // 8. 头部条数只出现一处
-    const head = await page.evaluate(() => ({ meta: document.querySelectorAll(".page-head__meta").length, text: (document.querySelector(".page-head")?.textContent ?? "") }));
+    // 8. 条数只出现一处：页头不再写条数（说明行已删），总数只在「全部」标签上
+    const head = await page.evaluate(() => ({
+      meta: document.querySelectorAll(".page-head__meta").length,
+      text: document.querySelector(".page-head")?.textContent ?? "",
+      all: [...document.querySelectorAll(".mfilters__tabs [role=tab]")].find((t) => t.textContent.trim().startsWith("全部"))?.querySelector(".mfilters__n")?.textContent ?? "",
+    }));
     if (head.meta) fails.push("记忆页头部还有右上角计数");
-    if ((head.text.match(/\d+ 条/g) ?? []).length !== 1) fails.push(`记忆页头部条数出现 ${(head.text.match(/\d+ 条/g) ?? []).length} 次：${head.text.slice(0, 40)}`);
+    if (/\d+ 条/.test(head.text)) fails.push(`记忆页页头还写着条数：${head.text.slice(0, 40)}`);
+    if (!/^\d+$/.test(head.all.trim())) fails.push(`「全部」标签上没有总数（${head.all}）`);
 
     // 6. 详情里危险入口：描边（非实心）、靠左，安全动作在右
     await openDetail(page, "海边捡到玻璃");
