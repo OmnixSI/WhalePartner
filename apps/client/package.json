@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts",
     "preview": "vite preview",
+    "i18n:check": "node scripts/i18n-check.mjs",
     "ui:check": "node scripts/ui-check.mjs",
     "contrast:check": "node scripts/contrast-check.mjs",
     "e2e:smoke": "node scripts/e2e-smoke.mjs",

@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./server/config.ts";
-import { requestLang, runWithLang } from "./i18n/index.ts";
+import { msg, requestLang, runWithLang } from "./i18n/index.ts";
 import { applyCors, RequestBodyError, sendJson } from "./server/http.ts";
 import { closeServerAndDrain } from "./server/shutdown.ts";
 import { authOptionsFromEnv, authorize, authRequiredFor, trustedProxiesFromEnv, type AuthOptions } from "./hub/auth.ts";
@@ -167,7 +167,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       }
       if (request.method === "GET" && url.pathname === "/api/note") {
         const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
-        if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" });
+        if (!isCharacterId(character)) return sendJson(response, 400, { error: msg().common.unknownCharacter });
         const note = deps.store.getNote(character);
         return sendJson(response, 200, { note: note ? { text: note.text, updatedAt: note.updatedAt } : null });
       }

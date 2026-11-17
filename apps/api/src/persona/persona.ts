@@ -90,9 +90,12 @@ const ENGLISH_REPLY = [
   "Keep everything else above unchanged: the same personality, sentence length and emotion tag format. Translate your catchphrases naturally instead of keeping them in Chinese.",
 ].join("\n");
 
+/** 英文界面里四位角色的名字，和前端 characters 文案一致。 */
+const ENGLISH_NAMES: Record<CharacterId, string> = { deepseek: "Big Fat Fish", claude: "Claudie", chatgpt: "Gippy", whale: "Jingxi" };
+
 export function buildPersonaCore(character: CharacterId = DEFAULT_CHARACTER): string {
   const parts = [VOICES[character], STYLE, RULES];
-  if (currentLang() === "en") parts.push(ENGLISH_REPLY);
+  if (currentLang() === "en") parts.push(`${ENGLISH_REPLY}\nIn English, your name is ${ENGLISH_NAMES[character]}.`);
   return parts.join("\n\n");
 }
 
