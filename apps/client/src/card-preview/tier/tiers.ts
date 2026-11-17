@@ -1,3 +1,5 @@
+import { m } from "../../i18n/index.ts";
+
 /**
  * 好感度卡五档（#159）：档位名与门槛跟后端 `apps/api/src/relationship/policy.ts` 的 RELATIONSHIP_STAGES 一致
  * （Lv5 相依 500 来自 #158）。卡面只认 level，门槛只给预览页写说明用；接真实数据（#160）时以接口返回为准。
@@ -15,11 +17,11 @@ export type CardTier = {
 };
 
 export const CARD_TIERS: readonly CardTier[] = [
-  { level: 1, label: "相识", threshold: 0, finish: "素纸" },
-  { level: 2, label: "相熟", threshold: 25, finish: "银衬" },
-  { level: 3, label: "默契", threshold: 100, finish: "潮光" },
-  { level: 4, label: "亲近", threshold: 250, finish: "金缘" },
-  { level: 5, label: "相依", threshold: 500, finish: "镀闪" },
+  { level: 1, label: m.cards.tiers.acquainted, threshold: 0, finish: m.cards.tiers.finishPaper },
+  { level: 2, label: m.cards.tiers.familiar, threshold: 25, finish: m.cards.tiers.finishSilver },
+  { level: 3, label: m.cards.tiers.inSync, threshold: 100, finish: m.cards.tiers.finishTide },
+  { level: 4, label: m.cards.tiers.close, threshold: 250, finish: m.cards.tiers.finishGold },
+  { level: 5, label: m.cards.tiers.inseparable, threshold: 500, finish: m.cards.tiers.finishFoil },
 ];
 
 export const MAX_CARD_LEVEL: CardLevel = 5;

@@ -7,6 +7,7 @@ import { SurfStatus, type SurfPhase } from "../surf/SurfStatus";
 import { useSurfEvents } from "../surf/useSurfEvents";
 import { CharacterMark, type CharacterMood } from "../CharacterMark";
 import { Horizon } from "../Horizon";
+import { m } from "../../i18n";
 
 const Live2DStage = lazy(() => import("../../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
 
@@ -69,7 +70,7 @@ export function ChatScene({
   });
 
   return (
-    <section className="scene" aria-label="角色舞台" ref={sceneRef}>
+    <section className="scene" aria-label={m.chat.scene.label} ref={sceneRef}>
       <SurfStatus phase={surfPhase} onDismiss={() => setSurfPhase(null)} />
       <div className="scene__safe">
         <div className="scene__horizon" aria-hidden />
@@ -77,7 +78,7 @@ export function ChatScene({
           className="scene__figure"
           role="button"
           tabIndex={0}
-          aria-label={`点一点${character.name}`}
+          aria-label={m.chat.scene.tap(character.name)}
           // Live2D 的点击由模型自己的 onTap 上报；没有模型时（默认徽记）才由这里上报，避免一次点击触发两遍。
           onClick={model ? undefined : onPoke}
           onKeyDown={(event) => {
@@ -107,9 +108,9 @@ export function ChatScene({
         </div>
       </div>
 
-      {(model ? avatar === "ready" : true) && !hintSeen && <p className="scene__tip">点一点她，她会看你哦。</p>}
+      {(model ? avatar === "ready" : true) && !hintSeen && <p className="scene__tip">{m.chat.scene.tip}</p>}
       {wide && !backlogOpen && (
-        <Button ref={cornerRef} className="scene__corner" onClick={onOpenBacklog}>往回翻</Button>
+        <Button ref={cornerRef} className="scene__corner" onClick={onOpenBacklog}>{m.chat.scene.backlog}</Button>
       )}
     </section>
   );

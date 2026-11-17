@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
@@ -22,8 +23,8 @@ export class SetupProcessRunner {
   }
 
   run(scriptPath: string, dataDirectory: string, timeoutMs: number, failureMessage: string): Promise<void> {
-    if (!existsSync(scriptPath)) return Promise.reject(new Error("本地语音安装脚本缺失，请重新安装 WhalePartner。"));
-    if (this.#closed) return Promise.reject(new Error(`${failureMessage}（语音服务已关闭）。`));
+    if (!existsSync(scriptPath)) return Promise.reject(new Error(msg().core.voice.setupScriptMissing));
+    if (this.#closed) return Promise.reject(new Error(msg().core.voice.setupClosed(failureMessage)));
     return new Promise<void>((resolveSetup, rejectSetup) => {
       const child = spawn("bash", [scriptPath], {
         stdio: ["ignore", "pipe", "pipe"],
@@ -52,7 +53,7 @@ export class SetupProcessRunner {
         clearTimeout(timeout);
         this.#active.delete(child);
         if (code === 0) resolveSetup();
-        else rejectSetup(new Error(timedOut ? `${failureMessage}（安装超时）。` : output.trim() || `${failureMessage}（${code ?? "unknown"}）。`));
+        else rejectSetup(new Error(timedOut ? msg().core.voice.setupTimedOut(failureMessage) : output.trim() || msg().core.voice.setupExit(failureMessage, code ?? "unknown")));
       });
     });
   }

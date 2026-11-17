@@ -1,5 +1,6 @@
 import { ChatPanel } from "../components/ChatPanel";
 import { useCharacter } from "../characters";
+import { m } from "../i18n";
 
 /**
  * 聊天页（`/`，规范 §7.1）。
@@ -10,7 +11,7 @@ export function ChatPage() {
   const character = useCharacter();
   return (
     <div className="chat-page">
-      <h1 className="sr-only">和{character.name}聊天</h1>
+      <h1 className="sr-only">{m.chat.page.title(character.name)}</h1>
       <ChatPanel character={character} />
     </div>
   );

@@ -436,7 +436,7 @@ export class SurfRepository {
       const rows = this.#db
         .prepare("SELECT subject, predicate, value FROM memory_facts WHERE status = 'active' ORDER BY updated_at DESC LIMIT ?")
         .all(limit) as Array<{ subject: string; predicate: string; value: string }>;
-      return rows.map((row) => `${row.predicate}：${row.value}`);
+      return rows.map((row) => `${row.predicate}：${row.value}`); // i18n-ignore：选题用的事实文本，喂给模型
     } catch {
       return [];
     }

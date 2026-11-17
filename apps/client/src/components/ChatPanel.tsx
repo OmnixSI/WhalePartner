@@ -36,6 +36,7 @@ import { stripEmotionTags } from "../lib/emotion";
 import { useKeyboardInset, useMediaQuery } from "./chat/useViewport";
 import type { DialogState } from "./chat/types";
 import "../styles/chat.css";
+import { m } from "../i18n";
 
 // 只有点「清空」才用得到，不进首屏
 const ConfirmDialog = lazy(() => import("./ui/Dialog").then((m) => ({ default: m.ConfirmDialog })));
@@ -157,23 +158,23 @@ export function ChatPanel({ character }: Props) {
   const voiceMessage = voice.phase === "error"
     ? voice.message
     : voice.phase === "preparing"
-      ? "正在准备语音"
+      ? m.chat.panel.voice.preparing
       : voice.phase === "permission"
-        ? "等待麦克风权限"
+        ? m.chat.panel.voice.waitingMic
         : voice.phase === "recognizing"
-          ? "识别中"
+          ? m.chat.panel.voice.recognizing
           : voice.recording
-            ? voice.message || "正在录音"
+            ? voice.message || m.chat.panel.voice.recording
             : voice.phase === "thinking"
-              ? "正在等待回复"
+              ? m.chat.panel.voice.waitingReply
               : voiceOutput.speaking
-                ? "大肥鱼正在回答，说话会打断"
+                ? m.chat.panel.voice.speaking
                 : voice.active && character.id !== "deepseek"
-                  ? "语音输入可用，语音回复支持大肥鱼"
+                  ? m.chat.panel.voice.inputAvailable
                   : voiceOutput.model.state === "failed" || voiceOutput.error
-                    ? `语音回复暂不可用：${voiceOutput.error || voiceOutput.model.message}`
+                    ? m.chat.panel.voice.replyUnavailable(voiceOutput.error || voiceOutput.model.message)
                     : voiceOutput.model.state === "loading"
-                      ? "语音回复准备中"
+                      ? m.chat.panel.voice.replyPreparing
                       : voice.message;
   /* ------------------------------------------------------------ 状态推导 */
   const lastHer = [...turns].reverse().find((t) => t.role === "her" && (t.text || t.status !== "failed" || phase === "failed"));
@@ -210,14 +211,14 @@ export function ChatPanel({ character }: Props) {
   const text =
     state === "offline"
       ? needsPair
-        ? "还没连上你的鲸汐。到「设置 › 连接到我的鲸汐」输入配对码就好。"
-        : "网络好像断了，我在这儿等你。"
+        ? m.chat.panel.needsPair
+        : m.chat.panel.offline
       : state === "failed"
-        ? failure?.message ?? "这句话没送出去。"
+        ? failure?.message ?? m.chat.panel.sendFailed
         : state === "loading"
           ? starting
-            ? `${character.name}马上就来…`
-            : `${character.name}正在赶过来…`
+            ? m.chat.panel.comingSoon(character.name)
+            : m.chat.panel.onTheWay(character.name)
           : lastHer?.text ? (shown || stripEmotionTags(lastHer.text)) : character.greeting;
 
   // 流式分片也过一遍：标签绝不能漏进字幕（前端不赌后端版本）。按句分条时只亮出已「发出」的那几条。
@@ -279,7 +280,7 @@ export function ChatPanel({ character }: Props) {
         <div className="room__main">
           <header className="mbar">
             <span className="mbar__name">{character.name}</span>
-            <Button ref={sheetTrigger} variant="ghost" onClick={() => setSheetOpen(true)}>往回翻</Button>
+            <Button ref={sheetTrigger} variant="ghost" onClick={() => setSheetOpen(true)}>{m.chat.panel.backlog}</Button>
           </header>
 
           <ChatScene
@@ -363,10 +364,10 @@ export function ChatPanel({ character }: Props) {
                 if (el?.isConnected) { e.preventDefault(); el.focus(); }
               }}
             >
-              <Dialog.Title className="sr-only">往回翻</Dialog.Title>
+              <Dialog.Title className="sr-only">{m.chat.panel.backlog}</Dialog.Title>
               <div className="sheet__grip" aria-hidden />
               {backlog}
-              <Dialog.Close asChild><Button className="sheet__close">关上</Button></Dialog.Close>
+              <Dialog.Close asChild><Button className="sheet__close">{m.chat.panel.close}</Button></Dialog.Close>
             </Dialog.Content>
           </Dialog.Portal>
         </Dialog.Root>
@@ -383,10 +384,10 @@ export function ChatPanel({ character }: Props) {
           <ConfirmDialog
             open={confirmClear}
             onOpenChange={setConfirmClear}
-            title="清空聊天记录？"
-            description="这里的每一句话都会消失，她也不会再记得聊过什么。日记和「记忆」里收着的东西不受影响。"
-            cancelLabel="先留着"
-            confirmLabel="清掉"
+            title={m.chat.panel.clearTitle}
+            description={m.chat.panel.clearDescription}
+            cancelLabel={m.chat.panel.clearCancel}
+            confirmLabel={m.chat.panel.clearConfirm}
             tone="danger"
             onConfirm={clearAll}
           />

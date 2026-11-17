@@ -2,6 +2,7 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import { request as httpRequest, createServer, type IncomingMessage, type Server } from "node:http";
 import { connect, isIP, type AddressInfo, type Socket } from "node:net";
 import { isPrivateAddress } from "../webpage/service.ts";
+// i18n-ignore-start：内部代理拒绝原因，不显示给用户
 
 /**
  * 只给无头浏览器用的出口代理（监听 127.0.0.1 的随机端口，生命周期跟浏览器走）。
@@ -196,3 +197,4 @@ export async function startEgressProxy(options: EgressProxyOptions = {}): Promis
     },
   };
 }
+// i18n-ignore-end

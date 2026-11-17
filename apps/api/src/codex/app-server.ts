@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import { tmpdir } from "node:os";
@@ -72,13 +73,13 @@ export function resolveCodexSettings(stored: StoredCodexSettings, models: CodexM
   const modelOption = resolveCodexModel(stored, models);
 
   if (!modelOption) {
-    throw new Error(stored.model ? `本机 Codex 当前没有可用模型：${stored.model}` : "本机 Codex 没有可用模型。");
+    throw new Error(stored.model ? msg().core.codex.noModelNamed(stored.model) : msg().core.codex.noModel);
   }
 
   const supportedEfforts = supportedEffortsOf(modelOption);
   const effort = stored.effort || defaultEffortOf(modelOption);
   if (!supportedEfforts.includes(effort)) {
-    throw new Error(`推理强度 ${effort} 不在 ${modelOption.model} 当前可用列表中：${supportedEfforts.join(" / ")}`);
+    throw new Error(msg().core.codex.effortUnavailable(effort, modelOption.model, supportedEfforts.join(" / ")));
   }
 
   return { model: modelOption.model, effort, modelOption };
@@ -163,7 +164,7 @@ class CodexAppServer {
     }, signal) as { thread?: { id?: string } };
     throwIfAborted(signal);
     const threadId = thread.thread?.id;
-    if (!threadId) throw new Error("Codex 没有建立对话线程。");
+    if (!threadId) throw new Error(msg().core.codex.noThread);
     perf.threadStartMs = Math.round(performance.now() - perf.started);
 
     const queue: NotificationQueue = { values: [], waiters: [] };
@@ -177,7 +178,7 @@ class CodexAppServer {
     let hasText = false;
     const onAbort = () => {
       if (turnId) void this.#interrupt(threadId, turnId);
-      failQueue(queue, new Error("Codex 对话已取消。"));
+      failQueue(queue, new Error(msg().core.codex.cancelled));
     };
     signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -192,15 +193,15 @@ class CodexAppServer {
       }, signal) as { turn?: { id?: string } };
       turnId = started.turn?.id ?? "";
       perf.turnStartMs = Math.round(performance.now() - perf.started);
-      if (!turnId) throw new Error("Codex 没有开始这一轮对话。");
+      if (!turnId) throw new Error(msg().core.codex.noTurn);
       throwIfAborted(signal);
 
-      const timeout = setTimeout(() => failQueue(queue, new Error("Codex 回复超时。")), TURN_TIMEOUT_MS);
+      const timeout = setTimeout(() => failQueue(queue, new Error(msg().core.codex.replyTimeout)), TURN_TIMEOUT_MS);
       try {
         while (true) {
           const message = await nextNotification(queue);
           if (message.method === "codexAppServer/exited") {
-            throw new Error("本机 Codex 服务已退出，请重试。");
+            throw new Error(msg().core.codex.serviceExitedRetry);
           }
           const completedTurn = message.params?.turn as { id?: string } | undefined;
           const eventTurnId = typeof message.params?.turnId === "string" ? message.params.turnId : completedTurn?.id;
@@ -220,7 +221,7 @@ class CodexAppServer {
           if (message.method === "turn/completed") {
             const turn = message.params?.turn as { status?: string; error?: { message?: unknown } } | undefined;
             if (turn?.status !== "completed") {
-              const detail = typeof turn?.error?.message === "string" ? turn.error.message : "Codex 回复失败。";
+              const detail = typeof turn?.error?.message === "string" ? turn.error.message : msg().core.codex.replyFailed;
               throw new Error(detail);
             }
             completed = true;
@@ -232,7 +233,7 @@ class CodexAppServer {
         clearTimeout(timeout);
       }
 
-      if (!hasText) throw new Error("Codex 没有返回回复正文。");
+      if (!hasText) throw new Error(msg().core.codex.noReplyText);
     } finally {
       unsubscribe();
       signal?.removeEventListener("abort", onAbort);
@@ -259,9 +260,9 @@ class CodexAppServer {
     child.stderr.resume();
     child.once("error", (error) => this.#processExited(error, child));
     // 服务退出后再写 stdin 会报 EPIPE；没有监听的话这个 error 会直接把 API 进程带崩。
-    child.stdin.on("error", () => this.#processExited(new Error("Codex 服务的输入通道已断开。"), child));
+    child.stdin.on("error", () => this.#processExited(new Error(msg().core.codex.stdinClosed), child));
     child.once("exit", (code, signal) => {
-      const detail = code === 0 ? "Codex 服务已关闭。" : `Codex 服务退出（${code ?? signal ?? "unknown"}）。`;
+      const detail = code === 0 ? msg().core.codex.serviceClosed : msg().core.codex.serviceExitedWith(code ?? signal ?? "unknown");
       this.#processExited(new Error(detail), child);
     });
 
@@ -284,12 +285,12 @@ class CodexAppServer {
 
   #sendRequest(method: string, params: Record<string, unknown>) {
     const child = this.#child;
-    if (!child || child.killed || !child.stdin.writable) return Promise.reject(new Error("本机 Codex 服务不可用。"));
+    if (!child || child.killed || !child.stdin.writable) return Promise.reject(new Error(msg().core.codex.serviceUnavailable));
     const id = ++this.#nextId;
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(id);
-        reject(new Error(`Codex 请求超时：${method}`));
+        reject(new Error(msg().core.codex.requestTimeout(method)));
       }, REQUEST_TIMEOUT_MS);
       this.#pending.set(id, { resolve, reject, timer });
       child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`, (error) => {
@@ -322,7 +323,7 @@ class CodexAppServer {
       clearTimeout(pending.timer);
       this.#pending.delete(message.id);
       if (message.error) {
-        const detail = typeof message.error.message === "string" ? message.error.message : "Codex 请求失败。";
+        const detail = typeof message.error.message === "string" ? message.error.message : msg().core.codex.requestFailed;
         pending.reject(new Error(detail));
       } else {
         pending.resolve(message.result);
@@ -375,14 +376,14 @@ function failQueue(queue: NotificationQueue, error: Error) {
 }
 
 function throwIfAborted(signal?: AbortSignal) {
-  if (signal?.aborted) throw new Error("Codex 对话已取消。");
+  if (signal?.aborted) throw new Error(msg().core.codex.cancelled);
 }
 
 /** 等待期间一旦中止就立刻拒绝；底层请求自己按超时清理，不会留下悬挂的等待。 */
 function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
   return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(new Error("Codex 对话已取消。"));
+    const onAbort = () => reject(new Error(msg().core.codex.cancelled));
     if (signal.aborted) return onAbort();
     signal.addEventListener("abort", onAbort, { once: true });
     promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));

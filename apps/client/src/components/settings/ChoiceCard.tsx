@@ -3,6 +3,7 @@
  * 用 `aria-pressed` 表示选中，读屏按「按钮，已按下」读。
  */
 import type { ReactNode } from "react";
+import { m } from "../../i18n";
 
 type Props = {
   label: string;
@@ -21,7 +22,7 @@ export function ChoiceCard({ label, hint, selected, onSelect, preview, groupLabe
       type="button"
       className="set-choice ui-press ui-focus"
       aria-pressed={selected}
-      aria-label={groupLabel ? `${groupLabel}：${label}` : undefined}
+      aria-label={groupLabel ? m.settings.choiceCard.grouped(groupLabel, label) : undefined}
       data-selected={selected ? "on" : "off"}
       onClick={onSelect}
     >

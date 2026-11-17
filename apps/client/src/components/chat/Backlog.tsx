@@ -14,6 +14,7 @@ import { CharacterMark } from "../CharacterMark";
 import { Slip } from "./Slip";
 import { splitReply } from "../../lib/reply";
 import type { Turn } from "./types";
+import { m } from "../../i18n";
 
 type Props = {
   name: string;
@@ -28,7 +29,7 @@ type Row =
   | { key: string; kind: "her"; turn: Turn; first: boolean }
   | { key: string; kind: "me"; turn: Turn };
 
-const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const WEEKDAYS = m.chat.backlog.weekdays;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -132,10 +133,10 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
           {splitReply(turn.text).map((part, index) => (
             <p key={index} className="bl__capText">{part.trim()}</p>
           ))}
-          {turn.proactive && <p className="bl__recall">主动找你</p>}
-          {turn.interrupted && <p className="bl__recall">没说完就被打断了</p>}
+          {turn.proactive && <p className="bl__recall">{m.chat.backlog.proactive}</p>}
+          {turn.interrupted && <p className="bl__recall">{m.chat.backlog.interrupted}</p>}
           {turn.recalled && turn.recalled.length > 0 && (
-            <p className="bl__recall">想起来 · {turn.recalled.join("；")}</p>
+            <p className="bl__recall">{m.chat.backlog.recalled(turn.recalled.join(m.chat.backlog.recalledSeparator))}</p>
           )}
           <time className="bl__time" dateTime={turn.at}>
             {clock(turn.at)}
@@ -146,31 +147,31 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
   };
 
   return (
-    <section className={`bl bl--${variant}`} aria-label="往回翻">
+    <section className={`bl bl--${variant}`} aria-label={m.chat.backlog.title}>
       <header className="bl__head">
-        <h2 className="bl__title" tabIndex={-1}>往回翻</h2>
+        <h2 className="bl__title" tabIndex={-1}>{m.chat.backlog.title}</h2>
         <div className="bl__tools">
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
-              <IconButton label="更多"><Icon name="more" size={20} /></IconButton>
+              <IconButton label={m.chat.backlog.more}><Icon name="more" size={20} /></IconButton>
             </DropdownMenu.Trigger>
             <DropdownMenu.Portal>
               <DropdownMenu.Content className="menu" side="bottom" align="end" sideOffset={6} collisionPadding={12}>
                 <DropdownMenu.Item className="menu__item menu__item--danger" onSelect={onClear}>
-                  清空聊天记录
+                  {m.chat.backlog.clear}
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>
           {onClose && (
-            <Button variant="ghost" onClick={onClose}>收起</Button>
+            <Button variant="ghost" onClick={onClose}>{m.chat.backlog.collapse}</Button>
           )}
         </div>
       </header>
 
       <div className="bl__listWrap" role="log" aria-live="off">
         {rows.length === 0 ? (
-          <p className="bl__empty">还没有说过的话。第一张纸条，从这里递过去。</p>
+          <p className="bl__empty">{m.chat.backlog.empty}</p>
         ) : (
           <Virtuoso
             ref={list}
@@ -191,7 +192,7 @@ export function Backlog({ name, turns, onClear, onClose, variant = "aside" }: Pr
           className="bl__latest"
           onClick={() => list.current?.scrollToIndex({ index: "LAST", behavior: "smooth" })}
         >
-          {unseen > 0 ? "有新消息" : "回到最新"}
+          {unseen > 0 ? m.chat.backlog.newMessages : m.chat.backlog.jumpToLatest}
         </Button>
       )}
     </section>

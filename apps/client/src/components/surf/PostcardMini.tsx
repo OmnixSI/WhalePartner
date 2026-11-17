@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { siteLabel, stampDate, thumbUrl, timeOf, type SurfFeedItem } from "../../lib/surf";
+import { m } from "../../i18n";
 
 type Props = {
   item: Pick<SurfFeedItem, "id" | "kind" | "title" | "sourceSite" | "thumb" | "url" | "createdAt">;
@@ -18,7 +19,7 @@ export function PostcardMini({ item, onOpenUrl }: Props) {
   const hasPhoto = Boolean(item.thumb) && !broken;
   const site = siteLabel(item.sourceSite);
   return (
-    <div className="pmini" role="group" aria-label={`她分享的见闻：${item.title}`}>
+    <div className="pmini" role="group" aria-label={m.surf.postcard.ariaLabel(item.title)}>
       <span className="pmini__photo" data-empty={hasPhoto ? "off" : "on"} aria-hidden>
         {hasPhoto ? <img src={thumbUrl(item.id)} alt="" loading="lazy" onError={() => setBroken(true)} /> : <span>{site.slice(0, 1).toUpperCase()}</span>}
       </span>
@@ -37,10 +38,10 @@ export function PostcardMini({ item, onOpenUrl }: Props) {
             onOpenUrl(item.url);
           }}
         >
-          打开原链接
+          {m.surf.postcard.openLink}
         </button>
         <button type="button" className="btn btn--quiet btn--sm" onClick={() => navigate("/surf")}>
-          看她的见闻 ›
+          {m.surf.postcard.viewFinds}
         </button>
       </span>
     </div>

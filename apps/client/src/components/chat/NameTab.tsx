@@ -5,6 +5,7 @@
  */
 import type { AvatarEmotion } from "../../avatar/model.config";
 import { EMOTION_LABEL } from "../../lib/emotion";
+import { m } from "../../i18n";
 
 type Props = {
   name: string;
@@ -14,12 +15,12 @@ type Props = {
 };
 
 export function NameTab({ name, className = "", emotion = "neutral" }: Props) {
-  const label = emotion === "neutral" ? `${name}，AI 角色` : `${name}，AI 角色，${EMOTION_LABEL[emotion]}地说`;
+  const label = emotion === "neutral" ? m.chat.nameTab.label(name) : m.chat.nameTab.labelWithEmotion(name, EMOTION_LABEL[emotion]);
   return (
     <div className={`nametab ${className}`.trim()} role="group" aria-label={label} data-emotion={emotion}>
       <span className="nametab__dot" aria-hidden />
       <span className="nametab__name">{name}</span>
-      <span className="nametab__ai" aria-hidden>AI 角色</span>
+      <span className="nametab__ai" aria-hidden>{m.chat.nameTab.ai}</span>
     </div>
   );
 }

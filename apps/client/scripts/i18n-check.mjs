@@ -61,7 +61,7 @@ const IGNORE_FILES = [
   // 文案本身
   ["apps/client/src/i18n/locales/zh/", "中文文案"],
   ["apps/client/src/i18n/locales/en/", "英文文案（含「简体中文」选项名）"],
-  ["apps/api/src/i18n/zh.ts", "中文文案"],
+  ["apps/api/src/i18n/zh-parts/", "中文文案"],
   // 隐藏的开发预览页：只在 /__kit 与 character-cards.html 打开，不在产品导航里
   ["apps/client/src/pages/UiKitPage.tsx", "开发预览页 /__kit"],
   ["apps/client/src/pages/KitPage.tsx", "开发预览页 /__kit/ink"],
@@ -88,6 +88,8 @@ function stripComments(src, rust) {
     const c = src[i];
     const n = src[i + 1];
     if (state === "code") {
+      // 正则里的 `\/` 别和后面的 `/` 凑成 `//`
+      if (c === "\\") { out += c + (n ?? ""); i++; continue; }
       if (c === "/" && n === "/") { state = "line"; out += "  "; i++; continue; }
       if (c === "/" && n === "*") { state = "block"; out += "  "; i++; continue; }
       if (c === '"' || c === "`" || (c === "'" && !rust)) state = c;

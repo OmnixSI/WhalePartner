@@ -4,6 +4,7 @@ import { buildSystemPrompt } from "../persona/persona.ts";
 import { containsBlocked } from "./blocklist.ts";
 import { extractJson } from "./picker.ts";
 import type { ItemSummary, VideoCandidate, WebResult } from "./types.ts";
+// i18n-ignore-start：发给模型的提示词与材料模板
 
 /** 一次短模型调用的包装：把流拼成整段文字，超时就放弃。 */
 export async function ask(
@@ -232,3 +233,4 @@ export async function writeShareLine(
     return "";
   }
 }
+// i18n-ignore-end

@@ -1,2 +1,37 @@
 export const cards = {
+  tiers: {
+    acquainted: "相识",
+    familiar: "相熟",
+    inSync: "默契",
+    close: "亲近",
+    inseparable: "相依",
+    finishPaper: "素纸",
+    finishSilver: "银衬",
+    finishTide: "潮光",
+    finishGold: "金缘",
+    finishFoil: "镀闪",
+  },
+  samples: {
+    basicEffect: "基础卡面",
+    basicDetail: "静态立绘与基础卡框",
+    depthEffect: "立体效果",
+    depthDetail: "视角倾斜与人物、背景分层视差",
+    liveEffect: "动态画面",
+    liveDetail: "Live2D 待机与流动能量光",
+    specialEffect: "专属特效",
+    specialDetail: "随卡面浮动的粒子与动态光照",
+  },
+  relationship: {
+    sampleIntro: (level: number, effect: string, detail: string) => `Lv.${level} ${effect}：${detail}`,
+    matchedIntro: (level: number, effect: string, detail: string) => `Lv.${level} ${effect}：${detail}`,
+    notLiveIntro: (level: number, effect: string, sampleLevel: number) => `Lv.${level} ${effect}（该效果尚未上线，卡面暂按 Lv.${sampleLevel} 显示）`,
+    maxUnlocked: (effect: string) => `已解锁最高级${effect}`,
+    nextStage: (n: number) => `下一阶段还需 ${n} 点好感`,
+  },
+  affinityCard: {
+    ariaLabel: (name: string, level: number, label: string, finish: string) => `${name}的好感度卡，Lv.${level} ${label}，${finish}卡面`,
+    upgradeNotice: (level: number, label: string) => `升到 Lv.${level} · ${label}`,
+    skip: "跳过",
+    upgradeStatus: (level: number, label: string) => `升到 Lv.${level} ${label}`,
+  },
 };

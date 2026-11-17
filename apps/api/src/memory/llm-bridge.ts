@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import type { ChatMessage, ChatProvider } from "../llm/types.ts";
+// i18n-ignore-start：发给模型的提示词
 
 export interface LlmBridge {
   baseUrl: string;
@@ -60,3 +61,4 @@ export async function startLlmBridge(provider: ChatProvider): Promise<LlmBridge>
   const { port } = server.address() as AddressInfo;
   return { baseUrl: `http://127.0.0.1:${port}/v1`, apiKey: token, close: () => server.close() };
 }
+// i18n-ignore-end

@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatFailure, ChatInputError, runChat, validateUserMessage } from "../chat/service.ts";
 import { ClientIdLedger, SessionMutex } from "./session-lock.ts";
@@ -28,20 +29,20 @@ export async function handleChatRoute(
     const body = await readJsonBody(request);
     text = validateUserMessage(body.message);
     if (body.character !== undefined) {
-      if (!isCharacterId(body.character)) throw new ChatInputError("未知的角色。");
+      if (!isCharacterId(body.character)) throw new ChatInputError(msg().common.unknownCharacter);
       character = body.character;
     }
     if (body.sessionId !== undefined) {
-      if (typeof body.sessionId !== "string" || body.sessionId.length > 64) throw new ChatInputError("聊天会话标识无效。");
+      if (typeof body.sessionId !== "string" || body.sessionId.length > 64) throw new ChatInputError(msg().core.shared.sessionIdInvalid);
       sessionId = body.sessionId;
     }
     if (body.clientId !== undefined) {
-      if (typeof body.clientId !== "string" || !/^[\w.-]{8,64}$/u.test(body.clientId)) throw new ChatInputError("clientId 无效。");
+      if (typeof body.clientId !== "string" || !/^[\w.-]{8,64}$/u.test(body.clientId)) throw new ChatInputError(msg().core.routes.chat.clientIdInvalid);
       clientId = body.clientId;
     }
   } catch (error) {
     const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
-    sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : (error as Error).message });
+    sendJson(response, status, { error: error instanceof SyntaxError ? msg().core.shared.invalidJson : (error as Error).message });
     return;
   }
 
@@ -50,7 +51,7 @@ export async function handleChatRoute(
     activeSessionId = deps.store.getOrCreateSession(character, sessionId).id;
     sessionId = activeSessionId;
   } catch (error) {
-    sendJson(response, 404, { error: error instanceof Error ? error.message : "没有找到这个聊天会话。" });
+    sendJson(response, 404, { error: error instanceof Error ? error.message : msg().core.shared.sessionNotFound });
     return;
   }
 
@@ -65,7 +66,7 @@ export async function handleChatRoute(
       return;
     }
     if (seen?.state === "running") {
-      sendJson(response, 409, { error: "duplicate", message: "这句话已经在发送了。" });
+      sendJson(response, 409, { error: "duplicate", message: msg().core.routes.chat.duplicate });
       return;
     }
   }
@@ -73,7 +74,7 @@ export async function handleChatRoute(
   const abort = new AbortController();
   const finishRequest = sessionRequests.begin(activeSessionId, abort);
   if (!finishRequest) {
-    sendJson(response, 409, { error: "这个聊天会话正在删除，请稍后重试。" });
+    sendJson(response, 409, { error: msg().core.routes.chat.sessionDeletingRetry });
     return;
   }
   response.on("close", () => {
@@ -89,7 +90,7 @@ export async function handleChatRoute(
   // B1：开启拦截后，额度用完直接 402，不开流也不写用户消息。
   const quota = quotaUsage(deps.config.dbPath);
   if (quota.enforced && quota.used >= quota.total) {
-    sendJson(response, 402, { error: "quota_exceeded", message: "这个月的贝壳用完了，下个月 1 号再来找我。" });
+    sendJson(response, 402, { error: "quota_exceeded", message: msg().core.routes.chat.quotaExceeded });
     finishRequest();
     return;
   }
@@ -125,7 +126,7 @@ export async function handleChatRoute(
     if (clientId) ledger.forget(clientId);
     if (!abort.signal.aborted) {
       const code = error instanceof ChatFailure ? error.code : "model";
-      sendSse(response, "error", { message: error instanceof Error ? error.message : "聊天失败。", code });
+      sendSse(response, "error", { message: error instanceof Error ? error.message : msg().core.routes.chat.failed, code });
     }
   } finally {
     clearInterval(beat);

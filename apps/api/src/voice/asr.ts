@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { randomUUID } from "node:crypto";
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { accessSync, constants, createWriteStream, existsSync, statSync } from "node:fs";
@@ -87,7 +88,7 @@ export class XAsrService implements AsrService {
   readonly #runtimeDirectory: string;
   readonly #modelDirectory: string;
   readonly #offlineModelDirectory: string;
-  #current: AsrStatus = { state: "idle", progress: null, message: "待准备", model: XASR_MODEL, offlineRefinement: "idle" };
+  #current: AsrStatus = { state: "idle", progress: null, message: msg().core.voice.asrIdle, model: XASR_MODEL, offlineRefinement: "idle" };
   #offlineRefinementReady = false;
   #warmPromise: Promise<void> | null = null;
   #worker: ChildProcessWithoutNullStreams | null = null;
@@ -116,7 +117,7 @@ export class XAsrService implements AsrService {
   warm(): Promise<void> {
     if (this.#current.state === "ready" && this.#worker) return Promise.resolve();
     if (this.#warmPromise) return this.#warmPromise;
-    return this.#startWarm("正在准备 X-ASR 480 ms 中英模型和整句精修。", () => this.#prepare());
+    return this.#startWarm(msg().core.voice.asrPreparing, () => this.#prepare());
   }
 
   /**
@@ -129,7 +130,7 @@ export class XAsrService implements AsrService {
       this.#current = {
         state: "ready",
         progress: 100,
-        message: this.#offlineRefinementReady ? "X-ASR 流式识别与整句精修已就绪。" : "X-ASR 流式识别已就绪，整句精修暂不可用。",
+        message: this.#offlineRefinementReady ? msg().core.voice.asrReadyFull : msg().core.voice.asrReadyStreamOnly,
         model: XASR_MODEL,
         offlineRefinement: this.#offlineRefinementReady ? "ready" : "unavailable",
       };
@@ -154,7 +155,7 @@ export class XAsrService implements AsrService {
       this.#current = {
         state: "idle",
         progress: null,
-        message: "X-ASR 环境尚未完整配置，请在设置中一键安装。",
+        message: msg().core.voice.asrNotConfigured,
         model: XASR_MODEL,
         offlineRefinement: "idle",
       };
@@ -164,11 +165,11 @@ export class XAsrService implements AsrService {
   }
 
   rebuild(): Promise<void> {
-    if (this.#warmPromise) return Promise.reject(new Error("X-ASR 正在安装或加载，完成后再重建。"));
-    return this.#startWarm("X-ASR 环境正在重建。", async () => {
+    if (this.#warmPromise) return Promise.reject(new Error(msg().core.voice.asrBusyRebuild));
+    return this.#startWarm(msg().core.voice.asrRebuilding, async () => {
       // The rebuild deletes the directories a still-running setup script is writing to; end it first.
       this.#setupProcesses.kill();
-      await this.#stopWorker("X-ASR 环境正在重建。");
+      await this.#stopWorker(msg().core.voice.asrRebuilding);
       await Promise.all([
         rm(this.#runtimeDirectory, { recursive: true, force: true }),
         rm(this.#modelDirectory, { recursive: true, force: true }),
@@ -187,13 +188,13 @@ export class XAsrService implements AsrService {
     let closed = false;
     return {
       acceptPcm: async (pcm) => {
-        if (closed) throw new Error("语音识别会话已经结束。");
-        if (pcm.length === 0 || pcm.length % 2 !== 0) throw new Error("X-ASR 音频块必须是 16 kHz 单声道 PCM16。");
+        if (closed) throw new Error(msg().core.voice.asrSessionEnded);
+        if (pcm.length === 0 || pcm.length % 2 !== 0) throw new Error(msg().core.voice.asrBadChunk);
         const reply = await this.#request({ action: "audio", streamId: id, pcm: pcm.toString("base64") });
         return { text: reply.text ?? "", final: reply.final === true };
       },
       finish: async () => {
-        if (closed) throw new Error("语音识别会话已经结束。");
+        if (closed) throw new Error(msg().core.voice.asrSessionEnded);
         const reply = await this.#request({ action: "finish", streamId: id });
         return { text: reply.text ?? "", final: true };
       },
@@ -208,7 +209,7 @@ export class XAsrService implements AsrService {
   async close(): Promise<void> {
     process.removeListener("exit", this.#processExit);
     this.#setupProcesses.close();
-    await this.#stopWorker("本地 X-ASR 已关闭。");
+    await this.#stopWorker(msg().core.voice.asrClosed);
   }
 
   async #stopWorker(reason: string): Promise<void> {
@@ -258,14 +259,14 @@ export class XAsrService implements AsrService {
     if (this.#options.workerPath && existsSync(this.#options.workerPath)) return;
     if (process.env.WP_XASR_WORKER && existsSync(process.env.WP_XASR_WORKER)) return;
     const python = this.#pythonPath();
-    if (!python) throw new Error("找不到 X-ASR 本机 Python 运行时。请安装 Python 3.10 或更新版本后重试。");
+    if (!python) throw new Error(msg().core.voice.asrNoPython);
     try {
       await execFileAsync(python, ["-c", "import numpy, sherpa_onnx"], { timeout: 10_000 });
       return;
     } catch {
       const setupScript = this.#options.setupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-xasr-runtime.sh", import.meta.url));
-      if (!existsSync(setupScript)) throw new Error("X-ASR 本机运行时缺少 sherpa-onnx，且安装脚本不在应用资源中。");
-      await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 20 * 60_000, "安装 X-ASR 运行环境失败。");
+      if (!existsSync(setupScript)) throw new Error(msg().core.voice.asrNoSetupScript);
+      await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 20 * 60_000, msg().core.voice.asrSetupFailed);
     }
   }
 
@@ -288,7 +289,7 @@ export class XAsrService implements AsrService {
       await this.#downloadModel(temporaryDirectory, archiveName, files);
       const vocabulary = await this.#vocabularyPath();
       if (!(await exists(join(temporaryDirectory, "bpe.vocab")))) await cp(vocabulary, join(temporaryDirectory, "bpe.vocab"));
-      if (!(await this.#modelIsUsable(temporaryDirectory, files))) throw new Error(`X-ASR 模型文件不完整：${archiveName}`);
+      if (!(await this.#modelIsUsable(temporaryDirectory, files))) throw new Error(msg().core.voice.asrModelIncomplete(archiveName));
       await rm(directory, { recursive: true, force: true });
       await rename(temporaryDirectory, directory);
     } catch (error) {
@@ -299,7 +300,7 @@ export class XAsrService implements AsrService {
 
   async #downloadModel(destination: string, archiveName: string, files: Array<{ name: string; size: number }>): Promise<void> {
     const response = await fetch(`${MODEL_RELEASES}/${archiveName}.tar.bz2`);
-    if (!response.ok || !response.body) throw new Error(`下载 X-ASR 模型失败（HTTP ${response.status}）。`);
+    if (!response.ok || !response.body) throw new Error(msg().core.voice.asrDownloadFailed(response.status));
     const archive = join(destination, "model.tar.bz2");
     await pipeline(Readable.fromWeb(response.body as never), createWriteStream(archive));
     const staging = join(destination, "extract");
@@ -307,7 +308,7 @@ export class XAsrService implements AsrService {
     try {
       await execFileAsync("tar", ["-xjf", archive, "-C", staging], { maxBuffer: 4 * 1024 * 1024 });
     } catch {
-      throw new Error("X-ASR 模型压缩包解压失败。");
+      throw new Error(msg().core.voice.asrExtractFailed);
     }
     const extracted = join(staging, archiveName);
     for (const file of files) await cp(join(extracted, file.name), join(destination, file.name));
@@ -321,7 +322,7 @@ export class XAsrService implements AsrService {
     if (await exists(fileURLToPath(fromSource))) return fileURLToPath(fromSource);
     const fromBundle = new URL("./voice/assets/xasr-bpe.vocab", import.meta.url);
     if (await exists(fileURLToPath(fromBundle))) return fileURLToPath(fromBundle);
-    throw new Error("X-ASR 分词词表不在应用资源中。");
+    throw new Error(msg().core.voice.asrNoTokens);
   }
 
   async #modelIsUsable(directory: string, files: Array<{ name: string; size: number }>): Promise<boolean> {
@@ -344,12 +345,12 @@ export class XAsrService implements AsrService {
     const python = this.#pythonPath();
     const script = fileURLToPath(new URL("./xasr_worker.py", import.meta.url));
     const executable = binary ?? python;
-    if (!executable) throw new Error("找不到 X-ASR 本机运行时。请重新安装 WhalePartner 语音组件后重试。");
+    if (!executable) throw new Error(msg().core.voice.asrNoRuntime);
     const commandArgs = binary ? args : ["-u", script, ...args];
     const child = spawn(executable, commandArgs, { stdio: ["pipe", "pipe", "pipe"] });
     this.#worker = child;
     const ready = new Promise<void>((resolveReady, rejectReady) => {
-      const timeout = setTimeout(() => rejectReady(new Error("X-ASR 初始化超时，请重试。")), 60_000);
+      const timeout = setTimeout(() => rejectReady(new Error(msg().core.voice.asrInitTimeout)), 60_000);
       this.#readyResolve = () => { clearTimeout(timeout); resolveReady(); };
       this.#readyReject = (error) => { clearTimeout(timeout); rejectReady(error); };
     });
@@ -357,11 +358,11 @@ export class XAsrService implements AsrService {
     lines.on("line", (line) => this.#receiveWorkerLine(line));
     let stderr = "";
     child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-3000); });
-    child.on("error", (error) => this.#failWorker(`无法启动 X-ASR：${error.message}`));
+    child.on("error", (error) => this.#failWorker(msg().core.voice.asrCannotStart(error.message)));
     child.on("close", (code) => {
       if (this.#worker !== child) return;
       this.#worker = null;
-      const message = stderr.trim() ? `X-ASR 运行时已退出：${stderr.trim().slice(-500)}` : `X-ASR 运行时已退出（${code ?? "unknown"}）。`;
+      const message = stderr.trim() ? msg().core.voice.asrRuntimeExitedWith(stderr.trim().slice(-500)) : msg().core.voice.asrRuntimeExitedCode(code ?? "unknown");
       this.#failWorker(message);
       if (code !== 0) console.warn(message);
     });
@@ -384,12 +385,12 @@ export class XAsrService implements AsrService {
 
   #request(payload: Record<string, unknown>): Promise<WorkerReply> {
     const worker = this.#worker;
-    if (!worker || worker.killed) return Promise.reject(new Error("本地 X-ASR 运行时没有启动。"));
+    if (!worker || worker.killed) return Promise.reject(new Error(msg().core.voice.asrNotStarted));
     const requestId = randomUUID();
     return new Promise((resolveReply, rejectReply) => {
       const timer = setTimeout(() => {
         this.#pending.delete(requestId);
-        rejectReply(new Error("X-ASR 没有及时响应，请重试。"));
+        rejectReply(new Error(msg().core.voice.asrNoResponse));
       }, 10_000);
       this.#pending.set(requestId, { resolve: resolveReply, reject: rejectReply, timer });
       worker.stdin.write(`${JSON.stringify({ ...payload, requestId })}\n`, (error) => {
@@ -404,7 +405,7 @@ export class XAsrService implements AsrService {
   #receiveWorkerLine(line: string): void {
     let reply: WorkerReply;
     try { reply = JSON.parse(line) as WorkerReply; }
-    catch { return this.#failWorker("X-ASR 运行时返回了无法读取的响应。"); }
+    catch { return this.#failWorker(msg().core.voice.asrBadReply); }
     if (reply.type === "ready") {
       this.#offlineRefinementReady = reply.refinementReady === true;
       this.#readyResolve?.();
@@ -413,7 +414,7 @@ export class XAsrService implements AsrService {
       return;
     }
     if (reply.type === "error" && !reply.requestId) {
-      this.#failWorker(reply.message ?? "X-ASR 模型载入失败。");
+      this.#failWorker(reply.message ?? msg().core.voice.asrLoadFailed);
       return;
     }
     if (!reply.requestId) return;
@@ -421,7 +422,7 @@ export class XAsrService implements AsrService {
     if (!pending) return;
     clearTimeout(pending.timer);
     this.#pending.delete(reply.requestId);
-    if (reply.ok === false) pending.reject(new Error(reply.message ?? "X-ASR 识别失败。"));
+    if (reply.ok === false) pending.reject(new Error(reply.message ?? msg().core.voice.asrRecognizeFailed));
     else pending.resolve(reply);
   }
 

@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { lookup as dnsLookup } from "node:dns";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -22,7 +23,7 @@ const TIMEOUT_MS = 15_000;
 
 /** 在聊天文字里找一个普通网页链接（B 站链接另走视频流程）。 */
 export function extractWebTarget(text: string): string | undefined {
-  for (const match of text.matchAll(/https?:\/\/[^\s<>"'，。！？）)]+/gi)) {
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"'，。！？）)]+/gi)) { // i18n-ignore：匹配链接的正则（含中文标点）
     try {
       const host = new URL(match[0]).hostname.toLowerCase();
       if (host === "b23.tv" || host === "bilibili.com" || host.endsWith(".bilibili.com")) continue;
@@ -85,7 +86,7 @@ export const safeLookup: typeof dnsLookup = ((hostname: string, options: unknown
   dnsLookup(hostname, { all: true }, (error, addresses) => {
     if (error) return done(error);
     const bad = addresses.find((entry) => isPrivateAddress(entry.address));
-    if (bad || addresses.length === 0) return done(new WebError("这个链接指向内部地址，不会去读。"));
+    if (bad || addresses.length === 0) return done(new WebError(msg().core.webpage.internalAddress));
     const pick = addresses[0];
     const wantsAll = typeof options === "object" && options !== null && (options as { all?: boolean }).all;
     return wantsAll ? done(null, addresses) : done(null, pick.address, pick.family);
@@ -101,7 +102,7 @@ function fetchOnce(url: URL): Promise<{ response: IncomingMessage; body: Buffer 
       response.on("data", (chunk: Buffer) => {
         size += chunk.length;
         if (size > MAX_BYTES) {
-          request.destroy(new WebError("网页太大，没有读完。"));
+          request.destroy(new WebError(msg().core.webpage.tooBig));
           return;
         }
         chunks.push(chunk);
@@ -109,8 +110,8 @@ function fetchOnce(url: URL): Promise<{ response: IncomingMessage; body: Buffer 
       response.on("end", () => resolve({ response, body: Buffer.concat(chunks) }));
       response.on("error", reject);
     });
-    request.on("timeout", () => request.destroy(new WebError("网页打不开或太慢。")));
-    request.on("error", (error) => reject(error instanceof WebError ? error : new WebError(`读不了这个网页：${error.message}`)));
+    request.on("timeout", () => request.destroy(new WebError(msg().core.webpage.slow)));
+    request.on("error", (error) => reject(error instanceof WebError ? error : new WebError(msg().core.webpage.cannotRead(error.message))));
     request.end();
   });
 }
@@ -146,16 +147,16 @@ export function createWebService(): WebService {
       try {
         url = new URL(input);
       } catch {
-        throw new WebError("这不是有效的网页链接。");
+        throw new WebError(msg().core.webpage.invalidLink);
       }
       for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-        if (url.protocol !== "http:" && url.protocol !== "https:") throw new WebError("只能读 http 或 https 网页。");
-        if (url.username || url.password) throw new WebError("链接里带了账号信息，不会去读。");
+        if (url.protocol !== "http:" && url.protocol !== "https:") throw new WebError(msg().core.webpage.protocol);
+        if (url.username || url.password) throw new WebError(msg().core.webpage.hasCredentials);
         const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
         if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal") || (isIP(host) === 0 && !host.includes("."))) {
-          throw new WebError("这个链接指向内部地址，不会去读。");
+          throw new WebError(msg().core.webpage.internalAddress);
         }
-        if (isIP(host) && isPrivateAddress(host)) throw new WebError("这个链接指向内部地址，不会去读。");
+        if (isIP(host) && isPrivateAddress(host)) throw new WebError(msg().core.webpage.internalAddress);
 
         const { response, body } = await fetchOnce(url);
         const status = response.statusCode ?? 0;
@@ -163,15 +164,15 @@ export function createWebService(): WebService {
           url = new URL(response.headers.location, url);
           continue;
         }
-        if (status < 200 || status >= 300) throw new WebError(`网页返回了 ${status}。`);
+        if (status < 200 || status >= 300) throw new WebError(msg().core.webpage.status(status));
         const type = String(response.headers["content-type"] ?? "");
-        if (!/text\/html|text\/plain|application\/xhtml/i.test(type)) throw new WebError("这个链接不是网页文字，读不了。");
+        if (!/text\/html|text\/plain|application\/xhtml/i.test(type)) throw new WebError(msg().core.webpage.notText);
         const raw = decodeBody(body, type);
         const { title, text } = /text\/plain/i.test(type) ? { title: "", text: raw.trim() } : htmlToText(raw);
-        if (text.length < 40) throw new WebError("网页里没有读到足够的文字。");
+        if (text.length < 40) throw new WebError(msg().core.webpage.tooLittle);
         return { url: url.toString(), title: title || url.hostname, text: text.slice(0, MAX_TEXT) };
       }
-      throw new WebError("网页跳转太多次。");
+      throw new WebError(msg().core.webpage.redirects);
     },
   };
 }

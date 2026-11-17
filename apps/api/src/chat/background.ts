@@ -17,10 +17,10 @@ function enqueueBackground(label: string, task: (signal: AbortSignal) => Promise
       enqueueBackground(label, task);
       return;
     }
-    debug("开始");
+    debug("开始"); // i18n-ignore：调试日志与后台任务标签，不显示给用户
     try {
       await task(controller.signal);
-      debug("完成");
+      debug("完成"); // i18n-ignore：调试日志与后台任务标签，不显示给用户
     } catch (error) {
       if (controller.signal.aborted) enqueueBackground(label, task);
       else throw error;
@@ -107,7 +107,7 @@ export function queueReflectionIfDue(deps: ChatDeps, character: CharacterId) {
 export function queueReflection(deps: ChatDeps, character: CharacterId, force: boolean) {
   const { provider, store, memory } = deps;
   if (!force) reflectionQueued = true;
-  queueBackground("写近况小记", async (signal) => {
+  queueBackground("写近况小记", async (signal) => { // i18n-ignore：调试日志与后台任务标签，不显示给用户
     try {
       if (!force && !reflectionDue(store.reflectionState())) return;
       const since = new Date(Date.now() - REFLECT_WINDOW_DAYS * 86_400_000).toISOString();
@@ -150,7 +150,7 @@ export function queueChatLearningIfDue(deps: ChatDeps, character: CharacterId) {
   if (assistantCount < learnedAt) deps.store.markChatLearned(assistantCount);
   if (assistantCount - Math.min(learnedAt, assistantCount) < LEARN_EVERY_REPLIES) return;
   learningQueued = true;
-  queueBackground("从聊天里学东西", async (signal) => {
+  queueBackground("从聊天里学东西", async (signal) => { // i18n-ignore：调试日志与后台任务标签，不显示给用户
     try {
       const { assistantCount: count, learnedAt: last } = deps.store.chatLearningState();
       if (count - last < LEARN_EVERY_REPLIES) return;
@@ -158,7 +158,7 @@ export function queueChatLearningIfDue(deps: ChatDeps, character: CharacterId) {
       if (mine.length >= 4) {
         await learnFrom(
           { provider: deps.provider, memory: deps.memory, store: deps.store },
-          { title: "用户最近的说法", text: mine.map((message) => message.content.slice(0, 160)).join("\n") },
+          { title: "用户最近的说法", text: mine.map((message) => message.content.slice(0, 160)).join("\n") }, // i18n-ignore：喂给模型的材料标题
           `chat:${character}:${count}`,
           signal,
           [...new Set(mine.map((message) => message.sessionId))],
@@ -173,7 +173,7 @@ export function queueChatLearningIfDue(deps: ChatDeps, character: CharacterId) {
 }
 
 export function queueLearning(deps: ChatDeps, character: CharacterId, material: { title: string; text: string }, key: string, sourceSessionIds: string[] = []) {
-  queueBackground("整理学到的东西", async (signal) => {
+  queueBackground("整理学到的东西", async (signal) => { // i18n-ignore：调试日志与后台任务标签，不显示给用户
     const survivingSessionIds = sourceSessionIds.filter((id) => deps.store.getSession(id));
     if (sourceSessionIds.length > 0 && survivingSessionIds.length === 0) return;
     await learnFrom({ provider: deps.provider, memory: deps.memory, store: deps.store }, material, key, signal, survivingSessionIds);

@@ -7,6 +7,7 @@ import { browsersDir } from "../server/data-dir.ts";
 import { isPrivateAddress } from "../webpage/service.ts";
 import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./egress-proxy.ts";
 import { classifyError, SurfError } from "./errors.ts";
+import { msg } from "../i18n/index.ts";
 
 /**
  * 无头浏览器的生命周期（单例、按需、会自己收摊）：
@@ -167,7 +168,7 @@ export function createChromiumInstaller(options: InstallerOptions = {}): Chromiu
   const runCli = (onProgress: (percent: number | null, message: string) => void) =>
     new Promise<void>((resolve, reject) => {
       const root = playwrightRoot();
-      if (!root) return reject(new SurfError("browser", "找不到 playwright-core，装不了浏览器。"));
+      if (!root) return reject(new SurfError("browser", msg().content.surf.browser.noPlaywright));
       const child = spawn(process.execPath, [join(root, "cli.js"), "install", "--only-shell", "chromium"], {
         env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: path() },
         stdio: ["ignore", "pipe", "pipe"],
@@ -179,36 +180,36 @@ export function createChromiumInstaller(options: InstallerOptions = {}): Chromiu
         tail = (tail + text).slice(-400);
         const matches = [...text.matchAll(/(\d{1,3})%/g)];
         const last = matches.at(-1);
-        if (last) onProgress(Math.min(100, Number(last[1])), "正在下载浏览器");
+        if (last) onProgress(Math.min(100, Number(last[1])), msg().content.surf.browser.downloading);
       };
       child.stdout.on("data", feed);
       child.stderr.on("data", feed);
-      child.on("error", (error) => reject(new SurfError("browser", `浏览器安装没能启动：${error.message}`)));
+      child.on("error", (error) => reject(new SurfError("browser", msg().content.surf.browser.installNotStarted(error.message))));
       child.on("close", (code) => {
         if (code === 0) resolve();
-        else reject(new SurfError("browser", `浏览器安装失败（${code}）：${tail.replace(/\s+/g, " ").trim().slice(-120)}`));
+        else reject(new SurfError("browser", msg().content.surf.browser.installFailed(code, tail.replace(/\s+/g, " ").trim().slice(-120))));
       });
     });
 
   return {
     status() {
-      if (status.state === "idle" && installed()) return { state: "ready", percent: 100, message: "浏览器已就绪" };
+      if (status.state === "idle" && installed()) return { state: "ready", percent: 100, message: msg().content.surf.browser.ready };
       return status;
     },
     isInstalled: installed,
     start() {
       if (running) return running;
       if (installed()) {
-        status = { state: "ready", percent: 100, message: "浏览器已就绪" };
+        status = { state: "ready", percent: 100, message: msg().content.surf.browser.ready };
         return Promise.resolve();
       }
-      status = { state: "installing", percent: null, message: "正在准备浏览器，第一次需要下载一次" };
+      status = { state: "installing", percent: null, message: msg().content.surf.browser.preparing };
       const runner = options.run ?? runCli;
       running = runner((percent, message) => {
         status = { state: "installing", percent, message };
       })
         .then(() => {
-          status = { state: "ready", percent: 100, message: "浏览器已就绪" };
+          status = { state: "ready", percent: 100, message: msg().content.surf.browser.ready };
         })
         .catch((error: unknown) => {
           status = { state: "failed", percent: null, message: error instanceof Error ? error.message : String(error) };
@@ -234,7 +235,7 @@ export class Semaphore {
     return this.#active;
   }
   async acquire(signal?: AbortSignal): Promise<() => void> {
-    if (signal?.aborted) throw signal.reason ?? new SurfError("aborted", "已中止");
+    if (signal?.aborted) throw signal.reason ?? new SurfError("aborted", msg().content.surf.aborted);
     if (this.#active >= this.#max) {
       await new Promise<void>((resolve, reject) => {
         const wake = () => {
@@ -244,7 +245,7 @@ export class Semaphore {
         const onAbort = () => {
           const index = this.#waiters.indexOf(wake);
           if (index !== -1) this.#waiters.splice(index, 1);
-          reject(signal?.reason ?? new SurfError("aborted", "已中止"));
+          reject(signal?.reason ?? new SurfError("aborted", msg().content.surf.aborted));
         };
         this.#waiters.push(wake);
         signal?.addEventListener("abort", onAbort, { once: true });
@@ -343,7 +344,7 @@ export class BrowserManager {
   }
 
   installStatus(): InstallStatus {
-    if (this.isReady()) return { state: "ready", percent: 100, message: "浏览器已就绪" };
+    if (this.isReady()) return { state: "ready", percent: 100, message: msg().content.surf.browser.ready };
     return this.installer.status();
   }
 
@@ -370,7 +371,7 @@ export class BrowserManager {
   }
 
   async #launch(): Promise<AnyBrowser> {
-    if (this.#closed) throw new SurfError("aborted", "冲浪已经停止，不再启动浏览器。");
+    if (this.#closed) throw new SurfError("aborted", msg().content.surf.browser.stoppedNoLaunch);
     if (this.#browser) return this.#browser;
     if (this.#launching) return this.#launching;
     this.#launching = (async () => {
@@ -394,11 +395,11 @@ export class BrowserManager {
           instance = await module.chromium.launch(base);
         } catch (first) {
           // 只装了完整版 chromium 时 headless shell 不存在，换成新 headless 再试一次。
-          if (!/executable doesn't exist/i.test(String((first as Error)?.message))) throw new SurfError("browser", `浏览器起不来：${(first as Error)?.message ?? first}`, { cause: first });
+          if (!/executable doesn't exist/i.test(String((first as Error)?.message))) throw new SurfError("browser", msg().content.surf.browser.launchFailed((first as Error)?.message ?? first), { cause: first });
           try {
             instance = await module.chromium.launch({ ...base, channel: "chromium" });
           } catch (second) {
-            throw new SurfError("browser", `浏览器起不来：${(second as Error)?.message ?? second}`, { cause: second });
+            throw new SurfError("browser", msg().content.surf.browser.launchFailed((second as Error)?.message ?? second), { cause: second });
           }
         }
       } catch (error) {
@@ -408,7 +409,7 @@ export class BrowserManager {
       if (this.#closed) {
         await instance.close().catch(() => undefined);
         await proxy.close().catch(() => undefined);
-        throw new SurfError("aborted", "冲浪已经停止，不再启动浏览器。");
+        throw new SurfError("aborted", msg().content.surf.browser.stoppedNoLaunch);
       }
       this.#launches += 1;
       this.#browser = instance;
@@ -435,11 +436,11 @@ export class BrowserManager {
     try {
       parsed = new URL(url);
     } catch {
-      throw new SurfError("content", "这不是有效的网页地址。");
+      throw new SurfError("content", msg().content.surf.browser.invalidUrl);
     }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new SurfError("content", "只能读 http 或 https 网页。");
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new SurfError("content", msg().content.surf.onlyHttp);
     if (this.#options.allowPrivateHosts) return parsed;
-    if (!(await resolvesPublic(parsed.hostname.replace(/^\[|\]$/g, ""), this.#options.egress?.guardLookup))) throw new SurfError("content", "这个地址指向内部网络，不会去读。");
+    if (!(await resolvesPublic(parsed.hostname.replace(/^\[|\]$/g, ""), this.#options.egress?.guardLookup))) throw new SurfError("content", msg().content.surf.internalAddress);
     return parsed;
   }
 
@@ -464,11 +465,11 @@ export class BrowserManager {
 
   /** 用浏览器渲染一个页面并取回 HTML。最多 2 个并行；15 秒超时；取消时立刻关掉。 */
   async render(url: string, options: { signal?: AbortSignal } = {}): Promise<RenderedPage> {
-    if (this.#closed) throw new SurfError("aborted", "冲浪已经停止。");
+    if (this.#closed) throw new SurfError("aborted", msg().content.surf.browser.stopped);
     const target = await this.#guard(url);
     if (!this.isReady()) {
       this.prepare();
-      throw new SurfError("browser", "这台机器上的浏览器还没准备好。");
+      throw new SurfError("browser", msg().content.surf.browser.notReady);
     }
     const release = await this.#gate.acquire(options.signal);
     if (this.#idleTimer) {
@@ -515,8 +516,8 @@ export class BrowserManager {
         return { html: await page.content(), url: page.url() };
       })();
       const guardRace = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new SurfError("network", `页面 ${Math.round(timeoutMs / 1000)} 秒还没打开，放弃。`)), timeoutMs + 500);
-        onAbort = () => reject(options.signal?.reason ?? new SurfError("aborted", "已中止"));
+        timer = setTimeout(() => reject(new SurfError("network", msg().content.surf.browser.pageTimeout(Math.round(timeoutMs / 1000)))), timeoutMs + 500);
+        onAbort = () => reject(options.signal?.reason ?? new SurfError("aborted", msg().content.surf.aborted));
         if (options.signal?.aborted) onAbort();
         else options.signal?.addEventListener("abort", onAbort, { once: true });
       });

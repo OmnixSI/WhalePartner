@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -74,17 +75,17 @@ export async function readJsonBody(request: IncomingMessage): Promise<Record<str
       chunks.push(buffer);
     }
   }
-  if (tooLarge) throw new RequestBodyError(413, "body_too_large", "请求内容过大（最多 64 KB）。");
+  if (tooLarge) throw new RequestBodyError(413, "body_too_large", msg().core.server.bodyTooLarge);
   const raw = Buffer.concat(chunks).toString("utf8");
   if (!raw.trim()) return {};
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new RequestBodyError(400, "invalid_json", "请求体不是有效的 JSON。");
+    throw new RequestBodyError(400, "invalid_json", msg().core.shared.invalidJson);
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new RequestBodyError(400, "invalid_body", "请求体必须是 JSON 对象。");
+    throw new RequestBodyError(400, "invalid_body", msg().core.server.bodyNotObject);
   }
   return parsed as Record<string, unknown>;
 }

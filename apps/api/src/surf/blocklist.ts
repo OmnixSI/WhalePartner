@@ -1,3 +1,4 @@
+// i18n-ignore-start：中文屏蔽词表
 /**
  * 内置屏蔽表（§10.6.8 C）。她自己去逛，没有人在旁边看着，所以默认多挡一些：
  * 成人、赌博、暴力血腥、自残、极端政治动员、广告营销各一组词，再加一份域名表。
@@ -64,3 +65,4 @@ export function isBlockedHost(host: string): boolean {
   const clean = host.toLowerCase().replace(/^www\./, "");
   return BUILTIN_BLOCKED_HOSTS.some((blocked) => clean === blocked || clean.endsWith(`.${blocked}`));
 }
+// i18n-ignore-end

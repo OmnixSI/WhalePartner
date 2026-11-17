@@ -5,6 +5,7 @@ import { BiliBackoff } from "./bili-backoff.ts";
 import { classifyError, SurfError } from "./errors.ts";
 import { acquireVideoLock, sharedParagraph, type VideoService } from "../video/service.ts";
 import type { VideoCandidate, VideoSource, WatchedVideo } from "./types.ts";
+import { msg } from "../i18n/index.ts";
 
 /**
  * B 站这一侧（§10.6.8 A）。搜索走 WBI 签名的 `/x/web-interface/wbi/search/type`；
@@ -63,11 +64,11 @@ const stripTags = (value: unknown) =>
 
 /** 解析 `/x/web-interface/wbi/search/type` 的返回（§10.6.8 A.1）。非 0 code 直接抛错。 */
 export function parseSearchPayload(payload: unknown): VideoCandidate[] {
-  if (!payload || typeof payload !== "object") throw new Error("B 站搜索没有返回内容。");
+  if (!payload || typeof payload !== "object") throw new Error(msg().content.surf.bili.searchEmpty);
   const body = payload as { code?: number; message?: string; data?: { result?: unknown } };
   if (body.code !== undefined && body.code !== 0) {
     const limited = [-352, -412, -799, -509].includes(body.code);
-    throw new SurfError(limited ? "rate_limit" : "content", `B 站搜索失败：${body.message ?? body.code}`, { status: body.code });
+    throw new SurfError(limited ? "rate_limit" : "content", msg().content.surf.bili.searchFailed(body.message ?? body.code), { status: body.code });
   }
   const result = body.data?.result;
   const list = Array.isArray(result) ? result : Array.isArray((result as { list?: unknown } | undefined)?.list) ? ((result as { list: unknown[] }).list) : [];
@@ -111,9 +112,9 @@ const defaultFetchJson: JsonFetcher = async (url, options) => {
     signal: AbortSignal.timeout(15_000),
   });
   if (response.status === 412 || response.status === 429 || response.status === 403) {
-    throw new SurfError("rate_limit", `B 站返回了 ${response.status}，被限流了。`, { status: response.status });
+    throw new SurfError("rate_limit", msg().content.surf.bili.rateLimited(response.status), { status: response.status });
   }
-  if (!response.ok) throw new SurfError(response.status >= 500 ? "network" : "content", `B 站返回了 ${response.status}。`, { status: response.status });
+  if (!response.ok) throw new SurfError(response.status >= 500 ? "network" : "content", msg().content.surf.bili.httpStatus(response.status), { status: response.status });
   return (await response.json()) as unknown;
 };
 
@@ -133,7 +134,7 @@ async function wbiKeys(fetchJson: JsonFetcher): Promise<{ imgKey: string; subKey
   const imgUrl = payload?.data?.wbi_img?.img_url ?? "";
   const subUrl = payload?.data?.wbi_img?.sub_url ?? "";
   const name = (url: string) => url.split("/").pop()?.split(".")[0] ?? "";
-  if (!imgUrl || !subUrl) throw new Error("B 站没有给出 WBI 签名用的密钥。");
+  if (!imgUrl || !subUrl) throw new Error(msg().content.surf.bili.noWbiKey);
   return { imgKey: name(imgUrl), subKey: name(subUrl) };
 }
 
@@ -188,11 +189,11 @@ export function createBilibiliVideoSource(deps: BilibiliSourceDeps = {}): VideoS
         const summary = await service.summarize(collected, signal);
         signal?.throwIfAborted();
         const text = sharedParagraph(summary.summary);
-        if (!text.trim()) throw new Error("看完视频没读到内容。");
+        if (!text.trim()) throw new Error(msg().content.surf.bili.videoEmpty);
         await backoff.recordSuccess();
         return { bvid: candidate.bvid, title: summary.title || candidate.title, url: summary.url || candidate.url, text };
       } catch (error) {
-        if (signal?.aborted) throw signal.reason ?? new Error("已中止");
+        if (signal?.aborted) throw signal.reason ?? new Error(msg().content.surf.aborted);
         if (classifyError(error) === "rate_limit") await backoff.recordFailure(error instanceof Error ? error.message : String(error)).catch(() => undefined);
         throw error;
       } finally {

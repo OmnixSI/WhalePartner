@@ -18,6 +18,7 @@ import { draftKey, loadDraft, saveDraft } from "../../lib/drafts";
 import { isEmotion, readEmotion } from "../../lib/emotion";
 import { subscribeHub, type HubEventData, type HubEventType } from "../../lib/events";
 import type { Progress, Turn } from "./types";
+import { m } from "../../i18n";
 
 type Phase = "idle" | "thinking" | "streaming" | "failed";
 
@@ -517,7 +518,7 @@ export function useSharedChat(characterId: CharacterId, speech: SpeechControls, 
   };
 
   const today = () => {
-    setDraft("今天……");
+    setDraft(m.chat.draftToday);
     setFocusSignal((value) => value + 1);
   };
 

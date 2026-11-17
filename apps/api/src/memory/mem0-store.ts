@@ -1,6 +1,7 @@
 import type { Memory, MemoryItem } from "mem0ai/oss";
 import type { ChatStore } from "../store/index.ts";
 import type { ConversationTurn, ExperienceInput, MemoryEntry, MemoryStore } from "./types.ts";
+// i18n-ignore-start：提示词与日志/内部错误，不显示给用户
 
 const USER_ID = "local-user";
 const MAX_LIST = 500;
@@ -192,3 +193,4 @@ class Mem0Store implements MemoryStore {
 export function createMem0Store(memory: Memory, archive?: ChatStore): MemoryStore {
   return new Mem0Store(memory, archive);
 }
+// i18n-ignore-end

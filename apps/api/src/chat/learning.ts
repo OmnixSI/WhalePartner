@@ -2,6 +2,7 @@ import type { ChatProvider } from "../llm/types.ts";
 import type { ChatStore } from "../store/index.ts";
 import { archiveExperience } from "../memory/archive.ts";
 import type { MemoryStore } from "../memory/types.ts";
+// i18n-ignore-start：学习笔记的提示词与内部经历标签，不显示给用户
 
 export type LearningKind = "meme" | "knowledge";
 
@@ -94,3 +95,4 @@ export async function learnFrom(
     return [];
   }
 }
+// i18n-ignore-end

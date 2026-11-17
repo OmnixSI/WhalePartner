@@ -3,6 +3,7 @@ import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import { SurfError } from "./errors.ts";
 import type { WebPageText } from "./types.ts";
+import { msg } from "../i18n/index.ts";
 
 /**
  * 正文提取：HTML → @mozilla/readability（linkedom 当 DOM）→ 干净的段落文本。
@@ -74,7 +75,7 @@ export function htmlToParagraphs(html: string): string {
 
 export function cleanText(text: string, max = MAX_TEXT_CHARS): string {
   const compact = text
-    .replace(/[ \t\f\v 　]+/g, " ")
+    .replace(/[ \t\f\v 　]+/g, " ") // i18n-ignore：空白字符正则（含全角空格）
     .replace(/\s*\n\s*/g, "\n")
     .replace(/\n{2,}/g, "\n")
     .trim();
@@ -165,10 +166,10 @@ export function extractArticle(html: string, url: string): ExtractedArticle {
 
 /** 抽取结果的质量闸：太短、几乎全是链接词的页面当作失败。 */
 export function assertReadable(article: ExtractedArticle): void {
-  if (article.text.length < MIN_TEXT_CHARS) throw new SurfError("content", "网页里没有读到足够的文字。");
+  if (article.text.length < MIN_TEXT_CHARS) throw new SurfError("content", msg().content.surf.reader.notEnoughText);
   const lines = article.text.split("\n");
   const shortLines = lines.filter((line) => line.length < 12).length;
-  if (lines.length >= 20 && shortLines / lines.length > 0.8) throw new SurfError("content", "网页更像一个目录，没有正文。");
+  if (lines.length >= 20 && shortLines / lines.length > 0.8) throw new SurfError("content", msg().content.surf.reader.looksLikeIndex);
 }
 
 /**

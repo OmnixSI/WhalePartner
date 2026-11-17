@@ -4,6 +4,7 @@ import { useCharacter } from "../../characters";
 import { Icon, type IconName } from "../../icons";
 import { CharacterMark } from "../CharacterMark";
 import { TailMark } from "../Icons";
+import { m } from "../../i18n";
 
 type NavItem = { to: string; label: string; icon: IconName; end?: boolean };
 type NavGroup = { id: string; label: string; items: NavItem[] };
@@ -12,22 +13,22 @@ type NavGroup = { id: string; label: string; items: NavItem[] };
 const GROUPS: NavGroup[] = [
   {
     id: "daily",
-    label: "日常",
-    items: [{ to: "/", label: "聊天", icon: "chat", end: true }],
+    label: m.common.shell.groupDaily,
+    items: [{ to: "/", label: m.common.shell.chat, icon: "chat", end: true }],
   },
   {
     id: "book",
-    label: "手帐",
+    label: m.common.shell.groupJournal,
     items: [
-      { to: "/diary", label: "日记", icon: "diary" },
-      { to: "/memory", label: "记忆", icon: "memory" },
-      { to: "/surf", label: "见闻", icon: "bottle" },
+      { to: "/diary", label: m.common.shell.diary, icon: "diary" },
+      { to: "/memory", label: m.common.shell.memory, icon: "memory" },
+      { to: "/surf", label: m.common.shell.surf, icon: "bottle" },
     ],
   },
   {
     id: "system",
-    label: "系统",
-    items: [{ to: "/settings", label: "设置", icon: "settings" }],
+    label: m.common.shell.groupSystem,
+    items: [{ to: "/settings", label: m.common.shell.settings, icon: "settings" }],
   },
 ];
 
@@ -53,12 +54,12 @@ export function SideNav({ collapsed, onToggle }: Props) {
   }));
 
   return (
-    <aside className={`shell-nav${collapsed ? " is-collapsed" : ""}`} aria-label="主导航">
+    <aside className={`shell-nav${collapsed ? " is-collapsed" : ""}`} aria-label={m.common.shell.mainNav}>
       {/* 收起按钮在品牌行左端（macOS 侧栏开关的位置）；两态都钉在窄栏正中同一点，鼠标不动再点一下就能展开 */}
       <button
         type="button"
         className="shell-nav__toggle"
-        aria-label={collapsed ? "展开导航" : "收起导航"}
+        aria-label={collapsed ? m.common.shell.expandNav : m.common.shell.collapseNav}
         aria-expanded={!collapsed}
         onClick={onToggle}
       >
@@ -70,7 +71,7 @@ export function SideNav({ collapsed, onToggle }: Props) {
       <div className="shell-nav__head">
         <span className="shell-nav__mark" aria-hidden="true"><TailMark /></span>
         <span className="shell-nav__brand">
-          <strong>鲸汐</strong>
+          <strong>{m.common.shell.brand}</strong>
         </span>
       </div>
 

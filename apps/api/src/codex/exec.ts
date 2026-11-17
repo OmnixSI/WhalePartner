@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { tmpdir } from "node:os";
 import { resolveCodexBinary } from "./binary.ts";
@@ -55,7 +56,7 @@ export function parseCodexResult(output: string): CodexResult {
     }
   }
 
-  if (!message.trim()) throw new Error("Codex 没有返回摘要文本。");
+  if (!message.trim()) throw new Error(msg().core.codex.noSummary);
   return { message, usage };
 }
 
@@ -164,7 +165,7 @@ export function runCodexExec(args: string[], prompt: string, signal?: AbortSigna
 
     const onAbort = () => {
       terminate();
-      settle(() => reject(signal?.reason ?? new Error("已中止")));
+      settle(() => reject(signal?.reason ?? new Error(msg().core.codex.aborted)));
     };
 
     codex.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
@@ -174,7 +175,7 @@ export function runCodexExec(args: string[], prompt: string, signal?: AbortSigna
     signal?.addEventListener("abort", onAbort, { once: true });
 
     codex.once("error", (error) => {
-      settle(() => reject(new Error("无法启动本机 Codex CLI：" + error.message)));
+      settle(() => reject(new Error(msg().core.codex.cannotStart(error.message))));
     });
 
     codex.once("close", (code, termSignal) => {
@@ -198,7 +199,7 @@ export async function summarizeWithCodex(prompt: string, imagePaths: string[] = 
   signal?.throwIfAborted();
   if (code !== 0) {
     const detail = stderr.trim() || codexErrorFromEvents(stdout);
-    throw new Error(detail || `Codex CLI 退出，状态码 ${code ?? termSignal ?? "unknown"}。`);
+    throw new Error(detail || msg().core.codex.cliExit(code ?? termSignal ?? "unknown"));
   }
   return { ...parseCodexResult(stdout), model: settings.model, reasoningEffort: settings.effort };
 }

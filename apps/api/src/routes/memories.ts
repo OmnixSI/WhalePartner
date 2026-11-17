@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { publishEvent } from "../hub/events.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError } from "../chat/service.ts";
@@ -20,19 +21,19 @@ export async function handleMemoriesRoute(
   try {
     if (request.method === "GET" && url.pathname === "/api/memories") {
       const who = url.searchParams.get("character") ?? "whale";
-      if (!isCharacterId(who)) throw new ChatInputError("未知的角色。");
+      if (!isCharacterId(who)) throw new ChatInputError(msg().common.unknownCharacter);
       return await listMemories(deps.store, memory, response);
     }
     if (request.method === "GET" && url.pathname === "/api/memories/explorer") {
       const character = url.searchParams.get("character") ?? "whale";
-      if (!isCharacterId(character)) throw new ChatInputError("未知的角色。");
+      if (!isCharacterId(character)) throw new ChatInputError(msg().common.unknownCharacter);
       const category = url.searchParams.get("category") ?? "all";
       const status = url.searchParams.get("status") ?? "all";
       const role = url.searchParams.get("role") ?? "all";
-      if (!isMemoryCategory(category) || !isMemoryStatus(status) || !isMemoryRole(role)) throw new ChatInputError("记忆筛选条件无效。");
+      if (!isMemoryCategory(category) || !isMemoryStatus(status) || !isMemoryRole(role)) throw new ChatInputError(msg().core.routes.memories.filterInvalid);
       const from = dateBoundary(url.searchParams.get("from"), false);
       const to = dateBoundary(url.searchParams.get("to"), true);
-      if (from && to && from >= to) throw new ChatInputError("结束日期需要晚于开始日期。");
+      if (from && to && from >= to) throw new ChatInputError(msg().core.routes.memories.endAfterStart);
       const filters: MemoryExplorerFilters = {
         character,
         query: text(url.searchParams.get("q") ?? undefined, 120, "q", false),
@@ -52,7 +53,7 @@ export async function handleMemoriesRoute(
     if (request.method === "POST" && url.pathname === "/api/memories/experience") {
       const body = await readJsonBody(request);
       const link = text(body.url, 500, "url", false);
-      if (link && !/^https?:\/\//.test(link)) throw new ChatInputError("url 必须以 http:// 或 https:// 开头。");
+      if (link && !/^https?:\/\//.test(link)) throw new ChatInputError(msg().core.routes.memories.urlScheme);
       const input = {
         kind: text(body.kind, 32, "kind")!,
         title: text(body.title, 120, "title")!,
@@ -60,14 +61,14 @@ export async function handleMemoriesRoute(
         url: link,
         sourceId: text(body.sourceId, 64, "sourceId", false),
       };
-      const entry = await archiveExperience(deps.store, memory, input, "经历");
+      const entry = await archiveExperience(deps.store, memory, input, "经历"); // i18n-ignore：仅用于日志的标签
       publishEvent("memory.updated", { reason: "added" });
       return sendJson(response, 200, { entry });
     }
-    return sendJson(response, 404, { error: "未找到。" });
+    return sendJson(response, 404, { error: msg().core.shared.notFound });
   } catch (error) {
     const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
-    return sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "记忆请求失败。" });
+    return sendJson(response, status, { error: error instanceof SyntaxError ? msg().core.shared.invalidJson : error instanceof Error ? error.message : msg().core.routes.memories.requestFailed });
   }
 }
 
@@ -86,9 +87,9 @@ function isMemoryRole(value: string): value is NonNullable<MemoryExplorerFilters
 function dateBoundary(value: string | null, afterDay: boolean): string | undefined {
   if (!value) return undefined;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
-  if (!match) throw new ChatInputError("日期格式无效。");
+  if (!match) throw new ChatInputError(msg().core.routes.memories.dateFormatInvalid);
   const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  if (date.getFullYear() !== Number(match[1]) || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[3])) throw new ChatInputError("日期无效。");
+  if (date.getFullYear() !== Number(match[1]) || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[3])) throw new ChatInputError(msg().core.routes.memories.dateInvalid);
   if (afterDay) date.setDate(date.getDate() + 1);
   return date.toISOString();
 }
@@ -135,14 +136,14 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
       vectorError = error instanceof Error ? error.message : String(error);
     }
   } else {
-    vectorError = "语义记忆索引未启用。";
+    vectorError = msg().core.routes.memories.vectorDisabled;
   }
   const archivedExperiences = store.listExperiences(500, false);
   const storedFacts = store.listFacts();
   const facts = storedFacts.map((fact) => ({
     id: `local:${fact.id}`,
     kind: "fact" as const,
-    text: `${fact.subject}的${fact.predicate}：${fact.value}`,
+    text: msg().core.routes.memories.factText(fact.subject, fact.predicate, fact.value),
     createdAt: fact.createdAt,
     source: "chat",
     sourceId: fact.sources.map((source) => `message:${source.messageId}`).join(","),
@@ -173,7 +174,7 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
     text: note.text,
     createdAt: note.createdAt,
     source: "reflection",
-    title: index === 0 ? "她现在的近况" : "她以前的近况",
+    title: index === 0 ? msg().core.routes.memories.noteCurrent : msg().core.routes.memories.notePast,
     status: index === 0 ? "active" as const : "superseded" as const,
   }));
   const observations = store.listSessionObservations().map((observation) => ({
@@ -182,7 +183,7 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
     text: observation.summary,
     createdAt: observation.updatedAt,
     source: "reflection",
-    title: `聊天观察 · ${observation.sessionTitle}`,
+    title: msg().core.routes.memories.observationTitle(observation.sessionTitle),
   }));
   const reflections = [...notes, ...observations].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const indexedSources = new Set(archivedExperiences.map((experience) => experience.sourceId));
@@ -214,7 +215,7 @@ async function deleteMemory(store: ServerDeps["store"], memory: MemoryStore | un
   if (id.startsWith("local:")) {
     const factId = Number(id.slice("local:".length));
     if (!Number.isInteger(factId) || factId < 1 || !store.getFact(factId)) {
-      return sendJson(response, 404, { error: "没有找到这条记忆。" });
+      return sendJson(response, 404, { error: msg().core.shared.memoryNotFound });
     }
     const vectorId = store.factVectorId(factId);
     if (vectorId && memory) await removeVector(memory, vectorId);
@@ -222,11 +223,11 @@ async function deleteMemory(store: ServerDeps["store"], memory: MemoryStore | un
   } else if (id.startsWith("local-exp:")) {
     const experienceId = Number(id.slice("local-exp:".length));
     const experience = Number.isInteger(experienceId) && experienceId > 0 ? store.getExperience(experienceId) : undefined;
-    if (!experience) return sendJson(response, 404, { error: "没有找到这条记忆。" });
+    if (!experience) return sendJson(response, 404, { error: msg().core.shared.memoryNotFound });
     if (experience.vectorEntryId && memory) await removeVector(memory, experience.vectorEntryId);
     store.removeExperience(experienceId);
   } else {
-    if (!memory) return sendJson(response, 503, { error: "语义记忆索引未启用，无法删除该索引条目。" });
+    if (!memory) return sendJson(response, 503, { error: msg().core.routes.memories.vectorDisabledNoDelete });
     await memory.remove(id);
   }
   publishEvent("memory.updated", { reason: "removed" });

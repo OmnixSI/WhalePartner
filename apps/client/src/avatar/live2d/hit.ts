@@ -1,7 +1,7 @@
 /** 点击区域划分：优先用模型自带 HitAreas，没有就按包围盒上 1/3 为头、其余为身体。 */
 export type HitRegion = "head" | "body";
 
-const HEAD_PATTERN = /head|face|hair|頭|头|脸|臉|发/i;
+const HEAD_PATTERN = /head|face|hair|頭|头|脸|臉|发/i; // i18n-ignore：匹配模型资源里的部位名
 
 export function regionFromHitAreas(names: readonly string[]): HitRegion | null {
   if (names.length === 0) return null;

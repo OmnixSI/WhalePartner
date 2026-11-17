@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { indexMessage } from "./search-index.ts";
@@ -22,7 +23,7 @@ export class SessionRepository {
     this.db = db;
   }
 
-  createSession(character: string, title = "新聊天"): ChatSession {
+  createSession(character: string, title = msg().core.store.newChat): ChatSession {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare("INSERT INTO chat_sessions (id, character, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, character, title, now, now);
@@ -52,7 +53,7 @@ export class SessionRepository {
   getOrCreateSession(character: string, id?: string): ChatSession {
     if (id) {
       const session = this.getSession(id);
-      if (!session) throw new Error("没有找到这个聊天会话。");
+      if (!session) throw new Error(msg().core.shared.sessionNotFound);
       return session;
     }
     const latest = this.db.prepare("SELECT id FROM chat_sessions ORDER BY updated_at DESC, created_at DESC LIMIT 1").get() as unknown as { id: string } | undefined;
@@ -80,11 +81,13 @@ export class SessionRepository {
     `).get(role, content, emotion, character, session.id, attachmentJson) as unknown as StoredMessage;
     indexMessage(this.db, result.id, content);
     if (role === "user") {
-      const title = content.replace(/\s+/g, " ").trim().slice(0, 40) || "新聊天";
+      const title = content.replace(/\s+/g, " ").trim().slice(0, 40) || msg().core.store.newChat;
+      // i18n-ignore-start：旧版会话的默认标题
       this.db.prepare(`
-        UPDATE chat_sessions SET title = CASE WHEN title_manual = 0 AND title IN ('新聊天','历史聊天') THEN ? ELSE title END,
+        UPDATE chat_sessions SET title = CASE WHEN title_manual = 0 AND title IN ('${msg("zh").core.store.newChat}','${msg("en").core.store.newChat}','历史聊天') THEN ? ELSE title END,
           updated_at = ? WHERE id = ?
       `).run(title, result.createdAt, session.id);
+      // i18n-ignore-end
     } else {
       this.db.prepare("UPDATE chat_sessions SET updated_at = ? WHERE id = ?").run(result.createdAt, session.id);
     }

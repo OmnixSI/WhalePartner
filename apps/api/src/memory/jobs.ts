@@ -4,6 +4,7 @@ import { archiveExperience } from "./archive.ts";
 import { distillMemoryBatch } from "./distill.ts";
 import { beginMemoryJob, endMemoryJob, isForegroundChatActive } from "./priority.ts";
 import type { MemoryStore } from "./types.ts";
+// i18n-ignore-start：写入数据库、再喂给模型的内部文本与标签
 
 interface ProcessorDeps {
   store: ChatStore;
@@ -166,3 +167,4 @@ export function scheduleMemoryJobs(deps: ProcessorDeps): Promise<void> {
 export async function waitForMemoryJobs(store: ChatStore) {
   await queues.get(store);
 }
+// i18n-ignore-end

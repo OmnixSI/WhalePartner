@@ -4,6 +4,7 @@ import { Card } from "../ui/Card";
 import { DateStamp } from "./DateStamp";
 import { RuledPaper } from "./RuledPaper";
 import { journalDate } from "./types";
+import { m, locale } from "../../i18n";
 
 type Props = {
   journal: DailyJournal;
@@ -12,11 +13,11 @@ type Props = {
 };
 
 const SOURCE_KIND: Record<DailyJournal["sources"][number]["type"], string> = {
-  chat: "聊天",
-  video: "视频",
-  web: "网页",
-  learned: "学到的事",
-  reflection: "回想",
+  chat: m.diary.journalLeaf.sourceKind.chat,
+  video: m.diary.journalLeaf.sourceKind.video,
+  web: m.diary.journalLeaf.sourceKind.web,
+  learned: m.diary.journalLeaf.sourceKind.learned,
+  reflection: m.diary.journalLeaf.sourceKind.reflection,
 };
 
 export function DailyJournalLeaf({ journal, collapsed, fresh = false }: Props) {
@@ -29,11 +30,11 @@ export function DailyJournalLeaf({ journal, collapsed, fresh = false }: Props) {
     <Card role="article" variant="flat" padding="lg" className="leaf" id={`leaf-${journal.id}`}>
       <div className="leaf__body">
         <header className="leaf__head">
-          {at ? <DateStamp at={at} id={`${stampId}-journal`} /> : <span className="leaf__nodate">日期暂不可用</span>}
-          {fresh && <span className="leaf__journal-badge" role="status">刚写好</span>}
+          {at ? <DateStamp at={at} id={`${stampId}-journal`} /> : <span className="leaf__nodate">{m.diary.journalLeaf.noDate}</span>}
+          {fresh && <span className="leaf__journal-badge" role="status">{m.diary.journalLeaf.fresh}</span>}
         </header>
 
-        <h3 className="leaf__title">{at ? `${at.getMonth() + 1}月${at.getDate()}日的日记` : "日记"}</h3>
+        <h3 className="leaf__title">{at ? m.diary.journalLeaf.title(at) : m.diary.journalLeaf.titleFallback}</h3>
 
         <div className="leaf__fold" data-open={expanded ? "true" : "false"}>
           <div className="leaf__paper">
@@ -44,13 +45,13 @@ export function DailyJournalLeaf({ journal, collapsed, fresh = false }: Props) {
 
         {collapsed && (
           <button type="button" className="btn btn--quiet leaf__toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-            {open ? "收起来" : "展开看全文"}
+            {open ? m.diary.leaf.collapse : m.diary.leaf.expand}
           </button>
         )}
 
         {journal.sources.length > 0 && (
           <details className="leaf__summary">
-            <summary>写作来源（{journal.sources.length}）</summary>
+            <summary>{m.diary.journalLeaf.sourcesSummary(journal.sources.length)}</summary>
             <ul className="leaf__journal-sources">
               {journal.sources.map((source) => (
                 <li key={source.id}>
@@ -58,8 +59,8 @@ export function DailyJournalLeaf({ journal, collapsed, fresh = false }: Props) {
                     <span>{SOURCE_KIND[source.type]}</span> · {source.title}
                   </p>
                   <p>{source.text}</p>
-                  <time dateTime={source.createdAt}>{new Date(source.createdAt).toLocaleString()}</time>
-                  {source.url && <p className="leaf__journal-source-url">来源链接：{source.url}</p>}
+                  <time dateTime={source.createdAt}>{new Date(source.createdAt).toLocaleString(locale)}</time>
+                  {source.url && <p className="leaf__journal-source-url">{m.diary.journalLeaf.sourceUrl(source.url)}</p>}
                 </li>
               ))}
             </ul>
@@ -67,8 +68,8 @@ export function DailyJournalLeaf({ journal, collapsed, fresh = false }: Props) {
         )}
 
         <footer className="leaf__foot">
-          <span>共 {journal.sources.length} 段经历</span>
-          {expanded && <span>第 {journal.revision} 版</span>}
+          <span>{m.diary.journalLeaf.count(journal.sources.length)}</span>
+          {expanded && <span>{m.diary.journalLeaf.version(journal.revision)}</span>}
         </footer>
       </div>
     </Card>

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { currentLang } from "../i18n/index.ts";
+// i18n-ignore-start：人设显示名与提示词，不翻译
 
 /** 角色清单。新增角色：在 characters/ 放一个 md，再在这里登记 id 和显示名。 */
 export const CHARACTERS = {
@@ -108,3 +109,4 @@ export function withUserName(core: string, nickname: string | null | undefined):
   if (!name) return core;
   return `${core}\n\n## 对方希望你怎么称呼 TA\n对方希望被叫做「${name}」。自然地偶尔用一下就好：不要每句都叫，也不要在第一次就叫，更不要解释这个称呼从哪来。`;
 }
+// i18n-ignore-end

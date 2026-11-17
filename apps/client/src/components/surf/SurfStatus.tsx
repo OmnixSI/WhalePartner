@@ -10,6 +10,7 @@ import { Tape } from "../ink";
 import { useInkEnv } from "../ink/useCalm";
 import type { SurfStage } from "./useSurfEvents";
 import "../../styles/surf-slip.css"; // 聊天页也用，跟组件走，不跟懒加载的见闻页走
+import { m } from "../../i18n";
 
 export type SurfPhase =
   | { kind: "browsing"; stage: SurfStage; detail?: string | null; paused?: boolean }
@@ -17,10 +18,10 @@ export type SurfPhase =
   | { kind: "empty" };
 
 const STAGE_TEXT: Record<SurfStage, string> = {
-  searching: "在找想看的东西…",
-  watching: "在看一个视频…",
-  reading: "在翻网页…",
-  writing: "在记下来…",
+  searching: m.surf.status.searching,
+  watching: m.surf.status.watching,
+  reading: m.surf.status.reading,
+  writing: m.surf.status.writing,
 };
 
 const STAGE_ICON: Record<SurfStage, IconName> = {
@@ -76,11 +77,11 @@ export function SurfStatus({ phase, onDismiss }: Props) {
   const text =
     phase.kind === "browsing"
       ? phase.paused
-        ? "你在聊天，我先等一会儿…"
+        ? m.surf.status.paused
         : STAGE_TEXT[phase.stage]
       : phase.kind === "done"
-        ? `逛完啦，带回 ${phase.count} 样东西`
-        : "这次没逛到什么，下次再去。";
+        ? m.surf.status.done(phase.count)
+        : m.surf.status.empty;
   const icon: IconName = phase.kind === "browsing" ? STAGE_ICON[phase.stage] : "postcard";
   const detail = phase.kind === "browsing" && !phase.paused ? phase.detail : null;
 
@@ -90,7 +91,7 @@ export function SurfStatus({ phase, onDismiss }: Props) {
       className="surf-slip"
       data-calm={env.calm ? "on" : "off"}
       onClick={() => navigate("/surf")}
-      aria-label={`${text}${detail ? `，${detail}` : ""}，点开看她的见闻`}
+      aria-label={m.surf.status.ariaLabel(text, detail)}
     >
       <Tape color="c" w={24} h={10} angle={-2} className="surf-slip__tape" />
       <span className="surf-slip__icon" aria-hidden data-stage={phase.kind === "browsing" ? phase.stage : "done"}>

@@ -1,6 +1,7 @@
 import type { Turn } from "./types";
+import { m } from "../../i18n/index.ts";
 
-const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+const WEEKDAYS = m.chat.backlog.weekdays;
 const pad = (n: number) => String(n).padStart(2, "0");
 
 export function dayKey(iso: string): string {
@@ -12,10 +13,10 @@ export function dayLabel(iso: string, now = new Date()): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
   const key = dayKey(iso);
-  if (key === dayKey(now.toISOString())) return "今天";
+  if (key === dayKey(now.toISOString())) return m.chat.dayLabel.today;
   const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-  if (key === dayKey(yesterday.toISOString())) return "昨天";
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 · ${WEEKDAYS[date.getDay()]}`;
+  if (key === dayKey(yesterday.toISOString())) return m.chat.dayLabel.yesterday;
+  return m.chat.dayLabel.date(date.getMonth() + 1, date.getDate(), WEEKDAYS[date.getDay()]);
 }
 
 export function clock(iso: string): string {

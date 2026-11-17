@@ -14,6 +14,7 @@ import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
 import { AffinityShowcase } from "./AffinityShowcase";
 import type { RelationshipEntry, RelationshipState } from "./useRelationship";
+import { m } from "../../i18n";
 
 type Props = {
   open: boolean;
@@ -30,7 +31,7 @@ function CharThumb({ id, entry }: { id: CharacterId; entry: RelationshipEntry | 
       <span className="set-char__thumb" aria-hidden="true">
         {level ? <Suspense fallback={mark}><LazyAffinityCard character={id} level={level} size="sm" /></Suspense> : mark}
       </span>
-      {level && <span className="set-char__level">Lv.{level} {tierOf(level).label}</span>}
+      {level && <span className="set-char__level">{m.settings.characterDialog.thumbLevel(level, tierOf(level).label)}</span>}
     </>
   );
 }
@@ -59,16 +60,16 @@ export function CharacterDialog({ open, onOpenChange, relationship }: Props) {
       onOpenChange={close}
       size="lg"
       className="set-dialog--chars"
-      title="换一位"
-      description="每个人格有自己的口吻；聊天、记忆、日记和见闻共用。选好角色卡就会切换人格，不用保存。"
-      footer={<Button variant="secondary" onClick={() => close(false)}>好</Button>}
+      title={m.settings.characterDialog.title}
+      description={m.settings.characterDialog.description}
+      footer={<Button variant="secondary" onClick={() => close(false)}>{m.settings.characterDialog.ok}</Button>}
     >
       <AffinityShowcase character={cardCharacter} snapshot={snapshot} status={status} />
       {anyFailed && (
         <div className="set-dialog__relationship-retry">
-          <p>好感度服务暂时没有响应，角色切换仍可正常使用。</p>
+          <p>{m.settings.characterDialog.relationshipDown}</p>
           <Button variant="secondary" onClick={retry}>
-            重试读取好感度
+            {m.settings.characterDialog.retry}
           </Button>
         </div>
       )}

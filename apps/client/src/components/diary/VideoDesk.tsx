@@ -8,6 +8,7 @@
  */
 import { useState, type FormEvent } from "react";
 import { InkLine } from "../ink";
+import { m } from "../../i18n";
 import type { DiaryItemP2 } from "./types";
 
 type Props = {
@@ -21,22 +22,23 @@ type Props = {
   retrying: number | null;
 };
 
+const S = m.diary.videoDesk;
 const QUEUED = new Set(["pending", "processing", "duplicate"]);
 
 function statusWord(item: DiaryItemP2): string {
   switch (item.status) {
     case "pending":
-      return "排着队";
+      return S.status.queued;
     case "processing":
-      return "她正在看…";
+      return S.status.processing;
     case "done":
-      return item.memoryStatus === "failed" ? "日记在，记忆没写进去" : "看完啦";
+      return item.memoryStatus === "failed" ? S.status.doneMemoryFailed : S.status.done;
     case "failed":
-      return item.errorStage === "diary" ? "日记没写成" : "没看成";
+      return item.errorStage === "diary" ? S.status.failedDiary : S.status.failed;
     case "duplicate":
-      return "这个看过了";
+      return S.status.duplicate;
     default:
-      return "排着队";
+      return S.status.queued;
   }
 }
 
@@ -59,27 +61,27 @@ export function VideoDesk({ items, busy, running, error, onEnqueue, onRun, onRet
     <section className="vids" aria-labelledby="vids-title">
       <header className="vids__head">
         <h2 className="vids__title" id="vids-title">
-          给她看的视频
+          {S.title}
         </h2>
-        <p className="vids__lead">把喜欢的 B 站视频链接放进来，她会挑时间看，再写进日记。</p>
+        <p className="vids__lead">{S.lead}</p>
       </header>
 
       <form className="vids__form" onSubmit={submit}>
         <label className="sr-only" htmlFor="vids-url">
-          视频链接
+          {S.urlLabel}
         </label>
         <input
           id="vids-url"
           className="field vids__input"
           value={url}
           onChange={(event) => setUrl(event.target.value)}
-          placeholder="粘贴 B 站链接、b23.tv 短链或 BV 号"
+          placeholder={S.urlPlaceholder}
           maxLength={500}
           disabled={busy}
           autoComplete="off"
         />
         <button type="submit" className="btn btn--secondary" disabled={!url.trim() || busy}>
-          {busy ? "放进去…" : "放进去"}
+          {busy ? S.submitting : S.submit}
         </button>
       </form>
 
@@ -91,10 +93,10 @@ export function VideoDesk({ items, busy, running, error, onEnqueue, onRun, onRet
 
       <div className="vids__bar">
         <span className="vids__count">
-          {queue.length > 0 ? `排队中 ${queue.filter((item) => item.status === "pending").length} 条` : "队列是空的"}
+          {queue.length > 0 ? S.queueCount(queue.filter((item) => item.status === "pending").length) : S.queueEmpty}
         </span>
         <button type="button" className="btn btn--quiet vids__run" onClick={onRun} disabled={running || queue.length === 0}>
-          {running ? "叫她了…" : "让她现在就看一个"}
+          {running ? S.running : S.run}
         </button>
       </div>
 
@@ -115,7 +117,7 @@ export function VideoDesk({ items, busy, running, error, onEnqueue, onRun, onRet
               </div>
               {item.status === "failed" && (
                 <button type="button" className="btn btn--quiet" onClick={() => onRetry(item)} disabled={retrying === item.id}>
-                  {retrying === item.id ? "再试一次…" : "再试一次"}
+                  {retrying === item.id ? S.retrying : S.retry}
                 </button>
               )}
             </li>
@@ -127,13 +129,13 @@ export function VideoDesk({ items, busy, running, error, onEnqueue, onRun, onRet
         <div className="vids__old">
           <InkLine className="vids__rule" id="vids-rule" />
           <button type="button" className="btn btn--quiet vids__fold" aria-expanded={!folding} onClick={() => setFolding((v) => !v)}>
-            以前的视频小记（{oldNotes.length}）
+            {S.oldNotes(oldNotes.length)}
           </button>
           {!folding && (
             <ul className="vids__oldlist">
               {oldNotes.map((item) => (
                 <li key={`old-${item.id}`}>
-                  <span className="vids__oldtitle">{item.title || "一段视频"}</span>
+                  <span className="vids__oldtitle">{item.title || S.oldFallbackTitle}</span>
                   <span className="vids__oldtext">{item.summary}</span>
                 </li>
               ))}

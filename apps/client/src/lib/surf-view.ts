@@ -1,3 +1,5 @@
+import { m } from "../i18n/index.ts";
+
 /** 见闻页用到的纯函数（不碰网络，node 测试可以直接 import）。 */
 
 export function timeOf(iso: string): string {
@@ -35,7 +37,7 @@ export function dateRangeBounds(range: DateRange, day: string, now = new Date())
 
 /** 预填进聊天输入框的那句话：标题和链接。聊天页读 `?quote=`。 */
 export function quoteText(item: { title: string; url: string }): string {
-  return `我看到你逛到了《${item.title}》\n${item.url}`;
+  return m.surf.view.quote(item.title, item.url);
 }
 
 /** 跳到聊天页，并把见闻标题和链接通过 `?quote=` 带过去。 */
@@ -50,7 +52,7 @@ export function whenText(iso: string, now = new Date()): string {
   const startOf = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
   const diff = Math.round((startOf(now) - startOf(date)) / (24 * 60 * 60_000));
   const time = timeOf(iso);
-  if (diff === 0) return `今天 ${time}`;
-  if (diff === 1) return `昨天 ${time}`;
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+  if (diff === 0) return m.surf.view.today(time);
+  if (diff === 1) return m.surf.view.yesterday(time);
+  return m.surf.view.monthDay(date.getMonth() + 1, date.getDate(), time);
 }

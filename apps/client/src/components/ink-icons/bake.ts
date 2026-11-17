@@ -79,7 +79,7 @@ export function bakeAll(source: Record<string, string>): Record<string, string[]
 export function renderBakedModule(paths: Record<string, string[]>): string {
   const rows = Object.entries(paths).map(([name, ds]) => `  ${JSON.stringify(name)}: ${JSON.stringify(ds)},`);
   return [
-    "/** 自动生成，勿手改：由 `bake.ts` 从 `icons.src.json` 烘焙而来（规范 §5.6）。 */",
+    "/** 自动生成，勿手改：由 `bake.ts` 从 `icons.src.json` 烘焙而来（规范 §5.6）。 */", // i18n-ignore：生成文件里的代码注释
     "",
     "export const ICON_PATHS = {",
     ...rows,
@@ -87,7 +87,7 @@ export function renderBakedModule(paths: Record<string, string[]>): string {
     "",
     "export type IconName = keyof typeof ICON_PATHS;",
     "",
-    "/** 19 个图标的顺序表，给需要遍历的界面（图标选择、自检）用。 */",
+    "/** 19 个图标的顺序表，给需要遍历的界面（图标选择、自检）用。 */", // i18n-ignore：生成文件里的代码注释
     "export const ICON_NAMES = Object.keys(ICON_PATHS) as IconName[];",
     "",
   ].join("\n");

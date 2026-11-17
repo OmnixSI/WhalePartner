@@ -2,6 +2,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { bilibiliBackoffPath } from "../server/data-dir.ts";
 import { SurfError } from "./errors.ts";
+import { msg } from "../i18n/index.ts";
 
 /**
  * 冲浪这一侧对 B 站的指数退避。
@@ -52,7 +53,7 @@ export class BiliBackoff {
     const state = await this.#read();
     if (state.until > this.#now()) {
       const minutes = Math.ceil((state.until - this.#now()) / 60_000);
-      throw new SurfError("rate_limit", `B 站刚才限流了，冲浪这边再等 ${minutes} 分钟才会去搜。`);
+      throw new SurfError("rate_limit", msg().content.surf.backoffWait(minutes));
     }
   }
 

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { containsBlocked, isBlockedHost } from "./blocklist.ts";
 import type { VideoCandidate, WebResult } from "./types.ts";
+// i18n-ignore-start：选题关键词与标题黑名单
 
 /** 视频候选的筛选边界（§10.6.8 A.2）。 */
 export const MIN_VIDEO_SECONDS = 60;
@@ -398,3 +399,4 @@ export function rankVideos(candidates: readonly VideoCandidate[], context: Score
     .slice(0, limit)
     .map((entry) => entry.candidate);
 }
+// i18n-ignore-end

@@ -6,6 +6,7 @@ import type { AvatarEmotion } from "../../avatar/model.config";
 import type { VoiceModelStatus } from "./useVoiceMode";
 import { createSpeechSegment, splitSpeechText, type SpeechSegment } from "./voice-segments";
 import pcmPlaybackWorkletUrl from "./pcm-playback-worklet.ts?worker&url";
+import { m } from "../../i18n";
 
 type Segment = SpeechSegment;
 
@@ -89,16 +90,16 @@ export function useVoiceOutput() {
     if (warmPromise.current) return warmPromise.current;
     const controller = new AbortController();
     warmRequest.current = controller;
-    setModel({ state: "loading", progress: null, message: "正在准备本地语音模型。首次使用会下载模型。" });
+    setModel({ state: "loading", progress: null, message: m.chat.voiceOutput.preparingModel });
     const poll = async () => {
       while (!controller.signal.aborted) {
         const response = await fetch(`${API_BASE}/api/voice/tts/status`, { signal: controller.signal });
-        if (!response.ok) throw new Error("读取本地语音模型状态失败。");
+        if (!response.ok) throw new Error(m.chat.voiceOutput.statusReadFailed);
         const status = await response.json() as VoiceModelStatus;
         setModel(status);
         if (status.state === "ready") return;
-        if (status.state === "waiting_reference") throw new Error(status.message || "请先导入大肥鱼的 CosyVoice 音色配置。");
-        if (status.state === "failed") throw new Error(status.message || "本地语音模型准备失败。");
+        if (status.state === "waiting_reference") throw new Error(status.message || m.chat.voiceOutput.needReference);
+        if (status.state === "failed") throw new Error(status.message || m.chat.voiceOutput.modelFailed);
         await new Promise((resolve) => window.setTimeout(resolve, 900));
       }
     };
@@ -109,13 +110,13 @@ export function useVoiceOutput() {
         const response = await pending;
         if (!response.ok) {
           const result = await response.json().catch(() => ({})) as { message?: string };
-          throw new Error(result.message || "本地语音模型准备失败，请重试。");
+          throw new Error(result.message || m.chat.voiceOutput.modelFailedRetry);
         }
         setModel(await response.json() as VoiceModelStatus);
         setError("");
       } catch (error) {
         if (!controller.signal.aborted) {
-          const message = error instanceof Error ? error.message : "本地语音模型准备失败。";
+          const message = error instanceof Error ? error.message : m.chat.voiceOutput.modelFailed;
           setModel({ state: "failed", progress: null, message });
           setError(message);
           throw error;
@@ -163,7 +164,7 @@ export function useVoiceOutput() {
     if (playbackReady.current) return playbackReady.current;
     const pending = (async () => {
       await context.audioWorklet.addModule(pcmPlaybackWorkletUrl);
-      if (audioContext.current !== context || context.state === "closed") throw new Error("语音播放设备已关闭。");
+      if (audioContext.current !== context || context.state === "closed") throw new Error(m.chat.voiceOutput.deviceClosed);
       const node = new AudioWorkletNode(context, "whale-pcm-playback", {
         numberOfInputs: 0,
         numberOfOutputs: 1,
@@ -236,7 +237,7 @@ export function useVoiceOutput() {
       samples[i] = (value >= 0x8000 ? value - 0x10000 : value) / 32768;
     }
     const context = ensureAudio();
-    if (chunk.sampleRate !== context.sampleRate) throw new Error("语音采样率与播放设备不匹配。");
+    if (chunk.sampleRate !== context.sampleRate) throw new Error(m.chat.voiceOutput.sampleRateMismatch);
     const node = await ensurePlayback();
     if (context.state !== "running") await context.resume();
     if (token !== generation.current || activeTurnId.current !== segment.turnId || !enabledRef.current) return;
@@ -302,7 +303,7 @@ export function useVoiceOutput() {
     });
     if (!response.ok || !response.body) {
       const result = await response.json().catch(() => ({})) as { message?: string };
-      throw new Error(result.message || `本地语音生成失败（HTTP ${response.status}）。`);
+      throw new Error(result.message || m.chat.voiceOutput.generateFailedHttp(response.status));
     }
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -313,7 +314,7 @@ export function useVoiceOutput() {
       const message = JSON.parse(line) as TtsMessage;
       if (message.turnId !== segment.turnId || message.segmentIndex !== segment.segmentIndex || activeTurnId.current !== segment.turnId || token !== generation.current) return;
       if (message.type === "audio") await playChunk(message, token, segment);
-      else if (message.type === "error") throw new Error(message.message || "本地语音生成失败。");
+      else if (message.type === "error") throw new Error(message.message || m.chat.voiceOutput.generateFailed);
       else if (message.type === "done") {
         completed = true;
         lastSegmentDoneAt.current = performance.now();
@@ -338,7 +339,7 @@ export function useVoiceOutput() {
       }
       await readLine(carry);
       if (!completed && token === generation.current && activeTurnId.current === segment.turnId) {
-        throw new Error("本地语音流没有正常结束。");
+        throw new Error(m.chat.voiceOutput.streamEnded);
       }
     } catch (error) {
       if (token === generation.current && activeTurnId.current === segment.turnId) {
@@ -364,7 +365,7 @@ export function useVoiceOutput() {
       }
     } catch (error) {
       if (token === generation.current && !(error instanceof DOMException && error.name === "AbortError")) {
-        setError(error instanceof Error ? error.message : "本地语音播放失败。");
+        setError(error instanceof Error ? error.message : m.chat.voiceOutput.playFailed);
       }
     } finally {
       if (token === generation.current) {
@@ -443,7 +444,7 @@ export function useVoiceOutput() {
     setEnabledState(value);
     if (value) {
       ensureAudio();
-      void ensurePlayback().catch((error: unknown) => setError(error instanceof Error ? error.message : "语音播放设备准备失败。"));
+      void ensurePlayback().catch((error: unknown) => setError(error instanceof Error ? error.message : m.chat.voiceOutput.deviceFailed));
       void warm().catch(() => {});
     } else {
       stop();
@@ -466,7 +467,7 @@ export function useVoiceOutput() {
     if (value) {
       const context = ensureAudio();
       if (context.state !== "running") void context.resume();
-      void ensurePlayback().catch((error: unknown) => setError(error instanceof Error ? error.message : "语音播放设备准备失败。"));
+      void ensurePlayback().catch((error: unknown) => setError(error instanceof Error ? error.message : m.chat.voiceOutput.deviceFailed));
     }
   }, [ensureAudio, ensurePlayback, setEnabled]);
 

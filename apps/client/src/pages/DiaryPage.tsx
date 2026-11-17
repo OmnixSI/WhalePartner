@@ -15,6 +15,7 @@ import { Tabs } from "../components/ui/Tabs";
 import { VideoDesk } from "../components/diary/VideoDesk";
 import { useInkEnv } from "../components/ink/useCalm";
 import { useCharacter } from "../characters";
+import { m } from "../i18n";
 import { enqueueDiaryVideo, generateJournal, retryDiaryItem, runDiaryQueue, type DailyJournal } from "../lib/diary";
 import { useHubRefresh } from "../lib/useHubRefresh";
 import { useDiaryPageData } from "../components/diary/useDiaryPageData";
@@ -107,7 +108,7 @@ export function DiaryPage() {
     const themes = new Map<string, string[]>();
     for (const entry of inRange) {
       const key = isoDay(entry.at);
-      const theme = themeOf(entry) || "有日记";
+      const theme = themeOf(entry) || m.diary.page.themeFallback;
       const dayThemes = themes.get(key) ?? [];
       dayThemes.push(theme);
       themes.set(key, dayThemes);
@@ -129,10 +130,10 @@ export function DiaryPage() {
     [inRange, selectedDay],
   );
   const selectedDate = selectedDay ? journalDate(selectedDay) : null;
-  const selectedLabel = selectedDate ? (selectedDate.getMonth() + 1) + "月" + selectedDate.getDate() + "日" : "这一天";
+  const selectedLabel = selectedDate ? m.diary.date.monthDay(selectedDate) : m.diary.page.thisDay;
   const pendingCount = items?.filter((item) => item.status === "pending").length ?? 0;
   const hasMaterial = pendingCount > 0;
-  const fallbackTitle = (cursor.getMonth() + 1) + "月" + cursor.getDate() + "日";
+  const fallbackTitle = m.diary.date.monthDay(cursor);
 
   const changeMode = (next: RangeMode) => {
     setMode(next);
@@ -163,13 +164,13 @@ export function DiaryPage() {
 
   const renderDayGroup = (key: string, entries: DiaryPageEntry[]) => {
     const date = entries[0]?.at;
-    const label = date ? `${date.getMonth() + 1} 月 ${date.getDate()} 日` : key;
-    const weekday = date ? ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()] : "";
+    const label = date ? m.diary.page.dayGroupLabel(date) : key;
+    const weekday = date ? m.diary.date.weekday[date.getDay()] : "";
     return (
-      <section className="diary-day" key={key} aria-label={`${label}的日记`}>
+      <section className="diary-day" key={key} aria-label={m.diary.page.dayAria(label)}>
         <header className="diary-day__head">
           <h2 className="diary-day__title">{label}</h2>
-          <span className="diary-day__meta">{weekday} · {entries.length} 篇</span>
+          <span className="diary-day__meta">{m.diary.page.dayGroupMeta(weekday, entries.length)}</span>
         </header>
         <div className="diary-day__cards">{entries.map((entry) => renderEntry(entry, false))}</div>
       </section>
@@ -185,7 +186,7 @@ export function DiaryPage() {
       const today = startOfDay(new Date());
       const journal = await generateJournal(character.id, isoDay(today));
       if (!journal) {
-        setOpError("今天还没有可写进日记的共同经历。聊几句或等她整理完视频，再试一次吧。");
+        setOpError(m.diary.page.noMaterial);
         setCompanionMood("idle");
         return;
       }
@@ -198,7 +199,7 @@ export function DiaryPage() {
       if (writeTimer.current) window.clearTimeout(writeTimer.current);
       writeTimer.current = window.setTimeout(() => setFresh(null), 4000);
     } catch (cause) {
-      setOpError(cause instanceof Error ? cause.message : "没能叫她动笔，再试一次？");
+      setOpError(cause instanceof Error ? cause.message : m.diary.page.writeFailed);
       setCompanionMood("idle");
     } finally {
       setWriting(false);
@@ -212,7 +213,7 @@ export function DiaryPage() {
       await enqueueDiaryVideo(url);
       await load();
     } catch (cause) {
-      setOpError(cause instanceof Error ? cause.message : "没放进去，再试一次？");
+      setOpError(cause instanceof Error ? cause.message : m.diary.page.enqueueFailed);
     } finally {
       setSubmitting(false);
     }
@@ -225,7 +226,7 @@ export function DiaryPage() {
       await runDiaryQueue();
       await load();
     } catch (cause) {
-      setOpError(cause instanceof Error ? cause.message : "没能叫她开始看。");
+      setOpError(cause instanceof Error ? cause.message : m.diary.page.runFailed);
     } finally {
       setRunning(false);
     }
@@ -238,7 +239,7 @@ export function DiaryPage() {
       await retryDiaryItem(item.id);
       await load();
     } catch (cause) {
-      setOpError(cause instanceof Error ? cause.message : "重试没成功。");
+      setOpError(cause instanceof Error ? cause.message : m.diary.page.retryFailed);
     } finally {
       setRetrying(null);
     }
@@ -248,37 +249,37 @@ export function DiaryPage() {
     <div className="page diary-page">
       <div className="diary-page__inner">
         <PageHeader
-          title={`${character.name}的日记`}
+          title={m.diary.page.title(character.name)}
           actions={
             <Button variant="primary" className="diary-page__write" onClick={() => void write()} disabled={writing}>
-              {writing ? "她在写…" : "请她写今天的"}
+              {writing ? m.diary.page.writing : m.diary.page.write}
             </Button>
           }
         />
 
         <div className="diary-page__controls">
           <Tabs
-            items={[{ value: "week", label: "周" }, { value: "month", label: "月" }, { value: "year", label: "年" }]}
+            items={[{ value: "week", label: m.diary.page.modes.week }, { value: "month", label: m.diary.page.modes.month }, { value: "year", label: m.diary.page.modes.year }]}
             value={mode}
             onValueChange={(value) => changeMode(value as RangeMode)}
             variant="segmented"
-            label="日记范围"
+            label={m.diary.page.rangeAria}
             panelId="diary-panel"
           />
           <PageBar mode={mode} cursor={cursor} onCursor={changeCursor} onToday={() => changeCursor(startOfDay(new Date()))} />
         </div>
 
         <div className="diary-page__stage">
-          <div className="diary-page__panel" id="diary-panel" role="tabpanel" aria-label="日记内容">
-            {loading && !loadError && <StateBlock kind="loading" title="她在翻小本子…" body="马上就好。" />}
+          <div className="diary-page__panel" id="diary-panel" role="tabpanel" aria-label={m.diary.page.panelAria}>
+            {loading && !loadError && <StateBlock kind="loading" title={m.diary.page.loadingTitle} body={m.diary.page.loadingBody} />}
 
             {loadError && (
               <StateBlock
                 kind="error"
-                title="日记本打不开了"
-                body="可能是网络不好，也可能她还没醒。"
+                title={m.diary.page.errorTitle}
+                body={m.diary.page.errorBody}
                 detail={loadError}
-                action={{ label: "再试一次", onClick: () => void load() }}
+                action={{ label: m.diary.page.retry, onClick: () => void load() }}
               />
             )}
 
@@ -287,17 +288,17 @@ export function DiaryPage() {
             )}
 
             {!loading && !loadError && mode === "month" && selectedDay && (
-              <section className="diary-page__day-detail" aria-label={selectedLabel + "的日记"}>
+              <section className="diary-page__day-detail" aria-label={m.diary.page.dayAria(selectedLabel)}>
                 <button type="button" className="btn btn--quiet diary-page__back" onClick={() => setSelectedDay(null)}>
-                  <span aria-hidden="true">‹</span> 返回本月日历
+                  <span aria-hidden="true">‹</span> {m.diary.page.backToMonth}
                 </button>
-                <h2 className="diary-page__day-title">{selectedLabel}的日记</h2>
+                <h2 className="diary-page__day-title">{m.diary.page.dayTitle(selectedLabel)}</h2>
                 {selectedEntries.length === 0 ? (
                   <StateBlock
                     kind="empty"
-                    title={selectedLabel + "还没有日记"}
-                    body="这一天先留白，回到月历再看看别的日期吧。"
-                    action={{ label: "返回月历", onClick: () => setSelectedDay(null) }}
+                    title={m.diary.page.dayEmptyTitle(selectedLabel)}
+                    body={m.diary.page.dayEmptyBody}
+                    action={{ label: m.diary.page.backToCalendar, onClick: () => setSelectedDay(null) }}
                   />
                 ) : (
                   <motion.div
@@ -320,17 +321,17 @@ export function DiaryPage() {
             {!loading && !loadError && mode === "week" && inRange.length === 0 && (
               <StateBlock
                 kind="empty"
-                title="这几天她还没写日记"
+                title={m.diary.page.weekEmptyTitle}
                 body={
                   hasMaterial
-                    ? "每天晚上她会自己写。也可以现在请她写今天的。"
-                    : "今天我们还没一起经历什么。聊几句，再来找我写吧。"
+                    ? m.diary.page.weekEmptyWithMaterial
+                    : m.diary.page.weekEmptyNoMaterial
                 }
-                action={hasMaterial ? { label: "请她写今天的", onClick: () => void write() } : undefined}
+                action={hasMaterial ? { label: m.diary.page.write, onClick: () => void write() } : undefined}
               >
                 {!hasMaterial && (
                   <Link className="btn btn--secondary diary-page__gochat" to="/">
-                    去聊天
+                    {m.diary.page.goChat}
                   </Link>
                 )}
               </StateBlock>
@@ -352,7 +353,7 @@ export function DiaryPage() {
 
         {writing && (
           <p className="diary-page__writing" role="status">
-            她在写，马上好。
+            {m.diary.page.writingStatus}
           </p>
         )}
 
@@ -369,7 +370,7 @@ export function DiaryPage() {
       </div>
 
       <CompanionCorner />
-      <Toast open={toast} text="写好啦，翻到今天那一页看看。" onClose={() => setToast(false)} duration={4200} />
+      <Toast open={toast} text={m.diary.page.toast} onClose={() => setToast(false)} duration={4200} />
     </div>
   );
 }

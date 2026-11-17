@@ -8,6 +8,7 @@
  *   但一旦请求像是经隧道/反代来的（x-forwarded-for / cf-connecting-ip 等）或来自非回环地址，一律要 token。
  * - 不管有没有 token，都拒绝跨站 Origin，以及跨站表单能发的简单请求体（text/plain 等）。
  */
+import { msg } from "../i18n/index.ts";
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { BlockList, isIP } from "node:net";
@@ -162,12 +163,12 @@ export function authorize(request: IncomingMessage, url: URL, options: AuthOptio
   if (request.method === "OPTIONS") return { ok: true, via: "open" };
 
   if (!originAllowed(request, options)) {
-    return { ok: false, status: 403, code: "cross_origin", error: "拒绝来自其他网站的请求。" };
+    return { ok: false, status: 403, code: "cross_origin", error: msg().core.hub.crossOrigin };
   }
   const write = request.method !== "GET" && request.method !== "HEAD";
   const type = request.headers["content-type"];
   if (write && typeof type === "string" && SIMPLE_TYPES.test(type)) {
-    return { ok: false, status: 403, code: "bad_content_type", error: "请求必须是 application/json。" };
+    return { ok: false, status: 403, code: "bad_content_type", error: msg().core.hub.badContentType };
   }
   if (PUBLIC_PATHS.has(path) && (path === "/api/health" ? request.method === "GET" : request.method === "POST")) {
     return { ok: true, via: "open" };
@@ -180,7 +181,7 @@ export function authorize(request: IncomingMessage, url: URL, options: AuthOptio
     if (options.localToken && safeEqual(token, options.localToken)) return { ok: true, via: "local" };
     const device = options.devices?.verify(token);
     if (device) return { ok: true, via: "device", deviceId: device.id };
-    return { ok: false, status: 401, code: "bad_token", error: "令牌无效或已被撤销。" };
+    return { ok: false, status: 401, code: "bad_token", error: msg().core.hub.badToken };
   }
 
   const proxied = FORWARD_HEADERS.some((name) => request.headers[name] !== undefined);
@@ -189,11 +190,11 @@ export function authorize(request: IncomingMessage, url: URL, options: AuthOptio
     // 开发便利模式：Host 必须是回环名，防 DNS rebinding。
     const host = hostName(request.headers.host ?? "");
     if (!LOOPBACK_HOSTS.has(host) && !options.extraHosts?.includes(host)) {
-      return { ok: false, status: 403, code: "bad_host", error: "不认识的访问域名。" };
+      return { ok: false, status: 403, code: "bad_host", error: msg().core.hub.badHost };
     }
     return { ok: true, via: "open" };
   }
-  return { ok: false, status: 401, code: "unauthorized", error: "需要先连接到你的鲸汐（缺少令牌）。" };
+  return { ok: false, status: 401, code: "unauthorized", error: msg().core.hub.unauthorized };
 }
 
 /** 健康检查里告诉客户端：这个 hub 要不要令牌。 */

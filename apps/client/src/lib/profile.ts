@@ -1,5 +1,6 @@
 import { API_BASE } from "./api";
 import { describeNetError } from "./net";
+import { m } from "../i18n";
 
 export interface Profile {
   nickname: string | null;
@@ -17,7 +18,7 @@ interface WireProfile {
 }
 
 async function readError(response: Response): Promise<never> {
-  let detail = `请求失败（HTTP ${response.status}）`;
+  let detail = m.chat.api.requestFailed(response.status);
   try {
     const body = (await response.json()) as { error?: string; message?: string };
     detail = body.message ?? body.error ?? detail;
@@ -47,7 +48,7 @@ export async function putNickname(nickname: string | null): Promise<Profile> {
       body: JSON.stringify({ userName: nickname }),
     });
   } catch (error) {
-    throw new Error(describeNetError(error, "昵称没存上"));
+    throw new Error(describeNetError(error, m.chat.api.nicknameFailed));
   }
   if (!response.ok) return readError(response);
   const body = (await response.json()) as WireProfile;

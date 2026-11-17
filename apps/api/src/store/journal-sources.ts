@@ -12,6 +12,7 @@ interface SourceRow {
   url: string | null;
 }
 
+// i18n-ignore-start：喂给日记模型的来源标签
 /** 她自己去逛（surf:*）找到的内容不是和用户一起看的，标题前加上「她自己逛到的：」，日记里才不会写成一起看过。 */
 export const SURF_SOURCE_LABEL = "她自己逛到的";
 const SOURCE_TITLE = `CASE WHEN e.source_id LIKE 'surf:%' THEN '${SURF_SOURCE_LABEL}：' || e.title ELSE e.title END AS title`;
@@ -67,3 +68,4 @@ export function journalSourcesForDay(db: DatabaseSync, _character: string | unde
     ...(row.url ? { url: row.url } : {}),
   }));
 }
+// i18n-ignore-end

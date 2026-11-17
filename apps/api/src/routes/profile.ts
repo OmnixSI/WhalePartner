@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { publishEvent } from "../hub/events.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -57,7 +58,7 @@ export async function handleProfileRoute(
     if (request.method === "PUT") {
       const body = await readJsonBody(request);
       const raw = (body as { userName?: unknown } | null)?.userName;
-      // 明确给 null 就是「清掉」：界面上把昵称删空后点「记下」走这条。
+      // 明确给 null 就是「清掉」：界面上把昵称删空后点「记下」走这条。 // i18n-ignore：代码注释
       if (raw === null) {
         db.prepare("DELETE FROM user_profile WHERE key = 'userName'").run();
         sendJson(response, 200, { userName: null });
@@ -65,7 +66,7 @@ export async function handleProfileRoute(
       }
       const checked = validate(raw);
       if (!checked.ok) {
-        sendJson(response, 400, { error: checked.code, message: "这个名字用不了，换一个试试。" });
+        sendJson(response, 400, { error: checked.code, message: msg().core.routes.profile.nameUnusable });
         return true;
       }
       db.prepare("INSERT INTO user_profile(key, value) VALUES('userName', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(checked.name);
@@ -73,11 +74,11 @@ export async function handleProfileRoute(
       sendJson(response, 200, { userName: checked.name });
       return true;
     }
-    sendJson(response, 405, { error: "method_not_allowed", message: "只支持 GET / PUT。" });
+    sendJson(response, 405, { error: "method_not_allowed", message: msg().core.shared.onlyGetPut });
     return true;
   } catch (error) {
     if (error instanceof RequestBodyError) sendJson(response, error.status, { error: error.code, message: error.message });
-    else sendJson(response, 503, { error: "profile_unavailable", message: "现在拿不到，先记不了。" });
+    else sendJson(response, 503, { error: "profile_unavailable", message: msg().core.routes.profile.unavailable });
     return true;
   } finally {
     db?.close();

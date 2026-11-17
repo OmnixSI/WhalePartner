@@ -11,6 +11,7 @@ import { cx } from "./cx";
 import { Close } from "./glyphs";
 import "./shared.css";
 import "./Dialog.css";
+import { m } from "../../i18n";
 
 /**
  * 受控打开（没有 Trigger）时，Radix 不知道该把焦点还给谁，关闭后会落到 body。
@@ -54,7 +55,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
           <header className="ui-dialog__head">
             <D.Title className="ui-dialog__title">{title}</D.Title>
             <D.Close asChild>
-              <button type="button" className="ui-dialog__close ui-press ui-focus" aria-label="关闭"><Close /></button>
+              <button type="button" className="ui-dialog__close ui-press ui-focus" aria-label={m.common.ui.close}><Close /></button>
             </D.Close>
           </header>
           {description ? <D.Description className="ui-dialog__desc">{description}</D.Description> : null}
@@ -66,7 +67,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
   );
 }
 
-export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, cancelLabel = "先不了", tone = "default", onConfirm, busy = false }: {
+export function ConfirmDialog({ open, onOpenChange, title, description, confirmLabel, cancelLabel = m.common.ui.notNow, tone = "default", onConfirm, busy = false }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   title: ReactNode;

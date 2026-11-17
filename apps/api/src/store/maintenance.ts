@@ -57,7 +57,7 @@ export type UserDataTable = (typeof USER_DATA_TABLES)[number];
 
 /** 导出用：整表读出（只限用户数据表；表不存在时返回空数组，二进制列转成 base64）。 */
 export function dumpUserTable(db: DatabaseSync, table: UserDataTable): Array<Record<string, unknown>> {
-  if (!(USER_DATA_TABLES as readonly string[]).includes(table)) throw new Error(`不能导出表 ${table}`);
+  if (!(USER_DATA_TABLES as readonly string[]).includes(table)) throw new Error(`不能导出表 ${table}`); // i18n-ignore：开发期断言，不展示给用户
   const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
   if (!exists) return [];
   const rows = db.prepare(`SELECT * FROM ${table}`).all() as Array<Record<string, unknown>>;

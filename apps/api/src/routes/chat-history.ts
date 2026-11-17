@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError } from "../chat/service.ts";
 import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
@@ -19,7 +20,7 @@ export async function handleChatHistoryRoute(
   if (request.method === "GET" && url.pathname === "/api/chat/sessions") {
     const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
     if (!isCharacterId(character)) {
-      sendJson(response, 400, { error: "未知的角色。" });
+      sendJson(response, 400, { error: msg().common.unknownCharacter });
       return true;
     }
     sendJson(response, 200, { sessions: deps.store.listSessions(character) });
@@ -31,14 +32,14 @@ export async function handleChatHistoryRoute(
       const body = await readJsonBody(request);
       const character = body.character ?? DEFAULT_CHARACTER;
       if (!isCharacterId(character)) {
-        sendJson(response, 400, { error: "未知的角色。" });
+        sendJson(response, 400, { error: msg().common.unknownCharacter });
         return true;
       }
-      const title = body.title === undefined ? "新聊天" : text(body.title, 40, "title")!;
+      const title = body.title === undefined ? msg().core.routes.chatHistory.newChat : text(body.title, 40, "title")!;
       sendJson(response, 201, { session: deps.store.createSession(character, title) });
     } catch (error) {
       const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
-      sendJson(response, status, { error: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "会话请求失败。" });
+      sendJson(response, status, { error: error instanceof SyntaxError ? msg().core.shared.invalidJson : error instanceof Error ? error.message : msg().core.routes.chatHistory.requestFailed });
     }
     return true;
   }
@@ -48,15 +49,15 @@ export async function handleChatHistoryRoute(
     try {
       const body = await readJsonBody(request);
       const character = body.character ?? DEFAULT_CHARACTER;
-      if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" }), true;
+      if (!isCharacterId(character)) return sendJson(response, 400, { error: msg().common.unknownCharacter }), true;
       const title = text(body.title, 40, "title");
-      if (!title) return sendJson(response, 400, { error: "聊天名称不能为空。" }), true;
+      if (!title) return sendJson(response, 400, { error: msg().core.routes.chatHistory.titleEmpty }), true;
       const session = deps.store.renameSession(decodeURIComponent(sessionMatch[1]), character, title);
-      if (!session) sendJson(response, 404, { error: "没有找到这个角色的聊天会话。" });
+      if (!session) sendJson(response, 404, { error: msg().core.shared.sessionOfCharNotFound });
       else sendJson(response, 200, { session });
     } catch (error) {
       const status = error instanceof RequestBodyError ? error.status : error instanceof ChatInputError || error instanceof SyntaxError ? 400 : 500;
-      sendJson(response, status, { error: error instanceof Error ? error.message : "修改聊天名称失败。" });
+      sendJson(response, status, { error: error instanceof Error ? error.message : msg().core.routes.chatHistory.renameFailed });
     }
     return true;
   }
@@ -64,19 +65,19 @@ export async function handleChatHistoryRoute(
   if (sessionMatch && request.method === "DELETE") {
     const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
     if (!isCharacterId(character)) {
-      sendJson(response, 400, { error: "未知的角色。" });
+      sendJson(response, 400, { error: msg().common.unknownCharacter });
       return true;
     }
     let sessionId: string;
     try {
       sessionId = decodeURIComponent(sessionMatch[1]);
     } catch {
-      sendJson(response, 400, { error: "聊天会话标识无效。" });
+      sendJson(response, 400, { error: msg().core.shared.sessionIdInvalid });
       return true;
     }
     const unlock = await sessionRequests.lockForDeletion(sessionId);
     if (!unlock) {
-      sendJson(response, 409, { error: "这个聊天会话正在删除。" });
+      sendJson(response, 409, { error: msg().core.shared.sessionDeleting });
       return true;
     }
     let unlockJournals = () => {};
@@ -87,7 +88,7 @@ export async function handleChatHistoryRoute(
       await waitForMemoryJobs(deps.store);
       const deleted = deps.store.deleteSession(sessionId, character);
       if (!deleted) {
-        sendJson(response, 404, { error: "没有找到这个角色的聊天会话。" });
+        sendJson(response, 404, { error: msg().core.shared.sessionOfCharNotFound });
         return true;
       }
       if (deleted.remainingAssistantCount > 0) {
@@ -126,22 +127,22 @@ export async function handleChatHistoryRoute(
     const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
     const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
     if (!isCharacterId(character)) {
-      sendJson(response, 400, { error: "未知的角色。" });
+      sendJson(response, 400, { error: msg().common.unknownCharacter });
       return true;
     }
     const sessionId = url.searchParams.get("sessionId") ?? undefined;
     if (sessionId && !deps.store.getSession(sessionId)) {
-      sendJson(response, 404, { error: "没有找到这个聊天会话。" });
+      sendJson(response, 404, { error: msg().core.shared.sessionNotFound });
       return true;
     }
     const aroundId = Number(url.searchParams.get("aroundId")) || undefined;
     if (aroundId && !sessionId) {
-      sendJson(response, 400, { error: "定位聊天原文需要指定会话。" });
+      sendJson(response, 400, { error: msg().core.routes.chatHistory.locateNeedsSession });
       return true;
     }
     const around = aroundId && sessionId ? deps.store.messagesAround(sessionId, aroundId) : undefined;
     if (aroundId && !around) {
-      sendJson(response, 404, { error: "没有找到这条聊天原文。" });
+      sendJson(response, 404, { error: msg().core.routes.chatHistory.messageNotFound });
       return true;
     }
     sendJson(response, 200, { messages: around ?? deps.store.recent(limit, undefined, sessionId) });
@@ -155,7 +156,7 @@ export async function handleChatHistoryRoute(
     try {
       const unlock = await sessionRequests.lockForHistoryClear();
       if (!unlock) {
-        sendJson(response, 409, { error: "聊天记录正在变更，请稍后重试。" });
+        sendJson(response, 409, { error: msg().core.routes.chatHistory.changing });
         return true;
       }
       unlockRequests = unlock;

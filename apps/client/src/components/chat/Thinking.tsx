@@ -10,21 +10,13 @@ import { Button } from "../ui/Button";
 import { InkLine } from "../ink";
 import { useInkEnv } from "../ink/useCalm";
 import type { Progress } from "./types";
+import { m } from "../../i18n";
 
-const THOUGHTS = ["我想想哦…", "翻翻小本子…", "在找那句话…", "马上就好。"];
+const THOUGHTS = m.chat.thinking.thoughts;
 
-const VIDEO: Record<string, string> = {
-  reading: "先打开这个视频看看…",
-  watching: "在看里面的画面和字幕…",
-  thinking: "看完了，在想怎么跟你讲。",
-  failed: "这个视频我没看成。",
-};
+const VIDEO: Record<string, string> = m.chat.thinking.video;
 
-const WEB: Record<string, string> = {
-  reading: "在读这个网页…",
-  summarizing: "读完了，在整理。",
-  failed: "这个网页打不开。",
-};
+const WEB: Record<string, string> = m.chat.thinking.web;
 
 type Props = {
   progress?: Progress;
@@ -57,13 +49,13 @@ export function Thinking({ progress, onGiveUp }: Props) {
   const tooLong = elapsed >= 20_000;
   const giveUp = elapsed >= 45_000;
   const hint = progress
-    ? "这个视频有点长，我再看一会儿，你可以先去逛逛别的页面。"
-    : "她想得有点久，再等等，或者先去别的页面。";
+    ? m.chat.thinking.longVideo
+    : m.chat.thinking.slow;
 
   return (
     <div className="think" data-waiting={giveUp ? "long" : tooLong ? "slow" : "normal"}>
       <span className="sr-only" role="status">
-        她在想
+        {m.chat.thinking.srLabel}
       </span>
       <p className="think__line" aria-hidden title={progress?.title ?? progress?.message}>
         {calm ? (
@@ -77,7 +69,7 @@ export function Thinking({ progress, onGiveUp }: Props) {
       <InkLine id="dlg-think" size={2.4} draw={calm ? "none" : "loop"} className="think__ink" />
       {tooLong && <p className="think__hint">{hint}</p>}
       {giveUp && onGiveUp && (
-        <Button variant="ghost" className="think__giveup" onClick={onGiveUp}>不等了</Button>
+        <Button variant="ghost" className="think__giveup" onClick={onGiveUp}>{m.chat.thinking.giveUp}</Button>
       )}
     </div>
   );

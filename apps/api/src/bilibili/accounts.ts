@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { checkBilibiliLoginQr, isBilibiliSessionValid, loadBilibiliSession, logoutFromBilibili, requestBilibiliLoginQr } from "./session.ts";
 
 export type LoginState = "waiting" | "scanned" | "expired" | "success" | "error";
@@ -29,7 +30,7 @@ export interface AccountService {
 export class AccountError extends Error {}
 
 function assertBilibili(platform: string) {
-  if (platform !== "bilibili") throw new AccountError("这个平台还没有接入。");
+  if (platform !== "bilibili") throw new AccountError(msg().core.bilibili.notIntegrated);
 }
 
 export function createAccountService(): AccountService {
@@ -44,7 +45,7 @@ export function createAccountService(): AccountService {
           valid = null;
         }
       }
-      return [{ platform: "bilibili", name: "哔哩哔哩", connected: Boolean(session), valid, savedAt: session?.savedAt || null }];
+      return [{ platform: "bilibili", name: msg().core.bilibili.name, connected: Boolean(session), valid, savedAt: session?.savedAt || null }];
     },
     async startLogin(platform) {
       assertBilibili(platform);

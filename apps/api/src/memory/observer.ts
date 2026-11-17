@@ -1,5 +1,6 @@
 import type { ChatProvider } from "../llm/types.ts";
 import type { StoredMessage } from "../store/index.ts";
+// i18n-ignore-start：观察记录提示词与内部标签
 
 const SYSTEM =
   "你在整理一段长期陪伴对话的连续观察记录。记录用户明确说过的事实和偏好、共同经历、决定、约定、未完成事项，以及角色表达过的观点。" +
@@ -31,3 +32,4 @@ export async function observeConversation(
   if (!summary) return undefined;
   return summary.length <= 1600 ? summary : `${summary.slice(0, 1597).trimEnd()}…`;
 }
+// i18n-ignore-end

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button, Card } from "../ui";
 import { Icon } from "../ink-icons";
 import { siteLabel, thumbUrl, whenText, type SurfFeedItem } from "../../lib/surf";
+import { m } from "../../i18n";
 
 type Props = {
   item: SurfFeedItem;
@@ -33,9 +34,9 @@ export function SurfCard({ item, fresh = false, onOpen, onForget, onOpenUrl }: P
           )}
           <span className="pbadge scard__kind" data-tone={video ? "accent" : "info"}>
             <Icon name={video ? "video" : "newspaper"} size={16} />
-            {video ? "视频" : "网页"}
+            {video ? m.surf.card.video : m.surf.card.web}
           </span>
-          {fresh && <span className="pbadge scard__fresh" data-tone="success">新</span>}
+          {fresh && <span className="pbadge scard__fresh" data-tone="success">{m.surf.card.fresh}</span>}
         </div>
 
         <div className="scard__body">
@@ -51,7 +52,7 @@ export function SurfCard({ item, fresh = false, onOpen, onForget, onOpenUrl }: P
           </h3>
           {item.comment && (
             <p className="scard__say">
-              <span className="scard__say-label">她说</span>
+              <span className="scard__say-label">{m.surf.card.says}</span>
               {item.comment}
             </p>
           )}
@@ -66,9 +67,9 @@ export function SurfCard({ item, fresh = false, onOpen, onForget, onOpenUrl }: P
 
         <div className="scard__foot">
           <Button variant="secondary" onClick={() => onOpenUrl(item.url)}>
-            {video ? "打开原视频" : "打开网页"}
+            {video ? m.surf.card.openVideo : m.surf.card.openWeb}
           </Button>
-          <Button variant="ghost" onClick={() => onForget(item)}>忘掉</Button>
+          <Button variant="ghost" onClick={() => onForget(item)}>{m.surf.card.forget}</Button>
         </div>
       </Card>
     </li>

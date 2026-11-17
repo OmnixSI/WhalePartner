@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendJson, readJsonBody, RequestBodyError } from "../server/http.ts";
 import { isCharacterId } from "../persona/persona.ts";
@@ -29,24 +30,24 @@ export async function handleCompanionRoute(
       } catch (error) {
         sendJson(response, error instanceof RequestBodyError ? error.status : 400, {
           error: "invalid_settings",
-          message: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof CompanionSettingsError ? error.message : "主动陪伴设置没存上。",
+          message: error instanceof SyntaxError ? msg().core.shared.invalidJson : error instanceof CompanionSettingsError ? error.message : msg().core.routes.companion.notSaved,
         });
       }
       return true;
     }
-    sendJson(response, 405, { error: "method_not_allowed", message: "只支持 GET / PUT。" });
+    sendJson(response, 405, { error: "method_not_allowed", message: msg().core.shared.onlyGetPut });
     return true;
   }
 
   if (request.method !== "POST" || url.pathname !== "/api/chat/presence") return false;
   try {
     const body = await readJsonBody(request);
-    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("在线状态格式不对。");
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error(msg().core.routes.companion.presenceFormat);
     const input = body as Record<string, unknown>;
-    if (typeof input.clientId !== "string" || !CLIENT_ID.test(input.clientId)) throw new Error("设备标识无效。");
-    if (!isCharacterId(input.character)) throw new Error("未知的角色。");
+    if (typeof input.clientId !== "string" || !CLIENT_ID.test(input.clientId)) throw new Error(msg().core.routes.companion.deviceIdInvalid);
+    if (!isCharacterId(input.character)) throw new Error(msg().common.unknownCharacter);
     for (const name of ["visible", "active", "busy", "voicePlaying"]) {
-      if (typeof input[name] !== "boolean") throw new Error("在线状态格式不对。");
+      if (typeof input[name] !== "boolean") throw new Error(msg().core.routes.companion.presenceFormat);
     }
     deps.presence.update({
       clientId: input.clientId,
@@ -58,7 +59,7 @@ export async function handleCompanionRoute(
     });
     response.writeHead(204).end();
   } catch (error) {
-    sendJson(response, error instanceof RequestBodyError ? error.status : 400, { error: "invalid_presence", message: error instanceof Error ? error.message : "在线状态格式不对。" });
+    sendJson(response, error instanceof RequestBodyError ? error.status : 400, { error: "invalid_presence", message: error instanceof Error ? error.message : msg().core.routes.companion.presenceFormat });
   }
   return true;
 }

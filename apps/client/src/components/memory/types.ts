@@ -1,5 +1,6 @@
 import type { IconName } from "../ink-icons";
 import type { MemoryEntry } from "../../lib/memory";
+import { m } from "../../i18n/index.ts";
 
 /**
  * 记忆页的形状（规范 §7.3 / §10.5）。
@@ -27,12 +28,12 @@ export type Group = {
 };
 
 export const GROUPS: readonly Group[] = [
-  { key: "all", label: "全部", icon: "shell", tape: "b" },
-  { key: "about", label: "关于你", icon: "conch", tape: "a" },
-  { key: "together", label: "一起经历的", icon: "shell", tape: "b" },
-  { key: "learned", label: "她学到的", icon: "starfish", tape: "c" },
-  { key: "surf", label: "她拾到的", icon: "bottle", tape: "d" },
-  { key: "now", label: "她的近况", icon: "lighthouse", tape: "c" },
+  { key: "all", label: m.memory.groups.all, icon: "shell", tape: "b" },
+  { key: "about", label: m.memory.groups.about, icon: "conch", tape: "a" },
+  { key: "together", label: m.memory.groups.together, icon: "shell", tape: "b" },
+  { key: "learned", label: m.memory.groups.learned, icon: "starfish", tape: "c" },
+  { key: "surf", label: m.memory.groups.surf, icon: "bottle", tape: "d" },
+  { key: "now", label: m.memory.groups.now, icon: "lighthouse", tape: "c" },
 ];
 
 const SYMBOL = new Map<GroupKey, Group>(GROUPS.map((group) => [group.key, group]));
@@ -60,35 +61,33 @@ export function seqLabel(seq: number | null | undefined): string | null {
 }
 
 const SOURCE_LABEL: Record<string, string> = {
-  conversation: "聊天",
-  video: "视频",
-  web: "网页",
-  diary: "日记",
-  learned: "学到的",
-  surf: "她自己逛到的",
-  reflection: "近况",
+  conversation: m.memory.source.conversation,
+  video: m.memory.source.video,
+  web: m.memory.source.web,
+  diary: m.memory.source.diary,
+  learned: m.memory.source.learned,
+  surf: m.memory.source.surf,
+  reflection: m.memory.source.reflection,
 };
 
 export function sourceLabel(entry: MemoryEntryP2): string {
   const source = (entry.source ?? "").toLowerCase();
   if (SOURCE_LABEL[source]) return SOURCE_LABEL[source];
-  return entry.kind === "fact" ? "聊天" : "一起经历的";
+  return entry.kind === "fact" ? m.memory.source.fallbackFact : m.memory.source.fallbackExperience;
 }
-
-const WEEKDAY = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"] as const;
 
 export function dayLabel(iso?: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return `${date.getMonth() + 1}月${date.getDate()}日 · ${WEEKDAY[date.getDay()]}`;
+  return m.memory.date.full(date);
 }
 
 export function dayShort(iso?: string | null): string {
   if (!iso) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
+  return m.memory.date.short(date);
 }
 
 /** 卡片要显示的字：事实用原话；经历用标题 + 正文（标题可能为空）。 */
@@ -96,7 +95,7 @@ export function titleOf(entry: MemoryEntryP2): string {
   const title = entry.title?.trim();
   if (title) return title;
   const first = entry.text.split("\n")[0]?.trim() ?? "";
-  return first || "一条记忆";
+  return first || m.memory.titleFallback;
 }
 
 export function bodyOf(entry: MemoryEntryP2): string {

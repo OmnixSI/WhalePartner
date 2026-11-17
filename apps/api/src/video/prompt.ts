@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 
 const template = readFileSync(new URL("./prompts/video-summary.md", import.meta.url), "utf8").trim();
 
+// i18n-ignore-start：给模型的提示词
 export function buildVideoSummaryPrompt(
   formattedText: string,
   frameImages: Array<{ time: number; reason: string }> = [],
@@ -12,3 +13,4 @@ export function buildVideoSummaryPrompt(
 
   return `${template}\n\n--- 视频证据文本 ---\n${formattedText}\n--- 视频证据文本结束 ---\n\n--- Codex 附图索引 ---\n${frameIndex}\n--- 附图索引结束 ---`;
 }
+// i18n-ignore-end

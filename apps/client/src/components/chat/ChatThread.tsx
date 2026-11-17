@@ -5,6 +5,7 @@ import { CharacterMark } from "../CharacterMark";
 import { stripEmotionTags } from "../../lib/emotion";
 import { clock, dayKey, dayLabel, visibleTurns } from "./chatThreadUtils";
 import type { Turn } from "./types";
+import { m } from "../../i18n";
 
 type Props = {
   name: string;
@@ -41,7 +42,7 @@ export function ChatThread({ name, turns, excludeKey }: Props) {
   if (!open) {
     return (
       <Button ref={peek} variant="secondary" className="chat-thread__peek" aria-expanded={false} aria-controls="chat-thread-compact" onClick={() => setOpen(true)}>
-        最近的 {visible.length} 条
+        {m.chat.thread.recent(visible.length)}
       </Button>
     );
   }
@@ -55,21 +56,21 @@ export function ChatThread({ name, turns, excludeKey }: Props) {
       className="chat-thread chat-thread--compact"
       id="chat-thread-compact"
       role="dialog"
-      aria-label="最近的对话"
+      aria-label={m.chat.thread.label}
       aria-modal={false}
       tabIndex={-1}
       onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
     >
       <header className="chat-thread__head">
-        <h2 className="chat-thread__title">最近的对话</h2>
-        <Button variant="ghost" aria-expanded onClick={() => setOpen(false)}>收起</Button>
+        <h2 className="chat-thread__title">{m.chat.thread.label}</h2>
+        <Button variant="ghost" aria-expanded onClick={() => setOpen(false)}>{m.chat.thread.collapse}</Button>
       </header>
       <div
         className="chat-thread__list"
         ref={list}
         tabIndex={0}
         role="log"
-        aria-label="最近的对话"
+        aria-label={m.chat.thread.label}
         onScroll={() => {
           const node = list.current;
           if (node) atBottom.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24;
@@ -91,7 +92,7 @@ export function ChatThread({ name, turns, excludeKey }: Props) {
                 {turn.role === "her" && <CharacterMark className="chat-thread__avatar" />}
                 <div className="chat-thread__body">
                   <div className="chat-thread__meta">
-                    <span>{turn.role === "her" ? name : "你"}</span>
+                    <span>{turn.role === "her" ? name : m.chat.thread.you}</span>
                     <time dateTime={turn.at}>{clock(turn.at)}</time>
                   </div>
                   <p className="chat-thread__bubble">{text}</p>

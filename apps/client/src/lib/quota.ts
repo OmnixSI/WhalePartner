@@ -1,17 +1,12 @@
 import { API_BASE } from "./api";
+import { m } from "../i18n";
 
 export type QuotaKind = "chat" | "video" | "web" | "journal" | "surf";
 
-export const QUOTA_KIND_LABELS: Record<QuotaKind, string> = {
-  chat: "聊天",
-  video: "看视频",
-  web: "读网页",
-  journal: "写日记",
-  surf: "她自己逛",
-};
+export const QUOTA_KIND_LABELS: Record<QuotaKind, string> = m.chat.quota.kinds;
 
 /** 402 时给用户看的话。 */
-export const QUOTA_EXCEEDED_MESSAGE = "这个月的贝壳用完了，下个月 1 号再来找我。";
+export const QUOTA_EXCEEDED_MESSAGE = m.chat.quota.exceeded;
 
 export interface QuotaPeriod {
   /** `YYYY-MM-DD`，服务器本地时区的月初。 */
@@ -63,5 +58,5 @@ export async function getQuota(signal?: AbortSignal): Promise<QuotaSummary | nul
 export function formatResetDate(period: QuotaPeriod): string {
   const [, , month, day] = /^(\d{4})-(\d{2})-(\d{2})/.exec(period.resetsAt) ?? [];
   if (!month || !day) return period.resetsAt;
-  return `${Number(month)}月${Number(day)}日`;
+  return m.chat.quota.resetDate(Number(month), Number(day));
 }

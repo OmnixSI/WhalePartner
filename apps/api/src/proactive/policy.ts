@@ -1,4 +1,5 @@
 import { inQuietHours } from "../surf/settings.ts";
+import { msg } from "../i18n/index.ts";
 
 export type CompanionFrequency = "rare" | "normal";
 
@@ -28,19 +29,19 @@ export class CompanionSettingsError extends Error {}
 export function validateCompanionSettingsPatch(body: Record<string, unknown>): CompanionSettingsPatch {
   const patch: CompanionSettingsPatch = {};
   if (body.enabled !== undefined) {
-    if (typeof body.enabled !== "boolean") throw new CompanionSettingsError("主动陪伴总开关只能是开或关。");
+    if (typeof body.enabled !== "boolean") throw new CompanionSettingsError(msg().content.proactive.enabledBool);
     patch.enabled = body.enabled;
   }
   if (body.frequency !== undefined) {
-    if (body.frequency !== "rare" && body.frequency !== "normal") throw new CompanionSettingsError("频率只能选少一点或偶尔。");
+    if (body.frequency !== "rare" && body.frequency !== "normal") throw new CompanionSettingsError(msg().content.proactive.frequency);
     patch.frequency = body.frequency;
   }
   if (body.quiet !== undefined) {
-    if (!body.quiet || typeof body.quiet !== "object" || Array.isArray(body.quiet)) throw new CompanionSettingsError("免打扰时段需要开始和结束时间。");
+    if (!body.quiet || typeof body.quiet !== "object" || Array.isArray(body.quiet)) throw new CompanionSettingsError(msg().content.proactive.quietNeedsBoth);
     const quiet = body.quiet as Record<string, unknown>;
-    if (quiet.start === undefined && quiet.end === undefined) throw new CompanionSettingsError("免打扰时段需要开始和结束时间。");
-    if (quiet.start !== undefined && (typeof quiet.start !== "string" || !CLOCK.test(quiet.start))) throw new CompanionSettingsError("开始时间要写成 08:30 这样。");
-    if (quiet.end !== undefined && (typeof quiet.end !== "string" || !CLOCK.test(quiet.end))) throw new CompanionSettingsError("结束时间要写成 08:30 这样。");
+    if (quiet.start === undefined && quiet.end === undefined) throw new CompanionSettingsError(msg().content.proactive.quietNeedsBoth);
+    if (quiet.start !== undefined && (typeof quiet.start !== "string" || !CLOCK.test(quiet.start))) throw new CompanionSettingsError(msg().content.proactive.startFormat);
+    if (quiet.end !== undefined && (typeof quiet.end !== "string" || !CLOCK.test(quiet.end))) throw new CompanionSettingsError(msg().content.proactive.endFormat);
     patch.quiet = {
       ...(quiet.start === undefined ? {} : { start: quiet.start as string }),
       ...(quiet.end === undefined ? {} : { end: quiet.end as string }),

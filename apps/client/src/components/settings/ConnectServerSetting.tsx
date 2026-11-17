@@ -3,6 +3,7 @@ import { useState } from "react";
 import { defaultDeviceName, pairWithHub, remoteConnection, setRemoteConnection } from "../../lib/api";
 import { SettingRow } from "./Row";
 import { Button } from "../ui/Button";
+import { m } from "../../i18n";
 import { Input } from "../ui/Field";
 
 export function ConnectServerSetting({ onToast }: { onToast?: (text: string) => void }) {
@@ -19,10 +20,10 @@ export function ConnectServerSetting({ onToast }: { onToast?: (text: string) => 
     try {
       const connection = await pairWithHub(url, code, name);
       setRemoteConnection(connection);
-      onToast?.("连上了。");
+      onToast?.(m.setup.connect.toastConnected);
       window.location.reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "连接失败。");
+      setError(e instanceof Error ? e.message : m.setup.connect.failed);
     } finally {
       setBusy(false);
     }
@@ -35,25 +36,25 @@ export function ConnectServerSetting({ onToast }: { onToast?: (text: string) => 
 
   return (
     <SettingRow
-      title="连接到我的鲸汐"
-      desc={current ? `现在连着：${current.url || "本页所在的服务器"}。` : "已经在别的地方运行了鲸汐？输入它的地址和配对码，这台设备就和那边同步。"}
+      title={m.setup.connect.title}
+      desc={current ? m.setup.connect.descConnected(current.url) : m.setup.connect.descIdle}
       stacked
     >
       <div className="set-fields">
-        <label className="sr-only" htmlFor="hub-url">鲸汐的地址</label>
-        <Input id="hub-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://home.example.com 或 http://192.168.1.8:8787" inputMode="url" autoComplete="off" />
-        <label className="sr-only" htmlFor="hub-code">配对码</label>
-        <Input id="hub-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6 位配对码" inputMode="numeric" autoComplete="one-time-code" />
-        <label className="sr-only" htmlFor="hub-name">这台设备叫什么</label>
+        <label className="sr-only" htmlFor="hub-url">{m.setup.connect.urlLabel}</label>
+        <Input id="hub-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder={m.setup.connect.urlPlaceholder} inputMode="url" autoComplete="off" />
+        <label className="sr-only" htmlFor="hub-code">{m.setup.connect.codeLabel}</label>
+        <Input id="hub-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder={m.setup.connect.codePlaceholder} inputMode="numeric" autoComplete="one-time-code" />
+        <label className="sr-only" htmlFor="hub-name">{m.setup.connect.nameLabel}</label>
         <Input id="hub-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
         <div className="set-actions">
           {current && (
             <Button variant="ghost" onClick={disconnect}>
-              断开，回到本机
+              {m.setup.connect.disconnect}
             </Button>
           )}
           <Button variant="primary" onClick={() => void connect()} disabled={busy || code.length !== 6 || !url.trim()}>
-            {busy ? "连接中…" : "连接"}
+            {busy ? m.setup.connect.connecting : m.setup.connect.connect}
           </Button>
         </div>
         {error && <p className="set-row__desc" role="alert">{error}</p>}

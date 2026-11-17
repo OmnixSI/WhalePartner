@@ -6,6 +6,7 @@ import { BrowserManager, sharedBrowser, type BrowserManagerOptions, type Install
 import { classifyError, SurfError } from "./errors.ts";
 import { assertReadable, extractArticle, toWebPage } from "./reader.ts";
 import type { WebPageText } from "./types.ts";
+import { msg } from "../i18n/index.ts";
 
 /**
  * 读一个网页的完整流程：
@@ -47,7 +48,7 @@ interface StaticHop {
   body: Buffer;
 }
 
-const privateAddressError = (error: unknown) => error instanceof Error && /内部地址/.test(error.message);
+const privateAddressError = (error: unknown) => error instanceof Error && /内部地址/.test(error.message); // i18n-ignore：匹配错误信息的正则（含中英文）
 
 /**
  * 用 node:http(s) 发一跳请求：lookup 在连接时校验解析出的地址，DNS 重绑定没有先查后连的窗口。
@@ -96,28 +97,28 @@ export const fetchStaticHtml: StaticFetcher = async (url, options) => {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const target = new URL(current);
-    if (target.protocol !== "http:" && target.protocol !== "https:") throw new SurfError("content", "只能读 http 或 https 网页。");
+    if (target.protocol !== "http:" && target.protocol !== "https:") throw new SurfError("content", msg().content.surf.onlyHttp);
     if (!options.allowPrivateHosts && isPrivateHostname(target.hostname)) {
-      throw new SurfError("content", "这个地址指向内部网络，不会去读。");
+      throw new SurfError("content", msg().content.surf.internalAddress);
     }
     const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(STATIC_TIMEOUT_MS)]) : AbortSignal.timeout(STATIC_TIMEOUT_MS);
     let response: StaticHop;
     try {
       response = await requestStatic(target, { signal, lookup });
     } catch (error) {
-      if (!options.allowPrivateHosts && privateAddressError(error)) throw new SurfError("content", "这个地址指向内部网络，不会去读。");
+      if (!options.allowPrivateHosts && privateAddressError(error)) throw new SurfError("content", msg().content.surf.internalAddress);
       throw error;
     }
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.location;
-      if (!location) throw new SurfError("content", "页面重定向没有目的地。");
+      if (!location) throw new SurfError("content", msg().content.surf.page.noRedirectTarget);
       current = new URL(location, target).toString();
       continue;
     }
-    if (response.status === 429) throw new SurfError("rate_limit", "对方让我们慢一点（429）。", { status: 429 });
-    if (response.status < 200 || response.status >= 300) throw new SurfError(response.status >= 500 ? "network" : "content", `页面返回了 ${response.status}。`, { status: response.status });
+    if (response.status === 429) throw new SurfError("rate_limit", msg().content.surf.page.slowDown, { status: 429 });
+    if (response.status < 200 || response.status >= 300) throw new SurfError(response.status >= 500 ? "network" : "content", msg().content.surf.page.status(response.status), { status: response.status });
     const type = String(response.headers["content-type"] ?? "");
-    if (type && !/html|xml/i.test(type)) throw new SurfError("content", "这不是一个网页。");
+    if (type && !/html|xml/i.test(type)) throw new SurfError("content", msg().content.surf.page.notWebPage);
     const charset = /charset=([\w-]+)/i.exec(type)?.[1] ?? "utf-8";
     let html: string;
     try {
@@ -127,7 +128,7 @@ export const fetchStaticHtml: StaticFetcher = async (url, options) => {
     }
     return { html, url: target.toString() };
   }
-  throw new SurfError("content", "页面重定向太多次。");
+  throw new SurfError("content", msg().content.surf.page.tooManyRedirects);
 };
 
 export interface PageReaderOptions extends BrowserManagerOptions {
@@ -166,7 +167,7 @@ export function createPageReader(options: PageReaderOptions = {}): PageReader {
         const kind = classifyError(error, signal);
         // 取消、限流、地址不安全：换浏览器也没用，直接抛。
         if (kind === "aborted" || kind === "rate_limit") throw error;
-        if (error instanceof SurfError && /内部网络|有效的网页|http 或 https/.test(error.message)) throw error;
+        if (error instanceof SurfError && /内部网络|有效的网页|http 或 https|internal network|valid web address|http or https/.test(error.message)) throw error; // i18n-ignore：匹配错误信息的正则（含中英文）
       }
 
       if (!browser.isReady()) {
@@ -174,7 +175,7 @@ export function createPageReader(options: PageReaderOptions = {}): PageReader {
         // 降级：这一趟读不了脚本渲染的页面，如实报告，不假装读到了。
         throw staticError instanceof SurfError && staticError.kind === "network"
           ? staticError
-          : new SurfError("content", "这个网页需要浏览器渲染，浏览器还没准备好，先跳过。", { cause: staticError });
+          : new SurfError("content", msg().content.surf.page.needsBrowser, { cause: staticError });
       }
       const rendered = await browser.render(url, { signal });
       const article = extractArticle(rendered.html, rendered.url);

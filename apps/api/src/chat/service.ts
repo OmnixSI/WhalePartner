@@ -12,6 +12,7 @@ import { extractVideoTarget, type VideoService } from "../video/service.ts";
 import { extractWebTarget, type WebService } from "../webpage/service.ts";
 import { buildPersonaCore, CHARACTERS, DEFAULT_CHARACTER, withUserName, type CharacterId } from "../persona/persona.ts";
 import type { ChatStore } from "../store/index.ts";
+import { msg } from "../i18n/index.ts";
 
 export const MAX_MESSAGE_CHARS = 2000;
 export type ChatEvent =
@@ -68,9 +69,9 @@ function wire(message: object, attachment: unknown = null) {
 }
 
 export function validateUserMessage(value: unknown): string {
-  if (typeof value !== "string" || !value.trim()) throw new ChatInputError("消息不能为空。");
+  if (typeof value !== "string" || !value.trim()) throw new ChatInputError(msg().content.chat.emptyMessage);
   const text = value.trim();
-  if (text.length > MAX_MESSAGE_CHARS) throw new ChatInputError(`消息太长了（最多 ${MAX_MESSAGE_CHARS} 字）。`);
+  if (text.length > MAX_MESSAGE_CHARS) throw new ChatInputError(msg().content.chat.messageTooLong(MAX_MESSAGE_CHARS));
   return text;
 }
 
@@ -172,7 +173,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
       yield* emit(filter.flush(), []);
     } catch (error) {
       if (timedOut && !reply) {
-        throw new ChatFailure("timeout", `她这会儿一直没有回音（等了超过 ${Math.round(firstTokenMs / 1000)} 秒，几条线路都没接通）。可以再试一次。`);
+        throw new ChatFailure("timeout", msg().content.chat.timeout(Math.round(firstTokenMs / 1000)));
       }
       throw error;
     }
@@ -181,7 +182,7 @@ export async function* runChat(deps: ChatDeps, userText: string, signal?: AbortS
     console.info(`[chat-perf] ${JSON.stringify({ ...perf, provider: usedProvider ?? provider.id })}`);
     signal?.throwIfAborted();
     const emotion = first ?? "neutral";
-    if (!reply.trim()) throw new ChatFailure("empty", "模型没有返回内容。");
+    if (!reply.trim()) throw new ChatFailure("empty", msg().content.chat.emptyReply);
     const saved = store.add("assistant", reply.trimEnd(), emotion, character, session.id);
     finished = true;
     try {

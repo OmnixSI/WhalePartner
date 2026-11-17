@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { EmotionFilter } from "../chat/emotion.ts";
 import type { ChatProvider } from "../llm/types.ts";
 import { API_ROOT } from "../paths.ts";
+// i18n-ignore-start：改写提示词，发给模型
 
 // MIT：MrGeDiao/shuorenhua 的官方压缩版规则，原样放在 vendor/shuorenhua/。
 const RULES = readFileSync(resolve(API_ROOT, "vendor/shuorenhua/shuorenhua-mini.md"), "utf8").trim();
@@ -40,3 +41,4 @@ export async function humanizeText(provider: ChatProvider, text: string, signal?
   const rewritten = out.trim();
   return plausible(text, rewritten) ? rewritten : text;
 }
+// i18n-ignore-end

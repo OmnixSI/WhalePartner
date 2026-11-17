@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchDiary, fetchJournals, type DailyJournal } from "../../lib/diary";
 import type { CharacterId } from "../../characters";
 import type { DiaryItemP2 } from "./types";
+import { m } from "../../i18n";
 
 type DateRange = { from: string; to: string };
 
@@ -24,7 +25,7 @@ export function useDiaryPageData(character: CharacterId, range: DateRange) {
       setLoadedRange(rangeKey);
       setLoadError("");
     } catch (cause) {
-      if (!signal?.aborted) setLoadError(cause instanceof Error ? cause.message : "读取日记失败。");
+      if (!signal?.aborted) setLoadError(cause instanceof Error ? cause.message : m.diary.errors.readFailed);
     }
   }, [character, range.from, range.to, rangeKey]);
 

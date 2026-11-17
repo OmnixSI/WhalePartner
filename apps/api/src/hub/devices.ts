@@ -2,6 +2,7 @@
  * 设备配对：hub 上存「已配对设备」。只存 token 的 sha256，不存明文。
  * 配对码 6 位、10 分钟有效、一次性；错误尝试限速，防止暴力枚举。
  */
+import { msg } from "../i18n/index.ts";
 import { createHash, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -103,7 +104,7 @@ export class DeviceRegistry {
     const now = new Date(this.#now()).toISOString();
     const record: DeviceRecord = {
       id: randomBytes(6).toString("hex"),
-      name: name.trim().slice(0, 40) || "未命名设备",
+      name: name.trim().slice(0, 40) || msg().core.hub.unnamedDevice,
       tokenHash: sha256(token),
       createdAt: now,
       lastSeenAt: null,

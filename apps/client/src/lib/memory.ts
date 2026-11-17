@@ -1,4 +1,5 @@
 import { API_BASE } from "./api";
+import { m } from "../i18n";
 
 export interface MemoryEntry {
   id: string;
@@ -20,7 +21,7 @@ export interface MemoryEntry {
 export async function fetchMemories(signal?: AbortSignal): Promise<MemoryEntry[]> {
   const response = await fetch(`${API_BASE}/api/memories`, { signal });
   if (!response.ok) {
-    let detail = `请求失败（HTTP ${response.status}）`;
+    let detail = m.memory.errors.requestFailed(response.status);
     try { detail = ((await response.json()) as { error?: string }).error ?? detail; } catch { /* 非 JSON */ }
     throw new Error(detail);
   }
@@ -29,7 +30,7 @@ export async function fetchMemories(signal?: AbortSignal): Promise<MemoryEntry[]
 
 export async function deleteMemory(id: string): Promise<void> {
   const response = await fetch(`${API_BASE}/api/memories/${encodeURIComponent(id)}`, { method: "DELETE" });
-  if (!response.ok) throw new Error(`删除失败（HTTP ${response.status}）`);
+  if (!response.ok) throw new Error(m.memory.errors.deleteFailed(response.status));
 }
 
 export interface CharacterNote {
@@ -94,7 +95,7 @@ export async function fetchMemoryExplorer(filters: MemoryExplorerFilters, signal
   if (filters.to) query.set("to", filters.to);
   const response = await fetch(`${API_BASE}/api/memories/explorer?${query}`, { signal });
   if (!response.ok) {
-    let detail = `请求失败（HTTP ${response.status}）`;
+    let detail = m.memory.errors.requestFailed(response.status);
     try { detail = ((await response.json()) as { error?: string }).error ?? detail; } catch { /* 非 JSON */ }
     throw new Error(detail);
   }

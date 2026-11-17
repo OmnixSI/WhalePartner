@@ -1,3 +1,4 @@
+// i18n-ignore-start：情绪标签解析的正则，匹配模型输出
 export const EMOTIONS = ["neutral", "happy", "sad", "angry", "surprised", "relaxed"] as const;
 export type Emotion = (typeof EMOTIONS)[number];
 
@@ -81,3 +82,4 @@ export class EmotionFilter {
     return rest;
   }
 }
+// i18n-ignore-end

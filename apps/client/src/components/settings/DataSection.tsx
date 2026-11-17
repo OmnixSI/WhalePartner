@@ -12,6 +12,7 @@ import { clearHistory } from "../../lib/chat";
 import { clearLocalPreferences, deleteAll, exportAll } from "../../lib/data";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Button } from "../ui/Button";
+import { m } from "../../i18n";
 
 type Props = {
   /** 后端探测不到（fetchHealth 失败）：导出/删除一并禁用 */
@@ -39,11 +40,11 @@ export function DataSection({ offline, onToast, onUnavailable }: Props) {
     setExportFailed(false);
     try {
       const result = await exportAll();
-      onToast(`已开始下载：${result.filename}（去下载文件夹看看）。`);
+      onToast(m.setup.data.exportedToast(result.filename));
     } catch {
       setExportFailed(true);
       onUnavailable();
-      onToast("没能导出，现在拿不到。");
+      onToast(m.setup.data.exportFailedToast);
     } finally {
       setExporting(false);
     }
@@ -54,8 +55,8 @@ export function DataSection({ offline, onToast, onUnavailable }: Props) {
     const { ok } = await clearHistory();
     setClearing(false);
     setClearOpen(false);
-    if (ok) onToast("聊天记录清空了。");
-    else onToast("没清成，现在拿不到。");
+    if (ok) onToast(m.setup.data.clearedToast);
+    else onToast(m.setup.data.clearFailedToast);
   };
 
   const runDelete = async () => {
@@ -77,58 +78,58 @@ export function DataSection({ offline, onToast, onUnavailable }: Props) {
   return (
     <div className="set-data">
       <div className="set-data__row">
-        <p className="set-data__title">导出我的全部数据</p>
-        <p className="set-data__desc">聊天、她记得的事、日记、她逛到的东西，整包导出到下载文件夹。</p>
+        <p className="set-data__title">{m.setup.data.exportTitle}</p>
+        <p className="set-data__desc">{m.setup.data.exportDesc}</p>
         <Button variant="secondary" disabled={exportBlocked} onClick={() => void runExport()}>
-          {exporting ? "正在打包…" : "导出我的全部数据"}
+          {exporting ? m.setup.data.exporting : m.setup.data.exportButton}
         </Button>
-        {(offline || exportFailed) && <p className="set-data__bad">现在拿不到，等服务起来再导出。</p>}
+        {(offline || exportFailed) && <p className="set-data__bad">{m.setup.data.exportUnavailable}</p>}
       </div>
 
       <div className="set-data__row">
-        <p className="set-data__title">清空聊天记录</p>
-        <p className="set-data__desc">只删聊天和只从聊天里记住的事；日记、看过的视频网页都留着。</p>
+        <p className="set-data__title">{m.setup.data.clearTitle}</p>
+        <p className="set-data__desc">{m.setup.data.clearDesc}</p>
         <Button variant="secondary" disabled={clearing} onClick={() => setClearOpen(true)}>
-          清空聊天记录
+          {m.setup.data.clearButton}
         </Button>
       </div>
 
       <div className="set-data__row" data-tone="danger">
-        <p className="set-data__title">删除我的全部数据</p>
-        <p className="set-data__desc">删掉就找不回来。删之前建议先导出一份。</p>
+        <p className="set-data__title">{m.setup.data.deleteTitle}</p>
+        <p className="set-data__desc">{m.setup.data.deleteDesc}</p>
         <Button
           variant="danger"
           disabled={offline || deleting}
           onClick={() => setDeleteOpen(true)}
         >
-          {deleting ? "正在删…" : "删除我的全部数据"}
+          {deleting ? m.setup.data.deleting : m.setup.data.deleteButton}
         </Button>
-        {(offline || deleteFailed) && <p className="set-data__bad">现在拿不到，什么都没删。</p>}
+        {(offline || deleteFailed) && <p className="set-data__bad">{m.setup.data.deleteUnavailable}</p>}
       </div>
 
       <ConfirmDialog
         open={clearOpen}
         onOpenChange={setClearOpen}
-        title="清空所有聊天？"
-        confirmLabel="清空"
+        title={m.setup.data.clearDialogTitle}
+        confirmLabel={m.setup.data.clearConfirm}
         busy={clearing}
         onConfirm={() => void runClear()}
       >
-        聊天原文和只从聊天里记住的事都会删掉；看过的视频、网页、她自己逛到的东西和日记里的内容会留着。
+        {m.setup.data.clearDialogBody}
       </ConfirmDialog>
 
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
-        title="删除我的全部数据？"
-        confirmLabel="全部删掉"
-        ackLabel="我知道删除后找不回来"
+        title={m.setup.data.deleteDialogTitle}
+        confirmLabel={m.setup.data.deleteConfirm}
+        ackLabel={m.setup.data.deleteAck}
         danger
         busy={deleting}
         confirmDisabled={offline}
         onConfirm={() => void runDelete()}
       >
-        聊天、她记得的事、日记、她逛到的东西、好感度、额度记录和你的昵称都会删掉，B 站登录也会退出。建议先导出一份。
+        {m.setup.data.deleteDialogBody}
       </ConfirmDialog>
     </div>
   );

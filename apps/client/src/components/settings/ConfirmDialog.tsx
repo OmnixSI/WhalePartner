@@ -5,6 +5,7 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
+import { m } from "../../i18n";
 
 type Props = {
   open: boolean;
@@ -28,7 +29,7 @@ export function ConfirmDialog({
   title,
   children,
   confirmLabel,
-  cancelLabel = "先留着",
+  cancelLabel = m.settings.confirmDialog.keep,
   onConfirm,
   danger = false,
   busy = false,
@@ -57,7 +58,7 @@ export function ConfirmDialog({
             {cancelLabel}
           </Button>
           <Button variant={danger ? "danger" : "primary"} disabled={blocked} loading={busy} onClick={onConfirm}>
-            {busy ? "正在做…" : confirmLabel}
+            {busy ? m.settings.confirmDialog.busy : confirmLabel}
           </Button>
         </>
       }

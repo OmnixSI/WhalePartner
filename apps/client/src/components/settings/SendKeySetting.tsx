@@ -4,6 +4,7 @@ import { readPace, readSendKey, writePace, writeSendKey, type SendKey } from "..
 import { SettingRow } from "./Row";
 import { Button } from "../ui/Button";
 import { Switch } from "./Switch";
+import { m } from "../../i18n";
 
 export function SendKeySetting() {
   const [sendKey, setSendKey] = useState<SendKey>(readSendKey);
@@ -21,21 +22,21 @@ export function SendKeySetting() {
   return (
     <>
       <SettingRow
-        title="发送键"
-        desc={sendKey === "enter" ? "现在：Enter 发送，Shift + Enter 换行。（触屏设备 Enter 一直是换行。）" : "现在：⌘/Ctrl + Enter 发送，Enter 换行。"}
+        title={m.settings.sendKey.title}
+        desc={sendKey === "enter" ? m.settings.sendKey.descEnter : m.settings.sendKey.descMod}
         stacked
       >
-        <div className="set-actions set-actions--start" role="radiogroup" aria-label="发送键">
+        <div className="set-actions set-actions--start" role="radiogroup" aria-label={m.settings.sendKey.title}>
           <Button role="radio" aria-checked={sendKey === "enter"} variant={sendKey === "enter" ? "primary" : "secondary"} onClick={() => chooseKey("enter")}>
-            Enter 发送
+            {m.settings.sendKey.enter}
           </Button>
           <Button role="radio" aria-checked={sendKey === "mod-enter"} variant={sendKey === "mod-enter" ? "primary" : "secondary"} onClick={() => chooseKey("mod-enter")}>
-            ⌘/Ctrl + Enter 发送
+            {m.settings.sendKey.modEnter}
           </Button>
         </div>
       </SettingRow>
-      <SettingRow title="一句一句地说" desc="她的回复按句分成一到三条，像在打字一样一条条出现。关掉就一次摆全。" onActivate={() => choosePace(!pace)}>
-        <Switch label="一句一句地说" checked={pace} onChange={choosePace} />
+      <SettingRow title={m.settings.sendKey.paceTitle} desc={m.settings.sendKey.paceDesc} onActivate={() => choosePace(!pace)}>
+        <Switch label={m.settings.sendKey.paceTitle} checked={pace} onChange={choosePace} />
       </SettingRow>
     </>
   );

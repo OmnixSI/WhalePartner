@@ -1,5 +1,6 @@
 import { EmotionFilter } from "./emotion.ts";
 import type { ChatProvider } from "../llm/types.ts";
+// i18n-ignore-start：近况小记的提示词、注入检测关键词与喂给模型的日期行
 
 export interface ReflectionInput {
   name: string;
@@ -100,3 +101,4 @@ export async function reflect(provider: ChatProvider, input: ReflectionInput, si
   }
   return sanitizeNote(raw);
 }
+// i18n-ignore-end

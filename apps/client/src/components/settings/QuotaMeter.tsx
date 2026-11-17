@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getQuota, QUOTA_KIND_LABELS, type QuotaKind, type QuotaSummary } from "../../lib/quota";
 import { Button } from "../ui/Button";
+import { m } from "../../i18n";
 
 const KINDS: QuotaKind[] = ["chat", "video", "web", "journal", "surf"];
 
@@ -29,7 +30,7 @@ function isQuota(value: unknown): value is QuotaSummary {
 function resetLabel(iso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!match) return iso;
-  return `${Number(match[2])}月${Number(match[3])}日`;
+  return m.setup.quota.resetDate(Number(match[2]), Number(match[3]));
 }
 
 type Phase = { phase: "loading" } | { phase: "ok"; data: QuotaSummary } | { phase: "down" };
@@ -57,16 +58,16 @@ export function QuotaMeter() {
   }, [load]);
 
   if (state.phase === "loading") {
-    return <p className="set-quota__loading" role="status">正在数贝壳…</p>;
+    return <p className="set-quota__loading" role="status">{m.setup.quota.loading}</p>;
   }
 
   if (state.phase === "down") {
     return (
       <div className="set-state" role="status">
-        <p className="set-state__title">额度暂时看不到</p>
-        <p className="set-state__desc">贝壳数只从服务里读；现在拿不到，就不猜一个数给你。</p>
+        <p className="set-state__title">{m.setup.quota.downTitle}</p>
+        <p className="set-state__desc">{m.setup.quota.downDesc}</p>
         <Button variant="secondary" onClick={() => void load()}>
-          再试一次
+          {m.setup.quota.retry}
         </Button>
       </div>
     );
@@ -79,22 +80,22 @@ export function QuotaMeter() {
   return (
     <div className="set-quota" data-low={data.low ? "on" : "off"}>
       <p className="set-quota__main">
-        本月还剩 <strong>{data.remaining}</strong> / {data.total} 个贝壳
+        {m.setup.quota.remaining(data.remaining, data.total)}
       </p>
       <div
         className="set-meter"
         role="img"
-        aria-label={`已经用了 ${data.used} 个，一共 ${data.total} 个`}
+        aria-label={m.setup.quota.meterLabel(data.used, data.total)}
       >
         <span className="set-meter__fill" style={{ width: `${percent}%` }} />
       </div>
-      <p className="set-quota__reset">下次刷新 {resetLabel(data.period.resetsAt)}</p>
+      <p className="set-quota__reset">{m.setup.quota.nextReset(resetLabel(data.period.resetsAt))}</p>
       <p className="set-quota__detail">
         {KINDS.map((kind) => `${QUOTA_KIND_LABELS[kind]} ${data.breakdown?.[kind] ?? 0}`).join(" · ")}
       </p>
-      {data.low && <p className="set-quota__low">快用完了，她逛街会先歇着。</p>}
-      <p className="set-quota__hint">用多少、什么时候扣，都会写在这里，不会悄悄扣。</p>
-      {data.billing === "off" && <p className="set-quota__hint">现在还不收费，这里只是让你心里有数。</p>}
+      {data.low && <p className="set-quota__low">{m.setup.quota.low}</p>}
+      <p className="set-quota__hint">{m.setup.quota.hint}</p>
+      {data.billing === "off" && <p className="set-quota__hint">{m.setup.quota.billingOff}</p>}
     </div>
   );
 }

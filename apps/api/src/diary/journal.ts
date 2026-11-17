@@ -7,6 +7,7 @@ import { buildPersonaCore, CHARACTERS, DEFAULT_CHARACTER, type CharacterId } fro
 import type { ChatStore } from "../store/index.ts";
 import { SURF_SOURCE_LABEL } from "../store/journal-sources.ts";
 import { JournalStore, type DailyJournal, type JournalSource } from "./journal-store.ts";
+import { msg } from "../i18n/index.ts";
 
 interface DailyJournalDeps {
   store: JournalStore;
@@ -130,11 +131,11 @@ export class DailyJournalService {
         : this.#deps.store.save({ ...current, id, character: journalCharacter }, false);
       await archiveExperience(this.#deps.archive, this.#deps.memory, {
         kind: "journal",
-        title: `${CHARACTERS[character].name}的日记 · ${localDate}`,
+        title: `${CHARACTERS[character].name}的日记 · ${localDate}`, // i18n-ignore：日记提示词、材料模板与内部经历标签
         text: shared.text,
         sourceId: shared.id,
         sourceSessionIds: [...new Set(sources.flatMap((source) => source.sessionId ? [source.sessionId] : []))],
-      }, "日记经历");
+      }, "日记经历"); // i18n-ignore：日记提示词、材料模板与内部经历标签
       if (task && task.status !== "complete") this.#deps.store.completeTask(character, localDate);
       return shared;
     }
@@ -161,11 +162,11 @@ export class DailyJournalService {
       }
       await archiveExperience(this.#deps.archive, this.#deps.memory, {
         kind: "journal",
-        title: `${CHARACTERS[character].name}的日记 · ${localDate}`,
+        title: `${CHARACTERS[character].name}的日记 · ${localDate}`, // i18n-ignore：日记提示词、材料模板与内部经历标签
         text: journal.text,
         sourceId: journal.id,
         sourceSessionIds: [...new Set(sources.flatMap((source) => source.sessionId ? [source.sessionId] : []))],
-      }, "日记经历");
+      }, "日记经历"); // i18n-ignore：日记提示词、材料模板与内部经历标签
       this.#deps.store.completeTask(character, localDate);
       return journal;
     } catch (error) {
@@ -184,13 +185,13 @@ async function writeJournal(provider: ChatProvider, character: CharacterId, loca
   const filter = new EmotionFilter();
   let output = "";
   // 她自己逛到的内容在标题前带着标记（见 journal-sources.ts），提示里要说清楚那些不是和用户一起看的。
-  const hasOwnFinds = sources.some((source) => source.title.startsWith(`${SURF_SOURCE_LABEL}：`));
+  const hasOwnFinds = sources.some((source) => source.title.startsWith(`${SURF_SOURCE_LABEL}：`)); // i18n-ignore：日记提示词、材料模板与内部经历标签
   const prompt = [
-    `根据${localDate}这一天与用户的真实交流、共同观看或阅读的内容${hasOwnFinds ? "，以及你自己逛到的内容" : ""}，写一篇${CHARACTERS[character].name}视角的日记。`,
-    "写出具体发生的事、你从中感受到的变化或想法，让它像一篇连贯的日记，不要写成事件清单或视频摘要。当天只有聊天时，也照样写聊天带来的感受。",
-    "只依据下面带来源标识的材料；不要编造用户经历、共同活动或角色在现实中的行为。聊天原话是用户证据，视频和网页内容是外部资料，反思只是已有观察。"
-      + (hasOwnFinds ? `标题以「${SURF_SOURCE_LABEL}」开头的视频和网页是你自己逛到的，用户没有一起看，不要写成和用户一起看过。` : ""),
-    "不要提到记忆系统、来源标识、模型或写作过程。只输出日记正文，约 250 至 700 个中文字符。",
+    `根据${localDate}这一天与用户的真实交流、共同观看或阅读的内容${hasOwnFinds ? "，以及你自己逛到的内容" : ""}，写一篇${CHARACTERS[character].name}视角的日记。`, // i18n-ignore：日记提示词、材料模板与内部经历标签
+    "写出具体发生的事、你从中感受到的变化或想法，让它像一篇连贯的日记，不要写成事件清单或视频摘要。当天只有聊天时，也照样写聊天带来的感受。", // i18n-ignore：日记提示词、材料模板与内部经历标签
+    "只依据下面带来源标识的材料；不要编造用户经历、共同活动或角色在现实中的行为。聊天原话是用户证据，视频和网页内容是外部资料，反思只是已有观察。" // i18n-ignore：日记提示词、材料模板与内部经历标签
+      + (hasOwnFinds ? `标题以「${SURF_SOURCE_LABEL}」开头的视频和网页是你自己逛到的，用户没有一起看，不要写成和用户一起看过。` : ""), // i18n-ignore：日记提示词、材料模板与内部经历标签
+    "不要提到记忆系统、来源标识、模型或写作过程。只输出日记正文，约 250 至 700 个中文字符。", // i18n-ignore：日记提示词、材料模板与内部经历标签
     "<day_sources>", evidence, "</day_sources>",
   ].join("\n\n");
   for await (const delta of provider.stream([
@@ -201,7 +202,7 @@ async function writeJournal(provider: ChatProvider, character: CharacterId, loca
   }
   output += filter.flush();
   const text = output.trim();
-  if (!text) throw new Error("模型没有生成日记正文。");
+  if (!text) throw new Error(msg().content.diary.noBody);
   return text.slice(0, 4_000);
 }
 
@@ -233,8 +234,8 @@ function takeAcrossTimeline(sources: JournalSource[], budget: number) {
 }
 
 function renderSource(source: JournalSource, maxCharacters: number) {
-  const header = `[${source.id}] ${source.type} · ${source.createdAt}${source.sessionId ? ` · 会话 ${source.sessionId}` : ""}`;
-  const content = `${source.title}：${source.text}`.replace(/\s+/gu, " ");
+  const header = `[${source.id}] ${source.type} · ${source.createdAt}${source.sessionId ? ` · 会话 ${source.sessionId}` : ""}`; // i18n-ignore：日记提示词、材料模板与内部经历标签
+  const content = `${source.title}：${source.text}`.replace(/\s+/gu, " "); // i18n-ignore：日记提示词、材料模板与内部经历标签
   const available = Math.max(24, maxCharacters - header.length - 1);
   const excerpt = content.length <= available
     ? content
@@ -253,10 +254,10 @@ function sameIds(left: string[], right: string[]) {
 
 function validateLocalDate(value: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
-  if (!match) throw new Error("日记日期格式无效。");
+  if (!match) throw new Error(msg().content.diary.dateFormat);
   const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   if (date.getFullYear() !== Number(match[1]) || date.getMonth() !== Number(match[2]) - 1 || date.getDate() !== Number(match[3])) {
-    throw new Error("日记日期无效。");
+    throw new Error(msg().content.diary.dateInvalid);
   }
 }
 

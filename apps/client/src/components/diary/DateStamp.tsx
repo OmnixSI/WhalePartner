@@ -3,6 +3,7 @@
  * 下方一条手绘线。整体是一个 `<time dateTime>`，屏幕阅读器一次读作「11月7日 周六」。
  */
 import { InkLine } from "../ink";
+import { m } from "../../i18n";
 import { MONTH_EN, WEEKDAY } from "./types";
 
 type Props = {
@@ -24,7 +25,7 @@ export function DateStamp({ at, id }: Props) {
       <time className="dts__time" dateTime={iso}>
         {/* <time> 的可访问角色是 generic，aria-label 被 ARIA 禁止（axe aria-prohibited-attr）；
             改用 sr-only 文本给出整段读法，视觉子元素仍然 aria-hidden。 */}
-        <span className="sr-only">{`${at.getMonth() + 1}月${at.getDate()}日 ${weekday}`}</span>
+        <span className="sr-only">{m.diary.date.monthDayWeekday(at)}</span>
         <span className="dts__day" aria-hidden>
           {day}
         </span>
