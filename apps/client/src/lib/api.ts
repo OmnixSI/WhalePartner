@@ -12,6 +12,7 @@
  * `<img>` / `EventSource` 带不了请求头，用 `authedUrl()` 给地址补 `?token=`。
  */
 import { LANG_HEADER, lang, m } from "../i18n";
+import { pairRequestInit } from "./pair-request";
 
 export interface HubConnection {
   /** 空串 = 同源。 */
@@ -177,11 +178,7 @@ export async function pairWithHub(url: string, code: string, deviceName: string)
   if (!/^https?:\/\//i.test(base) && base !== "") throw new Error(m.common.api.addressScheme);
   let response: Response;
   try {
-    response = await fetch(`${base}/api/pair/redeem`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: code.trim(), name: deviceName }),
-    });
+    response = await fetch(`${base}/api/pair/redeem`, pairRequestInit(code, deviceName));
   } catch {
     throw new Error(m.common.api.cannotConnect);
   }

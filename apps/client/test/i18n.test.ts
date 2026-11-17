@@ -22,3 +22,14 @@ test("非浏览器环境按中文；手动选择优先于系统语言", () => {
   assert.equal(resolveLang("zh"), "zh");
   assert.equal(resolveLang("system"), "zh");
 });
+
+test("配对新设备的请求也带上当前界面语言头", async () => {
+  const { pairRequestInit } = await import("../src/lib/pair-request.ts");
+  const { LANG_HEADER } = await import("../src/i18n/index.ts");
+  const init = pairRequestInit(" 123456 ", "Mac");
+  const headers = new Headers(init.headers);
+  assert.equal(init.method, "POST");
+  assert.equal(headers.get(LANG_HEADER), lang);
+  assert.equal(headers.get("content-type"), "application/json");
+  assert.deepEqual(JSON.parse(String(init.body)), { code: "123456", name: "Mac" });
+});
