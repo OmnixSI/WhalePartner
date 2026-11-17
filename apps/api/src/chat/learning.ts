@@ -1,5 +1,5 @@
 import type { ChatProvider } from "../llm/types.ts";
-import { outputLanguageNote } from "../i18n/index.ts";
+import { msg, outputLanguageNote } from "../i18n/index.ts";
 import type { ChatStore } from "../store/index.ts";
 import { archiveExperience } from "../memory/archive.ts";
 import type { MemoryStore } from "../memory/types.ts";
@@ -12,7 +12,8 @@ export interface Learning {
   text: string;
 }
 
-const KIND_LABEL: Record<LearningKind, string> = { meme: "新梗 / 说法", knowledge: "新知识" };
+// 库里一直存中文标签（和 0.3.6 一样），显示时由 displayExperienceTitle 按当前语言翻译。
+const KIND_LABEL: Record<LearningKind, string> = msg("zh").core.store.learnedKinds;
 
 const SYSTEM =
   "你是整理笔记的助手。从资料里挑出最多 3 条值得记住的东西：" +

@@ -219,6 +219,7 @@ export const core: typeof Zh = {
   store: {
     newChat: "New chat",
     legacyChat: "Earlier chats",
+    learnedKinds: { meme: "New slang / sayings", knowledge: "New knowledge" },
     userSaid: "What you said",
     herReply: "Her reply",
     herRecentLife: "How she's doing",

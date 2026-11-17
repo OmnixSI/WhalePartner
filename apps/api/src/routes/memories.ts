@@ -5,6 +5,7 @@ import { ChatInputError } from "../chat/service.ts";
 import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import { archiveExperience } from "../memory/archive.ts";
 import { displaySessionTitle } from "../store/sessions.ts";
+import { displayExperienceTitle } from "../store/experiences.ts";
 import type { MemoryStore } from "../memory/types.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { ServerDeps } from "../server/types.ts";
@@ -162,7 +163,7 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
     text: experience.text,
     createdAt: experience.createdAt,
     source: experience.kind,
-    title: experience.title,
+    title: displayExperienceTitle(experience.kind, experience.title),
     url: experience.url,
     sourceId: experience.sourceId,
     vectorIndexed: experience.vectorIndexed,
@@ -192,7 +193,8 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
     ...facts,
     ...experiences,
     ...reflections,
-    ...entries.filter((entry) => (!entry.sourceId || !indexedSources.has(entry.sourceId)) && !(entry.kind === "fact" && structuredValues.some((value) => entry.text.includes(value)))),
+    ...entries.filter((entry) => (!entry.sourceId || !indexedSources.has(entry.sourceId)) && !(entry.kind === "fact" && structuredValues.some((value) => entry.text.includes(value))))
+      .map((entry) => ({ ...entry, title: displayExperienceTitle(entry.source, entry.title) })),
   ];
   // B4：给每条分配共享图鉴 No. 编号（单调、删了也不复用）。
   const seqs = assignSeq(store.dbPath, "shared", all.map((entry) => entry.id));

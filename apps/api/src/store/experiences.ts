@@ -3,6 +3,20 @@ import type { DatabaseSync } from "node:sqlite";
 import { indexExperience } from "./search-index.ts";
 import { matchExpression, timeWindow } from "./search.ts";
 import type { StoredExperience } from "./types.ts";
+import { msg } from "../i18n/index.ts";
+
+/**
+ * 「她学到的」库里存的内置分类标题按当前界面语言显示，库里的数据不改。
+ * 中英两种写法都认；其他来源或不认识的标题原样显示。
+ */
+export function displayExperienceTitle(kind: string | undefined, title: string): string;
+export function displayExperienceTitle(kind: string | undefined, title: string | undefined): string | undefined;
+export function displayExperienceTitle(kind: string | undefined, title: string | undefined): string | undefined {
+  if (kind !== "learned" || !title) return title;
+  const [zh, en, now] = [msg("zh").core.store.learnedKinds, msg("en").core.store.learnedKinds, msg().core.store.learnedKinds];
+  for (const key of ["meme", "knowledge"] as const) if (title === zh[key] || title === en[key]) return now[key];
+  return title;
+}
 
 export interface ExperienceInput {
   kind: string;
