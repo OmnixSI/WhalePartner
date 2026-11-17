@@ -7,10 +7,11 @@
  *   名字牌上的小圆点、读屏时的一句话。
  */
 import type { AvatarEmotion } from "../avatar/model.config";
+import { m } from "../i18n/index.ts";
 
 export type { AvatarEmotion };
 
-const TAGS = /[\[［【]\s*emotion\s*[:：]\s*([a-z]+)\s*[\]］】]/gi;
+const TAGS = /[\[［【]\s*emotion\s*[:：]\s*([a-z]+)\s*[\]］】]/gi; // i18n-ignore：匹配模型输出里的全角标点标签
 
 /** 老数据兜底：把正文里的标签去掉（前端不依赖后端是否已经做好）。 */
 export function stripEmotionTags(text: string): string {
@@ -42,11 +43,4 @@ export function isEmotion(value: string | null | undefined): value is AvatarEmot
 }
 
 /** 只给读屏和调试看的说法；界面上不印这个字。 */
-export const EMOTION_LABEL: Record<AvatarEmotion, string> = {
-  neutral: "平静",
-  happy: "开心",
-  sad: "难过",
-  angry: "有点生气",
-  surprised: "意外",
-  relaxed: "放松",
-};
+export const EMOTION_LABEL: Record<AvatarEmotion, string> = m.chat.emotion;

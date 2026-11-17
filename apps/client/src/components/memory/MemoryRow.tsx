@@ -4,6 +4,7 @@
  */
 import { Icon } from "../ink-icons";
 import { ChevronDown } from "../ui";
+import { m } from "../../i18n";
 import {
   bodyOf,
   dayShort,
@@ -39,7 +40,7 @@ export function MemoryRow({ entry, onOpen, forgetting = false }: Props) {
         data-memory-card
         data-superseded={superseded || undefined}
         onClick={() => onOpen(entry)}
-        aria-label={`${seq ? `No.${seq}，` : ""}${group.label}：${title}`}
+        aria-label={m.memory.row.aria(seq, group.label, title)}
       >
         <span className="mrow__icon" aria-hidden>
           <Icon name={group.icon} size={22} />
@@ -47,8 +48,8 @@ export function MemoryRow({ entry, onOpen, forgetting = false }: Props) {
         <span className="mrow__main">
           <span className="mrow__title">
             {title}
-            {superseded && <span className="pbadge" data-tone="warning">以前的</span>}
-            {entry.sourceMissing && <span className="pbadge">原话已不在</span>}
+            {superseded && <span className="pbadge" data-tone="warning">{m.memory.row.past}</span>}
+            {entry.sourceMissing && <span className="pbadge">{m.memory.row.sourceMissing}</span>}
           </span>
           {body && body !== title && <span className="mrow__text">{body}</span>}
         </span>

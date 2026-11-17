@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ChatSession } from "../lib/chat";
 import { ConfirmDialog } from "./ui/Dialog";
+import { m } from "../i18n";
 
 interface Props {
   sessions: ChatSession[];
@@ -26,7 +27,7 @@ export function ChatSessionControls({ sessions, sessionId, disabled = false, onS
       await onRename(title.trim());
       setEditing(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "重命名失败。");
+      setError(cause instanceof Error ? cause.message : m.chat.sessions.renameFailed);
     } finally {
       setSaving(false);
     }
@@ -40,40 +41,40 @@ export function ChatSessionControls({ sessions, sessionId, disabled = false, onS
 
   return (
     <div className="chat__sessions">
-      <label className="sr-only" htmlFor="chat-session">聊天记录</label>
+      <label className="sr-only" htmlFor="chat-session">{m.chat.sessions.listLabel}</label>
       <select id="chat-session" value={sessionId ?? ""} disabled={disabled || sessions.length === 0} onChange={(event) => onSelect(event.target.value)}>
-        {sessions.map((session) => <option key={session.id} value={session.id}>{session.title || "新聊天"}</option>)}
+        {sessions.map((session) => <option key={session.id} value={session.id}>{session.title || m.chat.sessions.newChat}</option>)}
       </select>
       {active && <details className="chat__session-menu">
-        <summary aria-label="当前会话操作" title="当前会话操作">···</summary>
+        <summary aria-label={m.chat.sessions.actions} title={m.chat.sessions.actions}>···</summary>
         <div className="chat__session-menu-panel">
           {editing ? <div className="chat__rename">
             <input
-              aria-label="聊天名称"
+              aria-label={m.chat.sessions.nameLabel}
               autoFocus
               maxLength={40}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void rename(); } }}
             />
-            <button type="button" disabled={saving || !title.trim()} onClick={() => void rename()}>保存</button>
-            <button type="button" onClick={() => setEditing(false)}>取消</button>
+            <button type="button" disabled={saving || !title.trim()} onClick={() => void rename()}>{m.chat.sessions.save}</button>
+            <button type="button" onClick={() => setEditing(false)}>{m.chat.sessions.cancel}</button>
             {error && <span role="alert">{error}</span>}
           </div> : <button type="button" onClick={(event) => {
             setTitle(active.title || "");
             setEditing(true);
             event.currentTarget.closest("details")?.removeAttribute("open");
-          }}>重命名</button>}
-          {!editing && <button className="chat__session-delete" type="button" onClick={() => void remove()}>删除对话</button>}
+          }}>{m.chat.sessions.rename}</button>}
+          {!editing && <button className="chat__session-delete" type="button" onClick={() => void remove()}>{m.chat.sessions.delete}</button>}
         </div>
       </details>}
       <ConfirmDialog
         open={confirming}
         onOpenChange={setConfirming}
-        title="删除这段对话？"
-        description={`删除“${active?.title || "新聊天"}”后，只由它产生的记忆也会一起消失，找不回来。`}
-        confirmLabel="删除"
-        cancelLabel="再想想"
+        title={m.chat.sessions.deleteTitle}
+        description={m.chat.sessions.deleteDescription(active?.title || m.chat.sessions.newChat)}
+        confirmLabel={m.chat.sessions.deleteConfirm}
+        cancelLabel={m.chat.sessions.deleteCancel}
         tone="danger"
         onConfirm={() => { void onDelete(); }}
       />

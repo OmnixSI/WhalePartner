@@ -1,4 +1,5 @@
 import type { CharacterId } from "../persona/persona.ts";
+// i18n-ignore-start：角色兴趣关键词，用于选题搜索
 
 /**
  * 每个角色自己的兴趣（§10.6.3-1）。写死在代码里，与 persona/characters/*.md 的设定对齐：
@@ -15,3 +16,4 @@ export const CHARACTER_INTERESTS: Record<CharacterId, string[]> = {
 export function interestsOf(character: CharacterId): string[] {
   return CHARACTER_INTERESTS[character] ?? CHARACTER_INTERESTS.whale;
 }
+// i18n-ignore-end

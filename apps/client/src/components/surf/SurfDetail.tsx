@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { Button, Dialog } from "../ui";
 import { Icon } from "../ink-icons";
 import { chatQuoteHref, siteLabel, thumbUrl, whenText, type SurfFeedItem } from "../../lib/surf";
+import { m } from "../../i18n";
 
 type Props = {
   item: SurfFeedItem | null;
@@ -31,13 +32,13 @@ export function SurfDetail({ item, onClose, onForget, onOpenUrl }: Props) {
       open={Boolean(item)}
       onOpenChange={(next) => !next && onClose()}
       size="lg"
-      title={item?.title ?? "见闻"}
+      title={item?.title ?? m.surf.detail.fallbackTitle}
       footer={
         item && (
           <>
-            <Button variant="ghost" onClick={() => { onClose(); onForget(item); }}>忘掉</Button>
-            <Button variant="secondary" onClick={() => onOpenUrl(item.url)}>打开原链接</Button>
-            <Button variant="primary" onClick={() => talkAbout(item)}>和她聊聊这个</Button>
+            <Button variant="ghost" onClick={() => { onClose(); onForget(item); }}>{m.surf.detail.forget}</Button>
+            <Button variant="secondary" onClick={() => onOpenUrl(item.url)}>{m.surf.detail.openLink}</Button>
+            <Button variant="primary" onClick={() => talkAbout(item)}>{m.surf.detail.talk}</Button>
           </>
         )
       }
@@ -47,7 +48,7 @@ export function SurfDetail({ item, onClose, onForget, onOpenUrl }: Props) {
           <p className="sdetail__meta">
             <span className="pbadge" data-tone={item.kind === "video" ? "accent" : "info"}>
               <Icon name={item.kind === "video" ? "video" : "newspaper"} size={16} />
-              {item.kind === "video" ? "视频" : "网页"}
+              {item.kind === "video" ? m.surf.detail.video : m.surf.detail.web}
             </span>
             <span>{siteLabel(item.sourceSite)} · {whenText(item.createdAt)}</span>
           </p>
@@ -55,17 +56,17 @@ export function SurfDetail({ item, onClose, onForget, onOpenUrl }: Props) {
           <div className="sdetail__cover" data-empty={item.thumb && !broken ? "off" : "on"}>
             {item.thumb && !broken
               ? <img src={thumbUrl(item.id)} alt="" onError={() => setBroken(true)} />
-              : <span>{item.thumbError ?? (broken ? "封面暂不可用" : "暂无封面")}</span>}
+              : <span>{item.thumbError ?? (broken ? m.surf.detail.coverUnavailable : m.surf.detail.noCover)}</span>}
           </div>
 
           {item.comment && (
             <p className="sdetail__say">
-              <span className="sdetail__say-label">她说</span>
+              <span className="sdetail__say-label">{m.surf.detail.says}</span>
               {item.comment}
             </p>
           )}
 
-          <p className="sdetail__body">{item.summary || "摘要还在整理，稍后刷新就有了。"}</p>
+          <p className="sdetail__body">{item.summary || m.surf.detail.summaryPending}</p>
 
           {item.tags.length > 0 && (
             <p className="sdetail__tags">
@@ -74,7 +75,7 @@ export function SurfDetail({ item, onClose, onForget, onOpenUrl }: Props) {
           )}
 
           <p className="sdetail__source">
-            来源：<a
+            {m.surf.detail.source}<a
               href={item.url}
               onClick={(event) => {
                 event.preventDefault();

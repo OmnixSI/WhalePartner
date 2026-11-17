@@ -1,3 +1,4 @@
+// i18n-ignore-start：记忆关键词表与喂给模型的文本
 /**
  * 记忆的“清晰度”：思路借自 Mieksido/surfcore（MIT）的衰减记忆卡。
  * 全部记忆都留在 mem0 里（相当于它的“全量卡”，记忆页能看到、能删）；
@@ -52,3 +53,4 @@ export function decayForPrompt(entries: Array<{ text: string; createdAt?: string
   }
   return out;
 }
+// i18n-ignore-end

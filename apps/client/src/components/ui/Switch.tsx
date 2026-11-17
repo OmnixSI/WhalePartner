@@ -9,6 +9,7 @@ import { Switch as S } from "radix-ui";
 import { cx } from "./cx";
 import "./shared.css";
 import "./Switch.css";
+import { m } from "../../i18n";
 
 export function Switch({ checked, defaultChecked, onCheckedChange, label, disabled, className, showState = true, ...rest }: {
   checked?: boolean;
@@ -40,8 +41,8 @@ export function Switch({ checked, defaultChecked, onCheckedChange, label, disabl
       </span>
       {showState ? (
         <span className="ui-switch__state" aria-hidden="true">
-          <span className="ui-switch__on">开</span>
-          <span className="ui-switch__off">关</span>
+          <span className="ui-switch__on">{m.common.ui.switchOn}</span>
+          <span className="ui-switch__off">{m.common.ui.switchOff}</span>
         </span>
       ) : null}
     </S.Root>

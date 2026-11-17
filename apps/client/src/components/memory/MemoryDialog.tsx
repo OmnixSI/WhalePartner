@@ -5,6 +5,7 @@
  */
 import { Button, Dialog } from "../ui";
 import { Icon } from "../ink-icons";
+import { m } from "../../i18n";
 import {
   bodyOf,
   canForget,
@@ -35,16 +36,16 @@ export function MemoryDialog({ entry, onClose, onForget }: Props) {
       open={Boolean(entry)}
       onOpenChange={(next) => !next && onClose()}
       size="md"
-      title={entry ? titleOf(entry) : "记忆"}
+      title={entry ? titleOf(entry) : m.memory.dialog.title}
       footer={
         entry && (
           <>
             {canForget(entry) && (
-              <Button variant="danger-outline" className="mdetail__forget" onClick={() => onForget(entry)}>忘掉这条</Button>
+              <Button variant="danger-outline" className="mdetail__forget" onClick={() => onForget(entry)}>{m.memory.dialog.forget}</Button>
             )}
             {entry.url && (
               <a className="ui-btn ui-press ui-focus ui-btn--secondary" href={entry.url} target="_blank" rel="noreferrer">
-                回到当时的聊天
+                {m.memory.dialog.backToChat}
               </a>
             )}
           </>
@@ -59,15 +60,15 @@ export function MemoryDialog({ entry, onClose, onForget }: Props) {
               {group.label}
             </span>
             {seq && <span className="pbadge">No.{seq}</span>}
-            {isSuperseded(entry) && <span className="pbadge" data-tone="warning">以前的记忆</span>}
+            {isSuperseded(entry) && <span className="pbadge" data-tone="warning">{m.memory.dialog.pastBadge}</span>}
           </div>
           {bodyOf(entry) && bodyOf(entry) !== titleOf(entry) && <p className="mdetail__text">{bodyOf(entry)}</p>}
           <dl className="mdetail__meta">
-            <div><dt>时间</dt><dd>{dayLabel(entry.createdAt) || "—"}</dd></div>
-            <div><dt>来源</dt><dd>{sourceLabel(entry)}</dd></div>
+            <div><dt>{m.memory.dialog.time}</dt><dd>{dayLabel(entry.createdAt) || "—"}</dd></div>
+            <div><dt>{m.memory.dialog.source}</dt><dd>{sourceLabel(entry)}</dd></div>
           </dl>
           {quote && <blockquote className="mdetail__quote">{quote}</blockquote>}
-          {entry.sourceMissing && <p className="mdetail__missing">原话已不在了，只剩下这一条摘要。</p>}
+          {entry.sourceMissing && <p className="mdetail__missing">{m.memory.dialog.sourceMissing}</p>}
         </div>
       )}
     </Dialog>

@@ -1,6 +1,7 @@
 import { API_BASE } from "./api";
 import { classifyHttp, classifyStreamError, ChatError } from "./chat-errors";
 import type { AvatarEmotion } from "../avatar/model.config";
+import { m } from "../i18n";
 
 export interface HistoryMessage {
   id: number;
@@ -75,7 +76,7 @@ export async function* streamChat(message: string, character: string, sessionId:
     });
   } catch (error) {
     if (signal?.aborted) throw error;
-    throw new ChatError("network", "网络好像断了，这句话没送出去。网络回来后点「再试一次」。");
+    throw new ChatError("network", m.chat.api.networkSend);
   }
   if (!response.ok || !response.body) {
     const body = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
@@ -92,7 +93,7 @@ export async function* streamChat(message: string, character: string, sessionId:
       chunk = await reader.read();
     } catch (error) {
       if (signal?.aborted) throw error;
-      throw new ChatError("network", "网络中途断了，她的话没有收全。网络回来后点「再试一次」。");
+      throw new ChatError("network", m.chat.api.networkReply);
     }
     if (chunk.done) break;
     buffer += decoder.decode(chunk.value, { stream: true });
@@ -108,7 +109,7 @@ export async function* streamChat(message: string, character: string, sessionId:
     }
   }
   // 流在 done 之前就结束 = 断线，不能当成功。
-  if (!finished && !signal?.aborted) throw new ChatError("network", "网络中途断了，她的话没有收全。网络回来后点「再试一次」。");
+  if (!finished && !signal?.aborted) throw new ChatError("network", m.chat.api.networkReply);
 }
 
 export async function fetchHistory(character: string, limit = 50, signal?: AbortSignal, sessionId?: string, aroundId?: number): Promise<HistoryMessage[]> {
@@ -126,7 +127,7 @@ export async function fetchHistory(character: string, limit = 50, signal?: Abort
 
 export async function fetchSessions(character: string, signal?: AbortSignal): Promise<ChatSession[]> {
   const response = await fetch(`${API_BASE}/api/chat/sessions?character=${encodeURIComponent(character)}`, { signal });
-  if (!response.ok) throw new Error(`读取聊天记录失败（HTTP ${response.status}）。`);
+  if (!response.ok) throw new Error(m.chat.api.loadFailed(response.status));
   return ((await response.json()) as { sessions: ChatSession[] }).sessions;
 }
 
@@ -136,7 +137,7 @@ export async function createChatSession(character: string): Promise<ChatSession>
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ character }),
   });
-  if (!response.ok) throw new Error(`新建聊天失败（HTTP ${response.status}）。`);
+  if (!response.ok) throw new Error(m.chat.api.createFailed(response.status));
   return ((await response.json()) as { session: ChatSession }).session;
 }
 
@@ -146,14 +147,14 @@ export async function renameChatSession(id: string, character: string, title: st
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ character, title }),
   });
-  if (!response.ok) throw new Error(`重命名失败（HTTP ${response.status}）。`);
+  if (!response.ok) throw new Error(m.chat.api.renameFailed(response.status));
   return ((await response.json()) as { session: ChatSession }).session;
 }
 
 export async function deleteChatSession(id: string, character: string): Promise<{ ok: boolean; memoriesCleared: boolean }> {
   const response = await fetch(`${API_BASE}/api/chat/sessions/${encodeURIComponent(id)}?character=${encodeURIComponent(character)}`, { method: "DELETE" });
   if (!response.ok) {
-    let message = `删除对话失败（HTTP ${response.status}）。`;
+    let message = m.chat.api.deleteFailed(response.status);
     try { message = ((await response.json()) as { error?: string }).error ?? message; } catch { /* 非 JSON */ }
     throw new Error(message);
   }

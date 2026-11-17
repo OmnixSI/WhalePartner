@@ -1,7 +1,9 @@
+import { msg } from "../i18n/index.ts";
 import { streamWithCodexAppServer, listCodexModels, resolveCodexModel, resolveCodexSettings } from "../codex/app-server.ts";
 import { readStoredCodexSettings } from "../codex/settings.ts";
 import type { ChatMessage, ChatProvider, LlmDelta, StreamOptions } from "./types.ts";
 
+// i18n-ignore-start：给模型的提示词
 const ROLE_LABEL = { system: "设定", user: "用户", assistant: "你" } as const;
 
 /** 把对话整理成一段文字提示，交给本机 Codex 续写下一条回复。 */
@@ -15,6 +17,7 @@ export function buildCodexChatPrompt(messages: ChatMessage[]) {
     "【你】",
   ].join("\n");
 }
+// i18n-ignore-end
 
 /** 本地开发兜底：通过本机 Codex app-server 返回正文增量。正式多端服务不依赖它。 */
 export class CodexChatProvider implements ChatProvider {
@@ -23,14 +26,14 @@ export class CodexChatProvider implements ChatProvider {
   #resolved = "";
 
   get model() {
-    return readStoredCodexSettings().model || this.#resolved || "Codex 默认模型";
+    return readStoredCodexSettings().model || this.#resolved || msg().core.llm.codexDefaultModel;
   }
 
   async resolveModel(signal?: AbortSignal) {
     const stored = readStoredCodexSettings();
     if (stored.model) return stored.model;
     const option = resolveCodexModel(stored, await listCodexModels(signal));
-    if (!option) throw new Error("本机 Codex 没有可用模型。");
+    if (!option) throw new Error(msg().core.codex.noModel);
     this.#resolved = option.model;
     return option.model;
   }

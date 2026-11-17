@@ -14,10 +14,11 @@ import { cx } from "./cx";
 import { subscribeToasts, toast, toastSnapshot, type ToastInput } from "./toast-store";
 import "./shared.css";
 import "./Toast.css";
+import { m } from "../../i18n";
 
 export { toast, type ToastInput, type ToastTone } from "./toast-store";
 
-export function Toaster({ label = "通知" }: { label?: string }) {
+export function Toaster({ label = m.common.ui.notifications }: { label?: string }) {
   const list = useSyncExternalStore(subscribeToasts, toastSnapshot, toastSnapshot);
   return (
     <T.Provider duration={8000} swipeDirection="right" label={label}>
@@ -42,7 +43,7 @@ export function Toaster({ label = "通知" }: { label?: string }) {
             </T.Action>
           ) : null}
           <T.Close asChild>
-            <button type="button" className="ui-toast__btn ui-press ui-focus">关掉</button>
+            <button type="button" className="ui-toast__btn ui-press ui-focus">{m.common.ui.dismiss}</button>
           </T.Close>
         </T.Root>
       ))}
@@ -61,7 +62,7 @@ export function ToastPreview({ title, description, tone = "neutral", action }: T
         {description ? <p className="ui-toast__desc">{description}</p> : null}
       </div>
       {action ? <button type="button" className="ui-toast__btn ui-toast__btn--action ui-press ui-focus">{action.label}</button> : null}
-      <button type="button" className="ui-toast__btn ui-press ui-focus">关掉</button>
+      <button type="button" className="ui-toast__btn ui-press ui-focus">{m.common.ui.dismiss}</button>
     </div>
   );
 }

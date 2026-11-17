@@ -1,7 +1,8 @@
 import { useMemo } from "react";
+import { m } from "../../i18n";
 import { isoDay, monthCells, shortTheme } from "./types";
 
-const WEEKDAYS = ["一", "二", "三", "四", "五", "六", "日"] as const;
+const WEEKDAYS = m.diary.date.weekdayMon;
 
 type DiaryCalendarProps = {
   month: Date;
@@ -16,7 +17,7 @@ export function DiaryCalendar({ month, selectedDate, themesByDate, onSelect }: D
   const recordCount = Array.from(themesByDate.values()).reduce((count, themes) => count + themes.length, 0);
 
   return (
-    <section className="diary-calendar" aria-label={`${month.getFullYear()}年${month.getMonth() + 1}月日记日历`}>
+    <section className="diary-calendar" aria-label={m.diary.calendar.ariaLabel(month)}>
       <div className="diary-calendar__week" aria-hidden="true">
         {WEEKDAYS.map((weekday) => <span key={weekday}>{weekday}</span>)}
       </div>
@@ -29,8 +30,8 @@ export function DiaryCalendar({ month, selectedDate, themesByDate, onSelect }: D
           const hasRecords = themes.length > 0;
           const isToday = cell.key === today;
           const label = hasRecords
-            ? `${cell.date.getMonth() + 1}月${cell.date.getDate()}日，有${themes.length}条记录：${shortTheme(themes[0], 24)}`
-            : `${cell.date.getMonth() + 1}月${cell.date.getDate()}日，没有日记`;
+            ? m.diary.calendar.dayWithRecords(cell.date, themes.length, shortTheme(themes[0], 24))
+            : m.diary.calendar.dayEmpty(cell.date);
 
           return (
             <button
@@ -67,17 +68,17 @@ export function DiaryCalendar({ month, selectedDate, themesByDate, onSelect }: D
                 )}
               </span>
               {hasRecords && <span className="diary-calendar__theme">{shortTheme(themes[0], 14)}</span>}
-              {themes.length > 1 && <span className="diary-calendar__more">还有 {themes.length - 1} 条</span>}
+              {themes.length > 1 && <span className="diary-calendar__more">{m.diary.calendar.more(themes.length - 1)}</span>}
             </button>
           );
         })}
       </div>
 
       <div className="diary-calendar__legend">
-        <span><i className="diary-calendar__legend-mark" aria-hidden="true" /> 有记录</span>
-        <span><i className="diary-calendar__legend-ring" aria-hidden="true" /> 今天</span>
+        <span><i className="diary-calendar__legend-mark" aria-hidden="true" /> {m.diary.calendar.legendRecord}</span>
+        <span><i className="diary-calendar__legend-ring" aria-hidden="true" /> {m.diary.calendar.legendToday}</span>
       </div>
-      {recordCount === 0 && <p className="diary-calendar__empty">这个月还没有日记，选一个日期看看。</p>}
+      {recordCount === 0 && <p className="diary-calendar__empty">{m.diary.calendar.empty}</p>}
     </section>
   );
 }
@@ -92,23 +93,23 @@ export function DiaryYearOverview({ year, countByMonth, onSelectMonth }: DiaryYe
   const months = Array.from({ length: 12 }, (_, index) => index);
 
   return (
-    <section className="diary-year" aria-label={`${year}年日记月份`}>
-      <p className="diary-year__intro">按月份翻一翻，看看这一年留下的记录。</p>
+    <section className="diary-year" aria-label={m.diary.calendar.yearAria(year)}>
+      <p className="diary-year__intro">{m.diary.calendar.yearIntro}</p>
       <div className="diary-year__grid">
         {months.map((month) => {
           const count = countByMonth.get(month) ?? 0;
-          const label = count > 0 ? `有${count}条记录` : "还没有日记";
+          const label = count > 0 ? m.diary.calendar.monthWithRecords(count) : m.diary.calendar.monthEmpty;
           return (
             <button
               key={month}
               type="button"
               className="diary-year__month"
               data-has-records={count > 0 || undefined}
-              aria-label={`${year}年${month + 1}月，${label}`}
+              aria-label={m.diary.calendar.monthAria(year, month, label)}
               onClick={() => onSelectMonth(new Date(year, month, 1))}
             >
-              <span className="diary-year__name">{month + 1}月</span>
-              <span className="diary-year__count">{count > 0 ? label : "留白"}</span>
+              <span className="diary-year__name">{m.diary.date.monthName(month)}</span>
+              <span className="diary-year__count">{count > 0 ? label : m.diary.calendar.blank}</span>
               {count > 0 && <span className="diary-year__mark" aria-hidden="true">✳</span>}
             </button>
           );

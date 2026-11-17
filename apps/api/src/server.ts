@@ -1,8 +1,9 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./server/config.ts";
+import { msg, requestLang, runWithLang } from "./i18n/index.ts";
 import { applyCors, RequestBodyError, sendJson } from "./server/http.ts";
 import { closeServerAndDrain } from "./server/shutdown.ts";
 import { authOptionsFromEnv, authorize, authRequiredFor, trustedProxiesFromEnv, type AuthOptions } from "./hub/auth.ts";
@@ -127,7 +128,8 @@ export function createApiServer(deps: ServerDeps): ApiServer {
   let port = deps.config.port;
   const surfDeps = { ...deps, connections };
   const trustedProxies = trustedProxiesFromEnv();
-  const server = createServer(async (request, response) => {
+  const server = createServer((request, response) => runWithLang(requestLang(request), () => handleRequest(request, response)));
+  const handleRequest = async (request: IncomingMessage, response: ServerResponse) => {
     applyCors(request, response, auth.extraOrigins);
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
@@ -165,7 +167,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       }
       if (request.method === "GET" && url.pathname === "/api/note") {
         const character = url.searchParams.get("character") ?? DEFAULT_CHARACTER;
-        if (!isCharacterId(character)) return sendJson(response, 400, { error: "未知的角色。" });
+        if (!isCharacterId(character)) return sendJson(response, 400, { error: msg().common.unknownCharacter });
         const note = deps.store.getNote(character);
         return sendJson(response, 200, { note: note ? { text: note.text, updatedAt: note.updatedAt } : null });
       }
@@ -194,12 +196,12 @@ export function createApiServer(deps: ServerDeps): ApiServer {
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/chat") {
-        if (dataMaintenanceBusy()) { sendJson(response, 409, { error: "busy", message: "正在导出或删除，稍等一下再聊。" }); return; }
+        if (dataMaintenanceBusy()) { sendJson(response, 409, { error: "busy", message: msg().core.server.busyChat }); return; }
         chatActivity.last = Date.now();
         await handleChatRoute({ ...deps, events }, request, response, sessionRequests, { connections, deviceId: verdict.deviceId });
         return;
       }
-      sendJson(response, 404, { error: "未找到。" });
+      sendJson(response, 404, { error: msg().core.shared.notFound });
     } catch (error) {
       if (error instanceof RequestBodyError) {
         if (!response.headersSent) sendJson(response, error.status, { error: error.message, code: error.code });
@@ -207,10 +209,10 @@ export function createApiServer(deps: ServerDeps): ApiServer {
         return;
       }
       console.warn("请求处理失败：", error instanceof Error ? error.stack ?? error.message : error);
-      if (!response.headersSent) sendJson(response, 500, { error: "服务内部错误。" });
+      if (!response.headersSent) sendJson(response, 500, { error: msg().core.server.internalError });
       else response.end();
     }
-  });
+  };
   const apiServer = server as ApiServer;
   apiServer.closeVoiceConnections = attachVoiceWebSocket(server, asr, auth, connections);
   server.on("listening", () => proactive.start());
@@ -340,8 +342,8 @@ if (import.meta.main) {
   process.on("SIGINT", () => shutdown("SIGINT"));
   // 只有被桌面外壳拉起（stdin 是管道）时才监听 stdin 关闭；终端里手动跑不受影响。
   if (process.env.WP_LOCAL_TOKEN && !process.stdin.isTTY) {
-    process.stdin.on("end", () => shutdown("stdin 已关闭"));
-    process.stdin.on("close", () => shutdown("stdin 已关闭"));
+    process.stdin.on("end", () => shutdown("stdin 已关闭")); // i18n-ignore：只写日志
+    process.stdin.on("close", () => shutdown("stdin 已关闭")); // i18n-ignore：只写日志
     process.stdin.resume();
   }
 

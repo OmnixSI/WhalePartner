@@ -1,15 +1,16 @@
 import type { Emotion } from "../chat/emotion.ts";
+import { msg } from "../i18n/index.ts";
 
 export const AFFINITY_PER_COMPLETED_DEEPSEEK_TURN = 1;
 export const AFFINITY_DAILY_LIMIT = 10;
 export const MOOD_RECOVERY_MS = 100 * 60_000;
 
 export const RELATIONSHIP_STAGES = [
-  { level: 1, threshold: 0, label: "相识", effect: "基础卡面" },
-  { level: 2, threshold: 25, label: "相熟", effect: "立体效果" },
-  { level: 3, threshold: 100, label: "默契", effect: "动态画面" },
-  { level: 4, threshold: 250, label: "亲近", effect: "专属特效" },
-  { level: 5, threshold: 500, label: "相依", effect: "镀闪卡面" },
+  { level: 1, threshold: 0, label: "相识", effect: "基础卡面" }, // i18n-ignore：仅作档位键，界面文字取自 msg().content.relationship.stages
+  { level: 2, threshold: 25, label: "相熟", effect: "立体效果" }, // i18n-ignore：仅作档位键，界面文字取自 msg().content.relationship.stages
+  { level: 3, threshold: 100, label: "默契", effect: "动态画面" }, // i18n-ignore：仅作档位键，界面文字取自 msg().content.relationship.stages
+  { level: 4, threshold: 250, label: "亲近", effect: "专属特效" }, // i18n-ignore：仅作档位键，界面文字取自 msg().content.relationship.stages
+  { level: 5, threshold: 500, label: "相依", effect: "镀闪卡面" }, // i18n-ignore：仅作档位键，界面文字取自 msg().content.relationship.stages
 ] as const;
 type RelationshipStage = (typeof RELATIONSHIP_STAGES)[number];
 
@@ -43,8 +44,8 @@ export function relationshipSnapshot(points: number, mood: RelationshipMood): Re
   return {
     points: boundedPoints,
     level: stage.level,
-    label: stage.label,
-    effect: stage.effect,
+    label: msg().content.relationship.stages[stage.level - 1].label,
+    effect: msg().content.relationship.stages[stage.level - 1].effect,
     nextThreshold: next?.threshold ?? null,
     progress,
     mood,

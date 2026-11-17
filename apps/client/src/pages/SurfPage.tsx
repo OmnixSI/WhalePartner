@@ -40,6 +40,7 @@ import {
   type SurfStatus as Status,
 } from "../lib/surf";
 import "../styles/surf.css";
+import { m } from "../i18n";
 
 const PAGE_SIZE = 20;
 
@@ -68,7 +69,7 @@ export function SurfPage() {
   const openSourceUrl = (url: string) => {
     void openExternalUrl(url).catch((cause: unknown) => {
       console.warn("Could not open surf source URL", cause);
-      toast({ title: "没能打开原链接", description: cause instanceof Error ? cause.message : "请检查系统默认浏览器。", tone: "error" });
+      toast({ title: m.surf.page.openLinkFailedTitle, description: cause instanceof Error ? cause.message : m.surf.page.openLinkFailedDesc, tone: "error" });
     });
   };
 
@@ -102,7 +103,7 @@ export function SurfPage() {
         if (!options.append && maxId > 0) markSeen(maxId);
       } catch (cause) {
         if (options.signal?.aborted) return;
-        setError(cause instanceof Error ? cause.message : "见闻翻不开。");
+        setError(cause instanceof Error ? cause.message : m.surf.page.loadFailed);
         setState("error");
       }
     },
@@ -189,26 +190,26 @@ export function SurfPage() {
     const answer = await runSurf(character.id);
     if (answer.ok) {
       setPhase({ kind: "browsing", stage: "searching" });
-      toast({ title: "她出门了，逛逛就回来。" });
+      toast({ title: m.surf.page.goingOut });
       void refreshStatus();
       return;
     }
     setBusy(false);
-    if (answer.code === "too_soon") toast({ title: answer.message ?? "她刚回来不久，歇一会儿再去吧。", tone: "warning" });
-    else if (answer.code === "already_running") toast({ title: "她正在逛呢。" });
-    else if (answer.code === "quota") toast({ title: "这个月的贝壳快用完了，她先歇着。", tone: "warning" });
-    else toast({ title: answer.message ?? "现在叫不动她。", tone: "error" });
+    if (answer.code === "too_soon") toast({ title: answer.message ?? m.surf.page.tooSoon, tone: "warning" });
+    else if (answer.code === "already_running") toast({ title: m.surf.page.alreadyRunning });
+    else if (answer.code === "quota") toast({ title: m.surf.page.quotaLow, tone: "warning" });
+    else toast({ title: answer.message ?? m.surf.page.cannotCall, tone: "error" });
   };
 
   const enableBack = async () => {
     try {
       const saved = await putSurfSettings(character.id, { enabled: true });
       setStatus((prev) => (prev ? { ...prev, pausedReason: null } : prev));
-      toast({ title: "打开啦，她会自己出去逛。", tone: "success" });
+      toast({ title: m.surf.page.enabledBack, tone: "success" });
       void saved;
       void refreshStatus();
     } catch {
-      toast({ title: "现在改不了设置。", tone: "error" });
+      toast({ title: m.surf.page.cannotChangeSettings, tone: "error" });
     }
   };
 
@@ -217,9 +218,9 @@ export function SurfPage() {
       await deleteSurfItem(item.id);
       setItems((prev) => prev.filter((entry) => entry.id !== item.id));
       setTotal((prev) => Math.max(0, prev - 1));
-      toast({ title: "已经忘掉了。" });
+      toast({ title: m.surf.page.forgotten });
     } catch {
-      toast({ title: "现在忘不掉，等会儿再试。", tone: "error" });
+      toast({ title: m.surf.page.cannotForget, tone: "error" });
     }
   };
 
@@ -239,13 +240,13 @@ export function SurfPage() {
     <div className="page page--surf" data-elder={env.elder ? "on" : "off"}>
       <div className="page__inner">
         <PageHeader
-          title={`${character.name}的见闻`}
+          title={m.surf.page.title(character.name)}
           meta={
             status
               ? disabled
-                ? "她现在不去逛了"
-                : `她今天逛了 ${status.todayCount} 个地方 · ${nextRunText(status)}`
-              : "正在问她今天逛到哪儿了…"
+                ? m.surf.page.metaDisabled
+                : m.surf.page.metaToday(status.todayCount, nextRunText(status))
+              : m.surf.page.metaLoading
           }
           actions={<SurfStatus phase={phase} onDismiss={() => setPhase(null)} />}
         />
@@ -290,12 +291,12 @@ export function SurfPage() {
               <Input
                 type="search"
                 value={query}
-                placeholder="找她逛到的"
-                aria-label="搜她的见闻"
+                placeholder={m.surf.page.searchPlaceholder}
+                aria-label={m.surf.page.searchAria}
                 onChange={(event) => setQuery(event.target.value)}
               />
             </div>
-            <Button type="submit" variant="secondary">找</Button>
+            <Button type="submit" variant="secondary">{m.surf.page.searchButton}</Button>
           </form>
 
           <Button
@@ -305,23 +306,23 @@ export function SurfPage() {
             disabled={running || disabled}
             loading={running}
           >
-            {running ? "她正在逛…" : "让她现在去逛逛"}
+            {running ? m.surf.page.running : m.surf.page.runNow}
           </Button>
         </div>
 
         {state === "error" ? (
-          <StatePanel kind="error" title="见闻翻不开了" body="网络好像不太好，我再试一次？" detail={error}>
-            <Button variant="primary" onClick={() => void load(1)}>再试一次</Button>
+          <StatePanel kind="error" title={m.surf.page.errorTitle} body={m.surf.page.errorBody} detail={error}>
+            <Button variant="primary" onClick={() => void load(1)}>{m.surf.page.retry}</Button>
           </StatePanel>
         ) : state === "loading" ? (
-          <StatePanel kind="loading" title="我在整理剪报…" />
+          <StatePanel kind="loading" title={m.surf.page.loadingTitle} />
         ) : items.length === 0 ? (
           applied.trim() ? (
             <StatePanel
               kind="empty"
               icon="newspaper"
-              title={`没翻到带「${applied.trim()}」的`}
-              body="换个词试试，或者等我下次出去逛的时候留意一下。"
+              title={m.surf.page.noMatchTitle(applied.trim())}
+              body={m.surf.page.noMatchBody}
             >
               <Button
                 variant="secondary"
@@ -331,24 +332,24 @@ export function SurfPage() {
                   setPage(1);
                 }}
               >
-                清掉搜索
+                {m.surf.page.clearSearch}
               </Button>
             </StatePanel>
           ) : filtered ? (
-            <StatePanel kind="empty" icon="newspaper" title="这个范围里我还没带回东西" body="换个来源或者日期看看。">
-              <Button variant="secondary" onClick={clearFilters}>清掉筛选</Button>
+            <StatePanel kind="empty" icon="newspaper" title={m.surf.page.filteredEmptyTitle} body={m.surf.page.filteredEmptyBody}>
+              <Button variant="secondary" onClick={clearFilters}>{m.surf.page.clearFilters}</Button>
             </StatePanel>
           ) : lowQuota ? (
-            <StatePanel kind="empty" icon="conch" title="这个月的贝壳快用完了" body="我先歇着，下个月 1 号再去逛。">
-              <Button variant="secondary" onClick={() => window.location.assign("/settings#quota")}>去看看额度</Button>
+            <StatePanel kind="empty" icon="conch" title={m.surf.page.quotaTitle} body={m.surf.page.quotaBody}>
+              <Button variant="secondary" onClick={() => window.location.assign("/settings#quota")}>{m.surf.page.viewQuota}</Button>
             </StatePanel>
           ) : disabled ? (
-            <StatePanel kind="empty" icon="lighthouse" title="我现在不出门了" body="你打开之后，我会自己去看视频、翻网页，回来讲给你听。">
-              <Button variant="primary" onClick={() => void enableBack()}>打开</Button>
+            <StatePanel kind="empty" icon="lighthouse" title={m.surf.page.disabledTitle} body={m.surf.page.disabledBody}>
+              <Button variant="primary" onClick={() => void enableBack()}>{m.surf.page.enable}</Button>
             </StatePanel>
           ) : (
-            <StatePanel kind="empty" icon="phone" title="还没出去逛过呢" body="我会挑个时间去看看视频、翻翻网页，把有意思的剪下来给你。">
-              <Button variant="primary" onClick={() => void trigger()}>让她现在去逛逛</Button>
+            <StatePanel kind="empty" icon="phone" title={m.surf.page.neverTitle} body={m.surf.page.neverBody}>
+              <Button variant="primary" onClick={() => void trigger()}>{m.surf.page.runNow}</Button>
             </StatePanel>
           )
         ) : (
@@ -357,7 +358,7 @@ export function SurfPage() {
               <section className="surf-day" key={label} aria-label={label}>
                 <h2 className="surf-day__date">
                   <span className="surf-day__text">{label}</span>
-                  <span className="surf-day__count">{list.length} 条</span>
+                  <span className="surf-day__count">{m.surf.page.dayCount(list.length)}</span>
                 </h2>
                 <ul className="surf-grid">
                   {list.map((item) => (
@@ -376,11 +377,11 @@ export function SurfPage() {
             {items.length < total ? (
               <div className="surf-more">
                 <Button variant="secondary" onClick={() => void load(page + 1, { append: true })}>
-                  再往前翻翻
+                  {m.surf.page.loadMore}
                 </Button>
               </div>
             ) : (
-              <p className="surf-end">翻到头了。</p>
+              <p className="surf-end">{m.surf.page.end}</p>
             )}
           </>
         )}
@@ -390,10 +391,10 @@ export function SurfPage() {
       <ConfirmDialog
         open={Boolean(confirming)}
         onOpenChange={(open) => !open && setConfirming(null)}
-        title={`要忘掉「${confirming?.title ?? ""}」吗？`}
-        description="她会连同这段记忆一起忘掉，以后也不会再逛回来。"
-        cancelLabel="先留着"
-        confirmLabel="忘掉这条"
+        title={m.surf.page.forgetTitle(confirming?.title ?? "")}
+        description={m.surf.page.forgetDesc}
+        cancelLabel={m.surf.page.forgetCancel}
+        confirmLabel={m.surf.page.forgetConfirm}
         tone="danger"
         onConfirm={() => {
           if (confirming) void forget(confirming);

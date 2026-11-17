@@ -10,6 +10,7 @@
  * - `art` 是立绘槽：不传就画角色徽记。整张卡只渲染一次 `art`（升级时旧卡面只复制底和框），所以可以放 Live2D。
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
+import { m } from "../../i18n";
 import { CHARACTERS, type CharacterId } from "../../characters";
 import { CharacterMark } from "../../components/CharacterMark";
 import { Caustics, FoilLeaf, Horizon, Signature } from "./motifs";
@@ -204,7 +205,7 @@ export function AffinityCard({ character, level, upgradeFrom, onUpgradeEnd, art,
       data-calm={run?.calm ? "true" : undefined}
       style={step ? ({ "--up-dur": `${step.ms}ms` } as CSSProperties) : undefined}
       role="group"
-      aria-label={`${displayName}的好感度卡，Lv.${tier.level} ${tier.label}，${tier.finish}卡面`}
+      aria-label={m.cards.affinityCard.ariaLabel(displayName, tier.level, tier.label, tier.finish)}
       onPointerMove={onMove}
       onPointerLeave={onLeave}
       onPointerCancel={onLeave}
@@ -229,11 +230,11 @@ export function AffinityCard({ character, level, upgradeFrom, onUpgradeEnd, art,
       </div>
       {step && (
         <>
-          <p className="acard__notice" aria-hidden="true">升到 Lv.{step.to} · {tierOf(step.to).label}</p>
-          <button type="button" className="acard__skip" onClick={(e) => { e.stopPropagation(); finish(true); }}>跳过</button>
+          <p className="acard__notice" aria-hidden="true">{m.cards.affinityCard.upgradeNotice(step.to, tierOf(step.to).label)}</p>
+          <button type="button" className="acard__skip" onClick={(e) => { e.stopPropagation(); finish(true); }}>{m.cards.affinityCard.skip}</button>
         </>
       )}
-      <span className="sr-only" role="status">{step ? `升到 Lv.${step.to} ${tierOf(step.to).label}` : ""}</span>
+      <span className="sr-only" role="status">{step ? m.cards.affinityCard.upgradeStatus(step.to, tierOf(step.to).label) : ""}</span>
     </div>
   );
 }

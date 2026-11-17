@@ -79,6 +79,9 @@
 .shell-nav__mark svg { display: block; width: 24px; height: 24px; }
 .shell-nav__brand { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
 .shell-nav__brand strong { font-family: var(--font-voice); font-size: var(--text-lg); letter-spacing: .08em; color: var(--color-text-primary); }
+/* 英文品牌名比「鲸汐」长得多，一行放不进侧栏：分成「Whale / Partner」两行，左对齐、整体和图标垂直居中，
+   去掉给汉字留的字距。中文不受影响。 */
+:lang(en) .shell-nav__brand strong { white-space: pre-line; font-size: var(--text-md); line-height: 1.1; letter-spacing: .02em; }
 
 .shell-nav__sections { display: flex; flex: 1; flex-direction: column; gap: var(--sp-4); min-height: 0; overflow-y: auto; padding: 0 var(--sp-1); }
 .shell-nav__group { display: flex; flex-direction: column; gap: var(--sp-1); }

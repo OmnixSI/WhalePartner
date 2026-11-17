@@ -1,3 +1,4 @@
+import { m } from "../i18n/index.ts";
 export type CharacterId = "deepseek" | "claude" | "chatgpt" | "whale";
 
 export interface AvatarModel {
@@ -14,9 +15,9 @@ export const AVATAR_MODELS: readonly AvatarModel[] = [
   {
     id: "dafeiyu-live2d",
     url: "/live2d/whale-maid/c_0120.model3.json",
-    label: "大肥鱼 · Live2D",
-    source: "角色原作：上善无形；DeepSeek 女仆设计：ZipZipPipe；Live2D 建模：氵六青；发布仓库：A8Chann/dsh-pet-live2d",
-    licenseNote: "模型素材采用 CC BY-NC-SA 4.0：仅限非商业使用，改编素材须以相同许可共享；用于商业产品前须另行取得各权利人授权。完整署名见本机模型目录的 LICENSE。",
+    label: m.chat.model.label,
+    source: m.chat.model.source,
+    licenseNote: m.chat.model.licenseNote,
     renderer: "live2d",
     ownerCharacterId: "deepseek",
   },

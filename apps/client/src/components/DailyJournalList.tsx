@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Character } from "../characters";
+import { m, locale } from "../i18n";
 import { fetchJournalRevisions, fetchJournals, generateJournal, type DailyJournal, type DailyJournalPage, type JournalSource } from "../lib/diary";
 
 type JournalView = "week" | "month" | "year";
@@ -56,23 +57,23 @@ function periodRange(value: string, view: JournalView) {
 
 function periodLabel(value: string, view: JournalView) {
   const date = parseDate(value);
-  if (view === "year") return `${date.getFullYear()} 年`;
-  if (view === "month") return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
+  if (view === "year") return m.diary.journalList.year(date.getFullYear());
+  if (view === "month") return m.diary.journalList.yearMonth(date);
   const { from, to } = periodRange(value, view);
-  const options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  const start = parseDate(from);
-  const end = parseDate(to);
-  const year = start.getFullYear() === end.getFullYear() ? `${end.getFullYear()} 年 · ` : "";
-  return `${year}${start.toLocaleDateString("zh-CN", options)} – ${end.toLocaleDateString("zh-CN", options)}`;
+  return m.diary.journalList.weekRange(parseDate(from), parseDate(to));
 }
 
 function timestamp(value: string) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("zh-CN", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(locale, { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 const SOURCE_LABELS: Record<JournalSource["type"], string> = {
-  chat: "聊天", video: "视频", web: "网页", learned: "新发现", reflection: "反思",
+  chat: m.diary.journalList.sourceLabels.chat,
+  video: m.diary.journalList.sourceLabels.video,
+  web: m.diary.journalList.sourceLabels.web,
+  learned: m.diary.journalList.sourceLabels.learned,
+  reflection: m.diary.journalList.sourceLabels.reflection,
 };
 
 function JournalSources({ journal, characterId }: { journal: DailyJournal; characterId: string }) {
@@ -87,11 +88,11 @@ function JournalSources({ journal, characterId }: { journal: DailyJournal; chara
     navigate("/");
   };
   return <details className="journal-sources">
-    <summary>来源 · {journal.sources.length}</summary>
+    <summary>{m.diary.journalList.sourcesSummary(journal.sources.length)}</summary>
     <ul>{journal.sources.map((source) => <li key={source.id}>
       <span>{SOURCE_LABELS[source.type]} · {timestamp(source.createdAt)} · {source.title}</span>
-      {source.messageId && source.sessionId && <button type="button" onClick={() => open(source)}>打开原聊天</button>}
-      {source.url && <a href={source.url} target="_blank" rel="noreferrer">查看原内容 ↗</a>}
+      {source.messageId && source.sessionId && <button type="button" onClick={() => open(source)}>{m.diary.journalList.openChat}</button>}
+      {source.url && <a href={source.url} target="_blank" rel="noreferrer">{m.diary.journalList.viewOriginal}</a>}
     </li>)}</ul>
   </details>;
 }
@@ -105,14 +106,14 @@ function PreviousRevisions({ journal }: { journal: DailyJournal }) {
       setRevisions(await fetchJournalRevisions(journal.id));
       setError("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "读取版本失败。");
+      setError(cause instanceof Error ? cause.message : m.diary.journalList.revisionsFailed);
     }
   };
   return <details className="journal-revisions" onToggle={(event) => { if (event.currentTarget.open && revisions === null) void load(); }}>
-    <summary>旧版本 · {journal.revision - 1}</summary>
+    <summary>{m.diary.journalList.oldVersions(journal.revision - 1)}</summary>
     {error && <p className="diary-error">{error}</p>}
     {revisions?.filter((revision) => revision.revision !== journal.revision).map((revision) => <article key={revision.revision}>
-      <div>第 {revision.revision} 版 · {timestamp(revision.createdAt)}</div>
+      <div>{m.diary.journalList.version(revision.revision)} · {timestamp(revision.createdAt)}</div>
       <p>{revision.text}</p>
     </article>)}
   </details>;
@@ -120,7 +121,7 @@ function PreviousRevisions({ journal }: { journal: DailyJournal }) {
 
 function JournalEntry({ journal, characterId }: { journal: DailyJournal; characterId: string }) {
   return <article className="daily-journal-entry" id={journal.id}>
-    <div className="daily-journal-entry__meta"><time dateTime={journal.localDate}>{journal.localDate}</time><span>第 {journal.revision} 版</span></div>
+    <div className="daily-journal-entry__meta"><time dateTime={journal.localDate}>{journal.localDate}</time><span>{m.diary.journalList.version(journal.revision)}</span></div>
     <p>{journal.text}</p>
     <JournalSources journal={journal} characterId={characterId} />
     <PreviousRevisions journal={journal} />
@@ -156,7 +157,7 @@ export function DailyJournalList({ character }: { character: Character }) {
         setError("");
       }
     } catch (cause) {
-      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : "读取日记失败。");
+      if (!signal?.aborted) setError(cause instanceof Error ? cause.message : m.diary.errors.readFailed);
     }
   }, [character.id, page, range]);
 
@@ -200,12 +201,12 @@ export function DailyJournalList({ character }: { character: Character }) {
     try {
       const existing = await fetchJournals(character.id, { from: date, to: date, limit: 1, offset: 0 });
       const journal = await generateJournal(character.id, date, existing.items.length > 0);
-      if (!journal) setMessage("今天还没有可写入的共同经历。");
-      else setMessage("今天的日记已更新。");
+      if (!journal) setMessage(m.diary.journalList.noMaterialToday);
+      else setMessage(m.diary.journalList.updatedToday);
       const currentRange = periodRange(date, view);
       setJournals(await fetchJournals(character.id, { ...currentRange, limit: PAGE_SIZE, offset: 0 }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "生成日记失败。");
+      setError(cause instanceof Error ? cause.message : m.diary.journalList.generateFailed);
     } finally {
       setGenerating(false);
     }
@@ -214,39 +215,39 @@ export function DailyJournalList({ character }: { character: Character }) {
   const totalPages = Math.max(1, Math.ceil((journals?.total ?? 0) / PAGE_SIZE));
   return <section className="daily-journal card">
     <header className="daily-journal__head">
-      <div><h2>{character.name}的日记</h2></div>
+      <div><h2>{m.diary.journalList.title(character.name)}</h2></div>
       <button className="diary-button" type="button" disabled={generating} onClick={() => void generate()}>
-        {generating ? "正在整理…" : "写今天的日记"}
+        {generating ? m.diary.journalList.generating : m.diary.journalList.writeToday}
       </button>
     </header>
-    <div className="journal-browser" aria-label="日记时间浏览">
-      <div className="journal-browser__modes" role="group" aria-label="浏览范围">
-        {([ ["week", "周"], ["month", "月"], ["year", "年"] ] as const).map(([id, label]) => <button
+    <div className="journal-browser" aria-label={m.diary.journalList.browserAria}>
+      <div className="journal-browser__modes" role="group" aria-label={m.diary.journalList.rangeAria}>
+        {([ ["week", m.diary.journalList.modes.week], ["month", m.diary.journalList.modes.month], ["year", m.diary.journalList.modes.year] ] as const).map(([id, label]) => <button
           key={id}
           type="button"
           aria-pressed={view === id}
           onClick={() => { setView(id); setPage(0); }}
         >{label}</button>)}
       </div>
-      <button className="journal-browser__step" type="button" aria-label="上一段时间" onClick={() => { setCursor((value) => movePeriod(value, -1, view)); setPage(0); }}>‹</button>
+      <button className="journal-browser__step" type="button" aria-label={m.diary.journalList.prevPeriod} onClick={() => { setCursor((value) => movePeriod(value, -1, view)); setPage(0); }}>‹</button>
       <strong>{periodLabel(cursor, view)}</strong>
-      <button className="journal-browser__step" type="button" aria-label="下一段时间" onClick={() => { setCursor((value) => movePeriod(value, 1, view)); setPage(0); }}>›</button>
-      <label className="sr-only" htmlFor="journal-date">选择日期</label>
+      <button className="journal-browser__step" type="button" aria-label={m.diary.journalList.nextPeriod} onClick={() => { setCursor((value) => movePeriod(value, 1, view)); setPage(0); }}>›</button>
+      <label className="sr-only" htmlFor="journal-date">{m.diary.journalList.pickDate}</label>
       <input className="journal-browser__date" id="journal-date" type="date" value={cursor} onChange={(event) => { if (event.target.value) { setCursor(event.target.value); setPage(0); } }} />
-      <button className="journal-browser__today" type="button" onClick={() => { setCursor(today()); setPage(0); }}>今天</button>
+      <button className="journal-browser__today" type="button" onClick={() => { setCursor(today()); setPage(0); }}>{m.diary.journalList.today}</button>
     </div>
     {message && <p className="daily-journal__message" role="status">{message}</p>}
     {error && <p className="diary-error" role="alert">{error}</p>}
-    {journals === null && !error && <p className="diary-status">正在读取…</p>}
-    {journals && journals.total === 0 && <p className="daily-journal__empty">这段时间没有日记。</p>}
+    {journals === null && !error && <p className="diary-status">{m.diary.journalList.loading}</p>}
+    {journals && journals.total === 0 && <p className="daily-journal__empty">{m.diary.journalList.empty}</p>}
     {journals && journals.total > 0 && <>
       <div className="daily-journal__list">
         {journals.items.map((journal) => <JournalEntry key={journal.id} journal={journal} characterId={character.id} />)}
       </div>
-      <nav className="journal-pagination" aria-label="日记分页">
-        <button type="button" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>上一页</button>
-        <span>{journals.total.toLocaleString("zh-CN")} 篇 · {page + 1}/{totalPages}</span>
-        <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}>下一页</button>
+      <nav className="journal-pagination" aria-label={m.diary.journalList.paginationAria}>
+        <button type="button" disabled={page === 0} onClick={() => setPage((current) => Math.max(0, current - 1))}>{m.diary.journalList.prevPage}</button>
+        <span>{m.diary.journalList.pageStatus(journals.total, page + 1, totalPages)}</span>
+        <button type="button" disabled={page + 1 >= totalPages} onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}>{m.diary.journalList.nextPage}</button>
       </nav>
     </>}
   </section>;

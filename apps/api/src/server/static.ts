@@ -3,6 +3,7 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, normalize, sep } from "node:path";
 import { pipeline } from "node:stream";
+import { msg } from "../i18n/index.ts";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -12,24 +13,24 @@ const TYPES: Record<string, string> = {
   ".moc3": "application/octet-stream", ".wasm": "application/wasm", ".glb": "model/gltf-binary",
 };
 
-export const MANIFEST = {
-  name: "鲸汐",
-  short_name: "鲸汐",
-  description: "她一直都在。",
+export const manifest = () => ({
+  name: msg().core.server.manifestName,
+  short_name: msg().core.server.manifestName,
+  description: msg().core.server.manifestDescription,
   start_url: "/",
   scope: "/",
   display: "standalone",
   background_color: "#f4efe4",
   theme_color: "#f4efe4",
   icons: [{ src: "/favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }],
-};
+});
 
 /** 返回 true 表示已处理。 */
 export function serveStatic(staticDir: string | undefined, request: IncomingMessage, response: ServerResponse, pathname: string): boolean {
   if (request.method !== "GET" && request.method !== "HEAD") return false;
   if (pathname === "/manifest.webmanifest") {
     response.writeHead(200, { "content-type": TYPES[".webmanifest"], "cache-control": "no-cache" });
-    response.end(JSON.stringify(MANIFEST));
+    response.end(JSON.stringify(manifest()));
     return true;
   }
   if (!staticDir || !existsSync(staticDir) || pathname.startsWith("/api/") || pathname === "/api") return false;

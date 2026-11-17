@@ -13,6 +13,7 @@ import { CharacterMark } from "../CharacterMark";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import type { RelationshipState } from "./useRelationship";
+import { m } from "../../i18n";
 
 type Load<T> = { phase: "loading" } | { phase: "ok"; value: T } | { phase: "down" };
 
@@ -27,7 +28,7 @@ const PROVIDER_LABEL: Record<string, string> = { deepseek: "DeepSeek", codex: "C
 
 function modelText(setup: SetupLite): string {
   const first = setup.chain[0];
-  if (!first) return "没有可用的模型";
+  if (!first) return m.settings.her.noModel;
   const name = PROVIDER_LABEL[first] ?? first;
   return first === "codex" && setup.codex.model ? `${name} · ${setup.codex.model}` : name;
 }
@@ -69,11 +70,11 @@ export function HerOverview({ character, relationship: rel, setupRev, onSwap }: 
     return () => ctrl.abort();
   }, []);
 
-  const wait = "读取中…";
-  const gone = "暂时看不到";
+  const wait = m.settings.her.loading;
+  const gone = m.settings.her.gone;
 
   return (
-    <Card variant="raised" padding="lg" className="set-her" aria-label="她的概览">
+    <Card variant="raised" padding="lg" className="set-her" aria-label={m.settings.her.aria}>
       <span className="set-her__sticker" aria-hidden="true">
         <CharacterMark />
       </span>
@@ -82,17 +83,17 @@ export function HerOverview({ character, relationship: rel, setupRev, onSwap }: 
         <p className="set-her__tagline">{character.intro}</p>
       </div>
       <Button variant="secondary" className="set-her__swap" onClick={onSwap}>
-        换一位
+        {m.settings.her.swap}
       </Button>
       <dl className="set-chips">
-        <Chip label="好感度" state={relationship.phase}>
-          {relationship.phase === "ok" ? `Lv.${relationship.value.level} · ${relationship.value.label}` : relationship.phase === "loading" ? wait : gone}
+        <Chip label={m.settings.her.affinity} state={relationship.phase}>
+          {relationship.phase === "ok" ? m.settings.her.level(relationship.value.level, relationship.value.label) : relationship.phase === "loading" ? wait : gone}
         </Chip>
-        <Chip label="当前模型" state={setup.phase}>
+        <Chip label={m.settings.her.model} state={setup.phase}>
           {setup.phase === "ok" ? modelText(setup.value) : setup.phase === "loading" ? wait : gone}
         </Chip>
-        <Chip label="本月贝壳" state={quota.phase}>
-          {quota.phase === "ok" ? `还剩 ${quota.value.remaining} / ${quota.value.total}` : quota.phase === "loading" ? wait : gone}
+        <Chip label={m.settings.her.shells} state={quota.phase}>
+          {quota.phase === "ok" ? m.settings.her.shellsLeft(quota.value.remaining, quota.value.total) : quota.phase === "loading" ? wait : gone}
         </Chip>
       </dl>
     </Card>

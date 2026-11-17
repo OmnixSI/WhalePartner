@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -90,17 +91,17 @@ function findSessdata(urlText: string | undefined) {
 }
 
 async function readJson(response: Response, label: string) {
-  if (!response.ok) throw new Error(`${label} 请求失败（HTTP ${response.status}）。`);
+  if (!response.ok) throw new Error(msg().core.bilibili.requestFailed(label, response.status));
   try {
     return await response.json() as Record<string, any>;
   } catch {
-    throw new Error(`${label} 返回了无法解析的数据。`);
+    throw new Error(msg().core.bilibili.unparsable(label));
   }
 }
 
 async function renderQrCode(loginUrl: string) {
   if (process.platform !== "darwin") {
-    throw new Error("本地原型的二维码渲染需要 macOS Core Image。");
+    throw new Error(msg().core.bilibili.qrNeedsMac);
   }
 
   await mkdir(LOCAL_DIR, { recursive: true, mode: 0o700 });
@@ -134,7 +135,7 @@ export async function loadBilibiliSession(): Promise<BilibiliSession | undefined
         savedAt: "savedAt" in parsed && typeof parsed.savedAt === "string" ? parsed.savedAt : "",
       };
     }
-    throw new Error("本地 B 站登录文件格式无效，请重新运行 login。");
+    throw new Error(msg().core.bilibili.loginFileInvalid);
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
       return undefined;
@@ -152,7 +153,7 @@ export async function isBilibiliSessionValid(sessdata: string, signal?: AbortSig
     },
     signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
-  const body = await readJson(response, "B 站登录状态验证");
+  const body = await readJson(response, msg().core.bilibili.labelLoginCheck);
   return body.code === 0 && body.data?.isLogin === true;
 }
 
@@ -161,10 +162,10 @@ async function generateLoginQr() {
     headers: HEADERS,
     signal: AbortSignal.timeout(15_000),
   });
-  const body = await readJson(response, "B 站二维码生成");
+  const body = await readJson(response, msg().core.bilibili.labelQrCreate);
   const payload = body as QrPayload;
   if (payload.code !== 0 || !payload.data?.url || !payload.data.qrcode_key) {
-    throw new Error(`B 站二维码生成失败（${payload.message ?? payload.code ?? "未知响应"}）。`);
+    throw new Error(msg().core.bilibili.qrCreateFailed(String(payload.message ?? payload.code ?? msg().core.bilibili.unknownResponse)));
   }
 
   await renderQrCode(payload.data.url);
@@ -181,7 +182,7 @@ async function pollLogin(qrcodeKey: string): Promise<LoginResult> {
     signal: AbortSignal.timeout(15_000),
   });
   const setCookies = response.headers.getSetCookie();
-  const body = await readJson(response, "B 站二维码状态查询");
+  const body = await readJson(response, msg().core.bilibili.labelQrStatus);
   const statusCodes = new Map<number, LoginResult["status"]>([
     [86101, "waiting"],
     [86090, "scanned"],
@@ -225,7 +226,7 @@ async function loadPendingLogin() {
     return JSON.parse(await readFile(PENDING_PATH, "utf8")) as { qrcodeKey: string; createdAt: string };
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
-      throw new Error("没有待确认的 B 站登录二维码，请先运行 login。");
+      throw new Error(msg().core.bilibili.noPendingQr);
     }
     throw error;
   }
@@ -241,7 +242,7 @@ export async function waitForBilibiliLogin(onScanned: () => void) {
   const createdAt = Date.parse(pending.createdAt);
   if (!Number.isFinite(createdAt) || Date.now() - createdAt >= LOGIN_TIMEOUT_MS) {
     await clearPendingLogin();
-    throw new Error("二维码已过期，请重新运行 login。");
+    throw new Error(msg().core.bilibili.qrExpired);
   }
 
   const deadline = createdAt + LOGIN_TIMEOUT_MS;
@@ -251,7 +252,7 @@ export async function waitForBilibiliLogin(onScanned: () => void) {
     if (result.status === "success" && result.sessdata) {
       if (!(await isBilibiliSessionValid(result.sessdata))) {
         await clearPendingLogin();
-        throw new Error("B 站未返回有效的登录态，请重新运行 login。");
+        throw new Error(msg().core.bilibili.noValidLogin);
       }
       await saveSession(result.sessdata);
       await clearPendingLogin();
@@ -259,11 +260,11 @@ export async function waitForBilibiliLogin(onScanned: () => void) {
     }
     if (result.status === "expired") {
       await clearPendingLogin();
-      throw new Error("二维码已过期，请重新运行 login。");
+      throw new Error(msg().core.bilibili.qrExpired);
     }
     if (result.status === "error") {
       await clearPendingLogin();
-      throw new Error("B 站二维码登录状态异常，请重新运行 login。");
+      throw new Error(msg().core.bilibili.qrStateOdd);
     }
     if (result.status === "scanned" && !scannedNotified) {
       scannedNotified = true;
@@ -272,7 +273,7 @@ export async function waitForBilibiliLogin(onScanned: () => void) {
     await delay(POLL_INTERVAL_MS);
   }
   await clearPendingLogin();
-  throw new Error("等待扫码超过 3 分钟，请重新运行 login。");
+  throw new Error(msg().core.bilibili.scanTimeout);
 }
 
 export async function logoutFromBilibili() {
@@ -286,9 +287,9 @@ export async function requestBilibiliLoginQr() {
     headers: HEADERS,
     signal: AbortSignal.timeout(15_000),
   });
-  const payload = (await readJson(response, "B 站二维码生成")) as QrPayload;
+  const payload = (await readJson(response, msg().core.bilibili.labelQrCreate)) as QrPayload;
   if (payload.code !== 0 || !payload.data?.url || !payload.data.qrcode_key) {
-    throw new Error(`B 站二维码生成失败（${payload.message ?? payload.code ?? "未知响应"}）。`);
+    throw new Error(msg().core.bilibili.qrCreateFailed(String(payload.message ?? payload.code ?? msg().core.bilibili.unknownResponse)));
   }
   return { qrcodeKey: payload.data.qrcode_key, url: payload.data.url, expiresInSeconds: LOGIN_TIMEOUT_MS / 1000 };
 }

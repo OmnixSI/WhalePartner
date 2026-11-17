@@ -1,4 +1,5 @@
 import { API_BASE } from "./api";
+import { m } from "../i18n";
 
 export interface AccountStatus {
   platform: "bilibili";
@@ -17,7 +18,7 @@ export interface LoginStart {
 }
 
 async function readError(response: Response): Promise<never> {
-  let detail = `请求失败（HTTP ${response.status}）`;
+  let detail = m.common.accounts.requestFailed(response.status);
   try { detail = ((await response.json()) as { error?: string }).error ?? detail; } catch { /* 非 JSON */ }
   throw new Error(detail);
 }

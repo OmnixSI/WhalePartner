@@ -2,6 +2,7 @@ import type { AvatarEmotion } from "../model.config";
 import type { Cubism4MotionManager } from "pixi-live2d-display/cubism4";
 import type { HitRegion } from "./hit";
 
+// i18n-ignore-start：Live2D 模型资源里的表情名，必须与模型文件一致，不是显示文字
 export const EMOTION_EXPRESSIONS: Partial<Record<AvatarEmotion, string>> = {
   happy: "开心兴奋",
   sad: "悲伤",
@@ -19,6 +20,7 @@ const TAP_EXPRESSIONS: Readonly<Record<string, string>> = {
   SelfieQuick: "双手比耶",
   Ketchup: "调皮",
 };
+// i18n-ignore-end
 
 const MAX_TAP_ACTION_SECONDS = 3.5;
 
@@ -61,10 +63,12 @@ export async function loadTapActions(manager: Cubism4MotionManager): Promise<Tap
   return (short.length ? short : long).sort(order);
 }
 
+// i18n-ignore-start：匹配模型资源里动作分组名的正则
 const REGION_GROUP: Record<HitRegion, RegExp> = {
   head: /head|face|頭|头|脸/i,
   body: /body|chest|belly|身|胸|腹/i,
 };
+// i18n-ignore-end
 
 export function chooseTapAction(
   actions: readonly TapAction[],

@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendJson } from "../server/http.ts";
@@ -94,7 +95,7 @@ export async function handleQuotaRoute(
       today: { used },
     });
   } catch {
-    sendJson(response, 503, { error: "quota_unavailable", message: "额度暂时看不到。" });
+    sendJson(response, 503, { error: "quota_unavailable", message: msg().core.routes.quota.unavailable });
   } finally {
     db?.close();
   }

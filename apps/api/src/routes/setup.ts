@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -23,7 +24,7 @@ const MODEL_PATTERN = /^\S{2,64}$/;
 
 /** 找不到真实 Codex（或只找到改参数的包装脚本）时把具体原因告诉用户，其余情况给通用说法。 */
 function codexUnavailableMessage(error: unknown) {
-  return error instanceof CodexBinaryError ? error.message : "现在读不到本机 Codex 的可用模型列表。";
+  return error instanceof CodexBinaryError ? error.message : msg().core.routes.setup.codexModelsUnreadable;
 }
 /** `sk-` 前缀 + 17–197 个可打印字符 = 全长 20–200，且不可能夹换行。 */
 const KEY_PATTERN = /^sk-[\x21-\x7e]{17,197}$/;
@@ -187,17 +188,17 @@ export async function handleSetupRoute(
       try {
         sendJson(response, 200, readSetupState(deps));
       } catch {
-        sendJson(response, 503, { error: "setup_unavailable", message: "现在读不到模型设置。" });
+        sendJson(response, 503, { error: "setup_unavailable", message: msg().core.routes.setup.unavailable });
       }
       return true;
     }
-    sendJson(response, 405, { error: "method_not_allowed", message: "只支持 GET。" });
+    sendJson(response, 405, { error: "method_not_allowed", message: msg().core.shared.onlyGet });
     return true;
   }
 
   if (url.pathname === "/api/setup/codex/models") {
     if (request.method !== "GET") {
-      sendJson(response, 405, { error: "method_not_allowed", message: "只支持 GET。" });
+      sendJson(response, 405, { error: "method_not_allowed", message: msg().core.shared.onlyGet });
       return true;
     }
     try {
@@ -212,14 +213,14 @@ export async function handleSetupRoute(
   if (url.pathname === "/api/setup/deepseek" && request.method === "PUT") {
     // 先抢锁再读 body：并发写必须在碰文件之前就被挡住。
     if (!acquireSetupWrite()) {
-      sendJson(response, 409, { error: "busy", message: "正在保存另一项设置，等一下再试。" });
+      sendJson(response, 409, { error: "busy", message: msg().core.routes.setup.busy });
       return true;
     }
     try {
       const body = await readJsonBody(request);
       const checked = validateKey(body.key);
       if (!checked.ok) {
-        sendJson(response, 400, { error: "invalid_key", message: "这个 key 看着不对：要以 sk- 开头，长度 20–200。" });
+        sendJson(response, 400, { error: "invalid_key", message: msg().core.routes.setup.invalidKey });
         return true;
       }
       const targets = setupTargets(deps);
@@ -228,7 +229,7 @@ export async function handleSetupRoute(
       sendJson(response, 200, { ok: true, restartRequired: true, masked: maskKey(checked.key) });
     } catch (error) {
       if (error instanceof RequestBodyError) sendJson(response, error.status, { error: error.code, message: error.message });
-      else sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : "没写进去。" });
+      else sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : msg().core.routes.setup.writeFailed });
     } finally {
       releaseSetupWrite();
     }
@@ -237,7 +238,7 @@ export async function handleSetupRoute(
 
   if (url.pathname === "/api/setup/codex" && request.method === "PUT") {
     if (!acquireSetupWrite()) {
-      sendJson(response, 409, { error: "busy", message: "正在保存另一项设置，等一下再试。" });
+      sendJson(response, 409, { error: "busy", message: msg().core.routes.setup.busy });
       return true;
     }
     try {
@@ -245,14 +246,14 @@ export async function handleSetupRoute(
       const wantsModel = body.model !== undefined;
       const wantsEffort = body.effort !== undefined;
       if (!wantsModel && !wantsEffort) {
-        sendJson(response, 400, { error: "empty", message: "至少给一个 model 或 effort。" });
+        sendJson(response, 400, { error: "empty", message: msg().core.routes.setup.emptyUpdate });
         return true;
       }
 
       let model: string | undefined;
       if (wantsModel) {
         if (typeof body.model !== "string" || !MODEL_PATTERN.test(body.model)) {
-          sendJson(response, 400, { error: "invalid_model", message: "模型名只能是 2–64 个不带空格的字符。" });
+          sendJson(response, 400, { error: "invalid_model", message: msg().core.routes.setup.invalidModel });
           return true;
         }
         model = body.model;
@@ -262,7 +263,7 @@ export async function handleSetupRoute(
       if (wantsEffort) {
         effort = validateEffort(body.effort);
         if (!effort) {
-          sendJson(response, 400, { error: "invalid_effort", message: "推理强度必须来自当前模型的可用列表。" });
+          sendJson(response, 400, { error: "invalid_effort", message: msg().core.routes.setup.invalidEffort });
           return true;
         }
       }
@@ -282,7 +283,7 @@ export async function handleSetupRoute(
         ? models.find((item) => item.model === modelName)
         : models.find((item) => item.isDefault) ?? models[0];
       if (!modelOption) {
-        sendJson(response, 400, { error: "invalid_model", message: "这个模型不在本机 Codex 当前可用列表中。" });
+        sendJson(response, 400, { error: "invalid_model", message: msg().core.routes.setup.modelNotInList });
         return true;
       }
 
@@ -292,7 +293,7 @@ export async function handleSetupRoute(
       if (!supportedEfforts.includes(selectedEffort)) {
         sendJson(response, 400, {
           error: "invalid_effort",
-          message: `推理强度不在 ${modelOption.model} 当前可用列表中：${supportedEfforts.join(" / ")}`,
+          message: msg().core.routes.setup.effortNotInList(modelOption.model, supportedEfforts.join(" / ")),
         });
         return true;
       }
@@ -306,7 +307,7 @@ export async function handleSetupRoute(
       });
     } catch (error) {
       if (error instanceof RequestBodyError) sendJson(response, error.status, { error: error.code, message: error.message });
-      else sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : "没写进去。" });
+      else sendJson(response, 500, { error: "write_failed", message: error instanceof Error ? error.message : msg().core.routes.setup.writeFailed });
     } finally {
       releaseSetupWrite();
     }
@@ -314,10 +315,10 @@ export async function handleSetupRoute(
   }
 
   if (url.pathname === "/api/setup/deepseek" || url.pathname === "/api/setup/codex") {
-    sendJson(response, 405, { error: "method_not_allowed", message: "只支持 PUT。" });
+    sendJson(response, 405, { error: "method_not_allowed", message: msg().core.shared.onlyPut });
     return true;
   }
 
-  sendJson(response, 404, { error: "not_found", message: "没有这个设置项。" });
+  sendJson(response, 404, { error: "not_found", message: msg().core.routes.setup.noSuchSetting });
   return true;
 }

@@ -1,3 +1,5 @@
+import { msg } from "../i18n/index.ts";
+import { ERROR_CODES, withCode } from "../surf/errors.ts";
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -105,9 +107,12 @@ export async function assertBilibiliRequestAllowed() {
 
   const retryAt = Date.parse(pause?.retryAt ?? "");
   if (Number.isFinite(retryAt) && retryAt > Date.now()) {
-    const status = pause?.status ?? "限流";
-    const reason = typeof status === "number" && status < 0 ? `风控码 ${status}` : `HTTP ${status}`;
-    throw new Error(`B 站触发 ${reason}，本机已暂停视频请求至 ${new Date(retryAt).toLocaleString()}。`);
+    const status = pause?.status ?? msg().core.bilibili.rateLimitFallback;
+    const riskOrFallback = typeof status !== "number" || status < 0;
+    const reason = typeof status === "number" && status < 0 ? msg().core.bilibili.riskCode(status) : `HTTP ${status}`;
+    const error = new Error(msg().core.bilibili.pausedUntil(reason, new Date(retryAt).toLocaleString()));
+    // 风控码和「限流」两种说法要标明是限流；「HTTP 412」这类中英文都一样，照旧按文字认。
+    throw riskOrFallback ? withCode(error, ERROR_CODES.rateLimited) : error;
   }
   await rm(RATE_LIMIT_PATH, { force: true });
 }
@@ -142,16 +147,16 @@ export function normalizeBilibiliInput(input: string) {
   try {
     url = new URL(text);
   } catch {
-    throw new Error("请输入 Bilibili 视频链接、b23.tv 短链或 BV 号。");
+    throw new Error(msg().core.bilibili.urlEmpty);
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("视频链接必须使用 HTTP 或 HTTPS。");
+    throw new Error(msg().core.bilibili.urlProtocol);
   }
 
   const host = url.hostname.toLowerCase();
   if (host === "b23.tv") {
-    if (url.pathname === "/") throw new Error("b23.tv 链接缺少视频路径。");
+    if (url.pathname === "/") throw new Error(msg().core.bilibili.urlMissingPath);
     url.protocol = "https:";
     return url.toString();
   }
@@ -161,9 +166,10 @@ export function normalizeBilibiliInput(input: string) {
     if (bvid) return bvid;
   }
 
-  throw new Error("目前只支持 Bilibili 视频链接和 b23.tv 短链。");
+  throw new Error(msg().core.bilibili.urlUnsupported);
 }
 
+// i18n-ignore-start：给模型的视频证据文本
 function formatVideoTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "未知";
   const total = Math.floor(seconds);
@@ -245,6 +251,7 @@ export function formatBilibiliEvidence(input: {
 
   return lines.join("\n");
 }
+// i18n-ignore-end
 
 export async function collectBilibiliVideoEvidence(
   input: string,
@@ -272,12 +279,12 @@ export async function collectBilibiliVideoEvidence(
   await recordBilibiliCooldown(rateLimit);
 
   if (raw.success !== true) {
-    throw new Error(raw.error ?? "Bilibili 视频资料提取失败。");
+    throw new Error(raw.error ?? msg().core.bilibili.extractFailed);
   }
-  if (!raw.bvid) throw new Error("Bilibili 提取结果缺少 BV 号。");
+  if (!raw.bvid) throw new Error(msg().core.bilibili.missingBvid);
 
   const metadata = raw.metadata ?? {};
-  const transcript = raw.transcript ?? { text: "", source: "none", segments: [], note: "未取得转写信息。" };
+  const transcript = raw.transcript ?? { text: "", source: "none", segments: [], note: "未取得转写信息。" }; // i18n-ignore：给模型的占位说明
   const comments = raw.comments ?? { total: 0, fetched: 0, comments: [], note: "" };
   const danmaku = raw.danmaku ?? { total: 0, top_messages: [], samples: [], note: "" };
   const frames = raw.frames ?? { enabled: false, strategy: "", mode: "none", frames: [] };

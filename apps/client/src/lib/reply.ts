@@ -2,7 +2,7 @@
 
 const MIN_BUBBLE = 18;
 const MAX_BUBBLES = 3;
-const SENTENCE = /[^。！？!?…~～\n]+[。！？!?…~～]*[”’」』）)]*\n*|\n+/gu;
+const SENTENCE = /[^。！？!?…~～\n]+[。！？!?…~～]*[”’」』）)]*\n*|\n+/gu; // i18n-ignore：中文断句标点正则
 
 export function splitReply(text: string): string[] {
   const clean = text.replace(/\r/g, "");
@@ -12,7 +12,7 @@ export function splitReply(text: string): string[] {
   let current = "";
   for (const sentence of sentences) {
     current += sentence;
-    const ended = /[。！？!?…~～”’」』）)\n]\s*$/u.test(sentence);
+    const ended = /[。！？!?…~～”’」』）)\n]\s*$/u.test(sentence); // i18n-ignore：中文断句标点正则
     if (ended && parts.length < MAX_BUBBLES - 1 && current.trim().length >= MIN_BUBBLE) {
       parts.push(current);
       current = "";

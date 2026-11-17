@@ -1,3 +1,5 @@
+import { msg } from "../i18n/index.ts";
+import { ERROR_CODES, withCode } from "../surf/errors.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -45,13 +47,13 @@ export class VideoBusyError extends VideoError {}
 
 const SECRET = /SESSDATA=[^\s&;]+/gi;
 const scrub = (message: string) =>
-  message.replace(SECRET, "SESSDATA=[隐藏]").replace(/https?:\/\/[^\s]+/g, (url) => url.split("?")[0] + "?[参数隐藏]");
+  message.replace(SECRET, msg().core.shared.redactedSessdata).replace(/https?:\/\/[^\s]+/g, (url) => url.split("?")[0] + msg().core.video.paramsHidden);
 
 let busy = false;
 
 /** 同一时间只处理一个视频：B 站有限流，Codex 也不适合并发。返回释放函数。 */
 export function acquireVideoLock(): () => void {
-  if (busy) throw new VideoBusyError("正在处理另一个视频，请稍后再试。");
+  if (busy) throw new VideoBusyError(msg().core.video.busy);
   busy = true;
   return () => {
     busy = false;
@@ -60,14 +62,16 @@ export function acquireVideoLock(): () => void {
 
 /** 在聊天文字里找 Bilibili 链接、b23.tv 短链或 BV 号。 */
 export function extractVideoTarget(text: string): string | undefined {
-  const link = /https?:\/\/(?:[\w-]+\.)?(?:bilibili\.com|b23\.tv)\/[^\s<>"'，。！？）)]+/i.exec(text)?.[0];
+  const link = /https?:\/\/(?:[\w-]+\.)?(?:bilibili\.com|b23\.tv)\/[^\s<>"'，。！？）)]+/i.exec(text)?.[0]; // i18n-ignore：匹配中文内容的正则
   if (link) return link;
   return /(?<![0-9A-Za-z])BV[0-9A-Za-z]{10}(?![0-9A-Za-z])/.exec(text)?.[0];
 }
 
 /** “分享给你”那一段；格式不符时退回整段摘要的前部分。 */
 export function sharedParagraph(summary: string): string {
-  const match = /#\s*分享给你\s*\n+([\s\S]*?)(?:\n#\s*来源与依据|$)/.exec(summary);
+  // 中文小标题的匹配和 0.3.6 完全一样；匹配不到再认英文界面下的英文小标题（见 video/prompt.ts）。
+  const match = /#\s*分享给你\s*\n+([\s\S]*?)(?:\n#\s*来源与依据|$)/.exec(summary) // i18n-ignore：匹配模型输出小标题的正则
+    ?? /#\s*Sharing with you\s*\n+([\s\S]*?)(?:\n#+\s*Sources & basis|$)/.exec(summary);
   const text = (match?.[1] ?? summary).trim();
   return text.length > 1500 ? `${text.slice(0, 1500)}…` : text;
 }
@@ -85,13 +89,13 @@ export function createVideoService(): VideoService {
         const session = await loadBilibiliSession();
         signal?.throwIfAborted();
         if (session && !(await isBilibiliSessionValid(session.sessdata, signal))) {
-          throw new VideoError("本机保存的 B 站登录态已失效，请重新登录后再试。");
+          throw withCode(new VideoError(msg().core.video.loginExpired), ERROR_CODES.content);
         }
         const source = await collectBilibiliVideoEvidence(target, session?.sessdata ?? "", { framesDir: tempDir, signal });
         signal?.throwIfAborted();
-        if (source.rateLimit.limited) throw new VideoError("B 站触发了限流保护，稍后再试。");
+        if (source.rateLimit.limited) throw new VideoError(msg().core.video.rateLimited);
         const hasTranscript = Boolean(source.transcript.text?.trim());
-        if (!hasTranscript && source.frameImages.length === 0) throw new VideoError("没有取得字幕或关键帧，无法看这个视频。");
+        if (!hasTranscript && source.frameImages.length === 0) throw new VideoError(msg().core.video.noEvidence);
         return {
           bvid: source.bvid,
           title: source.metadata.title ?? "",
@@ -107,7 +111,7 @@ export function createVideoService(): VideoService {
       } catch (error) {
         await dispose();
         signal?.throwIfAborted(); // 中止就抛出中止原因，不伪装成视频错误
-        throw error instanceof VideoError ? error : new VideoError(scrub(error instanceof Error ? error.message : String(error)));
+        throw error instanceof VideoError ? error : new VideoError(scrub(error instanceof Error ? error.message : String(error)), { cause: error });
       }
     },
 

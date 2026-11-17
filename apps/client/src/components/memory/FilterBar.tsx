@@ -5,6 +5,7 @@
  */
 import { useState } from "react";
 import { MiniCalendar } from "../diary/MiniCalendar";
+import { m } from "../../i18n";
 import { Button, Dialog, Input, Select, Tabs } from "../ui";
 import { EMPTY_FILTERS, GROUPS, type GroupKey, type OwnFilters } from "./types";
 import { Glass } from "../pages/Glass";
@@ -26,18 +27,18 @@ type Props = {
 };
 
 const ERA = [
-  { value: "all", label: "全部状态" },
-  { value: "current", label: "现在的" },
-  { value: "past", label: "以前的" },
+  { value: "all", label: m.memory.filter.era.all },
+  { value: "current", label: m.memory.filter.era.current },
+  { value: "past", label: m.memory.filter.era.past },
 ];
 
 function dayText(date: Date | null): string {
-  return date ? `${date.getMonth() + 1}月${date.getDate()}日` : "";
+  return date ? m.memory.date.short(date) : "";
 }
 
 function rangeText(filters: OwnFilters): string {
-  if (!filters.from && !filters.to) return "时间不限";
-  return `${dayText(filters.from) || "起"} – ${dayText(filters.to) || "今"}`;
+  if (!filters.from && !filters.to) return m.memory.filter.rangeAny;
+  return `${dayText(filters.from) || m.memory.filter.rangeFrom} – ${dayText(filters.to) || m.memory.filter.rangeTo}`;
 }
 
 function DateDialog({ open, onOpenChange, filters, onFilters }: {
@@ -57,23 +58,23 @@ function DateDialog({ open, onOpenChange, filters, onFilters }: {
       open={open}
       onOpenChange={onOpenChange}
       size="md"
-      title="哪一段时间"
-      description="先点开始的那天，再点结束的那天。"
+      title={m.memory.filter.dialogTitle}
+      description={m.memory.filter.dialogDescription}
       footer={
         <>
-          <Button variant="ghost" onClick={() => onFilters({ ...filters, from: null, to: null })}>清掉日期</Button>
-          <Button variant="primary" onClick={() => onOpenChange(false)}>看结果</Button>
+          <Button variant="ghost" onClick={() => onFilters({ ...filters, from: null, to: null })}>{m.memory.filter.clearDates}</Button>
+          <Button variant="primary" onClick={() => onOpenChange(false)}>{m.memory.filter.showResults}</Button>
         </>
       }
     >
       <div className="mdate">
-        <div className="mdate__ends" role="group" aria-label="日期范围的两端">
+        <div className="mdate__ends" role="group" aria-label={m.memory.filter.endsAria}>
           <Button variant={picking === "from" ? "primary" : "secondary"} aria-pressed={picking === "from"} onClick={() => setPicking("from")}>
-            {dayText(filters.from) || "从哪天"}
+            {dayText(filters.from) || m.memory.filter.fromPlaceholder}
           </Button>
-          <span aria-hidden>到</span>
+          <span aria-hidden>{m.memory.filter.toWord}</span>
           <Button variant={picking === "to" ? "primary" : "secondary"} aria-pressed={picking === "to"} onClick={() => setPicking("to")}>
-            {dayText(filters.to) || "到哪天"}
+            {dayText(filters.to) || m.memory.filter.toPlaceholder}
           </Button>
         </div>
         <div className="mdate__cal">
@@ -83,7 +84,7 @@ function DateDialog({ open, onOpenChange, filters, onFilters }: {
             marks={new Set()}
             onMonthChange={setMonth}
             onSelect={pick}
-            label={picking === "from" ? "选开始的那天" : "选结束的那天"}
+            label={picking === "from" ? m.memory.filter.pickFrom : m.memory.filter.pickTo}
           />
         </div>
       </div>
@@ -111,7 +112,7 @@ export function FilterBar({
     <div className="mfilters">
       <Tabs
         variant="segmented"
-        label="按分类看"
+        label={m.memory.filter.tabsAria}
         value={group}
         onValueChange={(value) => onGroup(value as GroupKey)}
         className="mfilters__tabs"
@@ -120,7 +121,7 @@ export function FilterBar({
           label: (
             <>
               {item.label}
-              <span className="mfilters__n" aria-label={`${counts[item.key] ?? 0} 条`}>{counts[item.key] ?? 0}</span>
+              <span className="mfilters__n" aria-label={m.memory.filter.countAria(counts[item.key] ?? 0)}>{counts[item.key] ?? 0}</span>
             </>
           ),
         }))}
@@ -139,24 +140,24 @@ export function FilterBar({
             <span className="ptool__glass"><Glass /></span>
             <Input
               id="mem-search"
-              aria-label="找找她记得的事"
+              aria-label={m.memory.filter.searchAria}
               value={query}
               onChange={(event) => onQuery(event.target.value)}
-              placeholder="找找她记得的事…"
+              placeholder={m.memory.filter.searchPlaceholder}
               autoComplete="off"
               enterKeyHint="search"
             />
             {query && (
-              <button type="button" className="ptool__clear ui-press ui-focus" aria-label="清掉搜索" onClick={onClearSearch}>
+              <button type="button" className="ptool__clear ui-press ui-focus" aria-label={m.memory.filter.clearSearch} onClick={onClearSearch}>
                 ✕
               </button>
             )}
           </div>
-          <Button type="submit" variant="secondary">找</Button>
+          <Button type="submit" variant="secondary">{m.memory.filter.searchSubmit}</Button>
         </form>
 
         <Select
-          aria-label="还作数吗"
+          aria-label={m.memory.filter.eraAria}
           value={filters.era}
           onValueChange={(value) => onFilters({ ...filters, era: value as OwnFilters["era"] })}
           options={ERA}
@@ -166,13 +167,13 @@ export function FilterBar({
         </Button>
         {dirty && (
           <Button variant="ghost" onClick={() => { onFilters(EMPTY_FILTERS); onClearAll(); }}>
-            清掉筛选
+            {m.memory.filter.clearFilters}
           </Button>
         )}
       </div>
 
       {resultCount !== null && (
-        <p className="ptool__count" role="status">找到 {resultCount} 条</p>
+        <p className="ptool__count" role="status">{m.memory.filter.found(resultCount)}</p>
       )}
 
       <DateDialog open={dateOpen} onOpenChange={setDateOpen} filters={filters} onFilters={onFilters} />

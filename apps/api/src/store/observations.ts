@@ -45,7 +45,7 @@ export class ObservationRepository {
     let characters = 0;
     for (const row of rows) {
       const content = row.content.length > 6_000
-        ? `${row.content.slice(0, 4_500)}\n（原文较长，完整内容仍可在本机归档中检索）\n${row.content.slice(-1_000)}`
+        ? `${row.content.slice(0, 4_500)}\n（原文较长，完整内容仍可在本机归档中检索）\n${row.content.slice(-1_000)}` // i18n-ignore：喂给模型的观察原文
         : row.content;
       if (messages.length > 0 && characters + content.length > 12_000) break;
       messages.push({ ...row, content });

@@ -30,6 +30,7 @@ import { describeNetError } from "../../lib/net";
 import { SettingRow } from "./Row";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Field";
+import { m } from "../../i18n";
 
 interface DeepSeekState {
   configured: boolean;
@@ -61,19 +62,8 @@ type Probe =
   | { phase: "done"; provider: string; model: string; note: string }
   | { phase: "failed"; note: string };
 
-const REASONING_EFFORT_LABELS: Record<string, string> = {
-  none: "无",
-  minimal: "最少",
-  low: "低",
-  medium: "中",
-  high: "高",
-  xhigh: "超高",
-  max: "最高",
-  ultra: "极高",
-};
-
 function reasoningEffortLabel(effort: string): string {
-  return REASONING_EFFORT_LABELS[effort] ?? effort;
+  return m.setup.model.effort[effort] ?? effort;
 }
 
 function isSetup(value: unknown): value is SetupState {
@@ -97,9 +87,9 @@ function isSetup(value: unknown): value is SetupState {
 async function errorText(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { message?: string; error?: string };
-    return body.message ?? body.error ?? `请求失败（HTTP ${response.status}）`;
+    return body.message ?? body.error ?? m.setup.model.requestFailedHttp(response.status);
   } catch {
-    return `请求失败（HTTP ${response.status}）`;
+    return m.setup.model.requestFailedHttp(response.status);
   }
 }
 
@@ -137,14 +127,14 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
       const response = await fetch(`${API_BASE}/api/setup/codex/models`);
       if (!response.ok) {
         const body = (await response.json().catch(() => ({}))) as { message?: string; error?: string; kind?: string };
-        const message = body.message ?? body.error ?? `请求失败（HTTP ${response.status}）`;
+        const message = body.message ?? body.error ?? m.setup.model.requestFailedHttp(response.status);
         if (alive.current) setCatalog({ phase: "failed", message, hint: catalogFailureHint(body.kind) });
         return;
       }
       const models = parseCodexModels(await response.json());
       if (alive.current) setCatalog({ phase: "ok", models });
     } catch (error) {
-      if (alive.current) setCatalog({ phase: "failed", message: describeNetError(error, "读不到本机 Codex 的模型列表"), hint: catalogFailureHint(undefined) });
+      if (alive.current) setCatalog({ phase: "failed", message: describeNetError(error, m.setup.model.catalogReadFailed), hint: catalogFailureHint(undefined) });
     }
   }, []);
 
@@ -203,11 +193,11 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
       });
       if (!response.ok) throw new Error(await errorText(response));
       setKey("");
-      onToast("DeepSeek key 记下了。重启后端才会用上新的。");
+      onToast(m.setup.model.keySavedToast);
       await load();
       onSaved?.();
     } catch (error) {
-      setKeyError(describeNetError(error, "key 没存上"));
+      setKeyError(describeNetError(error, m.setup.model.keySaveFailed));
     } finally {
       setSavingKey(false);
     }
@@ -217,7 +207,7 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
     if (offline || savingCodex || state.phase !== "ok") return;
     const { codex } = state.data;
     if (modelDraft === codex.model && effortDraft === codex.effort) {
-      onToast("模型和推理档位都没变。");
+      onToast(m.setup.model.codexUnchangedToast);
       return;
     }
     // 两项一起存：换模型时档位已按新模型回落，后端不会拿到不支持的组合。
@@ -231,11 +221,11 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
         body: JSON.stringify(patch),
       });
       if (!response.ok) throw new Error(await errorText(response));
-      onToast("已保存。下一轮会按选中的模型和推理档位调用。");
+      onToast(m.setup.model.codexSavedToast);
       await load();
       onSaved?.();
     } catch (error) {
-      setCodexError(describeNetError(error, "没存上"));
+      setCodexError(describeNetError(error, m.setup.model.codexSaveFailed));
     } finally {
       setSavingCodex(false);
     }
@@ -253,21 +243,21 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
       };
       if (!alive.current) return;
       if (body.probe?.checked === false) {
-        setProbe({ phase: "done", provider: body.provider ?? "未知", model: body.model ?? "未知", note: "服务连上了，但它不报可用模型清单。" });
+        setProbe({ phase: "done", provider: body.provider ?? m.setup.model.unknown, model: body.model ?? m.setup.model.unknown, note: m.setup.model.probeNoList });
       } else if (body.probe?.modelAvailable === false) {
-        setProbe({ phase: "done", provider: body.provider ?? "未知", model: body.model ?? "未知", note: "服务连上了，但它的模型清单里没有这个名字。" });
+        setProbe({ phase: "done", provider: body.provider ?? m.setup.model.unknown, model: body.model ?? m.setup.model.unknown, note: m.setup.model.probeNotInList });
       } else {
-        setProbe({ phase: "done", provider: body.provider ?? "未知", model: body.model ?? "未知", note: "服务连上了，模型也在清单里。" });
+        setProbe({ phase: "done", provider: body.provider ?? m.setup.model.unknown, model: body.model ?? m.setup.model.unknown, note: m.setup.model.probeOk });
       }
     } catch {
-      if (alive.current) setProbe({ phase: "failed", note: "连不上后端。等服务起来再试。" });
+      if (alive.current) setProbe({ phase: "failed", note: m.setup.model.probeFailed });
     }
   };
 
   if (state.phase === "loading") {
     return (
       <p className="set-quota__loading" role="status">
-        正在读模型设置…
+        {m.setup.model.loading}
       </p>
     );
   }
@@ -275,10 +265,10 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
   if (state.phase === "down") {
     return (
       <div className="set-state" role="status">
-        <p className="set-state__title">模型设置暂时看不到</p>
-        <p className="set-state__desc">接哪家模型、用多大档位，这两项只从后端读；现在拿不到，就不猜给你。</p>
+        <p className="set-state__title">{m.setup.model.downTitle}</p>
+        <p className="set-state__desc">{m.setup.model.downDesc}</p>
         <Button variant="secondary" onClick={() => void load()}>
-          再试一次
+          {m.setup.model.retry}
         </Button>
       </div>
     );
@@ -310,12 +300,12 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
     <div className="mset">
       <SettingRow
         title="DeepSeek"
-        desc="聊天默认走它。key 只写进后端的 .env，页面上只看得到后四位。"
+        desc={m.setup.model.deepseekDesc}
         stacked
       >
         <p className="mset__status" data-on={data.deepseek.configured ? "on" : "off"}>
           <span className="mset__dot" aria-hidden="true" />
-          <span>{data.deepseek.configured ? `已配置 ${data.deepseek.masked ?? ""}` : "未配置"}</span>
+          <span>{data.deepseek.configured ? m.setup.model.configured(data.deepseek.masked ?? "") : m.setup.model.notConfigured}</span>
         </p>
         <div className="mset__form">
           <Input className="mset__field"
@@ -324,7 +314,7 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
             autoComplete="off"
             spellCheck={false}
             maxLength={200}
-            placeholder={data.deepseek.configured ? "换一个新 key（sk-…）" : "贴上 sk- 开头的 key"}
+            placeholder={data.deepseek.configured ? m.setup.model.keyPlaceholderReplace : m.setup.model.keyPlaceholderNew}
             aria-label="DeepSeek API Key"
             value={key}
             disabled={offline || savingKey}
@@ -341,10 +331,10 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
             disabled={offline || savingKey || key.trim() === ""}
             onClick={() => void saveKey()}
           >
-            {savingKey ? "正在存…" : "保存"}
+            {savingKey ? m.setup.model.saving : m.setup.model.save}
           </Button>
         </div>
-        <p className="mset__hint">保存后要重启后端才生效；key 不会出现在页面、日志或返回值里。</p>
+        <p className="mset__hint">{m.setup.model.keyHint}</p>
         {keyError && (
           <p className="set-row__bad" role="alert">
             {keyError}
@@ -354,23 +344,23 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
 
       <SettingRow
         title="Codex"
-        desc="大肥鱼调用 Codex 时固定用这里选的模型和推理档位，不跟着你自己的 Codex 走，也不改它的配置。"
+        desc={m.setup.model.codexDesc}
         stacked
       >
         <p className="mset__now">
           {data.codex.model ? (
             <>
-              现在用 <strong>{data.codex.model}</strong>
+              {m.setup.model.nowUsingPrefix}<strong>{data.codex.model}</strong>
               {data.codex.effort ? ` · ${reasoningEffortLabel(data.codex.effort)}` : ""}
             </>
           ) : (
-            <>还没选过，用本机 Codex 列表里的默认模型</>
+            <>{m.setup.model.noneChosen}</>
           )}
         </p>
         <div className="mset__form mset__form--codex">
           <div className="mset__item">
             <label className="mset__label" htmlFor="mset-model">
-              模型
+              {m.setup.model.modelLabel}
             </label>
             <select
               id="mset-model"
@@ -386,12 +376,12 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
               {modelDraft === "" && (
                 <option value="" disabled>
                   {catalog.phase === "loading"
-                    ? "正在读模型列表…"
+                    ? m.setup.model.modelLoading
                     : catalog.phase === "failed"
-                      ? "模型列表暂时读不到"
+                      ? m.setup.model.modelListUnavailable
                       : modelOptions.length === 0
-                        ? "本机 Codex 没有可用模型"
-                        : "选择模型"}
+                        ? m.setup.model.modelNone
+                        : m.setup.model.modelChoose}
                 </option>
               )}
               {catalog.phase !== "ok" && modelDraft !== "" && <option value={modelDraft}>{modelDraft}</option>}
@@ -405,7 +395,7 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
           </div>
           <div className="mset__item">
             <label className="mset__label" htmlFor="mset-effort">
-              推理档位
+              {m.setup.model.effortLabel}
             </label>
             <select
               id="mset-effort"
@@ -417,12 +407,12 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
               {effortDraft === "" && (
                 <option value="" disabled>
                   {catalog.phase === "loading"
-                    ? "正在读可用档位…"
+                    ? m.setup.model.effortLoading
                     : catalog.phase === "failed"
-                      ? "模型列表暂时读不到"
+                      ? m.setup.model.modelListUnavailable
                       : modelOption
-                        ? "选择推理档位"
-                        : "先选模型"}
+                        ? m.setup.model.effortChoose
+                        : m.setup.model.effortPickModelFirst}
                 </option>
               )}
               {catalog.phase !== "ok" && effortDraft !== "" && (
@@ -441,12 +431,12 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
             disabled={!canSaveCodex}
             onClick={() => void saveCodex()}
           >
-            {savingCodex ? "正在存…" : "保存"}
+            {savingCodex ? m.setup.model.saving : m.setup.model.save}
           </Button>
         </div>
         {catalog.phase === "loading" && (
           <p className="mset__hint" role="status">
-            正在读本机 Codex 的模型列表…
+            {m.setup.model.catalogLoading}
           </p>
         )}
         {catalog.phase === "failed" && (
@@ -454,21 +444,21 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
             <p className="set-row__bad">{catalog.message}</p>
             <p className="mset__hint">{catalog.hint}</p>
             <Button variant="secondary" disabled={offline} onClick={() => void loadCatalog()}>
-              重试
+              {m.setup.model.retryShort}
             </Button>
           </div>
         )}
         {savedModelMissing && (
           <p className="set-row__bad" role="status">
-            已保存的模型 {data.codex.model} 不在当前列表里，调用会失败；请换一个再保存。
+            {m.setup.model.savedModelMissing(data.codex.model)}
           </p>
         )}
         {draftEffortMissing && (
           <p className="set-row__bad" role="status">
-            推理档位 {reasoningEffortLabel(effortDraft)} 不在这个模型的可用档位里，请重新选择。
+            {m.setup.model.effortMissing(reasoningEffortLabel(effortDraft))}
           </p>
         )}
-        <p className="mset__path">大肥鱼自己的设置文件：{data.codex.configPath}</p>
+        <p className="mset__path">{m.setup.model.configPath(data.codex.configPath)}</p>
         {codexError && (
           <p className="set-row__bad" role="alert">
             {codexError}
@@ -476,19 +466,19 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
         )}
       </SettingRow>
 
-      <SettingRow title="测试连接" desc="问一句后端：现在实际在用哪家模型。不会真的发一次聊天。" stacked>
+      <SettingRow title={m.setup.model.probeTitle} desc={m.setup.model.probeDesc} stacked>
         <div className="mset__form">
           <Button
             variant="secondary"
             disabled={offline || probe.phase === "busy"}
             onClick={() => void runProbe()}
           >
-            {probe.phase === "busy" ? "正在问…" : "测试连接"}
+            {probe.phase === "busy" ? m.setup.model.probing : m.setup.model.probeButton}
           </Button>
         </div>
         {probe.phase === "done" && (
           <p className="mset__probe" role="status">
-            现在用的是 {probe.provider} · {probe.model}。{probe.note}
+            {m.setup.model.probeResult(probe.provider, probe.model, probe.note)}
           </p>
         )}
         {probe.phase === "failed" && (
@@ -496,7 +486,7 @@ export function ModelSetup({ offline, onToast, onSaved }: Props) {
             {probe.note}
           </p>
         )}
-        <p className="mset__hint">模型链：{data.chain.length > 0 ? data.chain.join(" → ") : "（没有可用的模型）"}</p>
+        <p className="mset__hint">{m.setup.model.chain(data.chain.length > 0 ? data.chain.join(" → ") : m.setup.model.chainEmpty)}</p>
       </SettingRow>
     </div>
   );

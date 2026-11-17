@@ -2,6 +2,7 @@
 import { API_BASE, authedUrl } from "./api";
 import { describeNetError } from "./net";
 import { timeOf } from "./surf-view";
+import { m } from "../i18n";
 
 export type SurfFrequency = "rare" | "normal" | "often";
 export type SurfKind = "video" | "web";
@@ -86,11 +87,11 @@ export interface SurfRunAnswer {
   message?: string;
 }
 
-export const FREQUENCY_LABEL: Record<SurfFrequency, string> = { rare: "偶尔", normal: "常常", often: "勤快" };
+export const FREQUENCY_LABEL: Record<SurfFrequency, string> = { rare: m.surf.lib.freqRare, normal: m.surf.lib.freqNormal, often: m.surf.lib.freqOften };
 export const FREQUENCY_HINT: Record<SurfFrequency, string> = {
-  rare: "一天 2 次",
-  normal: "一天 4 次",
-  often: "一天 8 次",
+  rare: m.surf.lib.hintRare,
+  normal: m.surf.lib.hintNormal,
+  often: m.surf.lib.hintOften,
 };
 
 async function readError(response: Response, fallback: string): Promise<string> {
@@ -123,9 +124,9 @@ export async function putSurfSettings(character: string, patch: SurfSettingsPatc
     });
   } catch (error) {
     // 0.2.3 桌面版在这里露出英文 `Load failed`：预检没放行 PUT。文案统一走 net.ts。
-    throw new Error(describeNetError(error, "逛设置没存上"));
+    throw new Error(describeNetError(error, m.surf.lib.settingsSaveWhat));
   }
-  if (!response.ok) throw new Error(await readError(response, `存不上（HTTP ${response.status}）`));
+  if (!response.ok) throw new Error(await readError(response, m.surf.lib.saveFailed(response.status)));
   return (await response.json()) as SurfSettings;
 }
 
@@ -150,7 +151,7 @@ export async function getSurfFeed(
   if (query.from) params.set("from", query.from);
   if (query.to) params.set("to", query.to);
   const response = await fetch(`${API_BASE}/api/surf/feed?${params.toString()}`, { signal });
-  if (!response.ok) throw new Error(await readError(response, `见闻翻不开（HTTP ${response.status}）`));
+  if (!response.ok) throw new Error(await readError(response, m.surf.lib.loadFailed(response.status)));
   return (await response.json()) as SurfFeed;
 }
 
@@ -177,13 +178,13 @@ export async function runSurf(character: string): Promise<SurfRunAnswer> {
       message: body.message,
     };
   } catch {
-    return { ok: false, status: 0, code: "network", message: "现在连不上她。" };
+    return { ok: false, status: 0, code: "network", message: m.surf.lib.cannotReach };
   }
 }
 
 export async function deleteSurfItem(id: number): Promise<void> {
   const response = await fetch(`${API_BASE}/api/surf/items/${id}`, { method: "DELETE" });
-  if (!response.ok && response.status !== 404) throw new Error(`忘不掉（HTTP ${response.status}）`);
+  if (!response.ok && response.status !== 404) throw new Error(m.surf.lib.forgetFailed(response.status));
 }
 
 export const thumbUrl = (id: number) => authedUrl(`${API_BASE}/api/surf/thumb/${id}`);
@@ -217,8 +218,7 @@ export const isFresh = (item: SurfFeedItem, seenId: number) =>
 export function dayLabelOf(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const week = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()];
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${week}`;
+  return m.surf.lib.dayLabel(date.getMonth() + 1, date.getDate(), m.surf.lib.weekdays[date.getDay()]);
 }
 
 export function stampDate(iso: string): string {
@@ -229,15 +229,15 @@ export function stampDate(iso: string): string {
 
 /** 站点简称：bilibili → B站，其它取域名主体。 */
 export function siteLabel(site: string): string {
-  if (site === "bilibili") return "B站";
+  if (site === "bilibili") return m.surf.lib.bilibili;
   return site.replace(/^www\./, "");
 }
 
 export function nextRunText(status: SurfStatus | null): string {
-  if (!status) return "现在还看不到她的安排";
-  if (status.pausedReason === "disabled") return "她现在不去逛了";
-  if (!status.nextRunAt) return "她今天逛完了";
-  return `下一次 ${timeOf(status.nextRunAt)}`;
+  if (!status) return m.surf.lib.noSchedule;
+  if (status.pausedReason === "disabled") return m.surf.lib.notExploring;
+  if (!status.nextRunAt) return m.surf.lib.doneToday;
+  return m.surf.lib.nextRun(timeOf(status.nextRunAt));
 }
 
 export { chatQuoteHref, dateRangeBounds, localDay, quoteText, timeOf, whenText, type DateRange } from "./surf-view";

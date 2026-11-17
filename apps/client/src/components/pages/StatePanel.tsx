@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { Card, Spinner } from "../ui";
 import { Icon, type IconName } from "../ink-icons";
 import "./pages.css";
+import { m } from "../../i18n";
 
 type Props = {
   kind: "loading" | "empty" | "error";
@@ -27,7 +28,7 @@ export function StatePanel({ kind, title, body, detail, icon, children }: Props)
       {body && <p className="spanel__body">{body}</p>}
       {detail && (
         <details className="spanel__detail">
-          <summary>看详情</summary>
+          <summary>{m.common.pages.details}</summary>
           <code>{detail}</code>
         </details>
       )}

@@ -1,3 +1,4 @@
+import { msg, runInBackgroundLang } from "../i18n/index.ts";
 import { createReadStream } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendJson, readJsonBody, RequestBodyError, sendSse, startSse } from "../server/http.ts";
@@ -14,13 +15,13 @@ export interface SurfRouteDeps {
   connections?: DeviceConnections;
 }
 
-const BAD_CHARACTER = { error: "未知的角色。" };
+const badCharacter = () => ({ error: msg().common.unknownCharacter });
 
 function characterOf(url: URL, response: ServerResponse): CharacterId | null {
   const raw = url.searchParams.get("character");
   if (raw === null || raw === "") return DEFAULT_CHARACTER;
   if (!isCharacterId(raw)) {
-    sendJson(response, 400, BAD_CHARACTER);
+    sendJson(response, 400, badCharacter());
     return null;
   }
   return raw;
@@ -43,7 +44,7 @@ export async function handleSurf(
 ): Promise<void> {
   const surf = deps.surf;
   if (!surf) {
-    sendJson(response, 503, { error: "「她自己去逛」还没有启用。" });
+    sendJson(response, 503, { error: msg().core.routes.surf.notEnabled });
     return;
   }
 
@@ -51,14 +52,14 @@ export async function handleSurf(
   const thumb = /^\/api\/surf\/thumb\/(\d+)$/.exec(url.pathname);
   if (thumb && request.method === "GET") {
     const found = surf.thumbPath(Number(thumb[1]));
-    if (!found) return sendJson(response, 404, { error: "没有这张图。" });
+    if (!found) return sendJson(response, 404, { error: msg().core.routes.surf.imageNotFound });
     response.writeHead(200, {
       "content-type": found.mime,
       "cache-control": "private, max-age=86400",
     });
     createReadStream(found.path)
       .on("error", () => {
-        if (!response.headersSent) sendJson(response, 404, { error: "没有这张图。" });
+        if (!response.headersSent) sendJson(response, 404, { error: msg().core.routes.surf.imageNotFound });
         else response.end();
       })
       .pipe(response);
@@ -84,7 +85,7 @@ export async function handleSurf(
     } catch (error) {
       sendJson(response, error instanceof RequestBodyError ? error.status : 400, {
         error: "invalid_settings",
-        message: error instanceof SyntaxError ? "请求体不是有效的 JSON。" : error instanceof Error ? error.message : "设置不对。",
+        message: error instanceof SyntaxError ? msg().core.shared.invalidJson : error instanceof Error ? error.message : msg().core.routes.surf.badSettings,
       });
     }
     return;
@@ -104,7 +105,8 @@ export async function handleSurf(
       return sendJson(response, 200, { state: "skipped", reason: check.code ?? "disabled", message: check.message });
     }
     // 立刻回 202：会话在后台跑，进度走 SSE。sessionId 从刚插进去的那一行取。
-    const pending = surf.run(character, { manual: true });
+    // 会话在后台跑几分钟：中途切换语言，后面生成的总结按新语言来。
+    const pending = runInBackgroundLang(() => surf.run(character, { manual: true }));
     const running = surf.store.runningSession(character);
     pending.catch((error: unknown) => console.warn("手动冲浪失败：", error instanceof Error ? error.message : error));
     sendJson(response, 202, { sessionId: running?.id ?? null, character });
@@ -133,7 +135,7 @@ export async function handleSurf(
     const id = Number(single[1]);
     if (request.method === "GET") {
       const item = surf.item(id);
-      if (!item) return sendJson(response, 404, { error: "没有这条见闻。" });
+      if (!item) return sendJson(response, 404, { error: msg().core.routes.surf.itemNotFound });
       sendJson(response, 200, {
         id: item.id,
         kind: item.kind,
@@ -152,7 +154,7 @@ export async function handleSurf(
     }
     if (request.method === "DELETE") {
       const removed = await surf.forget(id);
-      if (!removed) return sendJson(response, 404, { error: "没有这条见闻。" });
+      if (!removed) return sendJson(response, 404, { error: msg().core.routes.surf.itemNotFound });
       response.writeHead(204).end();
       return;
     }
@@ -184,7 +186,7 @@ export async function handleSurf(
     return;
   }
 
-  sendJson(response, 404, { error: "未找到。" });
+  sendJson(response, 404, { error: msg().core.shared.notFound });
 }
 
 /** 给 GET /api/chat/history 用：把助手消息上的明信片附件补回来（§10.6.6）。 */

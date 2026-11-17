@@ -6,6 +6,7 @@ import { request as httpRequest, type IncomingHttpHeaders } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isPrivateHostname, safeLookup } from "../webpage/service.ts";
 import type { SurfRepository } from "./store.ts";
+import { msg } from "../i18n/index.ts";
 
 /** 缩略图（§10.6.8 A.5 / B.5）：Node 侧直接下载，限 2 MB、只收 image/*，不引图像库。 */
 
@@ -135,14 +136,14 @@ export async function repairMissingThumbnails(
       if (source) store.setThumbSource(item.id, source);
     }
     if (!source) {
-      store.setThumbError(item.id, "封面地址缺失");
+      store.setThumbError(item.id, msg().content.surf.thumbMissing);
       continue;
     }
     const path = await fetcher.fetch(source, item.id, {
       referer: item.sourceSite === "bilibili" ? "https://www.bilibili.com" : undefined,
     }).catch(() => null);
     if (path) store.setThumb(item.id, path);
-    else store.setThumbError(item.id, "封面下载失败");
+    else store.setThumbError(item.id, msg().content.surf.thumbFailed);
   }
 }
 

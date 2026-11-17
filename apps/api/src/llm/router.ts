@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { ChatMessage, ChatProvider, LlmDelta, StreamOptions } from "./types.ts";
 
 /**
@@ -8,7 +9,7 @@ export class FallbackChatProvider implements ChatProvider {
   readonly #providers: ChatProvider[];
 
   constructor(providers: ChatProvider[]) {
-    if (providers.length === 0) throw new Error("没有可用的模型提供方。");
+    if (providers.length === 0) throw new Error(msg().core.llm.noProviders);
     this.#providers = providers;
   }
 
@@ -36,7 +37,7 @@ export class FallbackChatProvider implements ChatProvider {
       options.signal?.addEventListener("abort", forward, { once: true });
       const last = index === this.#providers.length - 1;
       const budget = share && !last
-        ? setTimeout(() => attempt.abort(new Error(`${provider.id} 超过 ${share} 毫秒没有回应`)), share)
+        ? setTimeout(() => attempt.abort(new Error(msg().core.llm.noReplyInMs(provider.id, share))), share)
         : undefined;
       let started = false;
       try {
@@ -51,12 +52,12 @@ export class FallbackChatProvider implements ChatProvider {
       } catch (error) {
         if (options.signal?.aborted || started) throw error;
         const reason = attempt.signal.aborted ? attempt.signal.reason : error;
-        failures.push(`${provider.id}：${reason instanceof Error ? reason.message : String(reason)}`);
+        failures.push(msg().core.llm.failureLine(provider.id, reason instanceof Error ? reason.message : String(reason)));
       } finally {
         clearTimeout(budget);
         options.signal?.removeEventListener("abort", forward);
       }
     }
-    throw new Error(`所有模型提供方都失败了。\n${failures.join("\n")}`);
+    throw new Error(msg().core.llm.allFailed(failures.join("\n")));
   }
 }

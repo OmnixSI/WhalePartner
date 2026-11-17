@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { join, resolve } from "node:path";
 import { API_ROOT } from "../paths.ts";
 import { surfDataDir } from "./data-dir.ts";
@@ -49,7 +50,7 @@ function positiveInt(value: string | undefined, fallback: number, name: string) 
   const raw = text(value);
   if (raw === undefined) return fallback;
   const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(`${name} 必须是正整数。`);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw new Error(msg().core.server.configPositiveInt(name));
   return parsed;
 }
 

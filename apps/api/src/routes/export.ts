@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
@@ -52,7 +53,7 @@ function collect(deps: ServerDeps): ZipEntry[] {
     { name: "manifest.json", data: json({ app: "whalepartner", exportedAt: new Date().toISOString(), format: 2 }) },
     {
       name: "README.txt",
-      data: Buffer.from("这是 WhalePartner 导出的数据：聊天记录、记忆（含她的近况小记和聊天观察）、日记、见闻、好感度、昵称与用量。用任何支持 zip 的工具打开即可。\n", "utf8"),
+      data: Buffer.from(msg().core.routes.export.readme, "utf8"),
     },
     { name: "chat/sessions.json", data: json(sessions) },
     { name: "chat/messages.json", data: json(messages) },
@@ -139,7 +140,7 @@ export async function handleExportRoute(
   sessionRequests: ChatSessionRequests,
 ): Promise<boolean> {
   if (url.pathname === "/api/export" && request.method === "POST") {
-    if (busy) return sendJson(response, 409, { error: "busy", message: "正在导出或删除，稍等一下。" }), true;
+    if (busy) return sendJson(response, 409, { error: "busy", message: msg().core.shared.busyExporting }), true;
     busy = true;
     try {
       const zip = createZip(collect(deps));
@@ -148,7 +149,7 @@ export async function handleExportRoute(
       for (const [key, value] of bundles) if (Date.now() - value.at > EXPORT_TTL_MS) bundles.delete(key);
       sendJson(response, 201, { id });
     } catch {
-      sendJson(response, 503, { error: "export_failed", message: "这次没打包成功，再试一次。" });
+      sendJson(response, 503, { error: "export_failed", message: msg().core.routes.export.failed });
     } finally {
       busy = false;
     }
@@ -160,7 +161,7 @@ export async function handleExportRoute(
     const bundle = bundles.get(id);
     if (!bundle || Date.now() - bundle.at > EXPORT_TTL_MS) {
       bundles.delete(id);
-      sendJson(response, 404, { error: "export_not_found", message: "这份打包已经过期，再导一次。" });
+      sendJson(response, 404, { error: "export_not_found", message: msg().core.routes.export.expired });
       return true;
     }
     response.statusCode = 200;
@@ -172,24 +173,24 @@ export async function handleExportRoute(
   }
 
   if (url.pathname === "/api/data" && request.method === "DELETE") {
-    if (busy) return sendJson(response, 409, { error: "busy", message: "正在导出或删除，稍等一下。" }), true;
+    if (busy) return sendJson(response, 409, { error: "busy", message: msg().core.shared.busyExporting }), true;
     busy = true;
     try {
       const body = await readJsonBody(request);
       if (body?.confirm !== "DELETE_ALL") {
-        sendJson(response, 400, { error: "confirm_required", message: "要删除全部，必须明确确认。" });
+        sendJson(response, 400, { error: "confirm_required", message: msg().core.routes.export.confirmRequired });
         return true;
       }
       const result = await deleteAllData(deps, sessionRequests);
       if (!result) {
-        sendJson(response, 409, { error: "busy", message: "聊天记录正在变更，稍等一下再删。" });
+        sendJson(response, 409, { error: "busy", message: msg().core.routes.export.chatChanging });
         return true;
       }
       bundles.clear();
       sendJson(response, 200, { ok: true, memoriesCleared: result.memoriesCleared });
     } catch (error) {
       if (error instanceof RequestBodyError) sendJson(response, error.status, { error: error.code, message: error.message });
-      else sendJson(response, 503, { error: "delete_failed", message: "这次没删成功，再试一次。" });
+      else sendJson(response, 503, { error: "delete_failed", message: msg().core.routes.export.deleteFailed });
     } finally {
       busy = false;
     }

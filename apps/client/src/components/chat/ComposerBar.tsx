@@ -11,6 +11,7 @@ import { Card } from "../ui/Card";
 import { Tooltip } from "../ui/Tooltip";
 import { Input, Textarea } from "../ui/Field";
 import type { VoicePhase } from "./useVoiceMode";
+import { m } from "../../i18n";
 
 type Props = {
   name: string;
@@ -63,14 +64,14 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
   const voiceStarting = voicePhase === "preparing" || voicePhase === "permission";
   const voiceCanCancel = voiceRecording || voicePhase === "recognizing";
   const voiceStatus = voicePhase === "preparing"
-    ? "正在准备语音"
+    ? m.chat.composer.voice.preparing
     : voicePhase === "permission"
-      ? "等待麦克风权限"
+      ? m.chat.composer.voice.waitingMic
       : voiceRecording
-        ? voiceMessage || "正在录音"
+        ? voiceMessage || m.chat.composer.voice.recording
       : voicePhase === "recognizing"
-        ? "识别中"
-        : voiceMessage || "可以开始说话";
+        ? m.chat.composer.voice.recognizing
+        : voiceMessage || m.chat.composer.voice.ready;
   const composerStyle = { "--composer-input-height": String(inputHeight) + "px", "--composer-row": String(rowHeight) + "px" } as CSSProperties;
 
   // 52 → 160 自动增高（沿用原来的手写逻辑，不引第三方）。
@@ -122,7 +123,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
 
   return (
     <div className="composer">
-      {!online && <p className="composer__offline">连上之后就能发出去。</p>}
+      {!online && <p className="composer__offline">{m.chat.composer.offline}</p>}
 
       <Card variant="raised" padding="none" className="composer__frame">
         <div className="composer__bar" data-voice={voiceMode || undefined} style={composerStyle}>
@@ -132,16 +133,16 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
                 className="composer__voice-state"
                 role="alert"
                 aria-live="assertive"
-                aria-label={voiceMessage || "语音暂不可用"}
-                title={voiceMessage || "语音暂不可用"}
+                aria-label={voiceMessage || m.chat.composer.voice.unavailable}
+                title={voiceMessage || m.chat.composer.voice.unavailable}
                 data-error
               >
                 <span className="composer__voice-dot" aria-hidden />
-                <span className="composer__voice-copy">语音暂不可用</span>
+                <span className="composer__voice-copy">{m.chat.composer.voice.unavailable}</span>
               </div>
               <div className="composer__actions">
-                <Button variant="ghost" className="composer__text-mode" onClick={onStopVoice} aria-label="返回文字输入">文字</Button>
-                <Button className="composer__voice-retry" onClick={onRetryVoice}>重试</Button>
+                <Button variant="ghost" className="composer__text-mode" onClick={onStopVoice} aria-label={m.chat.composer.voice.backToText}>{m.chat.composer.voice.text}</Button>
+                <Button className="composer__voice-retry" onClick={onRetryVoice}>{m.chat.composer.voice.retry}</Button>
               </div>
             </>
           ) : voiceMode ? (
@@ -164,14 +165,14 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
                 <span className="composer__voice-copy">{voiceStatus}</span>
               </div>
               <div className="composer__actions">
-                <Button variant="ghost" className="composer__text-mode" onClick={onStopVoice} aria-label="返回文字输入">文字</Button>
+                <Button variant="ghost" className="composer__text-mode" onClick={onStopVoice} aria-label={m.chat.composer.voice.backToText}>{m.chat.composer.voice.text}</Button>
                 {voiceCanCancel && (
-                  <Button className="composer__cancel" onClick={onCancelRecording}>取消</Button>
+                  <Button className="composer__cancel" onClick={onCancelRecording}>{m.chat.composer.voice.cancel}</Button>
                 )}
                 {voiceRecording ? (
-                  <Button variant="primary" className="composer__send" icon={<Icon name="send" size={20} />} onClick={onFinishVoice} aria-label="结束录音并发送">发送</Button>
+                  <Button variant="primary" className="composer__send" icon={<Icon name="send" size={20} />} onClick={onFinishVoice} aria-label={m.chat.composer.voice.finishAndSend}>{m.chat.composer.voice.send}</Button>
                 ) : !voiceCanCancel && !voiceStarting ? (
-                  <Button variant="primary" className="composer__voice-action" onClick={onStartVoice}>说话</Button>
+                  <Button variant="primary" className="composer__voice-action" onClick={onStartVoice}>{m.chat.composer.voice.speak}</Button>
                 ) : null}
               </div>
             </>
@@ -179,22 +180,22 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             <>
           <div className="composer__toolbar">
           <Popover.Root open={shareOpen} onOpenChange={setShareOpen}>
-            <Tooltip content="发个视频给她">
+            <Tooltip content={m.chat.composer.video.tooltip}>
               <Popover.Trigger asChild>
-                <IconButton label="发个视频给她"><Icon name="video" size={22} /></IconButton>
+                <IconButton label={m.chat.composer.video.tooltip}><Icon name="video" size={22} /></IconButton>
               </Popover.Trigger>
             </Tooltip>
             <Popover.Portal>
               <Popover.Content className="pop" side="top" align="start" sideOffset={8} collisionPadding={16}>
-                <h3 className="pop__title">给她看个视频</h3>
+                <h3 className="pop__title">{m.chat.composer.video.title}</h3>
                 <p className="pop__lead">
-                  把 B 站视频的链接贴在这里，她看完会跟你讲。她只是看，不会替你评论或点赞。
+                  {m.chat.composer.video.intro}
                 </p>
                 <Input
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://www.bilibili.com/video/…"
-                  aria-label="视频链接"
+                  aria-label={m.chat.composer.video.urlLabel}
                   inputMode="url"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
@@ -204,7 +205,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
                   }}
                 />
                 <div className="pop__actions">
-                  <Button variant="primary" onClick={share} disabled={!url.trim()}>给她看</Button>
+                  <Button variant="primary" onClick={share} disabled={!url.trim()}>{m.chat.composer.video.share}</Button>
                 </div>
               </Popover.Content>
             </Popover.Portal>
@@ -213,7 +214,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
           </div>
 
           <label className="sr-only" htmlFor="chat-input">
-            想和{name}说的话
+            {m.chat.composer.inputLabel(name)}
           </label>
           <Textarea
             id="chat-input"
@@ -222,15 +223,15 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             rows={1}
             value={value}
             maxLength={MAX}
-            placeholder={`想和${name}说点什么？`}
+            placeholder={m.chat.composer.placeholder(name)}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
           />
 
           <div className="composer__actions">
           {/* 语音紧挨发送：打字和说话来回切，鼠标不用横跨整条输入框 */}
-          <Tooltip content="语音聊天">
-            <IconButton label="语音聊天" onClick={onStartVoice}>
+          <Tooltip content={m.chat.composer.voice.chat}>
+            <IconButton label={m.chat.composer.voice.chat} onClick={onStartVoice}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
                 <rect x="9" y="3" width="6" height="11" rx="3" />
                 <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" />
@@ -243,10 +244,10 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
             icon={stopMode ? <span className="composer__stop" aria-hidden /> : <Icon name="send" size={20} />}
             onClick={submit}
             disabled={stopMode ? false : !canSend}
-            aria-label={stopMode ? "停下她" : busy ? "停下她，并发送这句" : "发送"}
+            aria-label={stopMode ? m.chat.composer.stopHer : busy ? m.chat.composer.stopAndSend : m.chat.composer.send}
             data-stop={stopMode || undefined}
           >
-            <span className="composer__send-label">{stopMode ? "停" : "发送"}</span>
+            <span className="composer__send-label">{stopMode ? m.chat.composer.stop : m.chat.composer.send}</span>
           </Button>
           </div>
             </>
@@ -261,7 +262,7 @@ export function ComposerBar({ name, value, onChange, onSend, onStop, busy, onlin
       )}
 
       <div className="composer__hint">
-        <span className="composer__keys">{coarse ? "Enter 换行 · ⌘/Ctrl+Enter 发送" : sendKey === "mod-enter" ? "⌘/Ctrl+Enter 发送" : "Enter 发送 · Shift+Enter 换行"}</span>
+        <span className="composer__keys">{coarse ? m.chat.composer.keys.coarse : sendKey === "mod-enter" ? m.chat.composer.keys.modEnter : m.chat.composer.keys.enter}</span>
       </div>
     </div>
   );

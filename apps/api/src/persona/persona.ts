@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { currentLang } from "../i18n/index.ts";
+// i18n-ignore-start：人设显示名与提示词，不翻译
 
 /** 角色清单。新增角色：在 characters/ 放一个 md，再在这里登记 id 和显示名。 */
 export const CHARACTERS = {
@@ -79,8 +81,23 @@ export function buildSystemPrompt(context: PersonaContext = {}, character: Chara
   return parts.join("\n\n");
 }
 
+/**
+ * 界面选了 English 时追加在人设最后：人设原文是中文（并写着「说中文口语」），这里只换说话的语言，
+ * 口吻、长度、情绪标签都照旧。中文界面不追加，提示词与原来逐字相同。
+ */
+const ENGLISH_REPLY = [
+  "## Language",
+  "The user's interface is set to English. Speak natural, casual English instead of Chinese from now on, unless the user clearly writes to you in Chinese.",
+  "Keep everything else above unchanged: the same personality, sentence length and emotion tag format. Translate your catchphrases naturally instead of keeping them in Chinese.",
+].join("\n");
+
+/** 英文界面里四位角色的名字，和前端 characters 文案一致。 */
+const ENGLISH_NAMES: Record<CharacterId, string> = { deepseek: "Big Fat Fish", claude: "Claudie", chatgpt: "Gippy", whale: "Jingxi" };
+
 export function buildPersonaCore(character: CharacterId = DEFAULT_CHARACTER): string {
-  return [VOICES[character], STYLE, RULES].join("\n\n");
+  const parts = [VOICES[character], STYLE, RULES];
+  if (currentLang() === "en") parts.push(`${ENGLISH_REPLY}\nIn English, your name is ${ENGLISH_NAMES[character]}.`);
+  return parts.join("\n\n");
 }
 
 /**
@@ -92,3 +109,4 @@ export function withUserName(core: string, nickname: string | null | undefined):
   if (!name) return core;
   return `${core}\n\n## 对方希望你怎么称呼 TA\n对方希望被叫做「${name}」。自然地偶尔用一下就好：不要每句都叫，也不要在第一次就叫，更不要解释这个称呼从哪来。`;
 }
+// i18n-ignore-end

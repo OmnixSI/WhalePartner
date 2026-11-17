@@ -10,9 +10,9 @@ export interface SpeechSegment {
 export const MAX_SPEECH_CHARS = 1200;
 
 /** 句末：标点后面紧跟的收尾引号、括号也算这一句的。 */
-const SENTENCE_END = /[。！？!?；;…\n]+[”’"'」』）)】》]*/gu;
+const SENTENCE_END = /[。！？!?；;…\n]+[”’"'」』）)】》]*/gu; // i18n-ignore：中文断句标点正则
 /** 一句话本身就超长时，退而在这些停顿处断开。 */
-const SOFT_BREAK = /[，,、：:\s]+/gu;
+const SOFT_BREAK = /[，,、：:\s]+/gu; // i18n-ignore：中文断句标点正则
 
 function cutLongSentence(sentence: string, max: number): string[] {
   const pieces: string[] = [];

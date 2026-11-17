@@ -14,6 +14,7 @@ import { getProfile, putNickname } from "../lib/profile";
 import { getCompanionSettings, putCompanionSettings, type CompanionSettings, type CompanionSettingsPatch } from "../lib/companion";
 import { readA11y } from "../lib/a11y";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
+import { m, locale, readLangPref, setLangPref, type LangPref } from "../i18n";
 import { useCharacter } from "../characters";
 import { Accounts } from "../components/Accounts";
 import { reopenOnboarding } from "../components/Onboarding";
@@ -51,17 +52,23 @@ import {
 import "../styles/settings.css";
 
 const THEMES: Array<{ id: ThemeChoice; label: string; hint: string }> = [
-  { id: "auto", label: "跟随系统", hint: "电脑换色，我也跟着换" },
-  { id: "light", label: "晨光", hint: "浅色的纸" },
-  { id: "dark", label: "深海夜", hint: "暗一点的夜" },
+  { id: "auto", label: m.settings.page.themeAuto, hint: m.settings.page.themeAutoHint },
+  { id: "light", label: m.settings.page.themeLight, hint: m.settings.page.themeLightHint },
+  { id: "dark", label: m.settings.page.themeDark, hint: m.settings.page.themeDarkHint },
+];
+
+const LANGS: Array<{ id: LangPref; label: string; hint: string }> = [
+  { id: "system", label: m.app.language.system, hint: m.app.language.systemHint },
+  { id: "zh", label: m.app.language.zh, hint: m.app.language.zhHint },
+  { id: "en", label: m.app.language.en, hint: m.app.language.enHint },
 ];
 
 const CATEGORIES = [
-  { id: "her", label: "她与陪伴" },
-  { id: "look", label: "外观与使用" },
-  { id: "model", label: "模型与额度" },
-  { id: "device", label: "设备与数据" },
-  { id: "about", label: "关于" },
+  { id: "her", label: m.settings.page.catHer },
+  { id: "look", label: m.settings.page.catLook },
+  { id: "model", label: m.settings.page.catModel },
+  { id: "device", label: m.settings.page.catDevice },
+  { id: "about", label: m.settings.page.catAbout },
 ] as const;
 
 /** 旧的锚点（#model 等）落在哪个分类里：从首导第 3 步跳进来、或老链接都不落空。 */
@@ -85,6 +92,11 @@ export function SettingsPage() {
   const { hash } = useLocation();
   const pageRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
+  const [langPref, setLangPrefState] = useState<LangPref>(readLangPref);
+  const chooseLang = (next: LangPref) => {
+    setLangPrefState(next);
+    setLangPref(next);
+  };
   const [a11y, setA11y] = useState(readA11y);
   const [backend, setBackend] = useState<Backend>("checking");
   const [nickname, setNickname] = useState("");
@@ -123,7 +135,7 @@ export function SettingsPage() {
     void getCompanionSettings().then((settings) => {
       if (alive) setCompanion(settings);
     }).catch((error: unknown) => {
-      if (alive) setCompanionError(describeNetError(error, "主动陪伴设置现在拿不到"));
+      if (alive) setCompanionError(describeNetError(error, m.settings.page.companionUnavailable));
     });
     return () => {
       alive = false;
@@ -207,13 +219,13 @@ export function SettingsPage() {
       setNickname(profile.nickname ?? "");
       setNickFailed(false);
       setNickError("");
-      notify(profile.nickname ? "记下啦。" : "已经清掉了。");
+      notify(profile.nickname ? m.settings.page.nickSaved : m.settings.page.nickCleared);
     } catch (error) {
-      const why = describeNetError(error, "昵称没存上");
+      const why = describeNetError(error, m.settings.page.nickFailedWhy);
       setNickFailed(true);
       setNickError(why);
       if (isNetworkFailure(error)) setBackend("down");
-      notify("昵称没存上。");
+      notify(m.settings.page.nickFailedToast);
     } finally {
       setSavingNick(false);
     }
@@ -225,16 +237,16 @@ export function SettingsPage() {
     const before = surf;
     setSurf({ ...surf, ...patch, quiet: { ...surf.quiet, ...(patch.quiet ?? {}) } });
     setSurfError("");
-    const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const stamp = new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     try {
       setSurf(await putSurfSettings(character.id, patch));
-      setSurfNote({ at: stamp, ok: true, text: "已保存" });
+      setSurfNote({ at: stamp, ok: true, text: m.settings.page.saved });
       setSurfRetry(null);
     } catch (error) {
       setSurf(before); // 没存上就退回原值，不装成存好了
-      const why = describeNetError(error, "逛设置没存上");
+      const why = describeNetError(error, m.settings.page.surfSaveFailed);
       setSurfError(why);
-      setSurfNote({ at: stamp, ok: false, text: "没存上，已退回原来的样子" });
+      setSurfNote({ at: stamp, ok: false, text: m.settings.page.notSavedReverted });
       setSurfRetry(patch);
       if (isNetworkFailure(error)) setBackend("down");
     }
@@ -245,14 +257,14 @@ export function SettingsPage() {
     const before = companion;
     setCompanion({ ...companion, ...patch, quiet: { ...companion.quiet, ...(patch.quiet ?? {}) } });
     setCompanionError("");
-    const stamp = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const stamp = new Date().toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     try {
       setCompanion(await putCompanionSettings(patch));
-      setCompanionNote({ at: stamp, ok: true, text: "已保存" });
+      setCompanionNote({ at: stamp, ok: true, text: m.settings.page.saved });
     } catch (error) {
       setCompanion(before);
-      setCompanionError(describeNetError(error, "主动陪伴设置没存上"));
-      setCompanionNote({ at: stamp, ok: false, text: "没存上，已退回原来的样子" });
+      setCompanionError(describeNetError(error, m.settings.page.companionSaveFailed));
+      setCompanionNote({ at: stamp, ok: false, text: m.settings.page.notSavedReverted });
       if (isNetworkFailure(error)) setBackend("down");
     }
   };
@@ -267,21 +279,21 @@ export function SettingsPage() {
   };
 
   const unavailable = (desc: string) => (
-    <SettingRow title="还没接上" desc={desc}>
-      <span className="set-offline">暂时看不到</span>
+    <SettingRow title={m.settings.page.notConnected} desc={desc}>
+      <span className="set-offline">{m.settings.page.unavailable}</span>
     </SettingRow>
   );
 
   return (
     <div className="page page--settings" ref={pageRef}>
       <div className="page__inner">
-        <PageHeader title="设置" />
+        <PageHeader title={m.settings.page.title} />
 
         {offline && (
           <div className="set-banner" role="status">
-            <p className="set-banner__text">现在拿不到后端：额度、导出、删除、昵称都要等服务起来。</p>
+            <p className="set-banner__text">{m.settings.page.backendDown}</p>
             <Button variant="secondary" onClick={() => void probe()}>
-              再试一次
+              {m.settings.page.tryAgain}
             </Button>
           </div>
         )}
@@ -289,7 +301,7 @@ export function SettingsPage() {
         <HerOverview character={character} relationship={relationship} setupRev={setupRev} onSwap={() => setCharOpen(true)} />
 
         <div className="set-layout">
-          <nav className="set-nav" aria-label="设置分类">
+          <nav className="set-nav" aria-label={m.settings.page.navLabel}>
             <ul className="set-nav__list">
               {CATEGORIES.map((item) => (
                 <li key={item.id}>
@@ -311,17 +323,17 @@ export function SettingsPage() {
 
           <div className="set-main">
             <section className="set-cat" id="cat-her" aria-labelledby="cat-her-h">
-              <h2 className="sr-only" id="cat-her-h">她与陪伴</h2>
+              <h2 className="sr-only" id="cat-her-h">{m.settings.page.catHer}</h2>
 
-              <SettingGroup title="她怎么称呼你">
-                <SettingRow title="昵称" desc="写在这儿，她聊天时就会这么叫你。不想说也没关系。" stacked>
+              <SettingGroup title={m.settings.page.nickGroup}>
+                <SettingRow title={m.settings.page.nickTitle} desc={m.settings.page.nickDesc} stacked>
                   <div className="set-nick">
                     <Input
                       className="set-nick__field"
                       type="text"
                       maxLength={12}
-                      placeholder="不想说也没关系"
-                      aria-label="她怎么称呼你"
+                      placeholder={m.settings.page.nickPlaceholder}
+                      aria-label={m.settings.page.nickAria}
                       value={nickname}
                       disabled={offline}
                       onChange={(event) => setNickname(event.target.value)}
@@ -333,38 +345,38 @@ export function SettingsPage() {
                       }}
                     />
                     <Button className="set-nick__save" variant="secondary" disabled={offline || savingNick} onClick={() => void saveNickname()}>
-                      {savingNick ? "正在记…" : "记下"}
+                      {savingNick ? m.settings.page.nickSaving : m.settings.page.nickSave}
                     </Button>
                   </div>
-                  {(offline || nickFailed) && <p className="set-row__bad">{nickError || "现在拿不到，先记不了。"}</p>}
+                  {(offline || nickFailed) && <p className="set-row__bad">{nickError || m.settings.page.nickCantSave}</p>}
                 </SettingRow>
               </SettingGroup>
 
               <SettingGroup
-                title="主动找你"
-                note={<>只会从你明确提过的计划里挑一件，安静时再问问近况；后端停止或电脑休眠时不会运行。{companionNote && (
+                title={m.settings.page.companionGroup}
+                note={<>{m.settings.page.companionNote}{companionNote && (
                   <span className="set-receipt" data-ok={companionNote.ok ? "on" : "off"} role="status">
                     {companionNote.at} {companionNote.text}
                   </span>
                 )}</>}
               >
                 {companion === null ? (
-                  unavailable(companionError || "现在拿不到主动陪伴设置。")
+                  unavailable(companionError || m.settings.page.companionNoSettings)
                 ) : (
                   <>
-                    <SettingRow title="主动找你" desc="开启后，肥鱼会在你提过计划、而且一段时间没聊天时，主动问一句。" onActivate={() => void saveCompanion({ enabled: !companion.enabled })}>
-                      <Switch label="让肥鱼主动找你" checked={companion.enabled} onChange={(next) => void saveCompanion({ enabled: next })} />
+                    <SettingRow title={m.settings.page.companionGroup} desc={m.settings.page.companionRowDesc} onActivate={() => void saveCompanion({ enabled: !companion.enabled })}>
+                      <Switch label={m.settings.page.companionSwitch} checked={companion.enabled} onChange={(next) => void saveCompanion({ enabled: next })} />
                     </SettingRow>
-                    <SettingRow title="频率" desc="少一点：一天最多 1 条，间隔 18 小时；偶尔：一天最多 2 条，间隔 6 小时。" stacked>
-                      <div className="set-choices set-choices--2" role="group" aria-label="主动陪伴频率">
-                        <ChoiceCard groupLabel="主动陪伴频率" label="少一点" hint="一天最多一条" selected={companion.frequency === "rare"} onSelect={() => void saveCompanion({ frequency: "rare" })} />
-                        <ChoiceCard groupLabel="主动陪伴频率" label="偶尔" hint="一天最多两条" selected={companion.frequency === "normal"} onSelect={() => void saveCompanion({ frequency: "normal" })} />
+                    <SettingRow title={m.settings.page.frequency} desc={m.settings.page.companionFreqDesc} stacked>
+                      <div className="set-choices set-choices--2" role="group" aria-label={m.settings.page.companionFreqGroup}>
+                        <ChoiceCard groupLabel={m.settings.page.companionFreqGroup} label={m.settings.page.freqRare} hint={m.settings.page.freqRareHint} selected={companion.frequency === "rare"} onSelect={() => void saveCompanion({ frequency: "rare" })} />
+                        <ChoiceCard groupLabel={m.settings.page.companionFreqGroup} label={m.settings.page.freqNormal} hint={m.settings.page.freqNormalHint} selected={companion.frequency === "normal"} onSelect={() => void saveCompanion({ frequency: "normal" })} />
                       </div>
                     </SettingRow>
-                    <SettingRow title="免打扰" desc="这段时间不会发出主动消息。默认晚上 11 点到早上 8 点。" stacked>
-                      <div className="set-times" role="group" aria-label="主动陪伴免打扰时段">
-                        <label className="set-time">开始 <Input type="time" aria-label="免打扰开始时间" value={companion.quiet.start} onChange={(event) => void saveCompanion({ quiet: { start: event.target.value } })} /></label>
-                        <label className="set-time">结束 <Input type="time" aria-label="免打扰结束时间" value={companion.quiet.end} onChange={(event) => void saveCompanion({ quiet: { end: event.target.value } })} /></label>
+                    <SettingRow title={m.settings.page.quietTitle} desc={m.settings.page.quietDesc} stacked>
+                      <div className="set-times" role="group" aria-label={m.settings.page.quietGroupAria}>
+                        <label className="set-time">{m.settings.page.start} <Input type="time" aria-label={m.settings.page.quietStartAria} value={companion.quiet.start} onChange={(event) => void saveCompanion({ quiet: { start: event.target.value } })} /></label>
+                        <label className="set-time">{m.settings.page.end} <Input type="time" aria-label={m.settings.page.quietEndAria} value={companion.quiet.end} onChange={(event) => void saveCompanion({ quiet: { end: event.target.value } })} /></label>
                       </div>
                     </SettingRow>
                   </>
@@ -373,27 +385,27 @@ export function SettingsPage() {
               </SettingGroup>
 
               <SettingGroup
-                title="让她自己逛"
-                note={<>她可以自己去看看视频、翻翻网页，回来讲给你听。{surfNote && (
+                title={m.settings.page.surfGroup}
+                note={<>{m.settings.page.surfNote}{surfNote && (
                   <span className="set-receipt" data-ok={surfNote.ok ? "on" : "off"} role="status">
                     {surfNote.at} {surfNote.text}
                   </span>
                 )}</>}
               >
                 {surf === null ? (
-                  unavailable("现在拿不到她的逛设置。")
+                  unavailable(m.settings.page.surfNoSettings)
                 ) : (
                   <>
-                    <SettingRow title="自己去逛" desc="开了之后，她会自己去看视频、翻网页，回来讲给你听。" onActivate={() => void saveSurf({ enabled: !surf.enabled })}>
-                      <Switch label="让她自己逛" checked={surf.enabled} onChange={(next) => void saveSurf({ enabled: next })} />
+                    <SettingRow title={m.settings.page.surfRowTitle} desc={m.settings.page.surfRowDesc} onActivate={() => void saveSurf({ enabled: !surf.enabled })}>
+                      <Switch label={m.settings.page.surfSwitch} checked={surf.enabled} onChange={(next) => void saveSurf({ enabled: next })} />
                     </SettingRow>
 
-                    <SettingRow title="频率" desc="每次最多看 1–2 个视频、翻 3 个网页。" stacked>
-                      <div className="set-choices" role="group" aria-label="逛的频率">
+                    <SettingRow title={m.settings.page.frequency} desc={m.settings.page.surfFreqDesc} stacked>
+                      <div className="set-choices" role="group" aria-label={m.settings.page.surfFreqGroup}>
                         {(["rare", "normal", "often"] as SurfFrequency[]).map((value) => (
                           <ChoiceCard
                             key={value}
-                            groupLabel="逛的频率"
+                            groupLabel={m.settings.page.surfFreqGroup}
                             label={FREQUENCY_LABEL[value]}
                             hint={FREQUENCY_HINT[value]}
                             selected={surf.frequency === value}
@@ -403,34 +415,34 @@ export function SettingsPage() {
                       </div>
                     </SettingRow>
 
-                    <SettingRow title="看什么" desc="两样都可以关掉；都关掉她就不出门了。">
+                    <SettingRow title={m.settings.page.surfWhatTitle} desc={m.settings.page.surfWhatDesc}>
                       <div className="set-surf-toggles">
-                        <Switch label="看视频（B 站）" checked={surf.video} onChange={(next) => void saveSurf({ video: next })} />
-                        <Switch label="翻网页" checked={surf.web} onChange={(next) => void saveSurf({ web: next })} />
+                        <Switch label={m.settings.page.surfVideoSwitch} checked={surf.video} onChange={(next) => void saveSurf({ video: next })} />
+                        <Switch label={m.settings.page.surfWebSwitch} checked={surf.web} onChange={(next) => void saveSurf({ web: next })} />
                       </div>
                     </SettingRow>
                     <p className="set-surf-legend" aria-hidden="true">
-                      左边是看视频（B 站），右边是翻网页。
+                      {m.settings.page.surfLegend}
                     </p>
                     <SurfBrowserNote character={character.id} initial={surf.browser} enabled={surf.enabled && surf.web} />
 
-                    <SettingRow title="讲给我听" desc="逛到有意思的，她会在聊天里告诉我。" onActivate={() => void saveSurf({ shareToChat: !surf.shareToChat })}>
-                      <Switch label="讲给我听" checked={surf.shareToChat} onChange={(next) => void saveSurf({ shareToChat: next })} />
+                    <SettingRow title={m.settings.page.surfShareTitle} desc={m.settings.page.surfShareDesc} onActivate={() => void saveSurf({ shareToChat: !surf.shareToChat })}>
+                      <Switch label={m.settings.page.surfShareSwitch} checked={surf.shareToChat} onChange={(next) => void saveSurf({ shareToChat: next })} />
                     </SettingRow>
                   </>
                 )}
               </SettingGroup>
 
-              <SettingGroup title="她逛什么">
+              <SettingGroup title={m.settings.page.surfWhatGroup}>
                 {surf === null ? (
-                  unavailable("现在拿不到她的逛设置。")
+                  unavailable(m.settings.page.surfNoSettings)
                 ) : (
                   <>
-                    <SettingRow title="兴趣" stacked desc="她自己也有喜欢的，这里是帮她多想几个。">
+                    <SettingRow title={m.settings.page.interests} stacked desc={m.settings.page.interestsDesc}>
                       <TagField
-                        label="兴趣"
-                        placeholder="加一个她可能喜欢的，比如：鲸歌"
-                        hint="最多 8 个，每个不超过 12 个字。"
+                        label={m.settings.page.interests}
+                        placeholder={m.settings.page.interestsPlaceholder}
+                        hint={m.settings.page.interestsHint}
                         values={surf.interests}
                         max={8}
                         maxChars={12}
@@ -438,11 +450,11 @@ export function SettingsPage() {
                       />
                     </SettingRow>
 
-                    <SettingRow title="不想看的" stacked desc="带这些词的内容，她会直接跳过。">
+                    <SettingRow title={m.settings.page.blocked} stacked desc={m.settings.page.blockedDesc}>
                       <TagField
-                        label="不想看的"
-                        placeholder="加一个不想让她看的词"
-                        hint="最多 20 个，每个不超过 12 个字。"
+                        label={m.settings.page.blocked}
+                        placeholder={m.settings.page.blockedPlaceholder}
+                        hint={m.settings.page.blockedHint}
                         values={surf.blocked}
                         max={20}
                         maxChars={12}
@@ -451,22 +463,22 @@ export function SettingsPage() {
                     </SettingRow>
 
                     <details className="set-fold">
-                      <summary className="set-fold__summary">更多：安静时段</summary>
+                      <summary className="set-fold__summary">{m.settings.page.quietFoldSummary}</summary>
                       <div className="set-fold__body set-times">
                         <label className="set-time">
-                          开始
-                          <Input type="time" value={surf.quiet.start} aria-label="安静时段开始" onChange={(event) => void saveSurf({ quiet: { start: event.target.value } })} />
+                          {m.settings.page.start}
+                          <Input type="time" value={surf.quiet.start} aria-label={m.settings.page.quietFoldStartAria} onChange={(event) => void saveSurf({ quiet: { start: event.target.value } })} />
                         </label>
                         <label className="set-time">
-                          结束
-                          <Input type="time" value={surf.quiet.end} aria-label="安静时段结束" onChange={(event) => void saveSurf({ quiet: { end: event.target.value } })} />
+                          {m.settings.page.end}
+                          <Input type="time" value={surf.quiet.end} aria-label={m.settings.page.quietFoldEndAria} onChange={(event) => void saveSurf({ quiet: { end: event.target.value } })} />
                         </label>
-                        <p className="set-surf-quiet__hint">这段时间她不出门，也不主动发消息。</p>
+                        <p className="set-surf-quiet__hint">{m.settings.page.quietFoldHint}</p>
                       </div>
                     </details>
 
                     <p className="set-surf-quota">
-                      她自己去逛也会用贝壳：看一个视频 20 个，翻一个网页 3 个。贝壳少于一成时她会先歇着。
+                      {m.settings.page.surfQuota}
                     </p>
                   </>
                 )}
@@ -475,36 +487,36 @@ export function SettingsPage() {
                     <span>{surfError}</span>
                     {surfRetry && (
                       <Button variant="secondary" onClick={() => void saveSurf(surfRetry)}>
-                        再试一次
+                        {m.settings.page.tryAgain}
                       </Button>
                     )}
                   </div>
                 )}
               </SettingGroup>
 
-              <SettingGroup title="她留下的东西" note="老人模式下导航只留三项，记忆就从这里进。">
-                <SettingRow title="她的见闻" desc="她自己逛回来的东西：按天排，可以搜，也可以一条条忘掉。">
+              <SettingGroup title={m.settings.page.leftGroup} note={m.settings.page.leftNote}>
+                <SettingRow title={m.settings.page.finds} desc={m.settings.page.findsDesc}>
                   <Link className="ui-btn ui-btn--secondary ui-press ui-focus" to="/surf">
-                    去看看
+                    {m.settings.page.goLook}
                   </Link>
                 </SettingRow>
-                <SettingRow title="她记住的关于你的事" desc="看过的、学到的、你说过的，都收在这里，可以一条条忘掉。">
+                <SettingRow title={m.settings.page.memories} desc={m.settings.page.memoriesDesc}>
                   <Link className="ui-btn ui-btn--secondary ui-press ui-focus" to="/memory">
-                    去看看
+                    {m.settings.page.goLook}
                   </Link>
                 </SettingRow>
               </SettingGroup>
             </section>
 
             <section className="set-cat" id="cat-look" aria-labelledby="cat-look-h">
-              <h2 className="sr-only" id="cat-look-h">外观与使用</h2>
+              <h2 className="sr-only" id="cat-look-h">{m.settings.page.catLook}</h2>
 
-              <SettingGroup title="看起来">
-                <div className="set-choices" role="group" aria-label="外观">
+              <SettingGroup title={m.settings.page.lookGroup}>
+                <div className="set-choices" role="group" aria-label={m.settings.page.themeGroup}>
                   {THEMES.map((item) => (
                     <ChoiceCard
                       key={item.id}
-                      groupLabel="外观"
+                      groupLabel={m.settings.page.themeGroup}
                       label={item.label}
                       hint={item.hint}
                       selected={theme === item.id}
@@ -514,59 +526,74 @@ export function SettingsPage() {
                 </div>
               </SettingGroup>
 
-              <SettingGroup title="方便我用">
+              <SettingGroup title={m.app.language.group} note={m.app.language.note}>
+                <div className="set-choices" role="group" aria-label={m.app.language.groupLabel}>
+                  {LANGS.map((item) => (
+                    <ChoiceCard
+                      key={item.id}
+                      groupLabel={m.app.language.groupLabel}
+                      label={item.label}
+                      hint={item.hint}
+                      selected={langPref === item.id}
+                      onSelect={() => chooseLang(item.id)}
+                    />
+                  ))}
+                </div>
+              </SettingGroup>
+
+              <SettingGroup title={m.settings.page.easeGroup}>
                 <SettingRow
-                  title="老人模式"
-                  desc="大字、大按钮，导航只留聊天、她的日记、设置三个入口，也不做会动的花样。"
+                  title={m.settings.page.elder}
+                  desc={m.settings.page.elderDesc}
                   onActivate={() => setElder(!a11y.elder)}
                 >
-                  <Switch label="老人模式" checked={a11y.elder} onChange={setElder} />
+                  <Switch label={m.settings.page.elder} checked={a11y.elder} onChange={setElder} />
                 </SettingRow>
 
                 <ScaleSetting scale={a11y.scale} min={scaleMin} onConfirm={confirmScale} />
 
-                <SettingRow title="减少动画" desc="关掉会动的小细节，安静一点。" onActivate={() => setCalm(!a11y.calm)}>
-                  <Switch label="减少动画" checked={a11y.calm} onChange={setCalm} />
+                <SettingRow title={m.settings.page.calm} desc={m.settings.page.calmDesc} onActivate={() => setCalm(!a11y.calm)}>
+                  <Switch label={m.settings.page.calm} checked={a11y.calm} onChange={setCalm} />
                 </SettingRow>
               </SettingGroup>
 
-              <SettingGroup title="聊天">
+              <SettingGroup title={m.settings.page.chatGroup}>
                 <SendKeySetting />
               </SettingGroup>
             </section>
 
             <section className="set-cat" id="cat-model" aria-labelledby="cat-model-h">
-              <h2 className="sr-only" id="cat-model-h">模型与额度</h2>
+              <h2 className="sr-only" id="cat-model-h">{m.settings.page.catModel}</h2>
 
-              <SettingGroup title="模型接入" id="model" note="接哪家模型、用多大强度，都在这儿改；以前只能翻 .env 和本机配置。">
+              <SettingGroup title={m.settings.page.modelGroup} id="model" note={m.settings.page.modelNote}>
                 <ModelSetup offline={offline} onToast={notify} onSaved={() => setSetupRev((n) => n + 1)} />
               </SettingGroup>
 
-              <SettingGroup title="额度" id="quota">
+              <SettingGroup title={m.settings.page.quotaGroup} id="quota">
                 <QuotaMeter />
               </SettingGroup>
 
-              <SettingGroup title="语音环境" id="voice-environment" note="一键配置或重建语音转写与语音回答所需的模型和运行时。">
+              <SettingGroup title={m.settings.page.voiceGroup} id="voice-environment" note={m.settings.page.voiceNote}>
                 <VoiceEnvironmentSetup offline={offline} />
               </SettingGroup>
             </section>
 
             <section className="set-cat" id="cat-device" aria-labelledby="cat-device-h">
-              <h2 className="sr-only" id="cat-device-h">设备与数据</h2>
+              <h2 className="sr-only" id="cat-device-h">{m.settings.page.catDevice}</h2>
 
-              <SettingGroup title="我的设备" id="devices" note="数据只放在一台「家」里，其他设备都连过来，所以到哪都是同步的。">
+              <SettingGroup title={m.settings.page.devicesGroup} id="devices" note={m.settings.page.devicesNote}>
                 <DevicesSetting offline={offline} />
                 <ConnectServerSetting onToast={notify} />
               </SettingGroup>
 
               <BackgroundRunSetting />
 
-              <SettingGroup title="我的数据">
+              <SettingGroup title={m.settings.page.dataGroup}>
                 <DataSection offline={offline} onToast={notify} onUnavailable={() => setBackend("down")} />
               </SettingGroup>
 
               <details className="set-fold set-fold--card">
-                <summary className="set-fold__summary">连接其他平台（B 站登录）</summary>
+                <summary className="set-fold__summary">{m.settings.page.otherPlatforms}</summary>
                 <div className="set-fold__body">
                   <Accounts />
                 </div>
@@ -574,14 +601,14 @@ export function SettingsPage() {
             </section>
 
             <section className="set-cat" id="cat-about" aria-labelledby="cat-about-h">
-              <h2 className="sr-only" id="cat-about-h">关于</h2>
-              <SettingGroup title={`关于${character.name}`}>
+              <h2 className="sr-only" id="cat-about-h">{m.settings.page.catAbout}</h2>
+              <SettingGroup title={m.settings.page.aboutGroup(character.name)}>
                 <p className="set-about">
-                  {character.name}是一个 AI 角色，不是真人。她会陪你聊天、看视频、写日记，也会自己去逛逛。
+                  {m.settings.page.aboutText(character.name)}
                 </p>
-                <p className="set-about__meta">版本 {clientVersion}</p>
+                <p className="set-about__meta">{m.settings.page.version(clientVersion)}</p>
                 <Button variant="ghost" className="set-about__again" onClick={reopenOnboarding}>
-                  重新看一遍引导
+                  {m.settings.page.replayOnboarding}
                 </Button>
               </SettingGroup>
             </section>

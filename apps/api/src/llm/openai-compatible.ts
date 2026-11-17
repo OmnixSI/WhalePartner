@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { ChatMessage, ChatProvider, LlmDelta, LlmUsage, StreamOptions } from "./types.ts";
 
 export interface OpenAiCompatibleOptions {
@@ -87,7 +88,7 @@ export class OpenAiCompatibleProvider implements ChatProvider {
 
   /** 错误信息里去掉密钥，避免进入日志或响应。 */
   #scrub(message: string) {
-    return this.#apiKey ? message.split(this.#apiKey).join("[密钥已隐藏]") : message;
+    return this.#apiKey ? message.split(this.#apiKey).join(msg().core.llm.keyHidden) : message;
   }
 
   #headers() {
@@ -99,9 +100,9 @@ export class OpenAiCompatibleProvider implements ChatProvider {
       headers: this.#headers(),
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(this.#timeoutMs)]) : AbortSignal.timeout(this.#timeoutMs),
     }).catch((error: unknown) => {
-      throw new ProviderError(this.id, this.#scrub(`无法连接 ${this.id}：${String(error instanceof Error ? error.message : error)}`));
+      throw new ProviderError(this.id, this.#scrub(msg().core.llm.cannotConnect(this.id, String(error instanceof Error ? error.message : error))));
     });
-    if (!response.ok) throw new ProviderError(this.id, `${this.id} 模型列表请求失败（HTTP ${response.status}）。`, response.status);
+    if (!response.ok) throw new ProviderError(this.id, msg().core.llm.modelListFailed(this.id, response.status), response.status);
     const body = (await response.json()) as { data?: Array<{ id?: unknown }> };
     return (body.data ?? []).flatMap((item) => (typeof item.id === "string" ? [item.id] : []));
   }
@@ -129,8 +130,8 @@ export class OpenAiCompatibleProvider implements ChatProvider {
       });
     } catch (error) {
       if (options.signal?.aborted) throw error;
-      const reason = timeout.signal.aborted ? "等待响应超时" : String(error instanceof Error ? error.message : error);
-      throw new ProviderError(this.id, this.#scrub(`无法连接 ${this.id}：${reason}`));
+      const reason = timeout.signal.aborted ? msg().core.llm.waitTimeout : String(error instanceof Error ? error.message : error);
+      throw new ProviderError(this.id, this.#scrub(msg().core.llm.cannotConnect(this.id, reason)));
     } finally {
       clearTimeout(timer);
     }
@@ -139,13 +140,13 @@ export class OpenAiCompatibleProvider implements ChatProvider {
       let detail = "";
       try {
         const body = (await response.json()) as { error?: { message?: unknown } };
-        if (typeof body.error?.message === "string") detail = `：${body.error.message}`;
+        if (typeof body.error?.message === "string") detail = msg().core.llm.errorDetail(body.error.message);
       } catch {
         /* 上游没有返回 JSON 错误体 */
       }
-      throw new ProviderError(this.id, this.#scrub(`${this.id} 请求失败（HTTP ${response.status}）${detail}`), response.status);
+      throw new ProviderError(this.id, this.#scrub(msg().core.llm.requestFailed(this.id, response.status, detail)), response.status);
     }
-    if (!response.body) throw new ProviderError(this.id, `${this.id} 没有返回响应体。`);
+    if (!response.body) throw new ProviderError(this.id, msg().core.llm.noBody(this.id));
 
     for await (const data of readSseData(response.body as unknown as AsyncIterable<Uint8Array>)) {
       if (data === "[DONE]") return;

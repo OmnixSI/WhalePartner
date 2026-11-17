@@ -1,8 +1,9 @@
 import { isPrivateAddress } from "../webpage/service.ts";
 import { lookup } from "node:dns/promises";
 import type { WebPageText, WebResult, WebSource } from "./types.ts";
-import { withRetry } from "./errors.ts";
+import { ERROR_CODES, withCode, withRetry } from "./errors.ts";
 import { createPageReader, type PageReader } from "./page-reader.ts";
+import { msg } from "../i18n/index.ts";
 
 /**
  * 网上冲浪的搜索一侧（§10.6.8 B.1）：Bing 中文结果为主，被验证拦住时回退 DuckDuckGo。
@@ -118,13 +119,13 @@ const defaultFetchText: TextFetcher = async (url) => {
   const target = new URL(url);
   const addresses = await lookup(target.hostname, { all: true }).catch(() => []);
   if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
-    throw new Error("搜索地址解析到了内部网络，跳过。");
+    throw withCode(new Error(msg().content.surf.search.internal), ERROR_CODES.content);
   }
   const response = await fetch(target, {
     headers: { "user-agent": UA, "accept-language": "zh-CN,zh;q=0.9,en;q=0.5", accept: "text/html,application/xhtml+xml" },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) throw new Error(`搜索返回了 ${response.status}。`);
+  if (!response.ok) throw Object.assign(new Error(msg().content.surf.search.status(response.status)), { status: response.status });
   return await response.text();
 };
 

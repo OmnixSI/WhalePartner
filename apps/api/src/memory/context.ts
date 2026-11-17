@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../llm/types.ts";
+// i18n-ignore-start：拼进提示词的记忆分节标题
 
 const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 const EMOJI = /\p{Extended_Pictographic}/u;
@@ -113,3 +114,4 @@ export function buildChatContext(input: ChatContextInput): ChatMessage[] {
   if (currentUser) messages.push(currentUser);
   return messages;
 }
+// i18n-ignore-end

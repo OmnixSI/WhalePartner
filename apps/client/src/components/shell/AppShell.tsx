@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { SideNav } from "./SideNav";
 import "./shell.css";
+import { m } from "../../i18n";
 
 /**
  * 应用外壳（参照 meta/astryx `packages/core/src/AppShell/AppShell.tsx` 的槽位结构）：
@@ -12,7 +13,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={`app-shell${navCollapsed ? " is-nav-collapsed" : ""}`}>
-      <a className="app-shell__skip" href="#main">跳到主要内容</a>
+      <a className="app-shell__skip" href="#main">{m.common.shell.skipToMain}</a>
       <SideNav collapsed={navCollapsed} onToggle={() => setNavCollapsed((value) => !value)} />
       <main className="app-shell__main" id="main">
         {children}

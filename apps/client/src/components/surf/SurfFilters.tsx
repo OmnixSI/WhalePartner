@@ -6,19 +6,20 @@
 import type { DateRange, SurfKind, SurfSource } from "../../lib/surf";
 import { localDay, siteLabel } from "../../lib/surf";
 import { Input, Select, Tabs } from "../ui";
+import { m } from "../../i18n";
 
 const KINDS = [
-  { value: "all", label: "全部" },
-  { value: "video", label: "视频" },
-  { value: "web", label: "网页" },
+  { value: "all", label: m.surf.filters.kindAll },
+  { value: "video", label: m.surf.filters.kindVideo },
+  { value: "web", label: m.surf.filters.kindWeb },
 ];
 
 const RANGES = [
-  { value: "all", label: "不限时间" },
-  { value: "today", label: "今天" },
-  { value: "week", label: "近 7 天" },
-  { value: "month", label: "近 30 天" },
-  { value: "day", label: "选一天" },
+  { value: "all", label: m.surf.filters.rangeAll },
+  { value: "today", label: m.surf.filters.rangeToday },
+  { value: "week", label: m.surf.filters.rangeWeek },
+  { value: "month", label: m.surf.filters.rangeMonth },
+  { value: "day", label: m.surf.filters.rangeDay },
 ];
 
 type Props = {
@@ -40,22 +41,22 @@ export function SurfFilters({ kind, site, range, day, sources, onKind, onSite, o
     <div className="surf-filters">
       <Tabs
         variant="segmented"
-        label="按类型看她带回来的东西"
+        label={m.surf.filters.kindLabel}
         value={kind}
         onValueChange={(value) => onKind(value as SurfKind | "all")}
         items={KINDS}
       />
       <Select
-        aria-label="按来源筛选"
+        aria-label={m.surf.filters.siteAria}
         value={site || ALL_SITES}
         onValueChange={(value) => onSite(value === ALL_SITES ? "" : value)}
         options={[
-          { value: ALL_SITES, label: "全部来源" },
-          ...sources.map((source) => ({ value: source.site, label: `${siteLabel(source.site)}（${source.count}）` })),
+          { value: ALL_SITES, label: m.surf.filters.allSites },
+          ...sources.map((source) => ({ value: source.site, label: m.surf.filters.siteOption(siteLabel(source.site), source.count) })),
         ]}
       />
       <Select
-        aria-label="按日期筛选"
+        aria-label={m.surf.filters.dateAria}
         value={range}
         onValueChange={(value) => onRange(value as DateRange)}
         options={RANGES}
@@ -65,7 +66,7 @@ export function SurfFilters({ kind, site, range, day, sources, onKind, onSite, o
           className="surf-filters__day"
           type="date"
           value={day}
-          aria-label="选一天"
+          aria-label={m.surf.filters.dayAria}
           max={localDay()}
           onChange={(event) => onDay(event.target.value)}
         />

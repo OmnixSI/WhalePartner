@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
@@ -21,7 +22,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       await asr.warm();
       sendJson(response, 200, asr.status());
     } catch (error) {
-      sendJson(response, 503, { ...asr.status(), message: error instanceof Error ? error.message : "本地 X-ASR 模型准备失败。" });
+      sendJson(response, 503, { ...asr.status(), message: error instanceof Error ? error.message : msg().core.routes.voice.asrPrepareFailed });
     }
     return true;
   }
@@ -30,7 +31,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       await asr.rebuild();
       sendJson(response, 200, asr.status());
     } catch (error) {
-      sendJson(response, 503, { ...asr.status(), message: error instanceof Error ? error.message : "重建本地 X-ASR 环境失败。" });
+      sendJson(response, 503, { ...asr.status(), message: error instanceof Error ? error.message : msg().core.routes.voice.asrRebuildFailed });
     }
     return true;
   }
@@ -43,7 +44,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       await tts.warm();
       sendJson(response, 200, tts.status());
     } catch (error) {
-      sendJson(response, 503, { ...tts.status(), message: error instanceof Error ? error.message : "本地语音模型准备失败。" });
+      sendJson(response, 503, { ...tts.status(), message: error instanceof Error ? error.message : msg().core.routes.voice.ttsPrepareFailed });
     }
     return true;
   }
@@ -52,7 +53,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       await tts.rebuild();
       sendJson(response, 200, tts.status());
     } catch (error) {
-      sendJson(response, 503, { ...tts.status(), message: error instanceof Error ? error.message : "重建本地语音环境失败。" });
+      sendJson(response, 503, { ...tts.status(), message: error instanceof Error ? error.message : msg().core.routes.voice.ttsRebuildFailed });
     }
     return true;
   }
@@ -61,7 +62,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
     try {
       body = await readJsonBody(request);
     } catch (error) {
-      sendJson(response, error instanceof RequestBodyError ? error.status : 400, { error: "invalid_request", message: error instanceof Error ? error.message : "请求内容无效。" });
+      sendJson(response, error instanceof RequestBodyError ? error.status : 400, { error: "invalid_request", message: error instanceof Error ? error.message : msg().core.routes.voice.invalidRequest });
       return true;
     }
     const text = typeof body.text === "string" ? body.text.trim() : "";
@@ -70,7 +71,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
     const emotion = typeof body.emotion === "string" && isEmotion(body.emotion) ? body.emotion : "neutral";
     const characterId = typeof body.characterId === "string" && body.characterId.length <= 32 ? body.characterId : undefined;
     if (!text || text.length > TTS_MAX_TEXT_LENGTH || !turnId || turnId.length > 100) {
-      sendJson(response, 400, { error: "invalid_request", message: "语音文本或对话轮次无效。" });
+      sendJson(response, 400, { error: "invalid_request", message: msg().core.routes.voice.invalidText });
       return true;
     }
     const controller = new AbortController();
@@ -91,7 +92,7 @@ export async function handleVoiceRoute(asr: AsrService, tts: TtsService, request
       if (!controller.signal.aborted && !response.destroyed) response.end(`${JSON.stringify({ type: "done", turnId, segmentIndex })}\n`);
     } catch (error) {
       if (!controller.signal.aborted && !response.destroyed) {
-        response.write(`${JSON.stringify({ type: "error", message: error instanceof Error ? error.message : "本地语音生成失败。", turnId, segmentIndex })}\n`);
+        response.write(`${JSON.stringify({ type: "error", message: error instanceof Error ? error.message : msg().core.routes.voice.ttsFailed, turnId, segmentIndex })}\n`);
         response.end();
       }
     } finally {
@@ -148,16 +149,16 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
       const status = service.status();
       client.send(JSON.stringify({ type: "ready", model: status.model, offlineRefinement: status.offlineRefinement }));
     }).catch((error: unknown) => {
-      send(client, { type: "error", message: error instanceof Error ? error.message : "X-ASR 会话启动失败。" });
+      send(client, { type: "error", message: error instanceof Error ? error.message : msg().core.routes.voice.asrStartFailed });
       client.close(1011, "X-ASR unavailable");
     });
 
     client.on("message", (data: RawData, isBinary: boolean) => {
       queue = queue.then(async () => {
-        if (!session) throw new Error("X-ASR 会话尚未就绪。");
+        if (!session) throw new Error(msg().core.routes.voice.asrNotReady);
         if (!isBinary) {
           const control = JSON.parse(toBuffer(data).toString("utf8")) as { type?: string };
-          if (control.type !== "finish") throw new Error("X-ASR 语音控制消息无效。");
+          if (control.type !== "finish") throw new Error(msg().core.routes.voice.asrBadControl);
           const update = await session.finish();
           if (update.text.trim()) send(client, { type: "final", text: update.text.trim() });
           send(client, { type: "finished" });
@@ -165,7 +166,7 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
           return;
         }
         const pcm = toBuffer(data);
-        if (pcm.length > MAX_PCM_FRAME_BYTES) throw new Error("音频帧太大，请更新 WhalePartner 后重试。");
+        if (pcm.length > MAX_PCM_FRAME_BYTES) throw new Error(msg().core.routes.voice.frameTooLarge);
         const update = await session.acceptPcm(pcm);
         if (update.final) {
           if (update.text.trim()) send(client, { type: "final", text: update.text.trim() });
@@ -176,7 +177,7 @@ export function attachVoiceWebSocket(server: Server, service: AsrService, auth: 
           send(client, { type: "partial", text: update.text });
         }
       }).catch((error: unknown) => {
-        send(client, { type: "error", message: error instanceof Error ? error.message : "X-ASR 识别失败，请重试。" });
+        send(client, { type: "error", message: error instanceof Error ? error.message : msg().core.routes.voice.asrFailed });
         client.close(1011, "X-ASR failure");
       });
     });

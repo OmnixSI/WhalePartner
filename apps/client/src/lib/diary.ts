@@ -1,4 +1,5 @@
 import { API_BASE } from "./api";
+import { m } from "../i18n";
 
 export interface JournalSource {
   id: string;
@@ -51,7 +52,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!response.ok) {
-    let detail = `请求失败（HTTP ${response.status}）`;
+    let detail = m.diary.errors.requestFailed(response.status);
     try { detail = ((await response.json()) as { error?: string }).error ?? detail; } catch { /* 非 JSON */ }
     throw new Error(detail);
   }

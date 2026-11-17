@@ -1,6 +1,9 @@
+import { msg } from "../i18n/index.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { matchExpression } from "./search.ts";
 import type { StoredFact } from "./types.ts";
+import { displaySessionTitle } from "./sessions.ts";
+import { displayExperienceTitle } from "./experiences.ts";
 
 export type MemoryCategory = "all" | "fact" | "conversation" | "video" | "web" | "diary" | "learned" | "reflection";
 export type MemoryStatusFilter = "all" | "current" | "historical";
@@ -82,13 +85,13 @@ export function listMemoryExplorer(db: DatabaseSync, filters: MemoryExplorerFilt
       id: row.id,
       type: row.type,
       category: row.category,
-      title: row.title,
+      title: displayExperienceTitle(row.category, row.title),
       text: row.text,
       createdAt: row.createdAt,
       character: row.character,
       ...(row.role ? { role: row.role } : {}),
       ...(row.sessionId ? { sessionId: row.sessionId } : {}),
-      ...(row.sessionTitle ? { sessionTitle: row.sessionTitle } : {}),
+      ...(row.sessionTitle ? { sessionTitle: displaySessionTitle(row.sessionTitle) } : {}),
       ...(row.messageId !== null ? { messageId: Number(row.messageId) } : {}),
       ...(row.status ? { status: row.status } : {}),
       ...(row.validFrom ? { validFrom: row.validFrom } : {}),
@@ -143,13 +146,14 @@ function buildRecords(filters: MemoryExplorerFilters, category: MemoryCategory) 
   }
 
   if (category === "all" || category === "conversation") {
-    const values: Array<string | number> = [];
+    // 标题按参数绑定：英文标题里有撇号（How she's doing），拼进 SQL 会出语法错。
+    const values: Array<string | number> = [msg().core.store.userSaid, msg().core.store.herReply];
     const where = ["1 = 1", ...dates("m.created_at", values)];
     if (filters.role && filters.role !== "all") { where.push("m.role = ?"); values.push(filters.role); }
     if (query) { where.push("m.id IN (SELECT rowid FROM message_search WHERE message_search MATCH ?)"); values.push(query); }
     append(`
       SELECT 'message:' || m.id AS id, 'message' AS type, 'conversation' AS category,
-        CASE m.role WHEN 'user' THEN '你说的话' ELSE '她的回复' END AS title,
+        CASE m.role WHEN 'user' THEN ? ELSE ? END AS title,
         m.content AS text, m.created_at AS createdAt, m.character AS character,
         m.role AS role, m.session_id AS sessionId, s.title AS sessionTitle, m.id AS messageId,
         NULL AS status, NULL AS validFrom, NULL AS validTo, NULL AS sourceId, NULL AS url, NULL AS sourceMissing
@@ -222,12 +226,12 @@ function buildRecords(filters: MemoryExplorerFilters, category: MemoryCategory) 
       WHERE ${where.join(" AND ")}
     `, values);
 
-    const noteValues: Array<string | number> = [];
+    const noteValues: Array<string | number> = [msg().core.store.herRecentLife];
     const noteWhere = ["1 = 1", ...dates("updated_at", noteValues)];
     if (query) { noteWhere.push("text LIKE ?"); noteValues.push(`%${filters.query!.trim()}%`); }
     append(`
       SELECT 'note:' || character AS id, 'reflection' AS type, 'reflection' AS category,
-        '她的近况' AS title, text AS text, updated_at AS createdAt, character AS character,
+        ? AS title, text AS text, updated_at AS createdAt, character AS character,
         NULL AS role, NULL AS sessionId, NULL AS sessionTitle, NULL AS messageId,
         NULL AS status, NULL AS validFrom, NULL AS validTo, NULL AS sourceId, NULL AS url, NULL AS sourceMissing
       FROM character_notes WHERE ${noteWhere.join(" AND ")}

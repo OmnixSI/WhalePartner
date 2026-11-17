@@ -5,6 +5,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "../ui/toast-store";
+import { m } from "../../i18n";
 
 export default function LevelUpToast({ level }: { level: number }) {
   const navigate = useNavigate();
@@ -13,9 +14,9 @@ export default function LevelUpToast({ level }: { level: number }) {
     if (!shown.current) {
       shown.current = true;
       toast({
-        title: `好感度升到 Lv.${level}，去看看她的新卡面`,
+        title: m.chat.levelUp.title(level),
         tone: "success",
-        action: { label: "去看看", onClick: () => navigate("/settings?card=1") },
+        action: { label: m.chat.levelUp.action, onClick: () => navigate("/settings?card=1") },
       });
     }
   }, [level, navigate]);

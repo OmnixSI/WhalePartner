@@ -1,9 +1,11 @@
+import { runInBackgroundLang } from "../i18n/index.ts";
 import type { ChatProvider } from "../llm/types.ts";
 import { ChatStore } from "../store/index.ts";
 import { archiveExperience } from "./archive.ts";
 import { distillMemoryBatch } from "./distill.ts";
 import { beginMemoryJob, endMemoryJob, isForegroundChatActive } from "./priority.ts";
 import type { MemoryStore } from "./types.ts";
+// i18n-ignore-start：写入数据库、再喂给模型的内部文本与标签
 
 interface ProcessorDeps {
   store: ChatStore;
@@ -156,7 +158,7 @@ async function drain({ store, provider, memory }: ProcessorDeps) {
 export function scheduleMemoryJobs(deps: ProcessorDeps): Promise<void> {
   const previous = queues.get(deps.store) ?? Promise.resolve();
   let current: Promise<void>;
-  current = previous.catch(() => {}).then(() => drain(deps)).finally(() => {
+  current = previous.catch(() => {}).then(() => runInBackgroundLang(() => drain(deps))).finally(() => {
     if (queues.get(deps.store) === current) queues.delete(deps.store);
   });
   queues.set(deps.store, current);
@@ -166,3 +168,4 @@ export function scheduleMemoryJobs(deps: ProcessorDeps): Promise<void> {
 export async function waitForMemoryJobs(store: ChatStore) {
   await queues.get(store);
 }
+// i18n-ignore-end

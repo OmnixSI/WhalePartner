@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useCharacter } from "../characters";
 import { spring } from "../motion/tokens";
 import { CharacterMark, type CharacterMood } from "./CharacterMark";
+import { m } from "../i18n";
 
 /* ---------------- 状态：同 avatar-state.ts 的写法 ---------------- */
 
@@ -44,27 +45,7 @@ export const useCompanionMood = () => useSyncExternalStore(subscribe, () => mood
 
 /* ---------------- 台词（规范 §5.7 的表） ---------------- */
 
-const LINES: Partial<Record<CharacterMood, string[]>> = {
-  idle: ["今天的我写在这里了。", "想看哪一天？"],
-  calm: ["我在呢，慢慢来。"],
-  write: ["我在写，你先歇会儿。"],
-  happy: ["写好啦。"],
-  hold: ["这些都是我收好的。"],
-  sorry: ["好，我不记这件事了。"],
-  worried: ["怎么了？我在这儿。"],
-  wave: ["有哪里不方便，告诉我。"],
-  sleep: ["我睡着了，网络回来我就醒。"],
-  sleepy: ["有点困，不过还想陪你。"],
-  phone: ["我逛到的都放在这儿。"],
-  paper: ["我在看报纸呢，等我一下。"],
-  think: ["让我想想。"],
-  thinking: ["让我想想。"],
-  curious: ["你在看什么呀？"],
-  surprised: ["诶，真的吗？"],
-  shy: ["……别一直看我啦。"],
-  proud: ["今天这一页，我很满意。"],
-  sad: ["有点难过，不过会好的。"],
-};
+const LINES: Partial<Record<CharacterMood, string[]>> = m.chat.corner.lines;
 
 /** 10 秒内不重复触发（规范 §5.7）。 */
 const CLICK_GAP = 10_000;
@@ -102,7 +83,7 @@ export function CompanionCorner({ mood: moodProp, className = "" }: Props) {
     if (liftTimer.current) clearTimeout(liftTimer.current);
     liftTimer.current = setTimeout(() => setLifted(false), 180);
     // 便签小字，3 秒消失
-    const pool = LINES[current] ?? LINES.idle ?? ["我在呢。"];
+    const pool = LINES[current] ?? LINES.idle ?? m.chat.corner.fallback;
     setNote(pool[Math.floor(Math.random() * pool.length)]);
     if (noteTimer.current) clearTimeout(noteTimer.current);
     noteTimer.current = setTimeout(() => setNote(null), 3000);
@@ -118,7 +99,7 @@ export function CompanionCorner({ mood: moodProp, className = "" }: Props) {
       <motion.button
         type="button"
         className="companion__btn"
-        aria-label={`和${character.name}打个招呼`}
+        aria-label={m.chat.corner.greet(character.name)}
         onClick={onClick}
         animate={{ y: lifted ? -10 : 0 }}
         transition={spring.cute}

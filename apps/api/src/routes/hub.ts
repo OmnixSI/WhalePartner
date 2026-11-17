@@ -1,4 +1,5 @@
 /** hub 路由：实时事件流、设备配对、设备管理。 */
+import { msg } from "../i18n/index.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { networkInterfaces } from "node:os";
 import { ChatInputError } from "../chat/service.ts";
@@ -55,12 +56,12 @@ export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, re
       const body = await readJsonBody(request);
       const code = typeof body.code === "string" ? body.code.trim() : "";
       const name = typeof body.name === "string" ? body.name : "";
-      if (!/^\d{6}$/.test(code)) throw new ChatInputError("配对码是 6 位数字。");
+      if (!/^\d{6}$/.test(code)) throw new ChatInputError(msg().core.routes.hub.codeFormat);
       const result = deps.devices.redeem(code, name, clientAddress(request, deps.trustedProxies));
       if (!result.ok) {
         sendJson(response, result.reason === "rate_limited" ? 429 : 400, {
           error: result.reason,
-          message: result.reason === "rate_limited" ? "试得太频繁了，一分钟后再试。" : "配对码不对或已过期（10 分钟有效）。",
+          message: result.reason === "rate_limited" ? msg().core.routes.hub.rateLimited : msg().core.routes.hub.codeWrong,
         });
         return true;
       }
@@ -68,7 +69,7 @@ export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, re
       publishEvent("settings.updated", { scope: "devices" });
     } catch (error) {
       const bad = error instanceof ChatInputError || error instanceof SyntaxError || error instanceof RequestBodyError;
-      sendJson(response, error instanceof RequestBodyError ? error.status : bad ? 400 : 500, { error: bad ? "bad_request" : "internal", message: bad ? (error as Error).message : "配对失败。" });
+      sendJson(response, error instanceof RequestBodyError ? error.status : bad ? 400 : 500, { error: bad ? "bad_request" : "internal", message: bad ? (error as Error).message : msg().core.routes.hub.pairFailed });
     }
     return true;
   }
@@ -82,7 +83,7 @@ export async function handleHubRoute(deps: HubDeps, request: IncomingMessage, re
   if (match && request.method === "DELETE") {
     const id = decodeURIComponent(match[1]);
     const removed = deps.devices.revoke(id);
-    if (!removed) sendJson(response, 404, { error: "没有这台设备。" });
+    if (!removed) sendJson(response, 404, { error: msg().core.routes.hub.deviceNotFound });
     else {
       // 已建立的长连接不会重新鉴权，撤销后要主动断开这台设备的全部事件流和 WebSocket。
       deps.connections?.closeDevice(id);

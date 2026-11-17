@@ -19,6 +19,7 @@ export function indexedMessageText(value: string): string {
   return searchTerms(value).join(" ");
 }
 
+// i18n-ignore-start：匹配中文时间词的正则
 export function matchExpression(value: string): string | undefined {
   const searchable = value
     .replace(/(?:过去|最近|近)一年|前年|去年|今年|上个月|上月|本月|这个月|上周|本周|这周|前天|昨天|今天|今日/gu, " ")
@@ -84,3 +85,4 @@ export function overlapsFactTimeWindow(validFrom: string, validTo: string | null
 export function normalized(value: string): string {
   return value.toLocaleLowerCase().replace(/[\s，。！？、,.!?：:；;「」“”"'（）()]/gu, "");
 }
+// i18n-ignore-end

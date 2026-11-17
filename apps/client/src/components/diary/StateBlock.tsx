@@ -14,6 +14,7 @@ import { Horizon } from "../Horizon";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { useInkEnv } from "../ink/useCalm";
+import { m } from "../../i18n";
 
 type Props = {
   kind: "loading" | "empty" | "error";
@@ -46,7 +47,7 @@ export function StateBlock({ kind, title, body, action = null, detail, mood, chi
         )}
         {detail && (
           <Button variant="ghost" aria-expanded={showDetail} onClick={() => setShowDetail((v) => !v)}>
-            详情
+            {m.diary.state.detail}
           </Button>
         )}
       </div>

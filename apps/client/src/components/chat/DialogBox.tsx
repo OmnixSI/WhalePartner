@@ -12,6 +12,7 @@ import { NameTab } from "./NameTab";
 import { Thinking } from "./Thinking";
 import type { DialogState, Progress } from "./types";
 import type { AvatarEmotion } from "../../avatar/model.config";
+import { m } from "../../i18n";
 
 type Props = {
   name: string;
@@ -78,20 +79,20 @@ export function DialogBox({
         </div>
         {state === "offline" && (
           <div className="dlg__actions">
-            <Button variant="primary" onClick={onRetry}>再试一次</Button>
-            <Button variant="ghost" aria-expanded={showDetail} onClick={() => setShowDetail((v) => !v)}>详情</Button>
+            <Button variant="primary" onClick={onRetry}>{m.chat.dialog.retry}</Button>
+            <Button variant="ghost" aria-expanded={showDetail} onClick={() => setShowDetail((v) => !v)}>{m.chat.dialog.detail}</Button>
           </div>
         )}
-        {state === "offline" && showDetail && <p className="dlg__detail">{detail ?? "本机服务没有回应。"}</p>}
+        {state === "offline" && showDetail && <p className="dlg__detail">{detail ?? m.chat.dialog.offlineDetail}</p>}
         {state === "failed" && (
           <div className="dlg__actions">
             {onRetryFailed && (
-              <Button variant="primary" onClick={onRetryFailed}>再试一次</Button>
+              <Button variant="primary" onClick={onRetryFailed}>{m.chat.dialog.retry}</Button>
             )}
-            <Button variant="ghost" aria-expanded={showDetail} onClick={() => setShowDetail((v) => !v)}>详情</Button>
+            <Button variant="ghost" aria-expanded={showDetail} onClick={() => setShowDetail((v) => !v)}>{m.chat.dialog.detail}</Button>
           </div>
         )}
-        {state === "failed" && showDetail && <p className="dlg__detail">{detail ?? "这句话没有发出去。"}</p>}
+        {state === "failed" && showDetail && <p className="dlg__detail">{detail ?? m.chat.dialog.failedDetail}</p>}
       </div>
       {state === "done" && !typing && (
         <span className="sr-only" role="status" aria-live="polite">

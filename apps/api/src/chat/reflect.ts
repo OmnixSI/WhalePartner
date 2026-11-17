@@ -1,5 +1,7 @@
 import { EmotionFilter } from "./emotion.ts";
 import type { ChatProvider } from "../llm/types.ts";
+import { outputLanguageNote } from "../i18n/index.ts";
+// i18n-ignore-start：近况小记的提示词、注入检测关键词与喂给模型的日期行
 
 export interface ReflectionInput {
   name: string;
@@ -91,7 +93,7 @@ export async function reflect(provider: ChatProvider, input: ReflectionInput, si
   let raw = "";
   for await (const delta of provider.stream(
     [
-      { role: "system", content: SYSTEM },
+      { role: "system", content: SYSTEM + outputLanguageNote("Use 2 to 4 sentences, under 250 characters in total.") },
       { role: "user", content: `<context>\n${body}\n</context>` },
     ],
     { temperature: 0.7, maxTokens: 300, signal },
@@ -100,3 +102,4 @@ export async function reflect(provider: ChatProvider, input: ReflectionInput, si
   }
   return sanitizeNote(raw);
 }
+// i18n-ignore-end

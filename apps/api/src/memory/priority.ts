@@ -1,3 +1,4 @@
+// i18n-ignore-start：中止原因，仅用于日志与内部控制
 let foregroundChats = 0;
 const memoryJobs = new Set<AbortController>();
 const otherBackgroundJobs = new Set<AbortController>();
@@ -49,3 +50,4 @@ export function waitForForegroundChatIdle() {
 export function isForegroundChatActive() {
   return foregroundChats > 0;
 }
+// i18n-ignore-end

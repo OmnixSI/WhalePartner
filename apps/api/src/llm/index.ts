@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { ApiConfig } from "../server/config.ts";
 import { CodexChatProvider } from "./codex-chat.ts";
 import { createDeepSeekProvider } from "./deepseek.ts";
@@ -13,7 +14,7 @@ export function createChatProvider(config: ApiConfig) {
   }
   if (config.codexFallback) providers.push(new CodexChatProvider());
   if (providers.length === 0) {
-    throw new Error("没有可用的模型：请在 apps/api/.env 设置 DEEPSEEK_API_KEY，或保留本机 Codex 兜底。");
+    throw new Error(msg().core.llm.noModel);
   }
   return new FallbackChatProvider(providers);
 }

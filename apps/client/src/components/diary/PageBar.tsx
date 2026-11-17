@@ -1,6 +1,7 @@
 import { Button } from "../ui/Button";
 import { Select } from "../ui/Select";
 import { Tooltip } from "../ui/Tooltip";
+import { m } from "../../i18n";
 import { rangeOf, shiftMonth, shiftYear, startOfDay, type RangeMode } from "./types";
 
 type Props = {
@@ -13,48 +14,41 @@ type Props = {
 const STEP: Record<RangeMode, { prev: string; next: string; shift: (date: Date, amount: number) => Date }> = {
   week: {
     // 周视图一页是整周（周一到周日），所以一次翻 7 天。
-    prev: "前一周",
-    next: "后一周",
+    prev: m.diary.pageBar.week.prev,
+    next: m.diary.pageBar.week.next,
     shift: (date, amount) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount * 7),
   },
   month: {
-    prev: "上个月",
-    next: "下个月",
+    prev: m.diary.pageBar.month.prev,
+    next: m.diary.pageBar.month.next,
     shift: shiftMonth,
   },
   year: {
-    prev: "上一年",
-    next: "下一年",
+    prev: m.diary.pageBar.year.prev,
+    next: m.diary.pageBar.year.next,
     shift: shiftYear,
   },
 };
 
 function rangeLabel(mode: RangeMode, cursor: Date): string {
-  if (mode === "year") return `${cursor.getFullYear()}年`;
-  if (mode === "month") return `${cursor.getFullYear()}年${cursor.getMonth() + 1}月`;
+  if (mode === "year") return m.diary.date.year(cursor.getFullYear());
+  if (mode === "month") return m.diary.date.yearMonth(cursor);
 
   const range = rangeOf("week", cursor);
-  const start = range.start;
-  const end = range.end;
-  const startLabel = `${start.getMonth() + 1}月${start.getDate()}日`;
-  const endLabel = `${end.getMonth() + 1}月${end.getDate()}日`;
-  if (start.getFullYear() !== end.getFullYear()) {
-    return `${start.getFullYear()}年${startLabel}—${end.getFullYear()}年${endLabel}`;
-  }
-  return `${start.getFullYear()}年 ${startLabel}—${endLabel}`;
+  return m.diary.date.weekRange(range.start, range.end);
 }
 
 export function PageBar({ mode, cursor, onCursor, onToday }: Props) {
   const step = STEP[mode];
   const label = rangeLabel(mode, cursor);
-  const monthOptions = Array.from({ length: 12 }, (_, month) => ({ value: String(month), label: `${month + 1} 月` }));
+  const monthOptions = Array.from({ length: 12 }, (_, month) => ({ value: String(month), label: m.diary.date.monthOption(month) }));
   const yearOptions = Array.from({ length: 8 }, (_, index) => {
     const year = cursor.getFullYear() - 5 + index;
-    return { value: String(year), label: `${year} 年` };
+    return { value: String(year), label: m.diary.date.yearOption(year) };
   });
 
   return (
-    <nav className="pagebar" aria-label="日记时间导航">
+    <nav className="pagebar" aria-label={m.diary.pageBar.navAria}>
       <Tooltip content={step.prev}>
         <Button
           variant="secondary"
@@ -68,13 +62,13 @@ export function PageBar({ mode, cursor, onCursor, onToday }: Props) {
       </Tooltip>
       {mode !== "year" && (
         <strong className="pagebar__range" aria-live="polite">
-          {mode === "month" ? `${cursor.getFullYear()}年` : label}
+          {mode === "month" ? m.diary.date.year(cursor.getFullYear()) : label}
         </strong>
       )}
       {mode === "month" && (
         <Select
           className="pagebar__jump"
-          aria-label="跳到月份"
+          aria-label={m.diary.pageBar.jumpMonth}
           value={String(cursor.getMonth())}
           options={monthOptions}
           onValueChange={(value) => onCursor(new Date(cursor.getFullYear(), Number(value), 1))}
@@ -83,7 +77,7 @@ export function PageBar({ mode, cursor, onCursor, onToday }: Props) {
       {mode === "year" && (
         <Select
           className="pagebar__jump"
-          aria-label="跳到年份"
+          aria-label={m.diary.pageBar.jumpYear}
           value={String(cursor.getFullYear())}
           options={yearOptions}
           onValueChange={(value) => onCursor(new Date(Number(value), 0, 1))}
@@ -101,7 +95,7 @@ export function PageBar({ mode, cursor, onCursor, onToday }: Props) {
         </Button>
       </Tooltip>
       <Button variant="ghost" className="pagebar__today" onClick={onToday}>
-        回到今天
+        {m.diary.pageBar.today}
       </Button>
     </nav>
   );

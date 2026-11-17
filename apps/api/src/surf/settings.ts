@@ -1,4 +1,5 @@
 import type { SurfFrequency, SurfSettings, SurfSettingsPatch } from "./types.ts";
+import { msg } from "../i18n/index.ts";
 
 /** 设置不合法的统一错误（路由层转成 400 invalid_settings）。 */
 export class SurfSettingsError extends Error {}
@@ -66,45 +67,45 @@ export function inQuietHours(quiet: { start: string; end: string }, now: Date): 
 }
 
 function tagList(value: unknown, max: number, field: string): string[] {
-  if (!Array.isArray(value)) throw new SurfSettingsError(`${field} 必须是文字列表。`);
-  if (value.length > max) throw new SurfSettingsError(`${field} 最多 ${max} 个。`);
+  if (!Array.isArray(value)) throw new SurfSettingsError(msg().content.surf.settings.mustBeList(field));
+  if (value.length > max) throw new SurfSettingsError(msg().content.surf.settings.tooMany(field, max));
   const out: string[] = [];
   for (const raw of value) {
-    if (typeof raw !== "string") throw new SurfSettingsError(`${field} 里只能放文字。`);
+    if (typeof raw !== "string") throw new SurfSettingsError(msg().content.surf.settings.onlyText(field));
     const trimmed = raw.trim();
     if (!trimmed) continue;
-    if ([...trimmed].length > MAX_TAG_CHARS) throw new SurfSettingsError(`「${trimmed}」太长了，每个最多 ${MAX_TAG_CHARS} 个字。`);
+    if ([...trimmed].length > MAX_TAG_CHARS) throw new SurfSettingsError(msg().content.surf.settings.tagTooLong(trimmed, MAX_TAG_CHARS));
     if (!out.includes(trimmed)) out.push(trimmed);
   }
   return out;
 }
 
 function bool(value: unknown, field: string): boolean {
-  if (typeof value !== "boolean") throw new SurfSettingsError(`${field} 只能是开或关。`);
+  if (typeof value !== "boolean") throw new SurfSettingsError(msg().content.surf.settings.mustBeBool(field));
   return value;
 }
 
 /** PUT /api/surf/settings 的校验（§10.6.10）。任何一项不合法都抛错，不做部分写入。 */
 export function validateSettingsPatch(body: Record<string, unknown>): SurfSettingsPatch {
   const patch: SurfSettingsPatch = {};
-  if (body.enabled !== undefined) patch.enabled = bool(body.enabled, "总开关");
-  if (body.video !== undefined) patch.video = bool(body.video, "看视频");
-  if (body.web !== undefined) patch.web = bool(body.web, "翻网页");
-  if (body.shareToChat !== undefined) patch.shareToChat = bool(body.shareToChat, "讲给我听");
+  if (body.enabled !== undefined) patch.enabled = bool(body.enabled, msg().content.surf.settings.fieldMain);
+  if (body.video !== undefined) patch.video = bool(body.video, msg().content.surf.settings.fieldVideo);
+  if (body.web !== undefined) patch.web = bool(body.web, msg().content.surf.settings.fieldWeb);
+  if (body.shareToChat !== undefined) patch.shareToChat = bool(body.shareToChat, msg().content.surf.settings.fieldShare);
   if (body.frequency !== undefined) {
-    if (!FREQUENCIES.includes(body.frequency as SurfFrequency)) throw new SurfSettingsError("频率只能是偶尔、常常或勤快。");
+    if (!FREQUENCIES.includes(body.frequency as SurfFrequency)) throw new SurfSettingsError(msg().content.surf.settings.frequencyInvalid);
     patch.frequency = body.frequency as SurfFrequency;
   }
-  if (body.interests !== undefined) patch.interests = tagList(body.interests, MAX_INTERESTS, "兴趣");
-  if (body.blocked !== undefined) patch.blocked = tagList(body.blocked, MAX_BLOCKED, "不想看的");
+  if (body.interests !== undefined) patch.interests = tagList(body.interests, MAX_INTERESTS, msg().content.surf.settings.fieldInterests);
+  if (body.blocked !== undefined) patch.blocked = tagList(body.blocked, MAX_BLOCKED, msg().content.surf.settings.fieldBlocked);
   if (body.quiet !== undefined) {
-    if (!body.quiet || typeof body.quiet !== "object" || Array.isArray(body.quiet)) throw new SurfSettingsError("安静时段要给开始和结束时间。");
+    if (!body.quiet || typeof body.quiet !== "object" || Array.isArray(body.quiet)) throw new SurfSettingsError(msg().content.surf.settings.quietNeedsBoth);
     const quiet = body.quiet as Record<string, unknown>;
     const start = quiet.start;
     const end = quiet.end;
-    if (start === undefined && end === undefined) throw new SurfSettingsError("安静时段要给开始和结束时间。");
-    if (start !== undefined && !isClock(start)) throw new SurfSettingsError("安静时段的开始时间要写成 08:30 这样。");
-    if (end !== undefined && !isClock(end)) throw new SurfSettingsError("安静时段的结束时间要写成 08:30 这样。");
+    if (start === undefined && end === undefined) throw new SurfSettingsError(msg().content.surf.settings.quietNeedsBoth);
+    if (start !== undefined && !isClock(start)) throw new SurfSettingsError(msg().content.surf.settings.quietStartFormat);
+    if (end !== undefined && !isClock(end)) throw new SurfSettingsError(msg().content.surf.settings.quietEndFormat);
     patch.quiet = { ...(start === undefined ? {} : { start: start as string }), ...(end === undefined ? {} : { end: end as string }) };
   }
   return patch;

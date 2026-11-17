@@ -32,7 +32,7 @@ type Props = {
   id?: string;
 };
 
-const NUMERIC = /^[\d\s.:：/·-]+$/;
+const NUMERIC = /^[\d\s.:：/·-]+$/; // i18n-ignore：匹配全角冒号的数字判断正则，不是界面文字
 
 /** 圆形邮戳：外圈手绘、内圈细 1px、中间文字由 flex 居中。 */
 function Round({ size, seed, lines }: { size: number; seed: number; lines: string[] }) {

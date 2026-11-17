@@ -20,6 +20,7 @@ import { ELDER_MIN_SCALE, updateA11y } from "./settings/prefs";
 import "../styles/onboarding.css";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Field";
+import { m } from "../i18n";
 
 const ONBOARDED_KEY = "wp.onboarded";
 const Live2DStage = lazy(() => import("../avatar/Live2DStage").then((module) => ({ default: module.Live2DStage })));
@@ -65,16 +66,12 @@ function markOnboarded() {
 
 /* ---------------- 三步的文案（规范 §7.5 原文） ---------------- */
 
-const AGREEMENTS = [
-  "我们的聊天只存在这台设备上。",
-  "你随时可以导出，也可以删掉一切。",
-  "我不会向你要验证码、银行卡，也不会让你转账。",
-];
+const AGREEMENTS = m.settings.onboarding.agreements;
 
 const FONT_CHOICES = [
-  { id: "std", label: "Aa 标准", note: "" },
-  { id: "big", label: "Aa 大", note: "" },
-  { id: "huge", label: "Aa 特别大", note: "大字、大按钮、只留三个入口。" },
+  { id: "std", label: m.settings.onboarding.fontStd, note: "" },
+  { id: "big", label: m.settings.onboarding.fontBig, note: "" },
+  { id: "huge", label: m.settings.onboarding.fontHuge, note: m.settings.onboarding.hugeNote },
 ] as const;
 
 type FontChoice = (typeof FONT_CHOICES)[number]["id"];
@@ -158,13 +155,13 @@ export function Onboarding() {
     }, POKE_MS);
   };
 
-  const hello = `你好呀，我是${character.name}——一个会陪你聊天、替你看看视频的 AI 角色。`;
+  const hello = m.settings.onboarding.hello(character.name);
 
   return (
-    <div className="onb" role="dialog" aria-modal="true" aria-label="第一次见面，三步就好" tabIndex={-1} ref={frameRef}>
+    <div className="onb" role="dialog" aria-modal="true" aria-label={m.settings.onboarding.dialogLabel} tabIndex={-1} ref={frameRef}>
       <div className="onb__inner">
         <header className="onb__head">
-          <p className="onb__progress">第 {step + 1} 步，共 3 步</p>
+          <p className="onb__progress">{m.settings.onboarding.progress(step + 1)}</p>
           <ol className="onb__beads" aria-hidden="true">
             {[0, 1, 2].map((index) => (
               <li
@@ -183,7 +180,7 @@ export function Onboarding() {
                 className="onb__figure"
                 role="button"
                 tabIndex={0}
-                aria-label={`点一点${character.name}`}
+                aria-label={m.settings.onboarding.pokeAria(character.name)}
                 onClick={pokeHer}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
@@ -205,9 +202,9 @@ export function Onboarding() {
                 )}
               </div>
 
-              <p className="onb__hint">点一点她，她会看你哦。</p>
+              <p className="onb__hint">{m.settings.onboarding.pokeHint}</p>
 
-              <p className="onb__line">{poked ? "嗯？我在呢。" : hello}</p>
+              <p className="onb__line">{poked ? m.settings.onboarding.pokeReply : hello}</p>
             </div>
           ) : (
             <>
@@ -218,19 +215,19 @@ export function Onboarding() {
               {step === 1 && (
                 <div className="onb__block">
                   <p className="onb__say">
-                    你想让我怎么叫你？
+                    {m.settings.onboarding.askName}
                     <br />
-                    不想说也没关系。
+                    {m.settings.onboarding.askNameSub}
                   </p>
                   <Input className="onb__field"
                     type="text"
                     maxLength={12}
-                    placeholder="不想说也没关系"
-                    aria-label="你想让我怎么称呼你"
+                    placeholder={m.settings.onboarding.namePlaceholder}
+                    aria-label={m.settings.onboarding.nameAria}
                     value={nickname}
                     onChange={(event) => setNickname(event.target.value)}
                   />
-                  <p className="onb__sub">选一位陪你</p>
+                  <p className="onb__sub">{m.settings.onboarding.pickOne}</p>
                   <ul className="onb__chars">
                     {CHARACTERS.map((item) => (
                       <li key={item.id}>
@@ -255,7 +252,7 @@ export function Onboarding() {
 
               {step === 2 && (
                 <div className="onb__block">
-                  <p className="onb__say">最后说三件小事。</p>
+                  <p className="onb__say">{m.settings.onboarding.lastThree}</p>
                   <ol className="onb__pact">
                     {AGREEMENTS.map((line, index) => (
                       <li key={line}>
@@ -266,8 +263,8 @@ export function Onboarding() {
                       </li>
                     ))}
                   </ol>
-                  <p className="onb__sub">字看得清吗？</p>
-                  <div className="onb__fonts" role="group" aria-label="字号">
+                  <p className="onb__sub">{m.settings.onboarding.fontQuestion}</p>
+                  <div className="onb__fonts" role="group" aria-label={m.settings.onboarding.fontGroup}>
                     {FONT_CHOICES.map((item) => (
                       <Button
                         key={item.id}
@@ -280,8 +277,8 @@ export function Onboarding() {
                       </Button>
                     ))}
                   </div>
-                  {fontChoice === "huge" && <p className="onb__note">大字、大按钮、只留三个入口。以后在设置里还能改。</p>}
-                  <p className="onb__sub">她要接上账号才能说话。</p>
+                  {fontChoice === "huge" && <p className="onb__note">{m.settings.onboarding.hugeNoteAfter}</p>}
+                  <p className="onb__sub">{m.settings.onboarding.needAccount}</p>
                   <Button
                     className="onb__model" variant="secondary"
                     onClick={() => {
@@ -289,7 +286,7 @@ export function Onboarding() {
                       navigate("/settings#model");
                     }}
                   >
-                    去设置里接上她的账号
+                    {m.settings.onboarding.goSettings}
                   </Button>
                 </div>
               )}
@@ -299,10 +296,10 @@ export function Onboarding() {
 
         <footer className="onb__foot">
           <Button className="onb__skip" variant="ghost" onClick={() => finish(true)}>
-            跳过，以后再说
+            {m.settings.onboarding.skip}
           </Button>
           <Button className="onb__next" variant="primary" onClick={next}>
-            {step === 0 ? "继续" : step === 1 ? "就这样" : "开始吧"}
+            {step === 0 ? m.settings.onboarding.next0 : step === 1 ? m.settings.onboarding.next1 : m.settings.onboarding.next2}
           </Button>
         </footer>
       </div>

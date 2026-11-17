@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { SettingGroup, SettingRow } from "./Row";
 import { Switch } from "./Switch";
+import { m } from "../../i18n";
 
 export function BackgroundRunSetting() {
   const desktop = isTauri();
@@ -38,17 +39,17 @@ export function BackgroundRunSetting() {
   };
 
   return (
-    <SettingGroup title="后台">
+    <SettingGroup title={m.settings.background.group}>
       <SettingRow
-        title="关掉窗口后让她在后台继续逛"
+        title={m.settings.background.title}
         desc={
           failed
-            ? "没改成，再试一次。"
-            : "打开后，关窗口只是收起来，菜单栏留个图标，她继续上网、用模型额度，要停就点图标选“退出鲸汐”。关着时，关窗口就是退出。"
+            ? m.settings.background.failed
+            : m.settings.background.desc
         }
         onActivate={on === null ? undefined : () => void change(!on)}
       >
-        <Switch label="关掉窗口后让她在后台继续逛" checked={on === true} disabled={on === null} onChange={(next) => void change(next)} />
+        <Switch label={m.settings.background.title} checked={on === true} disabled={on === null} onChange={(next) => void change(next)} />
       </SettingRow>
     </SettingGroup>
   );

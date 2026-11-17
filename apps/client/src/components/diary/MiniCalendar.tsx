@@ -8,7 +8,8 @@
 import { useMemo } from "react";
 import { InkLine } from "../ink";
 import "../../styles/diary.css"; // 记忆页也用这个组件；日记页懒加载后，样式得跟着组件走
-import { MONTH_EN, WEEKDAY, isoDay, startOfDay } from "./types";
+import { m } from "../../i18n";
+import { MONTH_EN, isoDay, startOfDay } from "./types";
 
 type Props = {
   /** 任意一个属于该月的日期。 */
@@ -21,7 +22,7 @@ type Props = {
   label?: string;
 };
 
-const CELL_WEEKDAY = ["一", "二", "三", "四", "五", "六", "日"] as const;
+const CELL_WEEKDAY = m.diary.date.weekdayMon;
 
 export function MiniCalendar({ month, value, marks, onSelect, onMonthChange, label }: Props) {
   const today = isoDay(new Date());
@@ -41,15 +42,15 @@ export function MiniCalendar({ month, value, marks, onSelect, onMonthChange, lab
     return out;
   }, [month]);
 
-  const monthLabel = `${month.getFullYear()} 年 ${month.getMonth() + 1} 月`;
+  const monthLabel = m.diary.mini.monthLabel(month);
 
   return (
-    <div className="mini" role="group" aria-label={label ?? `选日期，当前是 ${month.getMonth() + 1} 月`}>
+    <div className="mini" role="group" aria-label={label ?? m.diary.mini.groupAria(month)}>
       <div className="mini__head">
         <button
           type="button"
           className="mini__step"
-          aria-label="上一个月"
+          aria-label={m.diary.mini.prevMonth}
           onClick={() => onMonthChange(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
         >
           ‹
@@ -63,7 +64,7 @@ export function MiniCalendar({ month, value, marks, onSelect, onMonthChange, lab
         <button
           type="button"
           className="mini__step"
-          aria-label="下一个月"
+          aria-label={m.diary.mini.nextMonth}
           onClick={() => onMonthChange(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
         >
           ›
@@ -91,7 +92,7 @@ export function MiniCalendar({ month, value, marks, onSelect, onMonthChange, lab
               data-selected={cell.key === selected || undefined}
               aria-current={cell.key === today ? "date" : undefined}
               aria-pressed={cell.key === selected}
-              aria-label={`${cell.date.getMonth() + 1}月${cell.date.getDate()}日${marks.has(cell.key) ? "，有日记" : ""}`}
+              aria-label={m.diary.mini.dayAria(cell.date, marks.has(cell.key))}
               onClick={() => onSelect(startOfDay(cell.date))}
             >
               <span className="mini__day">{cell.date.getDate()}</span>
@@ -114,7 +115,7 @@ export function MiniCalendar({ month, value, marks, onSelect, onMonthChange, lab
 
       <InkLine className="mini__rule" id="mini-rule" />
       <p className="mini__foot">
-        {value ? `${value.getMonth() + 1} 月 ${value.getDate()} 日 · ${WEEKDAY[value.getDay()]}` : "挑一天看看"}
+        {value ? m.diary.date.monthDayWeekdaySpaced(value) : m.diary.mini.footerEmpty}
       </p>
     </div>
   );

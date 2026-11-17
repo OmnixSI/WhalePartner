@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { getSurfStatus, type SurfBrowser } from "../../lib/surf";
+import { m } from "../../i18n";
 
 type Props = {
   character: string;
@@ -31,8 +32,8 @@ export function SurfBrowserNote({ character, initial = null, enabled }: Props) {
   if (!enabled || !browser || browser.state === "ready" || browser.state === "idle") return null;
   const text =
     browser.state === "installing"
-      ? `正在准备读网页用的浏览器${browser.percent !== null ? `（${browser.percent}%）` : ""}，第一次要下载一次，不用你动手。`
-      : "读网页用的浏览器没装上，她先只读普通网页；联网后会再试。";
+      ? m.surf.browserNote.installing(browser.percent)
+      : m.surf.browserNote.missing;
   return (
     <p className="surf-browser-note" role="status" data-state={browser.state}>
       {text}

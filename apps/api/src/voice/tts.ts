@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -147,10 +148,10 @@ export class CosyVoiceTtsService implements TtsService {
       state: this.#supported ? (hasVoiceProfile ? "idle" : "waiting_reference") : "failed",
       progress: null,
       message: this.#supported
-        ? (hasVoiceProfile ? "CosyVoice 环境尚未配置，请在设置中一键安装。" : "等待导入大肥鱼的 CosyVoice 音色配置。")
-        : "本地语音合成需要 macOS 15 或更新版本的 Apple Silicon Mac。",
+        ? (hasVoiceProfile ? msg().core.voice.ttsNotConfigured : msg().core.voice.ttsWaitingProfile)
+        : msg().core.voice.ttsUnsupported,
       model: TTS_MODEL,
-      speaker: "大肥鱼预设音色",
+      speaker: msg().core.voice.ttsSpeaker,
     };
     process.once("exit", this.#processExit);
   }
@@ -162,17 +163,17 @@ export class CosyVoiceTtsService implements TtsService {
   warm(): Promise<void> {
     if (!this.#supported) return Promise.reject(new Error(this.#current.message));
     if (!this.#hasVoiceProfile()) {
-      this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待导入大肥鱼的 CosyVoice 音色配置。" };
+      this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: msg().core.voice.ttsWaitingProfile };
       return Promise.resolve();
     }
     // A rebuild in progress has already stopped or is about to stop the old server; join it before the
     // ready short-circuit below can report the stale server as ready.
     if (this.#warmPromise) return this.#warmPromise;
     if (this.#server && this.#server.exitCode === null && this.#serverUrl) {
-      this.#current = { ...this.#current, state: "ready", progress: 100, message: "CosyVoice MLX 本地语音已就绪。" };
+      this.#current = { ...this.#current, state: "ready", progress: 100, message: msg().core.voice.ttsReady };
       return Promise.resolve();
     }
-    return this.#startWarm("正在准备原生 MLX 语音模型。首次启动会构建运行时并下载模型。", () => this.#prepare());
+    return this.#startWarm(msg().core.voice.ttsPreparing, () => this.#prepare());
   }
 
   /**
@@ -184,7 +185,7 @@ export class CosyVoiceTtsService implements TtsService {
     this.#warmPromise = Promise.resolve().then(work).then(() => {
       // A rebuild without a voice profile ends in waiting_reference instead of ready.
       if (!this.#hasVoiceProfile()) return;
-      this.#current = { ...this.#current, state: "ready", progress: 100, message: "CosyVoice MLX 本地语音已就绪。" };
+      this.#current = { ...this.#current, state: "ready", progress: 100, message: msg().core.voice.ttsReady };
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       this.#current = { ...this.#current, state: "failed", progress: null, message };
@@ -199,7 +200,7 @@ export class CosyVoiceTtsService implements TtsService {
     if (!this.#supported || !this.#hasVoiceProfile()) return;
     if (!cosyVoiceNativeRuntimeIsReady(this.#runtimeDirectory, this.#deploymentTarget)
       || !cosyVoiceModelIsReady(this.#modelDirectory)) {
-      this.#current = { ...this.#current, state: "idle", progress: null, message: "CosyVoice 环境尚未配置，请在设置中一键安装。" };
+      this.#current = { ...this.#current, state: "idle", progress: null, message: msg().core.voice.ttsNotConfigured };
       return;
     }
     await this.warm();
@@ -207,9 +208,9 @@ export class CosyVoiceTtsService implements TtsService {
 
   rebuild(): Promise<void> {
     if (!this.#supported) return Promise.reject(new Error(this.#current.message));
-    if (this.#warmPromise) return Promise.reject(new Error("CosyVoice 正在安装或加载，完成后再重建。"));
-    if (this.#activeRequests.size > 0) return Promise.reject(new Error("语音生成正在进行，请结束语音后再重建环境。"));
-    return this.#startWarm("正在重建 CosyVoice 语音环境。", async () => {
+    if (this.#warmPromise) return Promise.reject(new Error(msg().core.voice.ttsBusyRebuild));
+    if (this.#activeRequests.size > 0) return Promise.reject(new Error(msg().core.voice.ttsActiveRebuild));
+    return this.#startWarm(msg().core.voice.ttsRebuilding, async () => {
       // The rebuild deletes the directories a still-running setup script is writing to; end it first.
       this.#setupProcesses.kill();
       await this.#stopServer();
@@ -223,7 +224,7 @@ export class CosyVoiceTtsService implements TtsService {
       ];
       await Promise.all(paths.map((path) => rm(path, { recursive: true, force: true })));
       if (!this.#hasVoiceProfile()) {
-        this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: "等待导入大肥鱼的 CosyVoice 音色配置。" };
+        this.#current = { ...this.#current, state: "waiting_reference", progress: null, message: msg().core.voice.ttsWaitingProfile };
         return;
       }
       await this.#prepare();
@@ -278,11 +279,11 @@ export class CosyVoiceTtsService implements TtsService {
       });
       if (!response.ok) {
         const message = await response.text();
-        throw new Error(readNativeError(message) ?? `CosyVoice 原生服务返回错误（${response.status}）。`);
+        throw new Error(readNativeError(message) ?? msg().core.voice.ttsServerError(response.status));
       }
 
       const pcm = Buffer.from(await response.arrayBuffer());
-      if (pcm.length === 0 || pcm.length % 2 !== 0) throw new Error("CosyVoice 原生服务没有返回完整的 PCM16 音频。");
+      if (pcm.length === 0 || pcm.length % 2 !== 0) throw new Error(msg().core.voice.ttsIncompletePcm);
       const audioDurationMs = pcm.length / 2 / SAMPLE_RATE * 1000;
       const elapsedMs = performance.now() - startedAt;
       const chunkSize = SAMPLE_RATE * 2 * 0.35;
@@ -328,7 +329,7 @@ export class CosyVoiceTtsService implements TtsService {
       });
     } catch (error) {
       if (signal?.aborted) throw abortError();
-      if (timedOut) throw new Error("本地语音生成超时，请重试。");
+      if (timedOut) throw new Error(msg().core.voice.ttsTimeout);
       throw error instanceof Error ? error : new Error(String(error));
     } finally {
       clearTimeout(timeout);
@@ -373,34 +374,34 @@ export class CosyVoiceTtsService implements TtsService {
     try {
       metadata = JSON.parse(await readFile(this.#voiceMetadataPath, "utf8")) as unknown;
     } catch {
-      throw new Error("无法读取大肥鱼的 CosyVoice 音色配置。");
+      throw new Error(msg().core.voice.ttsProfileUnreadable);
     }
-    if (!metadata || typeof metadata !== "object") throw new Error("大肥鱼的 CosyVoice 音色配置格式不正确。");
+    if (!metadata || typeof metadata !== "object") throw new Error(msg().core.voice.ttsProfileBadFormat);
     const profile = metadata as Record<string, unknown>;
     if (profile.model !== MODEL_ID || typeof profile.reference_audio !== "string" || typeof profile.transcript !== "string" || !profile.transcript.trim()) {
-      throw new Error("大肥鱼的 CosyVoice 音色配置与当前模型不匹配。");
+      throw new Error(msg().core.voice.ttsProfileMismatch);
     }
     const referencePath = resolve(dirname(this.#voiceMetadataPath), profile.reference_audio);
-    if (!existsSync(referencePath)) throw new Error("大肥鱼的 CosyVoice 参考音频不存在。");
+    if (!existsSync(referencePath)) throw new Error(msg().core.voice.ttsNoReference);
     return { referencePath, transcript: profile.transcript };
   }
 
   async #installRuntime(): Promise<void> {
     const setupScript = this.#options.runtimeSetupScriptPath ?? fileURLToPath(new URL("../../scripts/setup-cosyvoice3-native.sh", import.meta.url));
-    this.#current = { ...this.#current, message: "正在构建 CosyVoice3 原生 MLX 运行时。" };
-    await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 90 * 60_000, "构建 CosyVoice 原生运行时失败。");
-    if (!cosyVoiceNativeRuntimeIsReady(this.#runtimeDirectory, this.#deploymentTarget)) throw new Error("原生 MLX 运行时构建后仍缺少 CosyVoice 服务文件。");
+    this.#current = { ...this.#current, message: msg().core.voice.ttsBuilding };
+    await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 90 * 60_000, msg().core.voice.ttsBuildFailed);
+    if (!cosyVoiceNativeRuntimeIsReady(this.#runtimeDirectory, this.#deploymentTarget)) throw new Error(msg().core.voice.ttsRuntimeIncomplete);
   }
 
   async #installModel(): Promise<void> {
     const setupScript = this.#options.modelSetupScriptPath ?? fileURLToPath(new URL("../../scripts/prepare-cosyvoice3-mlx-model.sh", import.meta.url));
-    this.#current = { ...this.#current, message: "正在下载 CosyVoice3 MLX FP16 模型和语音分词器。" };
-    await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 90 * 60_000, "下载 CosyVoice MLX 模型失败。");
-    if (!cosyVoiceModelIsReady(this.#modelDirectory)) throw new Error("CosyVoice MLX 模型下载后仍缺少推理文件。");
+    this.#current = { ...this.#current, message: msg().core.voice.ttsDownloading };
+    await this.#setupProcesses.run(setupScript, this.#options.dataDirectory, 90 * 60_000, msg().core.voice.ttsDownloadFailed);
+    if (!cosyVoiceModelIsReady(this.#modelDirectory)) throw new Error(msg().core.voice.ttsModelIncomplete);
   }
 
   async #startNativeServer(): Promise<void> {
-    if (!existsSync(this.#serverPath)) throw new Error("CosyVoice 原生服务程序不存在，请重新准备本地语音运行时。");
+    if (!existsSync(this.#serverPath)) throw new Error(msg().core.voice.ttsNoServer);
     const port = await availablePort();
     const serverUrl = `http://127.0.0.1:${port}`;
     // The native server applies one timeout to every request, so size it for the longest accepted text;
@@ -421,14 +422,14 @@ export class CosyVoiceTtsService implements TtsService {
     const saveLog = (chunk: Buffer) => { this.#serverLog = (this.#serverLog + chunk.toString("utf8")).slice(-4000); };
     server.stdout?.on("data", saveLog);
     server.stderr?.on("data", saveLog);
-    server.on("error", (error) => this.#failServer(`无法启动 CosyVoice 原生服务：${error.message}`));
+    server.on("error", (error) => this.#failServer(msg().core.voice.ttsCannotStart(error.message)));
     server.on("close", (code) => {
       if (this.#server !== server) return;
       this.#server = null;
       this.#serverUrl = null;
       if (!this.#closing) {
         const detail = this.#serverLog.trim().slice(-600);
-        this.#failServer(detail ? `CosyVoice 原生服务已退出：${detail}` : `CosyVoice 原生服务已退出（${code ?? "unknown"}）。`);
+        this.#failServer(detail ? msg().core.voice.ttsExitedWith(detail) : msg().core.voice.ttsExitedCode(code ?? "unknown"));
       }
     });
 
@@ -436,7 +437,7 @@ export class CosyVoiceTtsService implements TtsService {
     while (Date.now() < deadline) {
       if (this.#server !== server || server.exitCode !== null) {
         const detail = this.#serverLog.trim().slice(-800);
-        throw new Error(detail ? `CosyVoice 原生服务启动失败：${detail}` : "CosyVoice 原生服务启动失败。");
+        throw new Error(detail ? msg().core.voice.ttsStartFailedWith(detail) : msg().core.voice.ttsStartFailed);
       }
       try {
         const response = await fetch(`${serverUrl}/health`, { signal: AbortSignal.timeout(1_500) });
@@ -450,7 +451,7 @@ export class CosyVoiceTtsService implements TtsService {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 300));
     }
     server.kill("SIGTERM");
-    throw new Error("CosyVoice 原生模型启动超时。");
+    throw new Error(msg().core.voice.ttsModelTimeout);
   }
 
   async #removeLegacyTtsData(): Promise<void> {
@@ -484,7 +485,7 @@ async function availablePort(): Promise<number> {
     listener.listen(0, "127.0.0.1", resolveListen);
   });
   const address = listener.address();
-  if (!address || typeof address === "string") throw new Error("无法为 CosyVoice 原生服务分配本地端口。");
+  if (!address || typeof address === "string") throw new Error(msg().core.voice.ttsNoPort);
   await new Promise<void>((resolveClose, rejectClose) => listener.close((error) => error ? rejectClose(error) : resolveClose()));
   return address.port;
 }
@@ -499,7 +500,7 @@ function readNativeError(body: string): string | null {
 }
 
 function abortError(): Error {
-  const error = new Error("语音生成已取消。");
+  const error = new Error(msg().core.voice.ttsCancelled);
   error.name = "AbortError";
   return error;
 }

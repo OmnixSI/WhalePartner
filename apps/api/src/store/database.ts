@@ -36,6 +36,7 @@ export function openChatDatabase(path: string): DatabaseSync {
   migrateSessions(db);
   migrateNoteHistory(db);
   migrateChatLearningState(db);
+  // i18n-ignore-start：建表/迁移 SQL（含历史聊天标题和中文注释）
   db.exec(`
     INSERT OR IGNORE INTO chat_sessions (id, character, title, created_at, updated_at)
     SELECT 'legacy:' || character, character, '历史聊天', MIN(created_at), MAX(created_at)
@@ -246,6 +247,7 @@ export function openChatDatabase(path: string): DatabaseSync {
       value TEXT NOT NULL
     );
   `);
+  // i18n-ignore-end
   migrateExperiences(db);
   migrateDailyCounters(db);
   return db;

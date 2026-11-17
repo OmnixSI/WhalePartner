@@ -5,6 +5,7 @@
  * failed 换 `--alert-wash` 底 + 一行「没送到」，下面「再发一次 / 删掉」。
  */
 import { Button } from "../ui/Button";
+import { m } from "../../i18n";
 
 type SlipStatus = "sending" | "sent" | "failed";
 
@@ -24,13 +25,13 @@ export function Slip({ text, status = "sent", float = false, time, onRetry, onDi
   return (
     <div className={`slip slip--${status}${float ? " slip--float" : ""} ${className}`.trim()}>
       <p className="slip__text">{text}</p>
-      {status === "sending" && <span className="slip__state" aria-live="polite">寄出中…</span>}
-      {status === "failed" && <span className="slip__state" role="alert">没送到</span>}
+      {status === "sending" && <span className="slip__state" aria-live="polite">{m.chat.slip.sending}</span>}
+      {status === "failed" && <span className="slip__state" role="alert">{m.chat.slip.failed}</span>}
       {time && !float && <time className="slip__time">{time}</time>}
       {status === "failed" && (onRetry || onDiscard) && (
         <span className="slip__actions">
-          <Button onClick={onRetry}>再发一次</Button>
-          <Button variant="ghost" onClick={onDiscard}>删掉</Button>
+          <Button onClick={onRetry}>{m.chat.slip.retry}</Button>
+          <Button variant="ghost" onClick={onDiscard}>{m.chat.slip.discard}</Button>
         </span>
       )}
     </div>

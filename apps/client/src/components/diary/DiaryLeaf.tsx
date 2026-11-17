@@ -12,6 +12,7 @@ import { useInkEnv } from "../ink/useCalm";
 import { DateStamp } from "./DateStamp";
 import { Doodle } from "./Doodle";
 import { RuledPaper } from "./RuledPaper";
+import { m } from "../../i18n";
 import { diaryAt, moodOf, titleOf, weatherOf, type DiaryItemP2 } from "./types";
 
 type Props = {
@@ -44,14 +45,14 @@ export function DiaryLeaf({ item, collapsed, fresh = false, fallbackTitle }: Pro
               <span
                 className="leaf__weather"
                 role="img"
-                aria-label={`今天心里的天气：${weather.label}`}
+                aria-label={m.diary.leaf.weatherAria(weather.label)}
               >
                 <Doodle name={weather.doodle} />
               </span>
             )}
             {!collapsed && (
               <span className="leaf__stamp">
-                <Stamp kind="done" lines={["写好啦"]} animate={fresh && !env.calm} id={`stamp-${item.id}`} />
+                <Stamp kind="done" lines={[m.diary.leaf.stamp]} animate={fresh && !env.calm} id={`stamp-${item.id}`} />
               </span>
             )}
           </div>
@@ -68,22 +69,22 @@ export function DiaryLeaf({ item, collapsed, fresh = false, fallbackTitle }: Pro
 
         {collapsed && (
           <button type="button" className="btn btn--quiet leaf__toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-            {open ? "收起来" : "展开看全文"}
+            {open ? m.diary.leaf.collapse : m.diary.leaf.expand}
           </button>
         )}
 
         <footer className="leaf__foot">
-          {mood && <span className="leaf__mood">她今天：{mood}</span>}
+          {mood && <span className="leaf__mood">{m.diary.leaf.moodLine(mood)}</span>}
           {item.sourceUrl && (
             <a className="leaf__source" href={item.sourceUrl} target="_blank" rel="noreferrer">
-              看这条视频 ↗
+              {m.diary.leaf.watchVideo}
             </a>
           )}
         </footer>
 
         {item.summary && expanded && (
           <details className="leaf__summary">
-            <summary>她是从这些地方想起来的（1）</summary>
+            <summary>{m.diary.leaf.sourcesSummary}</summary>
             <p>{item.summary}</p>
           </details>
         )}

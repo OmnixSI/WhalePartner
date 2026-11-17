@@ -276,3 +276,29 @@ test("a timer delayed by sleep past its grace period expires without catch-up", 
   worker.stop();
   store.close();
 });
+
+test("先安排主动消息再切换语言：到期时按切换后的语言生成", async () => {
+  const { resetLangForTest, runWithLang } = await import("../src/i18n/index.ts");
+  const NOTE = /## Output language/;
+  for (const [from, to] of [["zh", "en"], ["en", "zh"]] as const) {
+    resetLangForTest(from);
+    const store = new ChatStore(":memory:");
+    store.putCompanionSettings({ enabled: true, frequency: "rare", quiet: { start: "00:00", end: "00:00" } });
+    // 50ms 后到期；安排时钟停在 fixedNow，安排好再拨到到期之后
+    const id = setupTrigger(store, new Date(fixedNow.getTime() + 60_000 + 50)).triggerId;
+    let clock = fixedNow;
+    const seen: ChatMessage[][] = [];
+    const worker = service(store, { now: () => clock, model: provider("Still nervous about Friday?", seen) });
+    // 在旧语言的请求里安排定时器，然后另一台设备 / 设置把语言切走
+    runWithLang(from, () => worker.start());
+    runWithLang(to, () => undefined);
+    clock = new Date(fixedNow.getTime() + 1_000);
+    for (let i = 0; i < 200 && seen.length === 0; i++) await new Promise((resolve) => setTimeout(resolve, 10));
+    worker.stop();
+    assert.equal(seen.length, 1, `${from}→${to} 没有生成 ${JSON.stringify(store.proactiveTrigger(id))}`);
+    const prompt = seen[0].map((message) => message.content).join("\n");
+    if (to === "en") assert.match(prompt, NOTE, `${from}→${to} 仍按旧语言生成`);
+    else assert.doesNotMatch(prompt, NOTE, `${from}→${to} 仍按旧语言生成`);
+  }
+  resetLangForTest("zh");
+});

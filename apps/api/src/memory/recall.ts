@@ -3,6 +3,7 @@ import { clarityOf, decayForPrompt } from "./decay.ts";
 import { matchesTimeWindow, overlapsFactTimeWindow, type ChatStore } from "../store/index.ts";
 import type { ArchiveHit, StoredExperience, StoredFact } from "../store/types.ts";
 import type { CharacterId } from "../persona/persona.ts";
+// i18n-ignore-start：召回文本与关键词，喂给模型的提示词材料
 
 /** 时间串 → 本机日历日（YYYY-MM-DD）。直接截前 10 位得到的是 UTC 日期，东八区、东十一区早上会差一天。 */
 function localDay(value: string): string {
@@ -232,3 +233,4 @@ export async function recallChatMemory(input: {
     archive,
   };
 }
+// i18n-ignore-end

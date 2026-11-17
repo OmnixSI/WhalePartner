@@ -44,6 +44,7 @@ import type {
   WebPageText,
   WebSource,
 } from "./types.ts";
+import { msg } from "../i18n/index.ts";
 
 /** 一次会话里每个条目占多少贝壳（B1 的额度表）。 */
 export const SURF_COSTS = { video: 20, web: 3 } as const;
@@ -254,7 +255,7 @@ export class SurfService {
   /** 后端退出：不再接新会话，中止正在跑的，等它们收尾（最多等 5 秒）。 */
   async stop(): Promise<void> {
     this.#stopped = true;
-    for (const state of this.#running.values()) state.controller.abort(new SurfError("aborted", "后端要退出了，她先回来。"));
+    for (const state of this.#running.values()) state.controller.abort(new SurfError("aborted", msg().content.surf.service.backendQuitting));
     if (this.#settled.size > 0) {
       await Promise.race([Promise.allSettled([...this.#settled]), new Promise((resolve) => setTimeout(resolve, 5000).unref?.())]);
     }
@@ -325,16 +326,16 @@ export class SurfService {
   canRunNow(character: string, options: { manual?: boolean; now?: Date } = {}): RunCheck {
     const now = options.now ?? this.#now();
     const settings = this.store.getSettings(character);
-    if (!this.enabled || !settings.enabled) return { ok: false, code: "disabled", message: "她现在不去逛了。" };
-    if (this.#running.has(character)) return { ok: false, code: "already_running", message: "她已经在逛了。" };
+    if (!this.enabled || !settings.enabled) return { ok: false, code: "disabled", message: msg().content.surf.service.disabled };
+    if (this.#running.has(character)) return { ok: false, code: "already_running", message: msg().content.surf.service.alreadyRunning };
     if (options.manual) {
       const since = iso(new Date(now.getTime() - MANUAL_COOLDOWN_MS));
       const lastManual = this.store.lastManualSession(character);
       if (lastManual && lastManual.startedAt >= since) {
-        return { ok: false, code: "too_soon", message: "她刚回来不久，歇一会儿再去吧。" };
+        return { ok: false, code: "too_soon", message: msg().content.surf.service.tooSoon };
       }
     }
-    if (this.#options.quota?.isLow()) return { ok: false, code: "quota", message: "这个月的贝壳快用完了，她先歇着。" };
+    if (this.#options.quota?.isLow()) return { ok: false, code: "quota", message: msg().content.surf.service.quotaLow };
     return { ok: true };
   }
 
@@ -361,20 +362,20 @@ export class SurfService {
     if (!check.ok) {
       return { sessionId: null, state: "skipped", reason: check.code === "too_soon" ? null : (check.code as SurfSkipReason), items: 0, message: check.message };
     }
-    if (!manual && inQuietHours(settings.quiet, now)) return this.#skip(character, options.slot, now, "quiet", "现在是安静时段。");
-    if (this.#options.isUserChatting?.()) return this.#skip(character, options.slot, now, "chatting", "你在和她聊天，先不出去。");
-    if (this.#backoffUntil && now.getTime() < this.#backoffUntil) return this.#skip(character, options.slot, now, "backoff", "刚才连着失败，她歇一会儿。");
+    if (!manual && inQuietHours(settings.quiet, now)) return this.#skip(character, options.slot, now, "quiet", msg().content.surf.service.quiet);
+    if (this.#options.isUserChatting?.()) return this.#skip(character, options.slot, now, "chatting", msg().content.surf.service.chatting);
+    if (this.#backoffUntil && now.getTime() < this.#backoffUntil) return this.#skip(character, options.slot, now, "backoff", msg().content.surf.service.backoff);
 
     const plan = FREQUENCY_PLAN[settings.frequency];
     const dayStart = iso(startOfLocalDay(now));
     const videoLeft = Math.max(0, plan.videosPerDay - this.store.countSince(character, "video", dayStart));
     const webLeft = Math.max(0, plan.websPerDay - this.store.countSince(character, "web", dayStart));
-    if (videoLeft === 0 && webLeft === 0) return this.#skip(character, options.slot, now, "daily_cap", "今天的名额用完了。");
+    if (videoLeft === 0 && webLeft === 0) return this.#skip(character, options.slot, now, "daily_cap", msg().content.surf.service.dailyCap);
 
     const slot = options.slot ?? (manual ? `manual-${iso(now)}` : `${localDateKey(now)} ${plan.slots[0]}`);
     const { session, created } = this.store.startSession(character, slot, iso(now));
     if (!created) {
-      return { sessionId: session.id, state: "skipped", reason: null, items: 0, message: "这个时间点已经逛过了。" };
+      return { sessionId: session.id, state: "skipped", reason: null, items: 0, message: msg().content.surf.service.slotDone };
     }
 
     const controller = new AbortController();
@@ -383,7 +384,7 @@ export class SurfService {
 
     // 总时长只算她真的在逛的时间；你在聊天、她在等的时候计时暂停。
     const budget = new SessionBudget(this.#options.timeoutMs ?? SESSION_TIMEOUT_MS, () =>
-      controller.abort(new SurfError("aborted", "逛太久，先回来了。")),
+      controller.abort(new SurfError("aborted", msg().content.surf.service.tooLong)),
     );
     const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
 
@@ -393,7 +394,7 @@ export class SurfService {
 
     const failures: Failure[] = [];
     const fail = (prefix: string, error: unknown) => {
-      failures.push({ kind: classifyError(error, signal), message: `${prefix}：${cleanMessage(error)}` });
+      failures.push({ kind: classifyError(error, signal), message: msg().content.surf.service.failure(prefix, cleanMessage(error)) });
     };
     let items = 0;
 
@@ -402,7 +403,7 @@ export class SurfService {
       if (!this.#options.isUserChatting?.()) return;
       budget.pause();
       state.waiting = true;
-      this.#stage(character, state.stage, null, "你在聊天，她先等一会儿", true);
+      this.#stage(character, state.stage, null, msg().content.surf.service.waitingForChat, true);
       try {
         while (this.#options.isUserChatting?.() && !signal.aborted) {
           await sleepAbortable(this.#options.chatPollMs ?? CHAT_POLL_MS, signal);
@@ -416,7 +417,7 @@ export class SurfService {
     try {
       this.bus.publish(character, "session", { state: "start", sessionId: session.id, kinds });
 
-      this.#stage(character, "searching", null, "在想今天看点什么");
+      this.#stage(character, "searching", null, msg().content.surf.service.thinking);
       const topics = await this.#pickTopics(character, settings, signal);
       this.store.setQueries(session.id, topics);
       const blocked = mergeBlocked(settings.blocked);
@@ -426,12 +427,12 @@ export class SurfService {
 
       if (kinds.includes("video")) {
         await yieldToUser();
-        this.#stage(character, "watching", "video", `搜：${topics.slice(0, 2).join("、")}`);
+        this.#stage(character, "watching", "video", msg().content.surf.service.searching(topics.slice(0, 2)));
         try {
           const draft = await this.#browseVideo(character, topics, blocked, recentTitles, signal);
           if (draft) drafts.push(draft);
         } catch (error) {
-          fail("视频", error);
+          fail(msg().content.surf.service.kindVideo, error);
         }
       }
 
@@ -439,7 +440,7 @@ export class SurfService {
         const web = this.#options.web!;
         if (!(await this.#webAvailable())) {
           web.prepare?.();
-          failures.push({ kind: "browser", message: "网页：这台机器上还没有能读网页的浏览器。" });
+          failures.push({ kind: "browser", message: msg().content.surf.service.failure(msg().content.surf.service.kindWeb, msg().content.surf.service.noBrowser) });
         } else {
           try {
             const room = Math.max(0, MAX_ITEMS_PER_SESSION - drafts.length);
@@ -448,7 +449,7 @@ export class SurfService {
             );
             drafts.push(...webDrafts);
           } catch (error) {
-            fail("网页", error);
+            fail(msg().content.surf.service.kindWeb, error);
           }
         }
       }
@@ -456,12 +457,12 @@ export class SurfService {
       // 总时长到了（不是后端在退出）而手里已经读到东西：给整理留 20 秒宽限，已经读到的不白读。
       let writeSignal = signal;
       if (signal.aborted) {
-        if (drafts.length === 0 || this.#stopped || options.signal?.aborted) throw signal.reason ?? new SurfError("aborted", "逛太久，先回来了。");
+        if (drafts.length === 0 || this.#stopped || options.signal?.aborted) throw signal.reason ?? new SurfError("aborted", msg().content.surf.service.tooLong);
         writeSignal = AbortSignal.timeout(20_000);
       } else {
         await yieldToUser();
       }
-      this.#stage(character, "writing", null, drafts.length > 0 ? "在把看到的记下来" : null);
+      this.#stage(character, "writing", null, drafts.length > 0 ? msg().content.surf.service.writingDown : null);
       const written = await this.#summarizeAll(character, drafts, blocked, writeSignal);
       for (const entry of written) {
         if (writeSignal.aborted) break;
@@ -474,10 +475,10 @@ export class SurfService {
       }
 
       // 一条都没产出也算没逛成：如实写进会话，别让界面以为她带回了东西。
-      if (items === 0 && drafts.length > 0) failures.push({ kind: "provider", message: "总结失败，一条也没记下来" });
-      if (items === 0 && drafts.length === 0 && failures.length === 0 && kinds.length > 0) failures.push({ kind: "content", message: "没找到合适的内容" });
+      if (items === 0 && drafts.length > 0) failures.push({ kind: "provider", message: msg().content.surf.service.summaryFailed });
+      if (items === 0 && drafts.length === 0 && failures.length === 0 && kinds.length > 0) failures.push({ kind: "content", message: msg().content.surf.service.nothingFound });
       const status = items === 0 && failures.length > 0 ? "failed" : "done";
-      const error = failures.length > 0 ? failures.map((entry) => entry.message).join("；").slice(0, 500) : null;
+      const error = failures.length > 0 ? failures.map((entry) => entry.message).join(msg().content.surf.service.failureSep).slice(0, 500) : null;
       this.store.finishSession(session.id, status, items, error, iso(this.#now()));
 
       if (status === "failed") this.#afterFailure(character, session.id, slot, manual, failures);
@@ -499,7 +500,7 @@ export class SurfService {
         message: error ?? undefined,
       };
     } catch (error) {
-      const reason = signal.aborted ? (signal.reason instanceof Error ? signal.reason.message : "逛太久，先回来了。") : cleanMessage(error);
+      const reason = signal.aborted ? (signal.reason instanceof Error ? signal.reason.message : msg().content.surf.service.tooLong) : cleanMessage(error);
       this.store.finishSession(session.id, items > 0 ? "done" : "failed", items, reason, iso(this.#now()));
       if (!signal.aborted) this.#failures += 1;
       this.bus.publish(character, "session", { state: "end", sessionId: session.id, kinds, count: items });
@@ -593,15 +594,15 @@ export class SurfService {
     }
     if (candidates.length === 0 && lastError) throw lastError;
     const filtered = filterCandidates(candidates, { blocked, seen });
-    if (filtered.length === 0) throw new SurfError("content", "没搜到合适的视频。");
+    if (filtered.length === 0) throw new SurfError("content", msg().content.surf.service.noVideo);
     const ranked = rankVideos(filtered, { topics, recentTitles });
     const pick = await pickVideo(this.#options.provider, character, ranked, topics, signal, recentTitles);
     const chosen = ranked[pick.index] ?? ranked[0];
-    this.#stage(character, "watching", "video", `在看《${chosen.title}》`);
+    this.#stage(character, "watching", "video", msg().content.surf.service.watching(chosen.title));
     const watched = await withRetry(() => abortable(source.watch(chosen, { signal }), signal), { attempts: 2, baseMs: this.#options.retryBaseMs ?? 1200, signal });
     const text = watched.text;
     const fingerprint = contentFingerprint(text);
-    if (this.store.hasFingerprint(character, fingerprint)) throw new SurfError("content", "这个视频的内容以前看过了。");
+    if (this.store.hasFingerprint(character, fingerprint)) throw new SurfError("content", msg().content.surf.service.videoSeen);
     return {
       kind: "video",
       title: watched.title || chosen.title,
@@ -642,7 +643,7 @@ export class SurfService {
     for (const topic of topics) {
       if (drafts.length >= quota || signal.aborted) break;
       await yieldToUser();
-      announce(`搜：${topic}`);
+      announce(msg().content.surf.service.searchingOne(topic));
       let results: Awaited<ReturnType<WebSource["search"]>> = [];
       try {
         results = await withRetry(() => abortable(source.search(webQueryFor(topic)), signal), { attempts: 2, baseMs: this.#options.retryBaseMs ?? 1000, signal });
@@ -666,7 +667,7 @@ export class SurfService {
         picked.add(target.url);
         await yieldToUser();
         if (drafts.length > 0) await this.#pause(signal);
-        announce(`在读《${target.title}》`);
+        announce(msg().content.surf.service.reading(target.title));
         try {
           const page: WebPageText = await withRetry(() => abortable(source.read(target.url, { signal }), signal), {
             attempts: 2,
@@ -702,11 +703,11 @@ export class SurfService {
       }
     }
     if (drafts.length === 0) {
-      if (signal.aborted) throw signal.reason ?? new SurfError("aborted", "逛太久，先回来了。");
+      if (signal.aborted) throw signal.reason ?? new SurfError("aborted", msg().content.surf.service.tooLong);
       if (searchFailure && readFailures.length === 0) throw searchFailure;
       const worst = readFailures.find((entry) => entry.kind === "rate_limit" || entry.kind === "browser") ?? readFailures[0];
-      if (worst) throw new SurfError(worst.kind, `没读到能看懂的网页（${worst.message}）`);
-      throw new SurfError("content", "没读到能看懂的网页。");
+      if (worst) throw new SurfError(worst.kind, msg().content.surf.service.noReadable(worst.message));
+      throw new SurfError("content", msg().content.surf.service.noReadableBare);
     }
     return drafts;
   }
@@ -797,9 +798,9 @@ export class SurfService {
     if (draft.imageUrl && this.#options.thumbs) {
       const path = await this.#options.thumbs.fetch(draft.imageUrl, item.id, { referer: draft.referer }).catch(() => null);
       if (path) this.store.setThumb(item.id, path);
-      else this.store.setThumbError(item.id, "封面下载失败");
+      else this.store.setThumbError(item.id, msg().content.surf.thumbFailed);
     } else {
-      this.store.setThumbError(item.id, "封面地址缺失");
+      this.store.setThumbError(item.id, msg().content.surf.thumbMissing);
     }
     return this.store.item(item.id) ?? item;
   }

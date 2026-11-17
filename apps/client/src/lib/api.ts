@@ -11,6 +11,8 @@
  * 因此各处仍然可以写 `fetch(`${API_BASE}/api/...`)`，不必各自操心令牌。
  * `<img>` / `EventSource` 带不了请求头，用 `authedUrl()` 给地址补 `?token=`。
  */
+import { LANG_HEADER, lang, m } from "../i18n";
+import { pairRequestInit } from "./pair-request";
 
 export interface HubConnection {
   /** 空串 = 同源。 */
@@ -144,6 +146,7 @@ if (typeof window !== "undefined" && !(window as unknown as { __wpFetchPatched?:
     await backendReady;
     const headers = new Headers(init?.headers);
     if (token && !headers.has("authorization")) headers.set("authorization", `Bearer ${token}`);
+    if (!headers.has(LANG_HEADER)) headers.set(LANG_HEADER, lang);
     const response = await nativeFetch(`${API_BASE}${path}`, { ...init, headers });
     if (response.status === 401 && !path.startsWith("/api/pair/")) window.dispatchEvent(new Event("wp:auth-required"));
     return response;
@@ -172,26 +175,22 @@ export async function fetchHealth(signal?: AbortSignal): Promise<Health | null> 
 /** 用配对码向某个 hub 换取长期设备 token（该请求不需要鉴权）。 */
 export async function pairWithHub(url: string, code: string, deviceName: string): Promise<HubConnection> {
   const base = url.trim().replace(/\/+$/, "");
-  if (!/^https?:\/\//i.test(base) && base !== "") throw new Error("地址要以 http:// 或 https:// 开头。");
+  if (!/^https?:\/\//i.test(base) && base !== "") throw new Error(m.common.api.addressScheme);
   let response: Response;
   try {
-    response = await fetch(`${base}/api/pair/redeem`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: code.trim(), name: deviceName }),
-    });
+    response = await fetch(`${base}/api/pair/redeem`, pairRequestInit(code, deviceName));
   } catch {
-    throw new Error("连不上这个地址。检查地址和网络，或确认家里的鲸汐正在运行。");
+    throw new Error(m.common.api.cannotConnect);
   }
   const body = (await response.json().catch(() => ({}))) as { token?: string; message?: string };
-  if (!response.ok || !body.token) throw new Error(body.message ?? `配对失败（HTTP ${response.status}）。`);
+  if (!response.ok || !body.token) throw new Error(body.message ?? m.common.api.pairFailed(response.status));
   return { url: base, token: body.token, name: deviceName };
 }
 
 export function defaultDeviceName(): string {
   const ua = navigator.userAgent;
-  const os = /iPhone|iPad/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android 手机" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows 电脑" : /Linux/.test(ua) ? "Linux 电脑" : "新设备";
-  return inTauri ? `${os}（桌面 App）` : `${os}（浏览器）`;
+  const os = /iPhone|iPad/.test(ua) ? "iPhone" : /Android/.test(ua) ? m.common.api.osAndroid : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? m.common.api.osWindows : /Linux/.test(ua) ? m.common.api.osLinux : m.common.api.osNew;
+  return inTauri ? m.common.api.desktopApp(os) : m.common.api.browser(os);
 }
 
 /**

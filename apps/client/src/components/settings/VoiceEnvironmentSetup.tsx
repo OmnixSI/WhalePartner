@@ -3,6 +3,7 @@ import { API_BASE } from "../../lib/api";
 import { describeNetError } from "../../lib/net";
 import { SettingRow } from "./Row";
 import { Button } from "../ui/Button";
+import { m } from "../../i18n";
 
 type ModelStatus = {
   state: "idle" | "waiting_reference" | "loading" | "ready" | "failed";
@@ -15,28 +16,28 @@ type VoiceStatuses = { asr: ModelStatus | null; tts: ModelStatus | null };
 type Action = "setup" | "rebuild";
 
 function statusLabel(status: ModelStatus | null): string {
-  if (!status) return "状态未连接";
+  if (!status) return m.setup.voice.statusDisconnected;
   switch (status.state) {
-    case "ready": return "已就绪";
-    case "loading": return "准备中";
-    case "failed": return "需要处理";
-    case "waiting_reference": return "等待音色";
-    default: return "未配置";
+    case "ready": return m.setup.voice.statusReady;
+    case "loading": return m.setup.voice.statusLoading;
+    case "failed": return m.setup.voice.statusFailed;
+    case "waiting_reference": return m.setup.voice.statusWaitingReference;
+    default: return m.setup.voice.statusIdle;
   }
 }
 
-async function readStatus(path: string): Promise<ModelStatus> {
+async function readStatus(path: "asr" | "tts"): Promise<ModelStatus> {
   const response = await fetch(`${API_BASE}/api/voice/${path}/status`);
-  if (!response.ok) throw new Error(`读取${path === "asr" ? "转写" : "语音回复"}状态失败（HTTP ${response.status}）。`);
+  if (!response.ok) throw new Error(m.setup.voice.readStatusFailed(path, response.status));
   return await response.json() as ModelStatus;
 }
 
 async function responseError(response: Response): Promise<string> {
   try {
     const body = await response.json() as { message?: string };
-    return body.message ?? `请求失败（HTTP ${response.status}）。`;
+    return body.message ?? m.setup.voice.requestFailed(response.status);
   } catch {
-    return `请求失败（HTTP ${response.status}）。`;
+    return m.setup.voice.requestFailed(response.status);
   }
 }
 
@@ -78,7 +79,7 @@ export function VoiceEnvironmentSetup({ offline }: Props) {
       const failures = await Promise.all(results.filter((response) => !response.ok).map(responseError));
       if (failures.length) setError(failures.join(" "));
     } catch (cause) {
-      setError(describeNetError(cause, "语音环境请求失败，请检查连接后重试。"));
+      setError(describeNetError(cause, m.setup.voice.requestError));
     } finally {
       await load();
       setBusy(null);
@@ -87,12 +88,12 @@ export function VoiceEnvironmentSetup({ offline }: Props) {
 
   return (
     <div className="voice-env">
-      <SettingRow title="语音转写 · X-ASR" desc={statuses.asr?.message ?? "现在拿不到转写模型状态。"}>
+      <SettingRow title={m.setup.voice.asrTitle} desc={statuses.asr?.message ?? m.setup.voice.asrUnavailable}>
         <span className="voice-env__state" data-state={statuses.asr?.state ?? "idle"} role="status">
           {statusLabel(statuses.asr)}
         </span>
       </SettingRow>
-      <SettingRow title="语音回答 · CosyVoice3" desc={statuses.tts?.message ?? "现在拿不到语音模型状态。"}>
+      <SettingRow title={m.setup.voice.ttsTitle} desc={statuses.tts?.message ?? m.setup.voice.ttsUnavailable}>
         <span className="voice-env__state" data-state={statuses.tts?.state ?? "idle"} role="status">
           {statusLabel(statuses.tts)}
         </span>
@@ -100,15 +101,15 @@ export function VoiceEnvironmentSetup({ offline }: Props) {
       <div className="voice-env__actions">
         {!allReady && (
           <Button variant="primary" disabled={offline || busy !== null} onClick={() => void run("setup")}>
-            {busy === "setup" ? "正在配置…" : "一键配置"}
+            {busy === "setup" ? m.setup.voice.settingUp : m.setup.voice.setup}
           </Button>
         )}
         <Button variant="secondary" disabled={offline || busy !== null} onClick={() => void run("rebuild")}>
-          {busy === "rebuild" ? "正在重建…" : "重建语音环境"}
+          {busy === "rebuild" ? m.setup.voice.rebuilding : m.setup.voice.rebuild}
         </Button>
       </div>
       {error && <p className="set-row__bad" role="alert">{error}</p>}
-      <p className="voice-env__note">首次配置需要联网下载约 2.8 GB 语音权重并构建本机运行时。CosyVoice 需要 macOS 15 或更新版本的 Apple Silicon Mac。重建只替换语音模型与运行时，不会删除音色、记忆或聊天数据。</p>
+      <p className="voice-env__note">{m.setup.voice.note}</p>
     </div>
   );
 }

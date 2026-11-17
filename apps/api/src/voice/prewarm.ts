@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import type { AsrService } from "./asr.ts";
 import type { TtsService } from "./tts.ts";
 
@@ -9,7 +10,7 @@ import type { TtsService } from "./tts.ts";
 export function prewarmVoice(asr: AsrService, tts: TtsService, warn: (message: string) => void = console.warn): Promise<void> {
   const reason = (error: unknown) => (error instanceof Error ? error.message : String(error));
   return asr.prewarmIfInstalled()
-    .catch((error: unknown) => warn(`X-ASR 启动预热失败：${reason(error)}`))
+    .catch((error: unknown) => warn(`X-ASR 启动预热失败：${reason(error)}`)) // i18n-ignore：日志
     .then(() => tts.prewarmIfInstalled())
-    .catch((error: unknown) => warn(`本地语音启动预热失败：${reason(error)}`));
+    .catch((error: unknown) => warn(`本地语音启动预热失败：${reason(error)}`)); // i18n-ignore：日志
 }

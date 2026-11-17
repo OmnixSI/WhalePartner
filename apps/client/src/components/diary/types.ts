@@ -1,4 +1,5 @@
 import type { DiaryItem } from "../../lib/diary";
+import { m } from "../../i18n/index.ts";
 
 /**
  * 日记页用到的形状（规范 §7.2 / §10.5）。
@@ -16,26 +17,26 @@ export type DoodleName = "sun" | "cloud" | "rain" | "moon" | "wave" | "star";
 
 /** 天气 → 涂鸦（规范 §7.2.4 的映射表，一个不多一个不少）。 */
 export const WEATHER: Record<string, { doodle: DoodleName; label: string }> = {
-  sunny: { doodle: "sun", label: "晴" },
-  cloudy: { doodle: "cloud", label: "多云" },
-  rain: { doodle: "rain", label: "雨" },
-  night: { doodle: "moon", label: "夜" },
-  wind: { doodle: "wave", label: "风" },
-  snow: { doodle: "star", label: "雪" },
+  sunny: { doodle: "sun", label: m.diary.weather.sunny },
+  cloudy: { doodle: "cloud", label: m.diary.weather.cloudy },
+  rain: { doodle: "rain", label: m.diary.weather.rain },
+  night: { doodle: "moon", label: m.diary.weather.night },
+  wind: { doodle: "wave", label: m.diary.weather.wind },
+  snow: { doodle: "star", label: m.diary.weather.snow },
 };
 
 /** 心情的中文（规范 §7.2.4）。 */
 export const MOOD: Record<string, string> = {
-  happy: "开心",
-  calm: "平静",
-  tired: "有点累",
-  excited: "兴奋",
-  sad: "有点难过",
-  cozy: "暖洋洋",
-  curious: "好奇",
+  happy: m.diary.mood.happy,
+  calm: m.diary.mood.calm,
+  tired: m.diary.mood.tired,
+  excited: m.diary.mood.excited,
+  sad: m.diary.mood.sad,
+  cozy: m.diary.mood.cozy,
+  curious: m.diary.mood.curious,
 };
 
-export const WEEKDAY = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"] as const;
+export const WEEKDAY = m.diary.date.weekday;
 export const MONTH_EN = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] as const;
 
 export type MonthCell = { date: Date; key: string } | null;
@@ -61,7 +62,7 @@ export function shortTheme(value: string, maxLength = 16): string {
   const firstLine = value.split(/\r?\n/u).map((line) => line.trim()).find(Boolean) ?? "";
   if (!firstLine) return "";
 
-  const punctuation = firstLine.search(/[。！？.!?]/u);
+  const punctuation = firstLine.search(/[。！？.!?]/u); // i18n-ignore：按句末标点截取日记正文（中英文标点都要认），不是界面文案
   const sentence = (punctuation < 0 ? firstLine : firstLine.slice(0, punctuation)).trim();
   const theme = sentence || firstLine;
   const chars = Array.from(theme);
@@ -100,7 +101,7 @@ export function titleOf(item: DiaryItemP2, at: Date | null, fallback: string): s
   if (own) return own;
   const video = item.title?.trim();
   if (video) return video;
-  if (at) return `${at.getMonth() + 1}月${at.getDate()}日`;
+  if (at) return m.diary.date.monthDay(at);
   return fallback;
 }
 

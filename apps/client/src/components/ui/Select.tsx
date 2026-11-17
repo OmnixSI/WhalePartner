@@ -11,10 +11,11 @@ import { Check, ChevronDown } from "./glyphs";
 import "./shared.css";
 import "./Field.css";
 import "./Select.css";
+import { m } from "../../i18n";
 
 export type SelectOption = { value: string; label: string; disabled?: boolean };
 
-export function Select({ value, defaultValue, onValueChange, open, options, placeholder = "请选择", disabled, className, id, ...aria }: {
+export function Select({ value, defaultValue, onValueChange, open, options, placeholder = m.common.ui.pleaseSelect, disabled, className, id, ...aria }: {
   value?: string;
   defaultValue?: string;
   onValueChange?: (v: string) => void;

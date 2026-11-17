@@ -1,3 +1,4 @@
+import { m } from "../i18n";
 /**
  * fetch 手里拿到的错误是英文 TypeError：WebKit 说 `Load failed`（Tauri 窗口就是它），
  * Chromium 说 `Failed to fetch`。把这句话原样摆到界面上，等于让人看着报错猜。
@@ -29,13 +30,13 @@ export function isNetworkFailure(error: unknown): boolean {
  * 把错误翻译成一句能照着做的话。
  * `what` 描述哪件事没成，例如「昵称没存上」。
  */
-export function describeNetError(error: unknown, what = "没存上"): string {
+export function describeNetError(error: unknown, what = m.common.net.defaultWhat): string {
   if (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError") {
-    return "已取消。";
+    return m.common.net.cancelled;
   }
   if (isNetworkFailure(error)) {
-    return `${what}：连不上本机后端（${LOCAL_API}）。按「再试一次」；还不行就退出并重新打开鲸汐。`;
+    return m.common.net.backendDown(what, LOCAL_API);
   }
   const raw = error instanceof Error ? error.message.trim() : String(error ?? "").trim();
-  return raw || `${what}，待会儿再试。`;
+  return raw || m.common.net.tryLater(what);
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { API_BASE, currentToken } from "../../lib/api";
 import { logVoiceDiagnostic } from "../../lib/voice-diagnostics";
 import pcmWorkletUrl from "./pcm16-worklet.ts?worker&url";
+import { m } from "../../i18n";
 
 export type VoicePhase = "off" | "permission" | "preparing" | "ready" | "listening" | "recognizing" | "thinking" | "speaking" | "interrupted" | "error";
 export interface VoiceModelStatus {
@@ -49,17 +50,17 @@ function mergeTranscriptParts(parts: string[]): string {
     const touchesCjk = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u.test(lastCharacter)
       || /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u.test(firstCharacter);
     return `${merged}${touchesCjk ? "" : " "}${next}`;
-  }, "").replace(/([，。！？、；：])\s+/gu, "$1").trim();
+  }, "").replace(/([，。！？、；：])\s+/gu, "$1").trim(); // i18n-ignore：中文标点后空白清理正则
 }
 
 function startErrorMessage(error: unknown): string {
   const cause = error as DOMException;
   if (cause?.name === "NotAllowedError" || cause?.name === "SecurityError") {
-    return "麦克风权限未允许。到系统设置 › 隐私与安全性 › 麦克风中允许 WhalePartner 后重试。";
+    return m.chat.voiceMode.micDenied;
   }
-  if (cause?.name === "NotFoundError") return "没有检测到可用麦克风。接入麦克风后重试。";
-  if (cause?.name === "NotReadableError") return "麦克风正被其他应用占用，请关闭占用后重试。";
-  return error instanceof Error ? error.message : "语音模式启动失败，请检查麦克风和本地语音服务后重试。";
+  if (cause?.name === "NotFoundError") return m.chat.voiceMode.micNotFound;
+  if (cause?.name === "NotReadableError") return m.chat.voiceMode.micBusy;
+  return error instanceof Error ? error.message : m.chat.voiceMode.startFailed;
 }
 
 export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTranscript, onInterrupt }: Props) {
@@ -128,7 +129,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     finishWaiter.current = null;
     if (pendingFinish) {
       window.clearTimeout(pendingFinish.timer);
-      pendingFinish.reject(new Error("语音模式已结束。"));
+      pendingFinish.reject(new Error(m.chat.voiceMode.ended));
     }
     const ws = socket.current;
     socket.current = null;
@@ -162,7 +163,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     const timeout = window.setTimeout(() => {
       if (!settled) {
         settled = true;
-        reject(new Error("连接本机 X-ASR 超时，请重试。"));
+        reject(new Error(m.chat.voiceMode.connectTimeout));
         ws.close();
       }
     }, 15_000);
@@ -189,7 +190,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
         const text = data.text?.trim();
         if (text) {
           setPhase("recognizing");
-          setMessage(`已识别：${text}`);
+          setMessage(m.chat.voiceMode.recognized(text));
         }
       } else if (data.type === "final") {
         const text = data.text?.trim();
@@ -197,11 +198,11 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
           transcriptParts.current.push(text);
           if (recordingRef.current) {
             setPhase("listening");
-            setMessage(`已识别：${text}`);
+            setMessage(m.chat.voiceMode.recognized(text));
           }
         }
       } else if (data.type === "segment-end") {
-        if (recordingRef.current) setMessage("可以继续说话");
+        if (recordingRef.current) setMessage(m.chat.voiceMode.keepGoing);
       } else if (data.type === "finished") {
         const pendingFinish = finishWaiter.current;
         finishWaiter.current = null;
@@ -214,16 +215,16 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
         finishWaiter.current = null;
         if (pendingFinish) {
           window.clearTimeout(pendingFinish.timer);
-          pendingFinish.reject(new Error(data.message || "X-ASR 识别失败，请重试。"));
+          pendingFinish.reject(new Error(data.message || m.chat.voiceMode.asrFailed));
         }
-        showFailure(data.message || "X-ASR 识别失败，请重试。", token);
+        showFailure(data.message || m.chat.voiceMode.asrFailed, token);
       }
     };
     ws.onerror = () => {
       if (!settled) {
         settled = true;
         window.clearTimeout(timeout);
-        reject(new Error("无法连接本机 X-ASR 语音服务。"));
+        reject(new Error(m.chat.voiceMode.cannotConnect));
       }
     };
     ws.onclose = (event) => {
@@ -231,14 +232,14 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
       finishWaiter.current = null;
       if (pendingFinish) {
         window.clearTimeout(pendingFinish.timer);
-        pendingFinish.reject(new Error("X-ASR 语音连接已断开，请重试。"));
+        pendingFinish.reject(new Error(m.chat.voiceMode.disconnected));
       }
       if (!settled) {
         settled = true;
         window.clearTimeout(timeout);
-        reject(new Error(event.code === 1006 ? "X-ASR 语音连接中断，请重新进入语音模式。" : `X-ASR 语音服务已断开（${event.code}）。`));
+        reject(new Error(event.code === 1006 ? m.chat.voiceMode.interrupted : m.chat.voiceMode.closedWithCode(event.code)));
       } else if (active.current && token === generation.current) {
-        showFailure("X-ASR 语音连接已断开，请重试。", token);
+        showFailure(m.chat.voiceMode.disconnected, token);
       }
     };
   }), [showFailure]);
@@ -246,9 +247,9 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   const connectAudio = useCallback(async (token: number) => {
     const audioContext = context.current;
     const input = stream.current;
-    if (!audioContext || !input) throw new Error("麦克风音频节点没有准备好。");
+    if (!audioContext || !input) throw new Error(m.chat.voiceMode.audioNodeNotReady);
     if (!audioContext.audioWorklet || typeof AudioWorkletNode === "undefined") {
-      throw new Error("当前系统不支持实时语音音频处理。请更新 macOS 或使用最新版 Safari/Chrome。");
+      throw new Error(m.chat.voiceMode.audioUnsupported);
     }
     await audioContext.audioWorklet.addModule(pcmWorkletUrl);
     if (!active.current || token !== generation.current) return;
@@ -266,9 +267,9 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
   }, [consumeFrame]);
 
   const startCapture = useCallback(async (token: number) => {
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器无法访问麦克风。请在 WhalePartner 桌面版或最新版 Safari/Chrome 中使用。");
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error(m.chat.voiceMode.browserNoMic);
     setPhase("permission");
-    setMessage("等待麦克风权限");
+    setMessage(m.chat.voiceMode.waitingMic);
     const input = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: false },
     });
@@ -286,7 +287,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
         sampleRate: settings.sampleRate ?? null,
       });
       track.addEventListener("ended", () => {
-        showFailure("麦克风连接中断，请检查输入设备后重试。", token);
+        showFailure(m.chat.voiceMode.micDisconnected, token);
       }, { once: true });
     });
     const audioContext = new AudioContext({ latencyHint: "interactive" });
@@ -303,7 +304,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     recordingRef.current = true;
     setRecording(true);
     setPhase("listening");
-    setMessage("正在录音");
+    setMessage(m.chat.voiceMode.recording);
   }, [connectAudio, showFailure]);
 
   const warmModel = useCallback(async (token: number) => {
@@ -317,11 +318,11 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
       const poll = async () => {
         while (!settled && active.current && token === generation.current && !controller.signal.aborted) {
           const response = await fetch(`${API_BASE}/api/voice/asr/status`, { signal: controller.signal });
-          if (!response.ok) throw new Error("读取本地 X-ASR 状态失败。");
+          if (!response.ok) throw new Error(m.chat.voiceMode.statusReadFailed);
           const status = await response.json() as VoiceModelStatus;
           setModel(status);
           if (status.state === "ready") return;
-          if (status.state === "failed") throw new Error(status.message || "X-ASR 模型准备失败。");
+          if (status.state === "failed") throw new Error(status.message || m.chat.voiceMode.modelFailed);
           await Promise.race([new Promise((resolve) => window.setTimeout(resolve, status.state === "loading" ? 900 : 200)), done]);
         }
       };
@@ -329,7 +330,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
       const response = await pending;
       if (!response.ok) {
         const failure = await response.json().catch(() => ({})) as { message?: string };
-        throw new Error(failure.message || "X-ASR 模型准备失败，请检查本机语音组件后重试。");
+        throw new Error(failure.message || m.chat.voiceMode.modelFailedRetry);
       }
       setModel(await response.json() as VoiceModelStatus);
     } finally {
@@ -341,7 +342,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     if (active.current) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setPhase("error");
-      setMessage("当前浏览器无法访问麦克风。请在 WhalePartner 桌面版或最新版 Safari/Chrome 中使用。");
+      setMessage(m.chat.voiceMode.browserNoMic);
       return;
     }
     const token = ++generation.current;
@@ -350,7 +351,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     interruptAssistant();
     try {
       setPhase("preparing");
-      setMessage("正在准备语音");
+      setMessage(m.chat.voiceMode.preparing);
       await warmModel(token);
       if (!active.current || token !== generation.current) return;
       await openStream(token);
@@ -371,18 +372,18 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     setRecording(false);
     finishing.current = true;
     setPhase("recognizing");
-    setMessage("正在完成整段语音识别。");
+    setMessage(m.chat.voiceMode.finishing);
     const ws = socket.current;
     if (ws?.readyState !== WebSocket.OPEN) {
       finishing.current = false;
-      showFailure("X-ASR 语音连接已断开，请重试。", generation.current);
+      showFailure(m.chat.voiceMode.disconnected, generation.current);
       return;
     }
     try {
       await new Promise<void>((resolve, reject) => {
         const timer = window.setTimeout(() => {
           if (finishWaiter.current?.timer === timer) finishWaiter.current = null;
-          reject(new Error("整段语音识别超时，请重试。"));
+          reject(new Error(m.chat.voiceMode.finishTimeout));
         }, FINISH_TIMEOUT_MS);
         finishWaiter.current = {
           resolve: () => { window.clearTimeout(timer); resolve(); },
@@ -404,16 +405,16 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
       finishing.current = false;
       if (!text) {
         setPhase("ready");
-        setMessage("没有识别到声音，可以重新说话。");
+        setMessage(m.chat.voiceMode.nothingHeard);
         return;
       }
       setPhase("ready");
-      setMessage(`已发送：「${text}」`);
+      setMessage(m.chat.voiceMode.sent(text));
       transcriptRef.current(text);
     } catch (error) {
       if (!active.current || token !== generation.current) return;
       finishing.current = false;
-      showFailure(error instanceof Error ? error.message : "整段语音识别失败，请重试。", token);
+      showFailure(error instanceof Error ? error.message : m.chat.voiceMode.finishFailed, token);
     }
   }, [releaseCapture, showFailure]);
 
@@ -430,12 +431,12 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     finishing.current = false;
     transcriptParts.current = [];
     setPhase("preparing");
-    setMessage("正在准备语音");
+    setMessage(m.chat.voiceMode.preparing);
     try {
       await openStream(token);
       if (!active.current || token !== generation.current) return;
       setPhase("ready");
-      setMessage("录音已取消，可以重新说话。");
+      setMessage(m.chat.voiceMode.cancelled);
     } catch (error) {
       if (!active.current || token !== generation.current) return;
       setPhase("error");
@@ -484,7 +485,7 @@ export function useVoiceMode({ assistantBusy, assistantSpeaking = false, onTrans
     else if (assistantBusy) setPhase("thinking");
     else if (["speaking", "thinking", "interrupted"].includes(phase)) {
       setPhase(recordingRef.current ? "listening" : "ready");
-      setMessage("回答结束。点击麦克风开始下一段录音。");
+      setMessage(m.chat.voiceMode.answerDone);
     }
   }, [assistantBusy, assistantSpeaking, phase]);
 

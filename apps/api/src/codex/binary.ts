@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 import { accessSync, closeSync, constants, openSync, readSync, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
@@ -22,7 +23,7 @@ export function resolveCodexBinary(
 ): string {
   const explicit = env.WP_CODEX_BIN?.trim();
   if (explicit) {
-    if (!isExecutableFile(explicit)) throw new CodexBinaryError(`WP_CODEX_BIN 指向的 ${explicit} 不存在或不能执行。`);
+    if (!isExecutableFile(explicit)) throw new CodexBinaryError(msg().core.codex.binExplicitMissing(explicit));
     return explicit;
   }
 
@@ -42,10 +43,10 @@ export function resolveCodexBinary(
 
   if (skipped.length > 0) {
     throw new CodexBinaryError(
-      `找到的 codex（${skipped.join("、")}）是会改写模型参数的包装脚本，大肥鱼不用它；没找到真实的 Codex CLI。请用环境变量 WP_CODEX_BIN 指向真实的 codex。`,
+      msg().core.codex.binWrapper(skipped),
     );
   }
-  throw new CodexBinaryError("没找到本机 Codex CLI：请安装 Codex，或用环境变量 WP_CODEX_BIN 指向它。");
+  throw new CodexBinaryError(msg().core.codex.binNotFound);
 }
 
 function isExecutableFile(path: string) {

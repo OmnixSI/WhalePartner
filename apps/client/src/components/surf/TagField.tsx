@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Field";
+import { m } from "../../i18n";
 
 type Props = {
   label: string;
@@ -27,7 +28,7 @@ export function TagField({ label, hint, placeholder, values, max, maxChars, disa
     const value = draft.trim();
     if (!value) return;
     if ([...value].length > maxChars) {
-      setNote(`每个最多 ${maxChars} 个字。`);
+      setNote(m.surf.tagField.maxChars(maxChars));
       return;
     }
     if (values.includes(value)) {
@@ -36,7 +37,7 @@ export function TagField({ label, hint, placeholder, values, max, maxChars, disa
       return;
     }
     if (full) {
-      setNote(`最多 ${max} 个。`);
+      setNote(m.surf.tagField.maxCount(max));
       return;
     }
     onChange([...values, value]);
@@ -50,7 +51,7 @@ export function TagField({ label, hint, placeholder, values, max, maxChars, disa
         <Input className="tagfield__input"
           type="text"
           value={draft}
-          placeholder={full ? `已经有 ${max} 个了` : placeholder}
+          placeholder={full ? m.surf.tagField.full(max) : placeholder}
           aria-label={label}
           maxLength={maxChars + 4}
           disabled={disabled || full}
@@ -63,18 +64,18 @@ export function TagField({ label, hint, placeholder, values, max, maxChars, disa
           }}
         />
         <Button variant="secondary" disabled={disabled || full} onClick={add}>
-          加上
+          {m.surf.tagField.add}
         </Button>
       </div>
       {values.length > 0 && (
-        <ul className="tagfield__list" aria-label={`已加的${label}`}>
+        <ul className="tagfield__list" aria-label={m.surf.tagField.listAria(label)}>
           {values.map((value) => (
             <li key={value} className="tagfield__chip">
               <span>{value}</span>
               <button
                 type="button"
                 className="tagfield__x"
-                aria-label={`去掉 ${value}`}
+                aria-label={m.surf.tagField.remove(value)}
                 disabled={disabled}
                 onClick={() => onChange(values.filter((item) => item !== value))}
               >

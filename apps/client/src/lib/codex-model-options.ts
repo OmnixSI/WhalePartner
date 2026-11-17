@@ -1,3 +1,4 @@
+import { m } from "../i18n/index.ts";
 /**
  * 设置 › 模型接入里 Codex 两个下拉的数据：模型列表只来自
  * `GET /api/setup/codex/models`，前端不写死模型名。这里全是纯函数，方便单测。
@@ -33,7 +34,7 @@ export interface Choice {
 /** 解析模型列表响应；整体形状不对就抛错，坏条目单独丢掉。 */
 export function parseCodexModels(body: unknown): CodexModelOption[] {
   const list = (body as { models?: unknown } | null)?.models;
-  if (!Array.isArray(list)) throw new Error("模型列表的格式不对。");
+  if (!Array.isArray(list)) throw new Error(m.common.codex.badFormat);
   const models: CodexModelOption[] = [];
   for (const item of list) {
     if (!item || typeof item !== "object") continue;
@@ -96,14 +97,14 @@ export function effortAfterModelChange(next: CodexModelOption | undefined, curre
 
 /** 下拉里显示「显示名 + 接口里用来保存的 model」；两者相同时只显示一次。 */
 function modelLabel(option: CodexModelOption): string {
-  return option.displayName === option.model ? option.model : `${option.displayName}（${option.model}）`;
+  return option.displayName === option.model ? option.model : m.common.codex.modelLabel(option.displayName, option.model);
 }
 
 /** 模型下拉：列表里的全部模型；已保存但已不在列表里的值放最前面并标注。 */
 export function modelChoices(models: readonly CodexModelOption[], saved: string): Choice[] {
   const choices = models.map((option) => ({ value: option.model, label: modelLabel(option), missing: false }));
   if (saved !== "" && !findModel(models, saved)) {
-    choices.unshift({ value: saved, label: `${saved}（不在当前列表）`, missing: true });
+    choices.unshift({ value: saved, label: m.common.codex.notInList(saved), missing: true });
   }
   return choices;
 }
@@ -117,7 +118,7 @@ export function effortChoices(
   const efforts = effortsFor(option);
   const choices = efforts.map((effort) => ({ value: effort, label: label(effort), missing: false }));
   if (saved !== "" && !efforts.includes(saved)) {
-    choices.unshift({ value: saved, label: `${label(saved)}（不在当前列表）`, missing: true });
+    choices.unshift({ value: saved, label: m.common.codex.notInList(label(saved)), missing: true });
   }
   return choices;
 }
@@ -125,6 +126,6 @@ export function effortChoices(
 /** 模型列表读不到时，错误下面那行提示。`kind` 是 `/api/setup/codex/models` 失败时带的 `kind`。 */
 export function catalogFailureHint(kind: string | undefined): string {
   return kind === "binary"
-    ? "已保存的选择不会被清空；但找不到可用的 Codex，聊天和视频摘要暂时无法运行。装好 Codex 或设置 WP_CODEX_BIN 后重启大肥鱼。"
-    : "已保存的设置不受影响，照常使用。";
+    ? m.common.codex.noBinary
+    : m.common.codex.savedOk;
 }

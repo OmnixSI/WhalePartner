@@ -1,3 +1,4 @@
+import { msg } from "../i18n/index.ts";
 /**
  * 失败按类型处理：网络抖动可以再试，限流要冷却，内容不合适就直接换一个，
  * 浏览器没装好就降级成只看视频。分类只看错误对象本身，不依赖具体库。
@@ -22,6 +23,43 @@ export class SurfError extends Error {
   }
 }
 
+/**
+ * 界面文案分中英两种，不能再靠消息文字分类。抛错处已经知道性质的，用 code 标明：
+ * 分类时先看 code（也看 cause 链，外层包了一层的照样认得），中文原有的文字匹配保持不变。
+ */
+export const ERROR_CODES = {
+  rateLimited: "WP_RATE_LIMITED",
+  content: "WP_CONTENT",
+  /** 地址指向内部网络：不读，也不换浏览器重试。 */
+  unsafeAddress: "WP_UNSAFE_ADDRESS",
+} as const;
+
+type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
+
+const KIND_OF_CODE: Record<ErrorCode, SurfErrorKind> = {
+  WP_RATE_LIMITED: "rate_limit",
+  WP_CONTENT: "content",
+  WP_UNSAFE_ADDRESS: "content",
+};
+
+/** 给错误标上 code，原对象返回，方便直接 throw。 */
+export function withCode<E extends Error>(error: E, code: ErrorCode): E {
+  return Object.assign(error, { code });
+}
+
+/** 错误本身或它的 cause 链上有没有这个 code。 */
+export function hasCode(error: unknown, code: ErrorCode): boolean {
+  return taggedCode(error) === code;
+}
+
+function taggedCode(error: unknown): ErrorCode | undefined {
+  for (let current = error, depth = 0; current && typeof current === "object" && depth < 4; current = (current as { cause?: unknown }).cause, depth += 1) {
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string" && code in KIND_OF_CODE) return code as ErrorCode;
+  }
+  return undefined;
+}
+
 const NETWORK_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND", "EPIPE", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT"]);
 
 /** B 站的限流/风控返回码。 */
@@ -36,12 +74,16 @@ export function classifyError(error: unknown, signal?: AbortSignal): SurfErrorKi
   const status = typeof error === "object" && error !== null && "status" in error ? Number((error as { status: unknown }).status) : Number.NaN;
   if (name === "AbortError" && !message.includes("timeout")) return "aborted";
   if (status === 429 || status === 412 || RATE_LIMIT_CODES.has(status)) return "rate_limit";
+  const tagged = taggedCode(error);
+  if (tagged) return KIND_OF_CODE[tagged];
+  // i18n-ignore-start：匹配中文报错的正则，与 0.3.6 逐字相同
   if (/(\b429\b|\b412\b|限流|风控|too many requests|rate.?limit)/i.test(message)) return "rate_limit";
   if (/executable doesn't exist|browsertype\.launch|没有能读网页的浏览器|浏览器.*(没装|不可用|起不来)|chromium/i.test(message)) return "browser";
   if (name === "TimeoutError" || NETWORK_CODES.has(code) || /timeout|timed out|超时|fetch failed|network|socket|econn|net::err|dns/i.test(message)) return "network";
   const httpStatus = Number.isFinite(status) ? status : Number(/(?:返回了|http)\s*([45]\d\d)/i.exec(message)?.[1] ?? Number.NaN);
   if (httpStatus >= 400 && httpStatus < 600) return httpStatus >= 500 ? "network" : "content";
   if (/正文|网页里没有|不会去读|内部网络|有效的网页|只能读|登录|验证码|没有读到/.test(message)) return "content";
+  // i18n-ignore-end
   return "unknown";
 }
 
@@ -60,14 +102,14 @@ export interface RetryOptions {
 
 export const sleepAbortable = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
-    if (signal?.aborted) return reject(signal.reason ?? new SurfError("aborted", "已中止"));
+    if (signal?.aborted) return reject(signal.reason ?? new SurfError("aborted", msg().content.surf.aborted));
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
       resolve();
     }, ms);
     const onAbort = () => {
       clearTimeout(timer);
-      reject(signal?.reason ?? new SurfError("aborted", "已中止"));
+      reject(signal?.reason ?? new SurfError("aborted", msg().content.surf.aborted));
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
@@ -102,10 +144,10 @@ export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise
   if (!signal) return promise;
   if (signal.aborted) {
     promise.catch(() => undefined);
-    return Promise.reject(signal.reason ?? new SurfError("aborted", "已中止"));
+    return Promise.reject(signal.reason ?? new SurfError("aborted", msg().content.surf.aborted));
   }
   return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason ?? new SurfError("aborted", "已中止"));
+    const onAbort = () => reject(signal.reason ?? new SurfError("aborted", msg().content.surf.aborted));
     signal.addEventListener("abort", onAbort, { once: true });
     promise.then(
       (value) => {

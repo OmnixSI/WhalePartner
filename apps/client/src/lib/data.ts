@@ -1,5 +1,6 @@
 import { API_BASE } from "./api";
 import { describeNetError } from "./net";
+import { m } from "../i18n";
 
 export interface ExportResult {
   ok: true;
@@ -11,7 +12,7 @@ export interface ExportResult {
 }
 
 async function readError(response: Response): Promise<never> {
-  let detail = `请求失败（HTTP ${response.status}）`;
+  let detail = m.chat.api.requestFailed(response.status);
   try {
     const body = (await response.json()) as { error?: string; message?: string };
     detail = body.message ?? body.error ?? detail;
@@ -37,7 +38,7 @@ export async function exportAll(): Promise<{ download: true; filename: string }>
     const { id } = (await created.json()) as { id: string };
     file = await fetch(`${API_BASE}/api/export?id=${encodeURIComponent(id)}`);
   } catch (error) {
-    throw new Error(describeNetError(error, "导出没成"));
+    throw new Error(describeNetError(error, m.chat.api.exportFailed));
   }
   if (!file.ok) await readError(file);
 
@@ -71,7 +72,7 @@ export async function deleteAll(): Promise<DeleteAllResult> {
       body: JSON.stringify({ confirm: "DELETE_ALL" }),
     });
   } catch (error) {
-    throw new Error(describeNetError(error, "删除没成"));
+    throw new Error(describeNetError(error, m.chat.api.deleteDataFailed));
   }
   if (!response.ok) return readError(response);
   return (await response.json()) as DeleteAllResult;

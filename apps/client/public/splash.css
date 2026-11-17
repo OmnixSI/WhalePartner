@@ -9,6 +9,8 @@ body { margin: 0; background: transparent; }
 }
 html[data-theme="dark"] .splash { color: #EDE6D6; }
 .splash__name { margin: 0; font-family: "LXGW WenKai", "Songti SC", "Noto Serif CJK SC", serif; font-size: 22px; letter-spacing: .3em; text-indent: .3em; }
+:lang(en) .splash__name { letter-spacing: .06em; text-indent: .06em; }
+html:lang(en) .splash__name:not([data-named]) { visibility: hidden; }
 .splash__line { display: block; width: 132px; height: 1.5px; background: currentColor; opacity: .55; transform-origin: 50% 50%; animation: splash-breath 4.5s cubic-bezier(.65, 0, .35, 1) infinite; }
 @keyframes splash-in { from { opacity: 0; } }
 @keyframes splash-breath { 50% { transform: scaleX(.55); opacity: .3; } }
