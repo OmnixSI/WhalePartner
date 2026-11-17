@@ -65,11 +65,120 @@ impl Backend {
 
 struct KeepRunning(AtomicBool);
 
+/* ------------------------------------------------------------------ 界面语言 */
+
+/// 托盘和弹窗用的语言。前端启动、切换语言时经 `set_ui_lang` 告诉这里（已按「跟随系统」解析好），
+/// 并存进配置目录的 `ui-lang`；前端还没来得及说（第一次启动就失败）时按系统语言猜。
+#[derive(Clone, Copy, PartialEq)]
+enum Lang {
+  Zh,
+  En,
+}
+
+struct UiLang(Mutex<Lang>);
+
+fn lang_path(app: &AppHandle) -> Option<PathBuf> {
+  app.path().app_config_dir().ok().map(|d| d.join("ui-lang"))
+}
+
+fn parse_lang(value: &str) -> Option<Lang> {
+  match value.trim() {
+    "zh" => Some(Lang::Zh),
+    "en" => Some(Lang::En),
+    _ => None,
+  }
+}
+
+/// 系统语言是中文就用中文，其他一律英文（和前端 `systemLang` 一致）。
+fn system_lang() -> Lang {
+  for key in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+    if let Ok(value) = std::env::var(key) {
+      if !value.is_empty() && value != "C" && value != "POSIX" {
+        return if value.to_ascii_lowercase().starts_with("zh") { Lang::Zh } else { Lang::En };
+      }
+    }
+  }
+  #[cfg(target_os = "macos")]
+  {
+    // 从 Dock 打开的 App 没有 LANG；读系统首选语言列表的第一项。
+    if let Ok(out) = Command::new("/usr/bin/defaults").args(["read", "-g", "AppleLanguages"]).output() {
+      let text = String::from_utf8_lossy(&out.stdout);
+      if let Some(first) = text.split(|c: char| c == '"' || c == '(' || c == ',' || c.is_whitespace()).find(|s| !s.is_empty() && *s != ")") {
+        return if first.to_ascii_lowercase().starts_with("zh") { Lang::Zh } else { Lang::En };
+      }
+    }
+  }
+  Lang::Zh
+}
+
+fn load_lang(app: &AppHandle) -> Lang {
+  lang_path(app).and_then(|p| fs::read_to_string(p).ok()).and_then(|t| parse_lang(&t)).unwrap_or_else(system_lang)
+}
+
+fn ui_lang(app: &AppHandle) -> Lang {
+  app.try_state::<UiLang>().map(|s| *s.0.lock().unwrap()).unwrap_or(Lang::Zh)
+}
+
+fn lang_code(lang: Lang) -> &'static str {
+  match lang {
+    Lang::Zh => "zh",
+    Lang::En => "en",
+  }
+}
+
+// i18n-ignore-start：桌面壳的中英两份文字集中在这里
+fn tr(app: &AppHandle, zh: &'static str, en: &'static str) -> &'static str {
+  match ui_lang(app) {
+    Lang::Zh => zh,
+    Lang::En => en,
+  }
+}
+
+const T_OPEN: (&str, &str) = ("打开鲸汐", "Open WhalePartner");
+const T_QUIT: (&str, &str) = ("退出鲸汐", "Quit WhalePartner");
+const T_TOOLTIP: (&str, &str) = ("鲸汐", "WhalePartner");
+const T_WINDOW_TITLE: (&str, &str) = ("鲸汐 · WhalePartner", "WhalePartner");
+const T_FAILED_TITLE: (&str, &str) = ("鲸汐没能启动", "WhalePartner couldn't start");
+const T_NO_CONFIG_DIR: (&str, &str) = ("找不到配置目录", "Couldn't find the config folder");
+const T_NO_EXE_DIR: (&str, &str) = ("找不到可执行文件目录", "Couldn't find the app's folder");
+
+fn t_spawn_failed(app: &AppHandle, error: &std::io::Error) -> String {
+  match ui_lang(app) {
+    Lang::Zh => format!("无法启动后端：{error}"),
+    Lang::En => format!("Couldn't start the backend: {error}"),
+  }
+}
+
+fn t_with_log(app: &AppHandle, message: &str, log: &Path) -> String {
+  match ui_lang(app) {
+    Lang::Zh => format!("{message}\n\n日志：{}", log.display()),
+    Lang::En => format!("{message}\n\nLog: {}", log.display()),
+  }
+}
+
+fn t_health_timeout(app: &AppHandle, secs: u64, log: &Path) -> String {
+  match ui_lang(app) {
+    Lang::Zh => format!("后端在 {secs} 秒内没有准备好。\n\n日志在：{}\n\n点确定后会先打开窗口，后端起来后会自动接上。", log.display()),
+    Lang::En => format!(
+      "The backend wasn't ready within {secs} seconds.\n\nLog: {}\n\nClick OK to open the window now; it will connect once the backend is up.",
+      log.display()
+    ),
+  }
+}
+
+fn t_gave_up(app: &AppHandle, times: u32, log: &Path) -> String {
+  match ui_lang(app) {
+    Lang::Zh => format!("后端连续退出了 {times} 次，不再重试。\n\n日志在：{}", log.display()),
+    Lang::En => format!("The backend exited {times} times in a row, so it won't be retried.\n\nLog: {}", log.display()),
+  }
+}
+// i18n-ignore-end
+
 /* ------------------------------------------------------------------ 小工具 */
 
 fn random_token() -> String {
   let mut buf = [0u8; 32];
-  getrandom::fill(&mut buf).expect("系统随机数不可用");
+  getrandom::fill(&mut buf).expect("系统随机数不可用"); // i18n-ignore：启动即崩溃的断言，不会显示
   buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -130,7 +239,7 @@ fn load_keep_running(app: &AppHandle) -> bool {
 }
 
 fn save_keep_running(app: &AppHandle, value: bool) -> Result<(), String> {
-  let path = settings_path(app).ok_or("找不到配置目录")?;
+  let path = settings_path(app).ok_or(tr(app, T_NO_CONFIG_DIR.0, T_NO_CONFIG_DIR.1))?;
   if let Some(dir) = path.parent() {
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
   }
@@ -144,11 +253,11 @@ fn ensure_tray(app: &AppHandle) -> tauri::Result<()> {
   if app.tray_by_id(TRAY_ID).is_some() {
     return Ok(());
   }
-  let open = MenuItem::with_id(app, "open", "打开鲸汐", true, None::<&str>)?;
-  let quit = MenuItem::with_id(app, "quit", "退出鲸汐", true, None::<&str>)?;
+  let open = MenuItem::with_id(app, "open", tr(app, T_OPEN.0, T_OPEN.1), true, None::<&str>)?;
+  let quit = MenuItem::with_id(app, "quit", tr(app, T_QUIT.0, T_QUIT.1), true, None::<&str>)?;
   let menu = Menu::with_items(app, &[&open, &quit])?;
   let mut builder = TrayIconBuilder::with_id(TRAY_ID)
-    .tooltip("鲸汐")
+    .tooltip(tr(app, T_TOOLTIP.0, T_TOOLTIP.1))
     .menu(&menu)
     .show_menu_on_left_click(false)
     .on_menu_event(|app, event| match event.id.as_ref() {
@@ -190,7 +299,7 @@ fn build_command(app: &AppHandle, port: u16, token: &str) -> Result<Command, Str
       .arg(format!("--env-file-if-exists={}", data_dir.join(".env").display()))
       .arg("src/server.ts");
   } else {
-    let exe_dir = std::env::current_exe().map_err(|e| e.to_string())?.parent().map(Path::to_path_buf).ok_or("找不到可执行文件目录")?;
+    let exe_dir = std::env::current_exe().map_err(|e| e.to_string())?.parent().map(Path::to_path_buf).ok_or(tr(app, T_NO_EXE_DIR.0, T_NO_EXE_DIR.1))?;
     let node = exe_dir.join(if cfg!(windows) { "whale-node.exe" } else { "whale-node" });
     let res = app.path().resource_dir().map_err(|e| e.to_string())?;
     let entry = res.join("api").join("dist").join("server.mjs");
@@ -219,6 +328,7 @@ fn build_command(app: &AppHandle, port: u16, token: &str) -> Result<Command, Str
     .env("API_PORT", port.to_string())
     .env("WP_DATA_DIR", &data_dir)
     .env("WP_LOCAL_TOKEN", token)
+    .env("WP_UI_LANG", lang_code(ui_lang(app)))
     .stdin(Stdio::piped());
 
   #[cfg(windows)]
@@ -242,7 +352,7 @@ fn spawn_backend(app: &AppHandle, backend: &Backend) -> Result<(), String> {
       cmd.stdout(Stdio::null()).stderr(Stdio::null());
     }
   }
-  let mut child = cmd.spawn().map_err(|e| format!("无法启动后端：{e}"))?;
+  let mut child = cmd.spawn().map_err(|e| t_spawn_failed(app, &e))?;
   let stdin = child.stdin.take();
   *backend.running.lock().unwrap() = Some(Running { child, _stdin: stdin });
   Ok(())
@@ -292,7 +402,7 @@ fn error_dialog(app: &AppHandle, body: String) {
   app
     .dialog()
     .message(body)
-    .title("鲸汐没能启动")
+    .title(tr(app, T_FAILED_TITLE.0, T_FAILED_TITLE.1))
     .kind(MessageDialogKind::Error)
     .blocking_show();
 }
@@ -309,7 +419,7 @@ fn supervise(app: AppHandle) {
     }
     backend.ready.store(false, Ordering::SeqCst);
     if let Err(message) = spawn_backend(&app, &backend) {
-      error_dialog(&app, format!("{message}\n\n日志：{}", backend.log_path.display()));
+      error_dialog(&app, t_with_log(&app, &message, &backend.log_path));
       show_main(&app);
       return;
     }
@@ -338,14 +448,7 @@ fn supervise(app: AppHandle) {
           let _ = app.emit("backend-ready", info);
         } else if !timed_out_reported && started.elapsed() > HEALTH_TIMEOUT {
           timed_out_reported = true;
-          error_dialog(
-            &app,
-            format!(
-              "后端在 {} 秒内没有准备好。\n\n日志在：{}\n\n点确定后会先打开窗口，后端起来后会自动接上。",
-              HEALTH_TIMEOUT.as_secs(),
-              backend.log_path.display()
-            ),
-          );
+          error_dialog(&app, t_health_timeout(&app, HEALTH_TIMEOUT.as_secs(), &backend.log_path));
           if !first_window_shown {
             first_window_shown = true;
             show_main(&app);
@@ -373,10 +476,7 @@ fn supervise(app: AppHandle) {
     }
     let _ = app.emit("backend-exited", BackendExited { code: exit_code, will_restart });
     if !will_restart {
-      error_dialog(
-        &app,
-        format!("后端连续退出了 {} 次，不再重试。\n\n日志在：{}", MAX_RESTARTS + 1, backend.log_path.display()),
-      );
+      error_dialog(&app, t_gave_up(&app, MAX_RESTARTS + 1, &backend.log_path));
       show_main(&app);
       return;
     }
@@ -411,6 +511,32 @@ fn set_keep_running(app: AppHandle, state: State<'_, KeepRunning>, enabled: bool
   Ok(())
 }
 
+/// 前端告诉壳当前界面语言（已解析好的 zh / en）。变了就存下来，托盘在的话按新语言重建。
+#[tauri::command]
+fn set_ui_lang(app: AppHandle, state: State<'_, UiLang>, lang: String) -> Result<(), String> {
+  let next = parse_lang(&lang).ok_or("lang must be zh or en")?;
+  let changed = {
+    let mut current = state.0.lock().unwrap();
+    let changed = *current != next;
+    *current = next;
+    changed
+  };
+  if let Some(path) = lang_path(&app) {
+    if let Some(dir) = path.parent() {
+      let _ = fs::create_dir_all(dir);
+    }
+    let _ = fs::write(path, lang_code(next));
+  }
+  if let Some(window) = app.get_webview_window("main") {
+    let _ = window.set_title(tr(&app, T_WINDOW_TITLE.0, T_WINDOW_TITLE.1));
+  }
+  if changed && app.tray_by_id(TRAY_ID).is_some() {
+    remove_tray(&app);
+    ensure_tray(&app).map_err(|e| e.to_string())?;
+  }
+  Ok(())
+}
+
 /* ------------------------------------------------------------------ 入口 */
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -426,12 +552,13 @@ pub fn run() {
   let app = builder
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_dialog::init())
-    .invoke_handler(tauri::generate_handler![backend_info, get_keep_running, set_keep_running])
+    .invoke_handler(tauri::generate_handler![backend_info, get_keep_running, set_keep_running, set_ui_lang])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(tauri_plugin_log::Builder::default().level(log::LevelFilter::Info).build())?;
       }
       let handle = app.handle().clone();
+      app.manage(UiLang(Mutex::new(load_lang(&handle))));
       let log_dir = app.path().app_log_dir().unwrap_or_else(|_| std::env::temp_dir());
       let backend = Backend {
         port: Mutex::new(pick_port(None)),

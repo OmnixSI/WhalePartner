@@ -3,7 +3,7 @@
  *
  * 语言来自前端每个请求带的 `x-wp-lang` 头：请求处理期间用 AsyncLocalStorage 记住，
  * 深处的服务函数直接 `msg()` 就能拿到对的那份，不用一层层传参。
- * 后台任务（不在请求里）用最近一次请求的语言；进程刚起、还没有请求时按中文。
+ * 后台任务（不在请求里）用最近一次请求的语言；进程刚起、还没有请求时按 WP_UI_LANG，没有就中文。
  *
  * 不翻译的：日志、给模型的提示词和人设（见 docs 里的说明）、关键词表。
  */
@@ -17,12 +17,13 @@ export type Messages = typeof zh;
 
 export const LANG_HEADER = "x-wp-lang";
 
-const store = new AsyncLocalStorage<Lang>();
-let lastSeen: Lang = "zh";
-
 export function parseLang(value: unknown): Lang | null {
   return value === "en" || value === "zh" ? value : null;
 }
+
+const store = new AsyncLocalStorage<Lang>();
+/** 桌面壳启动后端时用 WP_UI_LANG 告诉上次的界面语言，后台任务在第一个请求到来前也用对语言。 */
+let lastSeen: Lang = parseLang(process.env.WP_UI_LANG) ?? "zh";
 
 /** 请求里带的语言；没带（老客户端、curl）返回 null。 */
 export function requestLang(request: IncomingMessage): Lang | null {
