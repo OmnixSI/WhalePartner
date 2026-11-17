@@ -82,11 +82,12 @@ export class SessionRepository {
     indexMessage(this.db, result.id, content);
     if (role === "user") {
       const title = content.replace(/\s+/g, " ").trim().slice(0, 40) || msg().core.store.newChat;
-      // i18n-ignore-start：旧版会话的默认标题
+      // 中英两种「新聊天」默认标题都算没改过名；「历史聊天」是旧版迁移来的默认标题。
+      // i18n-ignore-start：SQL 里的旧版默认标题
       this.db.prepare(`
-        UPDATE chat_sessions SET title = CASE WHEN title_manual = 0 AND title IN ('${msg("zh").core.store.newChat}','${msg("en").core.store.newChat}','历史聊天') THEN ? ELSE title END,
+        UPDATE chat_sessions SET title = CASE WHEN title_manual = 0 AND title IN (?, ?, '历史聊天') THEN ? ELSE title END,
           updated_at = ? WHERE id = ?
-      `).run(title, result.createdAt, session.id);
+      `).run(msg("zh").core.store.newChat, msg("en").core.store.newChat, title, result.createdAt, session.id);
       // i18n-ignore-end
     } else {
       this.db.prepare("UPDATE chat_sessions SET updated_at = ? WHERE id = ?").run(result.createdAt, session.id);

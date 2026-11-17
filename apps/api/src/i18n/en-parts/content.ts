@@ -5,7 +5,7 @@ export const content: typeof Zh = {
     aborted: "Stopped.",
     backoffWait: (minutes: number) => `Bilibili just rate-limited us, so exploring will wait ${minutes} more ${minutes === 1 ? "minute" : "minutes"} before searching.`,
     onlyHttp: "Only http or https pages can be read.",
-    internalAddress: "That address points to an internal network, so it won't be opened.",
+    internalAddress: "That link points to an internal address, so it won't be opened.",
     thumbMissing: "Cover URL missing",
     thumbFailed: "Cover download failed",
     bili: {
@@ -43,7 +43,7 @@ export const content: typeof Zh = {
       looksLikeIndex: "The page looks more like an index and has no main text.",
     },
     search: {
-      internal: "The search address resolves to an internal network, skipping it.",
+      internal: "The search address resolves to an internal address, skipping it.",
       status: (status: number) => `Search returned ${status}.`,
     },
     settings: {

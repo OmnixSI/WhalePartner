@@ -48,7 +48,7 @@ interface StaticHop {
   body: Buffer;
 }
 
-const privateAddressError = (error: unknown) => error instanceof Error && /内部地址/.test(error.message); // i18n-ignore：匹配错误信息的正则（含中英文）
+const privateAddressError = (error: unknown) => error instanceof Error && /内部地址|internal address/.test(error.message); // i18n-ignore：匹配错误信息的正则（含中英文）
 
 /**
  * 用 node:http(s) 发一跳请求：lookup 在连接时校验解析出的地址，DNS 重绑定没有先查后连的窗口。
@@ -167,7 +167,7 @@ export function createPageReader(options: PageReaderOptions = {}): PageReader {
         const kind = classifyError(error, signal);
         // 取消、限流、地址不安全：换浏览器也没用，直接抛。
         if (kind === "aborted" || kind === "rate_limit") throw error;
-        if (error instanceof SurfError && /内部网络|有效的网页|http 或 https|internal network|valid web address|http or https/.test(error.message)) throw error; // i18n-ignore：匹配错误信息的正则（含中英文）
+        if (error instanceof SurfError && /内部网络|有效的网页|http 或 https|internal address|valid web address|http or https/.test(error.message)) throw error; // i18n-ignore：匹配错误信息的正则（含中英文）
       }
 
       if (!browser.isReady()) {
