@@ -38,7 +38,10 @@
   var name = NAMES[cid] || NAMES.deepseek;
   document.addEventListener("DOMContentLoaded", function () {
     var el = document.getElementById("splash-name");
-    if (el) el.textContent = name;
+    if (!el) return;
+    el.textContent = name;
+    // 英文：index.html 里写死的「鲸汐」在写好英文名之前一直隐藏（见 splash.css），中文照旧不动
+    if (en) el.setAttribute("data-named", "");
   });
   var meta = document.querySelector('meta[name="theme-color"]');
   if (meta && resolved === "dark") meta.setAttribute("content", "#0F1C2A");
