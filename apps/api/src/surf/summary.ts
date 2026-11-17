@@ -1,6 +1,7 @@
 import type { ChatProvider } from "../llm/types.ts";
 import type { CharacterId } from "../persona/persona.ts";
 import { buildSystemPrompt } from "../persona/persona.ts";
+import { currentLang, outputLanguageNote } from "../i18n/index.ts";
 import { containsBlocked } from "./blocklist.ts";
 import { extractJson } from "./picker.ts";
 import type { ItemSummary, VideoCandidate, WebResult } from "./types.ts";
@@ -38,7 +39,10 @@ export function summaryPrompt(input: { kind: "video" | "web"; title: string; sou
     `来源：${input.sourceSite}`,
     "内容：",
     clip(input.text, 6000),
-  ].join("\n");
+  ].join("\n") + outputLanguageNote(
+    'Keep the JSON keys unchanged; "worth_sharing" stays an integer from 1 to 5 and "safe" stays true or false. ' +
+      '"summary" is 50 to 110 English words. "comment" is one short English sentence of 5 to 15 words. "tags" are at most 3 English tags of 1 to 2 words each.',
+  );
 }
 
 /**
@@ -52,7 +56,9 @@ export function parseItemSummary(raw: string): ItemSummary | null {
   const summary = typeof body.summary === "string" ? body.summary.replace(/\s+/g, " ").trim() : "";
   if (summary.length < 10) return null;
   const commentRaw = typeof body.comment === "string" ? body.comment.replace(/\s+/g, " ").trim() : "";
-  const comment = [...commentRaw].slice(0, 40).join("");
+  // 英文按字母算比中文长得多：英文模式放宽截断上限，中文照旧。
+  const en = currentLang() === "en";
+  const comment = [...commentRaw].slice(0, en ? 120 : 40).join("");
   const tagsRaw = body.tags;
   const tags: string[] = [];
   if (Array.isArray(tagsRaw)) {
@@ -60,14 +66,14 @@ export function parseItemSummary(raw: string): ItemSummary | null {
       if (typeof tag !== "string") continue;
       const trimmed = tag.replace(/^#/, "").trim();
       if (!trimmed) continue;
-      tags.push([...trimmed].slice(0, 6).join(""));
+      tags.push([...trimmed].slice(0, en ? 24 : 6).join(""));
       if (tags.length === 3) break;
     }
   }
   const scoreRaw = Number(body.worth_sharing);
   const score = Number.isFinite(scoreRaw) ? Math.min(5, Math.max(1, Math.round(scoreRaw))) : 3;
   const safe = body.safe === undefined ? true : body.safe !== false;
-  return { summary: clip(summary, 400), comment, tags, worthSharing: score, safe };
+  return { summary: clip(summary, en ? 900 : 400), comment, tags, worthSharing: score, safe };
 }
 
 /** 总结一条，失败重试一次；两次都失败返回 null（这条丢弃，不入库）。 */
@@ -224,10 +230,10 @@ export async function writeShareLine(
     `来源：${item.sourceSite}`,
     `你的笔记：${clip(item.summary, 600)}`,
     "请用你平常说话的口吻，说 1 到 3 句话，像随口分享，不要催对方点开，不要说“链接在下面”，不要加表情符号。以“我今天看到…”或类似自然的开头皆可。",
-  ].join("\n");
+  ].join("\n") + outputLanguageNote("Say it in 1 to 3 short English sentences.");
   try {
     const raw = await ask(provider, buildSystemPrompt({}, character), user, { temperature: 0.8, maxTokens: 160, signal });
-    return raw.replace(/\s+/g, " ").trim().slice(0, 200);
+    return raw.replace(/\s+/g, " ").trim().slice(0, currentLang() === "en" ? 400 : 200);
   } catch (error) {
     if (signal?.aborted) throw error;
     return "";

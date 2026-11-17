@@ -111,5 +111,25 @@ export async function capturePrompts(root: string): Promise<Record<string, strin
   }).processDue(triggerId);
   out.proactive = r.calls[0] ? join2(r.calls[0]) : "";
 
+  // 逛逛：视频 / 网页总结、分享话术，以及挑视频、挑网页、话题整理
+  const surf = await load("surf/summary.ts");
+  const material = { kind: "video" as const, title: "蓝鲸之歌", sourceSite: "bilibili", text: "蓝鲸的歌声能传几百公里。" }; // i18n-ignore：测试输入
+  r = recorder('{"summary":"讲蓝鲸怎么用低频声音远距离交流。","comment":"好想听一次","tags":["蓝鲸"],"worth_sharing":4,"safe":true}'); // i18n-ignore：测试输入
+  await surf.summarizeItem(r.provider, "whale", material, []);
+  out.surfSummary = join2(r.calls[0]);
+  r = recorder("我今天看到蓝鲸会唱歌。"); // i18n-ignore：测试输入
+  await surf.writeShareLine(r.provider, "whale", { title: material.title, sourceSite: material.sourceSite, summary: "讲蓝鲸唱歌。" }); // i18n-ignore：测试输入
+  out.surfShare = join2(r.calls[0]);
+  const candidate = { bvid: "BV1", title: "蓝鲸之歌", author: "海洋台", durationSeconds: 300, play: 1000, description: "蓝鲸", url: "https://www.bilibili.com/video/BV1" }; // i18n-ignore：测试输入
+  r = recorder('{"index":0,"reason":"想听"}'); // i18n-ignore：测试输入
+  await surf.pickVideo(r.provider, "whale", [candidate], ["蓝鲸"], undefined, ["深海"]); // i18n-ignore：测试输入
+  out.surfPickVideo = join2(r.calls[0]);
+  r = recorder('{"picks":[{"index":0,"reason":"想看"}]}'); // i18n-ignore：测试输入
+  await surf.pickWebs(r.provider, "whale", [{ title: "蓝鲸", url: "https://example.com/w", snippet: "蓝鲸会唱歌" }], ["蓝鲸"], 3, undefined, ["深海"]); // i18n-ignore：测试输入
+  out.surfPickWebs = join2(r.calls[0]);
+  r = recorder('{"topics":["游泳"]}'); // i18n-ignore：测试输入
+  await surf.extractRecentTopics(r.provider, [CHAT[0].content], ["用户在学游泳"]); // i18n-ignore：测试输入
+  out.surfTopics = join2(r.calls[0]);
+
   return out;
 }
