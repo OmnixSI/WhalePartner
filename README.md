@@ -1,5 +1,7 @@
 # WhalePartner · 鲸汐
 
+简体中文 | [English](README.en.md)
+
 住在电脑里的鲸系 AI 角色：记得你说过的话，替你看 B 站视频、读网页，并把日常记成一本日记。当前版本 **v0.4.0**，更新记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 <p align="center">
@@ -8,7 +10,18 @@
 
 **结构**：界面（`apps/client`，Tauri 2 + React 19）+ 后端（`apps/api`，Node 26）。**桌面 App 自带后端**：双击打开就能用，不需要另开终端；**关掉窗口就是退出**，后端一起停。想让她在你关窗后继续去逛，在设置里打开「后台继续逛」。同一个用户的所有设备连同一个「家」后端，内容实时同步，手机和别的电脑可以用网页端扫码配对。界面只管显示，模型调用与数据都在后端。
 
-仓库没有 CI，Release 只有源码，所以第一次用需要自己构建：先看「需要准备什么」，再按「快速开始」走一遍。
+**只想用**：到 [Releases](https://github.com/OmnixSI/WhalePartner/releases/latest) 下载 `WhalePartner_<版本>_aarch64.dmg`（Apple Silicon Mac），按下面「下载安装」走。**想自己构建或改代码**：先看「需要准备什么」，再按「快速开始」走一遍。仓库没有 CI。
+
+---
+
+## 下载安装（macOS，Apple Silicon）
+
+1. 在 [Releases](https://github.com/OmnixSI/WhalePartner/releases/latest) 页面下载附件里的 `WhalePartner_<版本>_aarch64.dmg`（可对照页面上的 SHA-256 校验）。
+2. 打开 dmg，把「鲸汐」拖进「应用程序」。
+3. 这个包没有经过 Apple 公证，第一次打开会被系统拦下。放行方法二选一：在「应用程序」里右键点「鲸汐」选「打开」；或者先双击打开一次被拦下后，到 **系统设置 › 隐私与安全性**，拉到底点「**仍要打开**」。
+4. 打开后在 **设置 › 模型接入** 填模型密钥；想用英文界面，在 **设置 › 外观与使用 › 语言** 切换。
+
+早期版本的 Release 只有源码；Intel Mac、Windows、Linux 目前没有现成安装包，需要自己构建。
 
 ---
 
@@ -143,7 +156,7 @@ Tauri 桌面构建会在打包前自动准备大肥鱼模型和 Cubism Core；�
 | 中英文案检查 | `pnpm --dir apps/client run i18n:check`：中英两份文案的键必须一一对应，源码（去掉注释后）不能再有写死的中文；新文案写进 `apps/client/src/i18n/locales/{zh,en}/` 或 `apps/api/src/i18n/{zh,en}-parts/`，不面向用户的中文用 `i18n-ignore` 注释标出 |
 | 界面验收 | `pnpm --dir apps/client run ui:check`（`--static` 跳过浏览器，`--shots` 拍照到 `apps/client/test-results/`） |
 | 构建 | `pnpm --dir apps/client run build`（Web）；`pnpm --dir apps/client run tauri build`（桌面包） |
-| 发布 | 无自动化。需同时改 `apps/client/package.json`、`apps/client/src-tauri/tauri.conf.json`、`apps/client/src-tauri/Cargo.toml` 的版本并更新 `CHANGELOG.md`；发布本身需开发者授权 |
+| 发布 | 无自动化。需同时改 `apps/api/package.json`、`apps/client/package.json`、`apps/client/src-tauri/tauri.conf.json`、`apps/client/src-tauri/Cargo.toml`、`Cargo.lock` 的版本，以及 README 里的当前版本号，并更新 `CHANGELOG.md`；打 tag、建 Release、上传 dmg 都需开发者授权 |
 | 模型连通 / 人格回归 | `pnpm --dir apps/api run llm:ping` / `pnpm --dir apps/api run persona:eval` |
 
 仓库地图：
