@@ -77,7 +77,8 @@ export const common: typeof Zh = {
     mainNav: "Main navigation",
     expandNav: "Expand navigation",
     collapseNav: "Collapse navigation",
-    brand: "WhalePartner",
+    /** 侧栏 200px 放不下一行 WhalePartner，分两行显示（换行由 CSS 的 pre-line 生效）。 */
+    brand: "Whale\nPartner",
   },
   ui: {
     close: "Close",
