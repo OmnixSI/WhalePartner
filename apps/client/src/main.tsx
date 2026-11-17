@@ -6,6 +6,7 @@ import { applyCharacterTheme } from "./characters";
 import { applyTheme, readTheme } from "./lib/theme";
 import { applyA11y, readA11y } from "./lib/a11y";
 import { installActivity } from "./lib/activity";
+import { installLang, m } from "./i18n";
 import "./styles/base.css";
 import "./styles/characters.css";
 import "./styles/ocean.css";
@@ -15,6 +16,9 @@ applyTheme(readTheme());
 applyA11y(readA11y());
 applyCharacterTheme();
 installActivity();
+installLang();
+const splashName = document.getElementById("splash-name");
+if (splashName) splashName.textContent = m.app.name;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

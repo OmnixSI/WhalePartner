@@ -14,6 +14,7 @@ import { getProfile, putNickname } from "../lib/profile";
 import { getCompanionSettings, putCompanionSettings, type CompanionSettings, type CompanionSettingsPatch } from "../lib/companion";
 import { readA11y } from "../lib/a11y";
 import { applyTheme, readTheme, type ThemeChoice } from "../lib/theme";
+import { m, readLangPref, setLangPref, type LangPref } from "../i18n";
 import { useCharacter } from "../characters";
 import { Accounts } from "../components/Accounts";
 import { reopenOnboarding } from "../components/Onboarding";
@@ -56,6 +57,12 @@ const THEMES: Array<{ id: ThemeChoice; label: string; hint: string }> = [
   { id: "dark", label: "深海夜", hint: "暗一点的夜" },
 ];
 
+const LANGS: Array<{ id: LangPref; label: string; hint: string }> = [
+  { id: "system", label: m.app.language.system, hint: m.app.language.systemHint },
+  { id: "zh", label: m.app.language.zh, hint: m.app.language.zhHint },
+  { id: "en", label: m.app.language.en, hint: m.app.language.enHint },
+];
+
 const CATEGORIES = [
   { id: "her", label: "她与陪伴" },
   { id: "look", label: "外观与使用" },
@@ -85,6 +92,11 @@ export function SettingsPage() {
   const { hash } = useLocation();
   const pageRef = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState<ThemeChoice>(readTheme);
+  const [langPref, setLangPrefState] = useState<LangPref>(readLangPref);
+  const chooseLang = (next: LangPref) => {
+    setLangPrefState(next);
+    setLangPref(next);
+  };
   const [a11y, setA11y] = useState(readA11y);
   const [backend, setBackend] = useState<Backend>("checking");
   const [nickname, setNickname] = useState("");
@@ -509,6 +521,21 @@ export function SettingsPage() {
                       hint={item.hint}
                       selected={theme === item.id}
                       onSelect={() => chooseTheme(item.id)}
+                    />
+                  ))}
+                </div>
+              </SettingGroup>
+
+              <SettingGroup title={m.app.language.group} note={m.app.language.note}>
+                <div className="set-choices" role="group" aria-label={m.app.language.groupLabel}>
+                  {LANGS.map((item) => (
+                    <ChoiceCard
+                      key={item.id}
+                      groupLabel={m.app.language.groupLabel}
+                      label={item.label}
+                      hint={item.hint}
+                      selected={langPref === item.id}
+                      onSelect={() => chooseLang(item.id)}
                     />
                   ))}
                 </div>

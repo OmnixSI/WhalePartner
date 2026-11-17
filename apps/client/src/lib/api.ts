@@ -11,6 +11,7 @@
  * 因此各处仍然可以写 `fetch(`${API_BASE}/api/...`)`，不必各自操心令牌。
  * `<img>` / `EventSource` 带不了请求头，用 `authedUrl()` 给地址补 `?token=`。
  */
+import { LANG_HEADER, lang } from "../i18n";
 
 export interface HubConnection {
   /** 空串 = 同源。 */
@@ -144,6 +145,7 @@ if (typeof window !== "undefined" && !(window as unknown as { __wpFetchPatched?:
     await backendReady;
     const headers = new Headers(init?.headers);
     if (token && !headers.has("authorization")) headers.set("authorization", `Bearer ${token}`);
+    if (!headers.has(LANG_HEADER)) headers.set(LANG_HEADER, lang);
     const response = await nativeFetch(`${API_BASE}${path}`, { ...init, headers });
     if (response.status === 401 && !path.startsWith("/api/pair/")) window.dispatchEvent(new Event("wp:auth-required"));
     return response;

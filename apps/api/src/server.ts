@@ -1,8 +1,9 @@
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { loadConfig } from "./server/config.ts";
+import { requestLang, runWithLang } from "./i18n/index.ts";
 import { applyCors, RequestBodyError, sendJson } from "./server/http.ts";
 import { closeServerAndDrain } from "./server/shutdown.ts";
 import { authOptionsFromEnv, authorize, authRequiredFor, trustedProxiesFromEnv, type AuthOptions } from "./hub/auth.ts";
@@ -127,7 +128,8 @@ export function createApiServer(deps: ServerDeps): ApiServer {
   let port = deps.config.port;
   const surfDeps = { ...deps, connections };
   const trustedProxies = trustedProxiesFromEnv();
-  const server = createServer(async (request, response) => {
+  const server = createServer((request, response) => runWithLang(requestLang(request), () => handleRequest(request, response)));
+  const handleRequest = async (request: IncomingMessage, response: ServerResponse) => {
     applyCors(request, response, auth.extraOrigins);
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
@@ -210,7 +212,7 @@ export function createApiServer(deps: ServerDeps): ApiServer {
       if (!response.headersSent) sendJson(response, 500, { error: "服务内部错误。" });
       else response.end();
     }
-  });
+  };
   const apiServer = server as ApiServer;
   apiServer.closeVoiceConnections = attachVoiceWebSocket(server, asr, auth, connections);
   server.on("listening", () => proactive.start());
