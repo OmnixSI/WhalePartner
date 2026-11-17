@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { browsersDir } from "../server/data-dir.ts";
 import { isPrivateAddress } from "../webpage/service.ts";
 import { startEgressProxy, type EgressProxy, type EgressProxyOptions } from "./egress-proxy.ts";
-import { classifyError, SurfError } from "./errors.ts";
+import { classifyError, ERROR_CODES, SurfError, withCode } from "./errors.ts";
 import { msg } from "../i18n/index.ts";
 
 /**
@@ -436,11 +436,11 @@ export class BrowserManager {
     try {
       parsed = new URL(url);
     } catch {
-      throw new SurfError("content", msg().content.surf.browser.invalidUrl);
+      throw withCode(new SurfError("content", msg().content.surf.browser.invalidUrl), ERROR_CODES.unsafeAddress);
     }
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new SurfError("content", msg().content.surf.onlyHttp);
     if (this.#options.allowPrivateHosts) return parsed;
-    if (!(await resolvesPublic(parsed.hostname.replace(/^\[|\]$/g, ""), this.#options.egress?.guardLookup))) throw new SurfError("content", msg().content.surf.internalAddress);
+    if (!(await resolvesPublic(parsed.hostname.replace(/^\[|\]$/g, ""), this.#options.egress?.guardLookup))) throw withCode(new SurfError("content", msg().content.surf.internalAddress), ERROR_CODES.unsafeAddress);
     return parsed;
   }
 

@@ -1,7 +1,7 @@
 import { isPrivateAddress } from "../webpage/service.ts";
 import { lookup } from "node:dns/promises";
 import type { WebPageText, WebResult, WebSource } from "./types.ts";
-import { withRetry } from "./errors.ts";
+import { ERROR_CODES, withCode, withRetry } from "./errors.ts";
 import { createPageReader, type PageReader } from "./page-reader.ts";
 import { msg } from "../i18n/index.ts";
 
@@ -119,13 +119,13 @@ const defaultFetchText: TextFetcher = async (url) => {
   const target = new URL(url);
   const addresses = await lookup(target.hostname, { all: true }).catch(() => []);
   if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
-    throw new Error(msg().content.surf.search.internal);
+    throw withCode(new Error(msg().content.surf.search.internal), ERROR_CODES.content);
   }
   const response = await fetch(target, {
     headers: { "user-agent": UA, "accept-language": "zh-CN,zh;q=0.9,en;q=0.5", accept: "text/html,application/xhtml+xml" },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) throw new Error(msg().content.surf.search.status(response.status));
+  if (!response.ok) throw Object.assign(new Error(msg().content.surf.search.status(response.status)), { status: response.status });
   return await response.text();
 };
 

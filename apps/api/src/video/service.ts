@@ -1,4 +1,5 @@
 import { msg } from "../i18n/index.ts";
+import { ERROR_CODES, withCode } from "../surf/errors.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -86,7 +87,7 @@ export function createVideoService(): VideoService {
         const session = await loadBilibiliSession();
         signal?.throwIfAborted();
         if (session && !(await isBilibiliSessionValid(session.sessdata, signal))) {
-          throw new VideoError(msg().core.video.loginExpired);
+          throw withCode(new VideoError(msg().core.video.loginExpired), ERROR_CODES.content);
         }
         const source = await collectBilibiliVideoEvidence(target, session?.sessdata ?? "", { framesDir: tempDir, signal });
         signal?.throwIfAborted();
@@ -108,7 +109,7 @@ export function createVideoService(): VideoService {
       } catch (error) {
         await dispose();
         signal?.throwIfAborted(); // 中止就抛出中止原因，不伪装成视频错误
-        throw error instanceof VideoError ? error : new VideoError(scrub(error instanceof Error ? error.message : String(error)));
+        throw error instanceof VideoError ? error : new VideoError(scrub(error instanceof Error ? error.message : String(error)), { cause: error });
       }
     },
 

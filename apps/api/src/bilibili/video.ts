@@ -1,4 +1,5 @@
 import { msg } from "../i18n/index.ts";
+import { ERROR_CODES, withCode } from "../surf/errors.ts";
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -107,8 +108,11 @@ export async function assertBilibiliRequestAllowed() {
   const retryAt = Date.parse(pause?.retryAt ?? "");
   if (Number.isFinite(retryAt) && retryAt > Date.now()) {
     const status = pause?.status ?? msg().core.bilibili.rateLimitFallback;
+    const riskOrFallback = typeof status !== "number" || status < 0;
     const reason = typeof status === "number" && status < 0 ? msg().core.bilibili.riskCode(status) : `HTTP ${status}`;
-    throw new Error(msg().core.bilibili.pausedUntil(reason, new Date(retryAt).toLocaleString()));
+    const error = new Error(msg().core.bilibili.pausedUntil(reason, new Date(retryAt).toLocaleString()));
+    // 风控码和「限流」两种说法要标明是限流；「HTTP 412」这类中英文都一样，照旧按文字认。
+    throw riskOrFallback ? withCode(error, ERROR_CODES.rateLimited) : error;
   }
   await rm(RATE_LIMIT_PATH, { force: true });
 }

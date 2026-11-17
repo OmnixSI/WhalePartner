@@ -3,7 +3,7 @@ import { request as httpRequest, type IncomingHttpHeaders } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { isPrivateHostname, safeLookup } from "../webpage/service.ts";
 import { BrowserManager, sharedBrowser, type BrowserManagerOptions, type InstallStatus } from "./browser.ts";
-import { classifyError, SurfError } from "./errors.ts";
+import { classifyError, ERROR_CODES, hasCode, SurfError, withCode } from "./errors.ts";
 import { assertReadable, extractArticle, toWebPage } from "./reader.ts";
 import type { WebPageText } from "./types.ts";
 import { msg } from "../i18n/index.ts";
@@ -48,7 +48,7 @@ interface StaticHop {
   body: Buffer;
 }
 
-const privateAddressError = (error: unknown) => error instanceof Error && /内部地址|internal address/.test(error.message); // i18n-ignore：匹配错误信息的正则（含中英文）
+const privateAddressError = (error: unknown) => hasCode(error, ERROR_CODES.unsafeAddress) || (error instanceof Error && /内部地址/.test(error.message)); // i18n-ignore：匹配中文报错的正则（与 main 相同）
 
 /**
  * 用 node:http(s) 发一跳请求：lookup 在连接时校验解析出的地址，DNS 重绑定没有先查后连的窗口。
@@ -97,16 +97,16 @@ export const fetchStaticHtml: StaticFetcher = async (url, options) => {
   let current = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
     const target = new URL(current);
-    if (target.protocol !== "http:" && target.protocol !== "https:") throw new SurfError("content", msg().content.surf.onlyHttp);
+    if (target.protocol !== "http:" && target.protocol !== "https:") throw withCode(new SurfError("content", msg().content.surf.onlyHttp), ERROR_CODES.unsafeAddress);
     if (!options.allowPrivateHosts && isPrivateHostname(target.hostname)) {
-      throw new SurfError("content", msg().content.surf.internalAddress);
+      throw withCode(new SurfError("content", msg().content.surf.internalAddress), ERROR_CODES.unsafeAddress);
     }
     const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(STATIC_TIMEOUT_MS)]) : AbortSignal.timeout(STATIC_TIMEOUT_MS);
     let response: StaticHop;
     try {
       response = await requestStatic(target, { signal, lookup });
     } catch (error) {
-      if (!options.allowPrivateHosts && privateAddressError(error)) throw new SurfError("content", msg().content.surf.internalAddress);
+      if (!options.allowPrivateHosts && privateAddressError(error)) throw withCode(new SurfError("content", msg().content.surf.internalAddress), ERROR_CODES.unsafeAddress);
       throw error;
     }
     if (response.status >= 300 && response.status < 400) {
@@ -167,7 +167,7 @@ export function createPageReader(options: PageReaderOptions = {}): PageReader {
         const kind = classifyError(error, signal);
         // 取消、限流、地址不安全：换浏览器也没用，直接抛。
         if (kind === "aborted" || kind === "rate_limit") throw error;
-        if (error instanceof SurfError && /内部网络|有效的网页|http 或 https|internal address|valid web address|http or https/.test(error.message)) throw error; // i18n-ignore：匹配错误信息的正则（含中英文）
+        if (error instanceof SurfError && (hasCode(error, ERROR_CODES.unsafeAddress) || /内部网络|有效的网页|http 或 https/.test(error.message))) throw error; // i18n-ignore：匹配中文报错的正则（与 main 相同）
       }
 
       if (!browser.isReady()) {

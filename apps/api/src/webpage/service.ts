@@ -1,4 +1,5 @@
 import { msg } from "../i18n/index.ts";
+import { ERROR_CODES, withCode } from "../surf/errors.ts";
 import { lookup as dnsLookup } from "node:dns";
 import { request as httpRequest, type IncomingMessage } from "node:http";
 import { request as httpsRequest } from "node:https";
@@ -86,7 +87,7 @@ export const safeLookup: typeof dnsLookup = ((hostname: string, options: unknown
   dnsLookup(hostname, { all: true }, (error, addresses) => {
     if (error) return done(error);
     const bad = addresses.find((entry) => isPrivateAddress(entry.address));
-    if (bad || addresses.length === 0) return done(new WebError(msg().core.webpage.internalAddress));
+    if (bad || addresses.length === 0) return done(withCode(new WebError(msg().core.webpage.internalAddress), ERROR_CODES.unsafeAddress));
     const pick = addresses[0];
     const wantsAll = typeof options === "object" && options !== null && (options as { all?: boolean }).all;
     return wantsAll ? done(null, addresses) : done(null, pick.address, pick.family);
