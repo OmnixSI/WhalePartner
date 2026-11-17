@@ -102,3 +102,13 @@ test("「她学到的」库里的内置分类标题按当前语言显示，库�
   // i18n-ignore-end
   resetLangForTest("zh");
 });
+
+test("后台任务在运行时读最近一次的语言，不继承安排时的请求语言", async () => {
+  const { runInBackgroundLang, currentLang } = await import("../src/i18n/index.ts");
+  const inherited = runWithLang("zh", () => new Promise<string>((resolve) => setTimeout(() => resolve(currentLang()), 5)));
+  const background = runWithLang("zh", () => new Promise<string>((resolve) => setTimeout(() => runInBackgroundLang(() => resolve(currentLang())), 5)));
+  runWithLang("en", () => undefined);
+  assert.equal(await inherited, "zh", "普通定时器会继承请求语言（这正是要绕开的）");
+  assert.equal(await background, "en");
+  resetLangForTest("zh");
+});

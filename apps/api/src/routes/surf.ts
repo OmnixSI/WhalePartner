@@ -1,4 +1,4 @@
-import { msg } from "../i18n/index.ts";
+import { msg, runInBackgroundLang } from "../i18n/index.ts";
 import { createReadStream } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { sendJson, readJsonBody, RequestBodyError, sendSse, startSse } from "../server/http.ts";
@@ -105,7 +105,8 @@ export async function handleSurf(
       return sendJson(response, 200, { state: "skipped", reason: check.code ?? "disabled", message: check.message });
     }
     // 立刻回 202：会话在后台跑，进度走 SSE。sessionId 从刚插进去的那一行取。
-    const pending = surf.run(character, { manual: true });
+    // 会话在后台跑几分钟：中途切换语言，后面生成的总结按新语言来。
+    const pending = runInBackgroundLang(() => surf.run(character, { manual: true }));
     const running = surf.store.runningSession(character);
     pending.catch((error: unknown) => console.warn("手动冲浪失败：", error instanceof Error ? error.message : error));
     sendJson(response, 202, { sessionId: running?.id ?? null, character });

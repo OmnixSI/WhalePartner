@@ -1,3 +1,4 @@
+import { runInBackgroundLang } from "../i18n/index.ts";
 import type { ChatDeps } from "./service.ts";
 import { CHARACTERS, type CharacterId } from "../persona/persona.ts";
 import { learnFrom } from "./learning.ts";
@@ -10,7 +11,8 @@ const deferredBackgroundJobs: Array<{ label: string; task: (signal: AbortSignal)
 
 function enqueueBackground(label: string, task: (signal: AbortSignal) => Promise<void>) {
   const debug = process.env.WP_DEBUG ? (message: string) => console.log(`[后台] ${label} ${message}`) : () => {};
-  backgroundQueue = backgroundQueue.then(async () => {
+  // 排队的活轮到时才定语言：用最近一次的，不用排队那一刻请求的。
+  backgroundQueue = backgroundQueue.then(() => runInBackgroundLang(async () => {
     await waitForForegroundChatIdle();
     const controller = beginOtherBackgroundJob();
     if (!controller) {
@@ -27,7 +29,7 @@ function enqueueBackground(label: string, task: (signal: AbortSignal) => Promise
     } finally {
       endOtherBackgroundJob(controller);
     }
-  }).catch((error: unknown) => {
+  })).catch((error: unknown) => {
     console.warn(`${label}失败：`, error instanceof Error ? error.message : error);
   });
 }

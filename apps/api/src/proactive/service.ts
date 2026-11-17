@@ -13,7 +13,7 @@ import type { ChatSessionRequests } from "../routes/chat-session-requests.ts";
 import { PresenceRegistry } from "./presence.ts";
 import { frequencyLimit, nextQuietEnd, PROACTIVE_BUSY_RETRY_MS, PROACTIVE_IDLE_MS, PROACTIVE_LATE_GRACE_MS } from "./policy.ts";
 import { inQuietHours } from "../surf/settings.ts";
-import { msg, outputLanguageNote } from "../i18n/index.ts";
+import { msg, outputLanguageNote, runInBackgroundLang } from "../i18n/index.ts";
 
 interface ProactiveServiceDeps {
   store: ChatStore;
@@ -89,10 +89,11 @@ export class ProactiveService {
     if (!trigger || trigger.status !== "pending") return;
     const now = this.#now().getTime();
     const delay = Math.max(0, Math.min(MAX_TIMER_MS, Date.parse(trigger.dueAt) - now));
-    const timer = setTimeout(() => {
+    // 定时器会沿用安排它那一刻的请求语言；到期时改用最近一次的语言生成。
+    const timer = setTimeout(() => runInBackgroundLang(() => {
       this.#timers.delete(id);
       void this.processDue(id).catch((error: unknown) => console.warn("主动跟进失败：", error instanceof Error ? error.message : error));
-    }, delay);
+    }), delay);
     timer.unref?.();
     this.#timers.set(id, timer);
   }

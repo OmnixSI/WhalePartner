@@ -36,6 +36,15 @@ export function runWithLang<T>(language: Lang | null, fn: () => T): T {
   return store.run(language ?? lastSeen, fn);
 }
 
+/**
+ * 后台任务（定时器到期、队列里排着的活）在真正运行时用最近一次设置或请求带来的语言，
+ * 不继承安排它那一刻的请求语言：用户中途切换了语言，到期生成的内容按新语言来。
+ * 多台设备语言不同时，也一律用最近一次的。
+ */
+export function runInBackgroundLang<T>(fn: () => T): T {
+  return store.exit(fn);
+}
+
 export function currentLang(): Lang {
   return store.getStore() ?? lastSeen;
 }
