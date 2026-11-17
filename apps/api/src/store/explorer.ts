@@ -2,6 +2,7 @@ import { msg } from "../i18n/index.ts";
 import type { DatabaseSync } from "node:sqlite";
 import { matchExpression } from "./search.ts";
 import type { StoredFact } from "./types.ts";
+import { displaySessionTitle } from "./sessions.ts";
 
 export type MemoryCategory = "all" | "fact" | "conversation" | "video" | "web" | "diary" | "learned" | "reflection";
 export type MemoryStatusFilter = "all" | "current" | "historical";
@@ -89,7 +90,7 @@ export function listMemoryExplorer(db: DatabaseSync, filters: MemoryExplorerFilt
       character: row.character,
       ...(row.role ? { role: row.role } : {}),
       ...(row.sessionId ? { sessionId: row.sessionId } : {}),
-      ...(row.sessionTitle ? { sessionTitle: row.sessionTitle } : {}),
+      ...(row.sessionTitle ? { sessionTitle: displaySessionTitle(row.sessionTitle) } : {}),
       ...(row.messageId !== null ? { messageId: Number(row.messageId) } : {}),
       ...(row.status ? { status: row.status } : {}),
       ...(row.validFrom ? { validFrom: row.validFrom } : {}),

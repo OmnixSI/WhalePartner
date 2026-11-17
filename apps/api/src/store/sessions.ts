@@ -7,6 +7,18 @@ import type { ArchiveHit, ChatSession, StoredMessage, StoredRole } from "./types
 
 
 /** 行 → 消息：把 attachment_json 解析成 attachment，别把裸列名漏给上层。 */
+/**
+ * 库里存的默认标题按当前界面语言显示，库里的数据不改：中英两种「新聊天」显示成当前语言的「新聊天」，
+ * 旧版迁移来的「历史聊天」同理。用户手动改过名的标题原样显示。
+ */
+export function displaySessionTitle(title: string, manual = false): string {
+  if (manual) return title;
+  const [zh, en, now] = [msg("zh").core.store, msg("en").core.store, msg().core.store];
+  if (title === zh.newChat || title === en.newChat) return now.newChat;
+  if (title === zh.legacyChat || title === en.legacyChat) return now.legacyChat;
+  return title;
+}
+
 function mapMessage(row: unknown): StoredMessage {
   const { attachment_json: raw, ...rest } = row as { attachment_json?: string | null } & Record<string, unknown>;
   let attachment: unknown | null = null;
@@ -47,7 +59,7 @@ export class SessionRepository {
       WHERE s.id = ?
       GROUP BY s.id
     `).get(id) as unknown as (ChatSession & { messageCount: number }) | undefined;
-    return row ? { ...row, titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) } : undefined;
+    return row ? { ...row, title: displaySessionTitle(row.title, Boolean(row.titleManual)), titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) } : undefined;
   }
 
   getOrCreateSession(character: string, id?: string): ChatSession {
@@ -68,7 +80,7 @@ export class SessionRepository {
       GROUP BY s.id
       ORDER BY s.updated_at DESC, s.created_at DESC LIMIT ?
     `).all(limit) as unknown as Array<ChatSession & { messageCount: number }>;
-    return rows.map((row) => ({ ...row, titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) }));
+    return rows.map((row) => ({ ...row, title: displaySessionTitle(row.title, Boolean(row.titleManual)), titleManual: Boolean(row.titleManual), messageCount: Number(row.messageCount) }));
   }
 
   add(role: StoredRole, content: string, emotion: string | null = null, character = "whale", sessionId?: string, attachment?: unknown): StoredMessage {

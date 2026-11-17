@@ -38,3 +38,21 @@ test("英文界面给人设追加用英文说话的要求，中文界面提示�
   assert.match(enCore, /your name is Big Fat Fish/);
   resetLangForTest("zh");
 });
+
+test("库里的默认会话标题按当前语言显示，库里不改；手动改过名的原样显示", async () => {
+  const { ChatStore } = await import("../src/store/index.ts");
+  const store = new ChatStore(":memory:");
+  const zhSession = runWithLang("zh", () => store.createSession("whale"));
+  const enSession = runWithLang("en", () => store.createSession("whale"));
+  const manual = store.createSession("whale");
+  store.renameSession(manual.id, "whale", "新聊天"); // i18n-ignore：测试数据
+  runWithLang("en", () => {
+    const titles = new Map(store.listSessions("whale").map((session) => [session.id, session.title]));
+    assert.equal(titles.get(zhSession.id), "New chat");
+    assert.equal(titles.get(enSession.id), "New chat");
+    assert.equal(titles.get(manual.id), "新聊天"); // i18n-ignore：测试数据
+    assert.equal(store.getSession(zhSession.id)?.title, "New chat");
+  });
+  runWithLang("zh", () => assert.equal(store.getSession(enSession.id)?.title, "新聊天")); // i18n-ignore：测试数据
+  resetLangForTest("zh");
+});

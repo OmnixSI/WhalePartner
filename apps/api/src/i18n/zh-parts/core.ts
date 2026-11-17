@@ -216,6 +216,7 @@ export const core = {
   },
   store: {
     newChat: "新聊天",
+    legacyChat: "历史聊天",
     userSaid: "你说的话",
     herReply: "她的回复",
     herRecentLife: "她的近况",

@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { ChatInputError } from "../chat/service.ts";
 import { readJsonBody, RequestBodyError, sendJson } from "../server/http.ts";
 import { archiveExperience } from "../memory/archive.ts";
+import { displaySessionTitle } from "../store/sessions.ts";
 import type { MemoryStore } from "../memory/types.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { ServerDeps } from "../server/types.ts";
@@ -183,7 +184,7 @@ async function listMemories(store: ServerDeps["store"], memory: MemoryStore | un
     text: observation.summary,
     createdAt: observation.updatedAt,
     source: "reflection",
-    title: msg().core.routes.memories.observationTitle(observation.sessionTitle),
+    title: msg().core.routes.memories.observationTitle(displaySessionTitle(observation.sessionTitle)),
   }));
   const reflections = [...notes, ...observations].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const indexedSources = new Set(archivedExperiences.map((experience) => experience.sourceId));
