@@ -48,3 +48,14 @@ export function msg(language: Lang = currentLang()): Messages {
 export function resetLangForTest(language: Lang = "zh") {
   lastSeen = language;
 }
+
+/**
+ * 给模型的提示词保持中文原文。界面是英文时，在会显示给用户的 AI 输出（视频总结、近况、学到的、日记等）
+ * 的提示词末尾追加这一段，让输出改用英文；`detail` 写这处特有的要求（英文篇幅、标题写法等）。
+ * 中文界面返回空串，调用处直接拼接，中文提示词与原来逐字相同。必须在用到时调用，不要存成模块常量。
+ */
+export function outputLanguageNote(detail = ""): string {
+  if (currentLang() !== "en") return "";
+  const line = "The user's interface is set to English. Write everything the user will read in natural English, even though the instructions above are in Chinese.";
+  return `\n\n## Output language\n${detail ? `${line} ${detail}` : line}`;
+}

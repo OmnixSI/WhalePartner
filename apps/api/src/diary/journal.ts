@@ -7,7 +7,7 @@ import { buildPersonaCore, CHARACTERS, DEFAULT_CHARACTER, type CharacterId } fro
 import type { ChatStore } from "../store/index.ts";
 import { SURF_SOURCE_LABEL } from "../store/journal-sources.ts";
 import { JournalStore, type DailyJournal, type JournalSource } from "./journal-store.ts";
-import { msg } from "../i18n/index.ts";
+import { msg, outputLanguageNote } from "../i18n/index.ts";
 
 interface DailyJournalDeps {
   store: JournalStore;
@@ -193,7 +193,7 @@ async function writeJournal(provider: ChatProvider, character: CharacterId, loca
       + (hasOwnFinds ? `标题以「${SURF_SOURCE_LABEL}」开头的视频和网页是你自己逛到的，用户没有一起看，不要写成和用户一起看过。` : ""), // i18n-ignore：日记提示词、材料模板与内部经历标签
     "不要提到记忆系统、来源标识、模型或写作过程。只输出日记正文，约 250 至 700 个中文字符。", // i18n-ignore：日记提示词、材料模板与内部经历标签
     "<day_sources>", evidence, "</day_sources>",
-  ].join("\n\n");
+  ].join("\n\n") + outputLanguageNote("Write the diary entry in English, about 150 to 450 words.");
   for await (const delta of provider.stream([
     { role: "system", content: buildPersonaCore(character) },
     { role: "user", content: prompt },

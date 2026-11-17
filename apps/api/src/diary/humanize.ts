@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { EmotionFilter } from "../chat/emotion.ts";
 import type { ChatProvider } from "../llm/types.ts";
 import { API_ROOT } from "../paths.ts";
+import { currentLang } from "../i18n/index.ts";
 // i18n-ignore-start：改写提示词，发给模型
 
 // MIT：MrGeDiao/shuorenhua 的官方压缩版规则，原样放在 vendor/shuorenhua/。
@@ -21,6 +22,8 @@ function plausible(original: string, rewritten: string) {
 }
 
 export async function humanizeText(provider: ChatProvider, text: string, signal?: AbortSignal): Promise<string> {
+  // 「说人话」规则只针对中文的套话和 AI 腔，英文日记套用会被改坏或改成中文：英文界面直接用原文。
+  if (currentLang() === "en") return text;
   const filter = new EmotionFilter();
   let out = "";
   try {

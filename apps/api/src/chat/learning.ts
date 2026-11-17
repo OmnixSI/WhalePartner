@@ -1,4 +1,5 @@
 import type { ChatProvider } from "../llm/types.ts";
+import { outputLanguageNote } from "../i18n/index.ts";
 import type { ChatStore } from "../store/index.ts";
 import { archiveExperience } from "../memory/archive.ts";
 import type { MemoryStore } from "../memory/types.ts";
@@ -57,7 +58,7 @@ export async function extractLearnings(provider: ChatProvider, material: { title
   let raw = "";
   for await (const delta of provider.stream(
     [
-      { role: "system", content: SYSTEM },
+      { role: "system", content: SYSTEM + outputLanguageNote('Each "text" is one English sentence under 150 characters; keep the "kind" values and the JSON format unchanged.') },
       { role: "user", content: `<material>\n标题：${material.title}\n${material.text.slice(0, 6000)}\n</material>` },
     ],
     { temperature: 0.2, maxTokens: 500, signal },

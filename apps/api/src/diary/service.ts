@@ -8,7 +8,7 @@ import { buildSystemPrompt } from "../persona/persona.ts";
 import { DiaryStore, type DiaryItem } from "./store.ts";
 import { acquireVideoLock, VideoBusyError, type VideoService, type VideoSummary } from "../video/service.ts";
 import type { ChatStore } from "../store/index.ts";
-import { msg } from "../i18n/index.ts";
+import { msg, outputLanguageNote } from "../i18n/index.ts";
 
 export interface DiaryServiceDeps {
   store: DiaryStore;
@@ -69,7 +69,7 @@ export async function generateDiaryText(provider: ChatProvider, video: DiarySour
     "<video_summary>",
     video.summary,
     "</video_summary>",
-  ].join("\n\n");
+  ].join("\n\n") + outputLanguageNote("Write the diary entry in English.");
 
   for await (const delta of provider.stream([
     { role: "system", content: buildSystemPrompt() },

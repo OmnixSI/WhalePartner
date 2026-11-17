@@ -69,7 +69,8 @@ export function extractVideoTarget(text: string): string | undefined {
 
 /** “分享给你”那一段；格式不符时退回整段摘要的前部分。 */
 export function sharedParagraph(summary: string): string {
-  const match = /#\s*分享给你\s*\n+([\s\S]*?)(?:\n#\s*来源与依据|$)/.exec(summary); // i18n-ignore：匹配中文内容的正则
+  // 英文界面下模型用英文小标题（见 video/prompt.ts）
+  const match = /#\s*(?:分享给你|Sharing with you)\s*\n+([\s\S]*?)(?:\n#+\s*(?:来源与依据|Sources & basis)|$)/.exec(summary); // i18n-ignore：匹配模型输出小标题的正则
   const text = (match?.[1] ?? summary).trim();
   return text.length > 1500 ? `${text.slice(0, 1500)}…` : text;
 }
